@@ -1,0 +1,21 @@
+# Node
+node_modules/
+dist/
+
+# pnpm
+.pnpm-store/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
