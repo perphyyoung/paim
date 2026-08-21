@@ -54,11 +54,33 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
     Ok(BkDb(std::sync::Mutex::new(conn)))
 }
 
-/// 解析数据库文件路径（应用数据目录下）。
-pub fn user_db_path(app: &tauri::AppHandle) -> PathBuf {
+/// 数据目录基准：
+/// - 开发环境（debug）使用项目根目录下的 paim-data（从进程启动目录定位，
+///   需从项目根启动 `cargo tauri dev`）；
+/// - 部署环境使用 Windows 默认的应用数据目录。
+fn base_data_dir(app: &tauri::AppHandle) -> PathBuf {
+    if cfg!(debug_assertions) {
+        std::env::current_dir()
+            .map(|d| d.join("paim-data"))
+            .unwrap_or_else(|_| default_data_dir(app))
+    } else {
+        default_data_dir(app)
+    }
+}
+
+fn default_data_dir(app: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
     app.path()
         .app_data_dir()
         .expect("failed to resolve app data dir")
-        .join("paim.db")
+}
+
+/// 解析数据库文件路径（数据目录基准下）。
+pub fn user_db_path(app: &tauri::AppHandle) -> PathBuf {
+    base_data_dir(app).join("paim.db")
+}
+
+/// 图像存储目录（数据目录基准下）。
+pub fn images_dir(app: &tauri::AppHandle) -> PathBuf {
+    base_data_dir(app).join("images")
 }

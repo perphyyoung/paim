@@ -39,12 +39,8 @@ pub fn import(conn: &Connection, app: &tauri::AppHandle, source: &str) -> rusqli
         ));
     }
 
-    // 目标目录：应用数据目录下 images/
-    let data_dir = crate::db::user_db_path(app)
-        .parent()
-        .expect("db path parent")
-        .to_path_buf();
-    let images_dir = data_dir.join("images");
+    // 目标目录：数据目录下的 images/
+    let images_dir = crate::db::images_dir(app);
     std::fs::create_dir_all(&images_dir).map_err(|e| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
             e.kind(),
