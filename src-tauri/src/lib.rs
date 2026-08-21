@@ -36,6 +36,8 @@ pub fn run() {
       features::tag::commands::delete_tag,
       features::image::import_image,
       features::image::list_images,
+      db::get_data_dir,
+      db::open_data_dir,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

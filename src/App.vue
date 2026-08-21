@@ -93,7 +93,7 @@ const settingsOpen = ref(false);
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
         @click.self="settingsOpen = false"
       >
-        <div class="relative w-96">
+        <div class="relative w-[50%] max-w-[60vw]">
           <SettingsView />
           <button
             type="button"

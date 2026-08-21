@@ -68,6 +68,11 @@ fn base_data_dir(app: &tauri::AppHandle) -> PathBuf {
     }
 }
 
+/// 数据目录（images 与 paim.db 的父目录）。
+pub fn data_dir(app: &tauri::AppHandle) -> PathBuf {
+    base_data_dir(app)
+}
+
 fn default_data_dir(app: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
     app.path()
@@ -83,4 +88,21 @@ pub fn user_db_path(app: &tauri::AppHandle) -> PathBuf {
 /// 图像存储目录（数据目录基准下）。
 pub fn images_dir(app: &tauri::AppHandle) -> PathBuf {
     base_data_dir(app).join("images")
+}
+
+// ---- Tauri commands ----
+
+#[tauri::command]
+pub fn get_data_dir(app: tauri::AppHandle) -> String {
+    data_dir(&app).to_string_lossy().into_owned()
+}
+
+#[tauri::command]
+pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = data_dir(&app);
+    std::process::Command::new("explorer")
+        .arg(&dir)
+        .spawn()
+        .map_err(|e| format!("打开目录失败: {e}"))?;
+    Ok(())
 }
