@@ -24,15 +24,15 @@ pub fn create_prompt(
 #[tauri::command]
 pub fn update_prompt_title(
     db: State<BkDb>,
-    id: i64,
+    id: String,
     title: Option<String>,
 ) -> Result<service::Prompt, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    service::update_title(&conn, id, title).map_err(|e| e.to_string())
+    service::update_title(&conn, &id, title).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn delete_prompt(db: State<BkDb>, id: i64) -> Result<(), String> {
+pub fn delete_prompt(db: State<BkDb>, id: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    service::remove(&conn, id).map_err(|e| e.to_string())
+    service::remove(&conn, &id).map_err(|e| e.to_string())
 }

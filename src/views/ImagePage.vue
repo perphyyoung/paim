@@ -8,7 +8,8 @@ import { formatLocalTime } from "@/utils/date";
 const { showToast } = useToast();
 
 interface Image {
-  id: number;
+  id: string;
+  file_name: string;
   stored_name: string;
   relative_path: string;
   thumbnail_path: string | null;
@@ -16,11 +17,14 @@ interface Image {
   width: number | null;
   height: number | null;
   file_size: number;
-  prompt_id: number | null;
-  created_at: string;
-  updated_at: string;
+  gen_params: string;
   is_deleted: boolean;
   deleted_at: string | null;
+  is_favorite: boolean;
+  is_safe: boolean;
+  created_at: string;
+  updated_at: string;
+  note: string;
 }
 
 const CARD_MIN = 100;
@@ -101,7 +105,7 @@ const sortedImages = computed(() => {
 });
 
 const images = ref<Image[]>([]);
-const thumbs = ref<Record<number, string>>({});
+const thumbs = ref<Record<string, string>>({});
 const importing = ref(false);
 const error = ref("");
 
@@ -117,7 +121,7 @@ function closeCtxMenu() {
 // 回收站
 const trashOpen = ref(false);
 const trashImages = ref<Image[]>([]);
-const trashThumbs = ref<Record<number, string>>({});
+const trashThumbs = ref<Record<string, string>>({});
 
 async function loadTrash() {
   trashImages.value = await invoke<Image[]>("list_trash");

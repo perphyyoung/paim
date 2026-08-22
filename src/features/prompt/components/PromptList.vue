@@ -28,7 +28,7 @@ async function add() {
   }
 }
 
-async function remove(id: number) {
+async function remove(id: string) {
   await deletePrompt(id);
   await reload();
 }

@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Image {
-    pub id: i64,
+    pub id: String,
+    pub file_name: String,
     pub stored_name: String,
     pub relative_path: String,
     pub thumbnail_path: Option<String>,
@@ -18,11 +19,14 @@ pub struct Image {
     pub width: Option<i64>,
     pub height: Option<i64>,
     pub file_size: i64,
-    pub prompt_id: Option<i64>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub gen_params: String,
     pub is_deleted: bool,
     pub deleted_at: Option<String>,
+    pub is_favorite: bool,
+    pub is_safe: bool,
+    pub created_at: String,
+    pub updated_at: String,
+    pub note: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -67,7 +71,7 @@ pub fn import(
     let md5 = file_md5(&source)?;
     if let Some(existing) = find_by_md5(conn, &md5)? {
         let img = if existing.is_deleted {
-            let img = restore(conn, existing.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            let img = restore(conn, &existing.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
             img
         } else {
             existing
@@ -133,13 +137,28 @@ pub fn import(
     };
 
     let relative_path = format!("images/{yyyymm}/{stored_name}");
+    let id = crate::db::gen_id(crate::db::IMAGE_ID_PREFIX);
+    let file_name = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&stored_name)
+        .to_string();
     conn.execute(
-        "INSERT INTO images(stored_name, relative_path, thumbnail_path, md5, width, height, file_size)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![stored_name, relative_path, thumb_rel, md5, width, height, file_size],
+        "INSERT INTO images(id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            id,
+            file_name,
+            stored_name,
+            relative_path,
+            thumb_rel,
+            md5,
+            width,
+            height,
+            file_size
+        ],
     )?;
-    let id = conn.last_insert_rowid();
-    let new_img = get_by_id(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+    let new_img = get_by_id(conn, &id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
     Ok((new_img, false))
 }
 
@@ -156,7 +175,7 @@ fn make_center_thumb(
 
 pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at, updated_at, is_deleted, deleted_at
+        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
          FROM images WHERE is_deleted = 0 ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], row_to_image)?;
@@ -166,7 +185,7 @@ pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
 /// 回收站列表（软删除的图像）。
 pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at, updated_at, is_deleted, deleted_at
+        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
          FROM images WHERE is_deleted = 1 ORDER BY deleted_at DESC",
     )?;
     let rows = stmt.query_map([], row_to_image)?;
@@ -174,7 +193,7 @@ pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
 }
 
 /// 软删除：标记为已删除，保留文件以便恢复。
-pub fn soft_delete(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
+pub fn soft_delete(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     conn.execute(
         "UPDATE images SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
         rusqlite::params![id],
@@ -183,7 +202,7 @@ pub fn soft_delete(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>
 }
 
 /// 恢复软删除的图像。
-pub fn restore(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
+pub fn restore(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     conn.execute(
         "UPDATE images SET is_deleted = 0, deleted_at = NULL WHERE id = ?1",
         rusqlite::params![id],
@@ -192,7 +211,7 @@ pub fn restore(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
 }
 
 /// 彻底删除：删除磁盘原图与缩略图并移除记录，不可恢复。
-pub fn purge(conn: &Connection, app: &tauri::AppHandle, id: i64) -> rusqlite::Result<()> {
+pub fn purge(conn: &Connection, app: &tauri::AppHandle, id: &str) -> rusqlite::Result<()> {
     let row: Option<(Option<String>, Option<String>)> = conn
         .query_row(
             "SELECT relative_path, thumbnail_path FROM images WHERE id = ?1",
@@ -214,9 +233,9 @@ pub fn purge(conn: &Connection, app: &tauri::AppHandle, id: i64) -> rusqlite::Re
     Ok(())
 }
 
-fn get_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
+fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at, updated_at, is_deleted, deleted_at
+        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
          FROM images WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(rusqlite::params![id], row_to_image)?;
@@ -225,7 +244,7 @@ fn get_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
 
 fn find_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at, updated_at, is_deleted, deleted_at
+        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
          FROM images WHERE md5 = ?1",
     )?;
     let mut rows = stmt.query_map(rusqlite::params![md5], row_to_image)?;
@@ -235,18 +254,22 @@ fn find_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> 
 fn row_to_image(row: &rusqlite::Row) -> rusqlite::Result<Image> {
     Ok(Image {
         id: row.get(0)?,
-        stored_name: row.get(1)?,
-        relative_path: row.get(2)?,
-        thumbnail_path: row.get(3)?,
-        md5: row.get(4)?,
-        width: row.get(5)?,
-        height: row.get(6)?,
-        file_size: row.get(7)?,
-        prompt_id: row.get(8)?,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
-        is_deleted: row.get::<_, i64>(11)? != 0,
-        deleted_at: row.get(12)?,
+        file_name: row.get(1)?,
+        stored_name: row.get(2)?,
+        relative_path: row.get(3)?,
+        thumbnail_path: row.get(4)?,
+        md5: row.get(5)?,
+        width: row.get(6)?,
+        height: row.get(7)?,
+        file_size: row.get(8)?,
+        gen_params: row.get(9)?,
+        is_deleted: row.get::<_, i64>(10)? != 0,
+        deleted_at: row.get(11)?,
+        is_favorite: row.get::<_, i64>(12)? != 0,
+        is_safe: row.get::<_, i64>(13)? != 0,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
+        note: row.get(16)?,
     })
 }
 
@@ -311,25 +334,25 @@ pub fn list_trash(db: State<crate::db::BkDb>) -> Result<Vec<Image>, String> {
 }
 
 #[tauri::command]
-pub fn delete_image(db: State<crate::db::BkDb>, id: i64) -> Result<Image, String> {
+pub fn delete_image(db: State<crate::db::BkDb>, id: String) -> Result<Image, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    soft_delete(&conn, id)
+    soft_delete(&conn, &id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "图像不存在".to_string())
 }
 
 #[tauri::command]
-pub fn restore_image(db: State<crate::db::BkDb>, id: i64) -> Result<Image, String> {
+pub fn restore_image(db: State<crate::db::BkDb>, id: String) -> Result<Image, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    restore(&conn, id)
+    restore(&conn, &id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "图像不存在".to_string())
 }
 
 #[tauri::command]
-pub fn purge_image(app: tauri::AppHandle, db: State<crate::db::BkDb>, id: i64) -> Result<(), String> {
+pub fn purge_image(app: tauri::AppHandle, db: State<crate::db::BkDb>, id: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    purge(&conn, &app, id).map_err(|e| e.to_string())
+    purge(&conn, &app, &id).map_err(|e| e.to_string())
 }
 
 /// 返回指定图像的缩略图磁盘路径，前端配合 convertFileSrc 加载。
@@ -337,7 +360,7 @@ pub fn purge_image(app: tauri::AppHandle, db: State<crate::db::BkDb>, id: i64) -
 pub fn get_thumbnail(
     app: tauri::AppHandle,
     db: State<crate::db::BkDb>,
-    id: i64,
+    id: String,
 ) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let rel: Option<String> = conn
