@@ -469,3 +469,107 @@ pub fn update_image_detail(
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "图像不存在".to_string())
 }
+
+/// 图像标签（关联表 join image_tags 的返回对象）。
+#[derive(Debug, Serialize, Clone)]
+pub struct ImageTag {
+    pub id: i64,
+    pub name: String,
+}
+
+/// 返回图像的标签列表。
+#[tauri::command]
+pub fn get_image_tags(db: State<crate::db::BkDb>, id: String) -> Result<Vec<ImageTag>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT it.id, it.name
+             FROM image_tags it
+             JOIN image_tag_relations itr ON itr.tag_id = it.id
+             WHERE itr.image_id = ?1
+             ORDER BY it.name",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![id], |r| {
+            Ok(ImageTag {
+                id: r.get(0)?,
+                name: r.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut tags = Vec::new();
+    for row in rows {
+        tags.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(tags)
+}
+
+/// 为图像添加多个标签：标签不存在则创建，关联存在则忽略，并更新图像的 updated_at。
+#[tauri::command]
+pub fn add_image_tags(
+    db: State<crate::db::BkDb>,
+    id: String,
+    names: Vec<String>,
+) -> Result<Vec<ImageTag>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+    let mut result = Vec::new();
+    for raw in names {
+        let name = raw.trim();
+        if name.is_empty() {
+            continue;
+        }
+        // 获取或创建标签
+        let tag_id: i64 = match tx
+            .query_row(
+                "SELECT id FROM image_tags WHERE name = ?1",
+                rusqlite::params![name],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+        {
+            Some(tid) => tid,
+            None => {
+                tx.execute(
+                    "INSERT INTO image_tags(name) VALUES (?1)",
+                    rusqlite::params![name],
+                )
+                .map_err(|e| e.to_string())?;
+                tx.last_insert_rowid()
+            }
+        };
+        // 建立关联（重复时因主键冲突报错，忽略）
+        let _ = tx.execute(
+            "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
+            rusqlite::params![id, tag_id],
+        );
+        result.push(ImageTag { id: tag_id, name: name.to_string() });
+    }
+
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(result)
+}
+
+/// 移除图像的一个标签关联。
+#[tauri::command]
+pub fn remove_image_tag(
+    db: State<crate::db::BkDb>,
+    id: String,
+    tag_id: i64,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM image_tag_relations WHERE image_id = ?1 AND tag_id = ?2",
+        rusqlite::params![id, tag_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}

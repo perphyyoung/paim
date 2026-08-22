@@ -44,6 +44,8 @@ const edit = ref(false);
 const fileName = ref("");
 const note = ref("");
 const origSrc = ref("");
+const tags = ref<{ id: number; name: string }[]>([]);
+const tagInput = ref("");
 
 const current = computed<Image | null>(() =>
   props.open ? (props.images[index.value] ?? null) : null
@@ -62,6 +64,48 @@ async function loadOrig() {
   }
 }
 
+// 加载当前图像的标签
+async function loadTags() {
+  const img = current.value;
+  if (!img) return;
+  try {
+    tags.value = await invoke<{ id: number; name: string }[]>("get_image_tags", {
+      id: img.id,
+    });
+  } catch {
+    tags.value = [];
+  }
+}
+// 添加标签：逗号或空格分隔可批量
+async function addTags() {
+  const img = current.value;
+  if (!img) return;
+  const names = tagInput.value
+    .split(/[,，\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (names.length === 0) return;
+  try {
+    const newTags = await invoke<{ id: number; name: string }[]>("add_image_tags", {
+      id: img.id,
+      names,
+    });
+    tagInput.value = "";
+    for (const t of newTags) {
+      if (!tags.value.some((x) => x.id === t.id)) tags.value.push(t);
+    }
+    showToast(`已添加 ${newTags.length} 个标签`);
+  } catch {
+    showToast("添加标签失败");
+  }
+}
+async function removeTag(tagId: number) {
+  const img = current.value;
+  if (!img) return;
+  await invoke("remove_image_tag", { id: img.id, tagId });
+  tags.value = tags.value.filter((t) => t.id !== tagId);
+}
+
 // 打开时跳转到初始图并同步编辑字段
 watch(
   () => [props.open, props.initialIndex] as const,
@@ -71,11 +115,15 @@ watch(
       edit.value = false;
       syncFields();
       loadOrig();
+      loadTags();
     }
   }
 );
-// 导航切换时加载对应原图
-watch(() => current.value?.id, loadOrig);
+// 导航切换时加载对应原图与标签
+watch(() => current.value?.id, () => {
+  loadOrig();
+  loadTags();
+});
 
 function syncFields() {
   fileName.value = current.value?.file_name ?? "";
@@ -263,7 +311,39 @@ const fmtSize = (bytes: number) => {
 
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">图像标签</div>
-            <div class="mt-1 flex min-h-6 flex-wrap gap-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
+            <div v-if="tags.length" class="mt-1 flex flex-wrap gap-1">
+              <span
+                v-for="t in tags"
+                :key="t.id"
+                class="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+              >
+                {{ t.name }}
+                <button
+                  type="button"
+                  class="text-blue-400 hover:text-blue-700 dark:hover:text-blue-200"
+                  :title="`删除标签 ${t.name}`"
+                  @click="removeTag(t.id)"
+                >
+                  ✕
+                </button>
+              </span>
+            </div>
+            <div v-else class="mt-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
+            <div class="mt-2 flex gap-1">
+              <input
+                v-model="tagInput"
+                class="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                placeholder="回车添加，逗号或空格分隔可批量"
+                @keydown.enter.prevent="addTags"
+              />
+              <button
+                type="button"
+                class="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                @click="addTags"
+              >
+                添加
+              </button>
+            </div>
           </div>
 
           <div>
