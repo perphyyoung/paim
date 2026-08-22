@@ -259,7 +259,7 @@ const fmtSize = (bytes: number) => {
         <div
           class="flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-gray-200 p-4 dark:border-gray-700"
         >
-          <div class="flex items-center gap-2">
+          <div class="flex items-center justify-between">
             <button
               type="button"
               class="flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200"
@@ -282,21 +282,32 @@ const fmtSize = (bytes: number) => {
                 />
               </svg>
             </button>
-            <button
-              type="button"
-              class="rounded border px-3 py-1.5 text-sm transition-colors"
-              :class="
-                current?.is_safe
-                  ? 'border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700'
-                  : 'border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30'
-              "
-              @click="toggleSafe"
+            <label
+              class="relative inline-block h-6 w-11"
+              :title="current?.is_safe ? '安全' : '不安全'"
             >
-              {{ current?.is_safe ? "安全" : "不安全" }}
-            </button>
+              <input
+                type="checkbox"
+                class="h-0 w-0 opacity-0"
+                :checked="current?.is_safe"
+                @change="toggleSafe"
+              />
+              <span
+                class="absolute inset-0 cursor-pointer rounded-full transition-colors duration-300"
+                :class="
+                  current?.is_safe
+                    ? 'bg-green-500'
+                    : 'bg-red-500'
+                "
+              ></span>
+              <span
+                class="absolute bottom-[3px] left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-300"
+                :class="current?.is_safe ? 'translate-x-5' : ''"
+              ></span>
+            </label>
             <button
               type="button"
-              class="ml-auto rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+              class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
               title="关闭"
               @click="close"
             >
