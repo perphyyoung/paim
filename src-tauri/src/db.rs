@@ -18,15 +18,15 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
         CREATE TABLE IF NOT EXISTS tags (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         );
 
         CREATE TABLE IF NOT EXISTS prompts (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             content     TEXT NOT NULL,
             title       TEXT,
-            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         );
 
         CREATE TABLE IF NOT EXISTS images (
@@ -40,8 +40,8 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
             file_size       INTEGER DEFAULT 0,
             prompt_id       INTEGER REFERENCES prompts(id) ON DELETE SET NULL,
             is_deleted      INTEGER NOT NULL DEFAULT 0,
-            created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             deleted_at      TEXT
         );
 

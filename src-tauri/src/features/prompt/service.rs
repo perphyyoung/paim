@@ -59,7 +59,7 @@ pub fn update_title(conn: &Connection, id: i64, title: Option<String>) -> Result
     let title = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
     let tx = conn.unchecked_transaction()?;
     let changed = tx.execute(
-        "UPDATE prompts SET title = ?1, updated_at = datetime('now') WHERE id = ?2",
+        "UPDATE prompts SET title = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?2",
         rusqlite::params![title, id],
     )?;
     if changed == 0 {

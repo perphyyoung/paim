@@ -176,7 +176,7 @@ pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
 /// 软删除：标记为已删除，保留文件以便恢复。
 pub fn soft_delete(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
     conn.execute(
-        "UPDATE images SET is_deleted = 1, deleted_at = datetime('now') WHERE id = ?1",
+        "UPDATE images SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
         rusqlite::params![id],
     )?;
     get_by_id(conn, id)
