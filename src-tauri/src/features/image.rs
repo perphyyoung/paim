@@ -19,6 +19,7 @@ pub struct Image {
     pub file_size: i64,
     pub prompt_id: Option<i64>,
     pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -146,7 +147,7 @@ fn make_center_thumb(
 
 pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at
+        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at, updated_at
          FROM images ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], row_to_image)?;
@@ -155,7 +156,7 @@ pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
 
 fn get_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at
+        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at, updated_at
          FROM images WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(rusqlite::params![id], row_to_image)?;
@@ -164,7 +165,7 @@ fn get_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
 
 fn find_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at
+        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at, updated_at
          FROM images WHERE md5 = ?1",
     )?;
     let mut rows = stmt.query_map(rusqlite::params![md5], row_to_image)?;
@@ -183,6 +184,7 @@ fn row_to_image(row: &rusqlite::Row) -> rusqlite::Result<Image> {
         file_size: row.get(7)?,
         prompt_id: row.get(8)?,
         created_at: row.get(9)?,
+        updated_at: row.get(10)?,
     })
 }
 

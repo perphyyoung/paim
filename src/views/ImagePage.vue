@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
@@ -11,17 +11,30 @@ interface Image {
   stored_name: string;
   relative_path: string;
   thumbnail_path: string | null;
+  md5: string | null;
   width: number | null;
   height: number | null;
   file_size: number;
   prompt_id: number | null;
   created_at: string;
+  updated_at: string;
 }
 
 const CARD_MIN = 100;
 const CARD_MAX = 400;
 const CARD_STEP = 20;
 const CARD_KEY = "image.cardSize";
+const SORT_KEY = "image.sortBy";
+const SORT_DESC_KEY = "image.sortDesc";
+
+const SORT_OPTIONS = [
+  { value: "createdAt", label: "导入时间" },
+  { value: "updatedAt", label: "更新时间" },
+  { value: "fileSize", label: "文件大小" },
+  { value: "fileName", label: "文件名" },
+  { value: "width", label: "宽度" },
+  { value: "height", label: "高度" },
+];
 
 // 卡片边长，localStorage 持久化
 const cardSize = ref(Number(localStorage.getItem(CARD_KEY)) || 160);
@@ -34,6 +47,49 @@ function setCardSize(v: number) {
 function onSizeInput(e: Event) {
   setCardSize(Number((e.target as HTMLInputElement).value));
 }
+
+// 排序状态（localStorage 持久化）
+const sortBy = ref(localStorage.getItem(SORT_KEY) || "createdAt");
+const sortDesc = ref(localStorage.getItem(SORT_DESC_KEY) !== "0");
+
+function setSortBy(v: string) {
+  sortBy.value = v;
+  localStorage.setItem(SORT_KEY, v);
+}
+function onSortChange(e: Event) {
+  setSortBy((e.target as HTMLSelectElement).value);
+}
+function toggleSortDesc() {
+  sortDesc.value = !sortDesc.value;
+  localStorage.setItem(SORT_DESC_KEY, sortDesc.value ? "1" : "0");
+}
+
+// 前端排序：数据量小，内存内排序即可
+const sortedImages = computed(() => {
+  const arr = [...images.value];
+  let cmp: (a: Image, b: Image) => number;
+  switch (sortBy.value) {
+    case "fileSize":
+      cmp = (a, b) => a.file_size - b.file_size;
+      break;
+    case "fileName":
+      cmp = (a, b) => a.stored_name.localeCompare(b.stored_name);
+      break;
+    case "width":
+      cmp = (a, b) => (a.width ?? 0) - (b.width ?? 0);
+      break;
+    case "height":
+      cmp = (a, b) => (a.height ?? 0) - (b.height ?? 0);
+      break;
+    case "updatedAt":
+      cmp = (a, b) => a.updated_at.localeCompare(b.updated_at);
+      break;
+    default: // createdAt
+      cmp = (a, b) => a.created_at.localeCompare(b.created_at);
+  }
+  arr.sort(cmp);
+  return sortDesc.value ? arr.reverse() : arr;
+});
 
 const images = ref<Image[]>([]);
 const thumbs = ref<Record<number, string>>({});
@@ -112,6 +168,23 @@ onMounted(loadImages);
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">图像</h2>
       <div class="flex items-center gap-3">
+        <select
+          v-model="sortBy"
+          class="rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          @change="onSortChange"
+        >
+          <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          :title="sortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
+          @click="toggleSortDesc"
+        >
+          {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
+        </button>
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
           <input
             v-model.number="cardSize"
@@ -150,7 +223,7 @@ onMounted(loadImages);
       :style="{ gridTemplateColumns: `repeat(auto-fill, ${cardSize}px)` }"
     >
       <li
-        v-for="img in images"
+        v-for="img in sortedImages"
         :key="img.id"
         class="relative overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
         :style="{ width: cardSize + 'px', height: cardSize + 'px' }"
