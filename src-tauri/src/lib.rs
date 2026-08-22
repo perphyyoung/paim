@@ -24,6 +24,9 @@ pub fn run() {
       let db = db::init(db_path)?;
       app.manage(db);
 
+      // 将数据目录加入 asset 协议 scope，使前端能通过 convertFileSrc 读取本地图片
+      app.asset_protocol_scope().allow_directory(db::data_dir(app.handle()), true)?;
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -36,6 +39,7 @@ pub fn run() {
       features::tag::commands::delete_tag,
       features::image::import_image,
       features::image::list_images,
+      features::image::get_thumbnail,
       db::get_data_dir,
       db::open_data_dir,
     ])

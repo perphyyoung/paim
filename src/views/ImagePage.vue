@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
 interface Image {
   id: number;
-  path: string;
+  stored_name: string;
+  relative_path: string;
+  thumbnail_path: string | null;
   width: number | null;
   height: number | null;
+  file_size: number;
   prompt_id: number | null;
   created_at: string;
 }
 
 const images = ref<Image[]>([]);
+const thumbs = ref<Record<number, string>>({});
 const importing = ref(false);
 const error = ref("");
 
@@ -23,6 +27,18 @@ const ALLOWED_FILTER = {
 
 async function loadImages() {
   images.value = await invoke<Image[]>("list_images");
+  await loadThumbnails();
+}
+
+async function loadThumbnails() {
+  for (const img of images.value) {
+    try {
+      const p = await invoke<string>("get_thumbnail", { id: img.id });
+      thumbs.value[img.id] = convertFileSrc(p);
+    } catch {
+      // 缩略图缺失时保持占位
+    }
+  }
 }
 
 async function handleImport() {
@@ -37,12 +53,24 @@ async function handleImport() {
     for (const p of paths) {
       const img = await invoke<Image>("import_image", { path: p });
       images.value.unshift(img);
+      try {
+        const tp = await invoke<string>("get_thumbnail", { id: img.id });
+        thumbs.value[img.id] = convertFileSrc(tp);
+      } catch {
+        // 缩略图缺失时保持占位
+      }
     }
   } catch (e) {
     error.value = String(e);
   } finally {
     importing.value = false;
   }
+}
+
+function fmtSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
 }
 
 onMounted(loadImages);
@@ -79,7 +107,14 @@ onMounted(loadImages);
         class="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
       >
         <div class="mb-2 flex h-28 items-center justify-center overflow-hidden rounded-md bg-gray-100 dark:bg-gray-700">
+          <img
+            v-if="thumbs[img.id]"
+            :src="thumbs[img.id]"
+            alt=""
+            class="h-28 w-full object-cover"
+          />
           <svg
+            v-else
             xmlns="http://www.w3.org/2000/svg"
             class="h-10 w-10 text-gray-400 dark:text-gray-500"
             fill="none"
@@ -94,12 +129,12 @@ onMounted(loadImages);
             />
           </svg>
         </div>
-        <p class="truncate text-xs text-gray-700 dark:text-gray-200" :title="img.path">
-          {{ img.path.split(/[\\/]/).pop() }}
+        <p class="truncate text-xs text-gray-700 dark:text-gray-200" :title="img.stored_name">
+          {{ img.stored_name }}
         </p>
         <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
           {{ img.width && img.height ? `${img.width} × ${img.height}` : "尺寸未知" }}
-          · {{ img.created_at }}
+          · {{ fmtSize(img.file_size) }}
         </p>
       </li>
     </ul>

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 /// 应用持有的数据库连接（单连接 + Mutex），通过 Tauri managed state 注入。
 pub struct BkDb(pub std::sync::Mutex<Connection>);
 
-/// 打开（必要时创建）数据库并执行迁移。
+/// 打开（必要时创建）数据库并执行 DDL。
 pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
     let conn = Connection::open(&path)?;
     conn.execute_batch(
@@ -30,12 +30,15 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
         );
 
         CREATE TABLE IF NOT EXISTS images (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            path        TEXT NOT NULL UNIQUE,
-            width       INTEGER,
-            height      INTEGER,
-            prompt_id   INTEGER REFERENCES prompts(id) ON DELETE SET NULL,
-            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            stored_name     TEXT NOT NULL,
+            relative_path   TEXT NOT NULL UNIQUE,
+            thumbnail_path  TEXT,
+            width           INTEGER,
+            height          INTEGER,
+            file_size       INTEGER DEFAULT 0,
+            prompt_id       INTEGER REFERENCES prompts(id) ON DELETE SET NULL,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
         CREATE TABLE IF NOT EXISTS prompt_tags (
@@ -88,6 +91,11 @@ pub fn user_db_path(app: &tauri::AppHandle) -> PathBuf {
 /// 图像存储目录（数据目录基准下）。
 pub fn images_dir(app: &tauri::AppHandle) -> PathBuf {
     base_data_dir(app).join("images")
+}
+
+/// 缩略图存储目录（数据目录基准下）。
+pub fn thumbnails_dir(app: &tauri::AppHandle) -> PathBuf {
+    base_data_dir(app).join("thumbnails")
 }
 
 // ---- Tauri commands ----
