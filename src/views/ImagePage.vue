@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
+import { formatLocalTime } from "@/utils/date";
 
 const { showToast } = useToast();
 
@@ -219,6 +220,9 @@ function fmtSize(bytes: number) {
   return `${bytes} B`;
 }
 
+// 将 SQLite 的 UTC 时间串转为本地时间
+const fmtLocal = formatLocalTime;
+
 onMounted(() => {
   window.addEventListener("click", closeCtxMenu);
   loadImages();
@@ -393,7 +397,7 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
               />
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm text-gray-800 dark:text-gray-100">{{ img.stored_name }}</p>
-                <p class="text-xs text-gray-400">{{ img.deleted_at }}</p>
+                <p class="text-xs text-gray-400">{{ fmtLocal(img.deleted_at) }}</p>
               </div>
               <button
                 type="button"
