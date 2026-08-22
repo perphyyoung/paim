@@ -238,61 +238,57 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
 
 <template>
   <section class="relative">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">图像</h2>
-      <div class="flex items-center gap-3">
+    <div class="mb-4 grid grid-cols-6 items-center gap-3">
+      <button
+        type="button"
+        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+        :disabled="importing"
+        @click="handleImport"
+      >
+        {{ importing ? "导入中…" : "导入图像" }}
+      </button>
+      <input
+        v-model="keyword"
+        type="search"
+        placeholder="搜索文件名…"
+        class="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+      />
+      <button
+        type="button"
+        class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+        title="回收站"
+        @click="openTrash"
+      >
+        🗑回收站
+      </button>
+      <select
+        v-model="sortBy"
+        class="min-w-0 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+        @change="onSortChange"
+      >
+        <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
+          {{ o.label }}
+        </option>
+      </select>
+      <button
+        type="button"
+        class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+        :title="sortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
+        @click="toggleSortDesc"
+      >
+        {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
+      </button>
+      <label class="flex items-center text-gray-600 dark:text-gray-400">
         <input
-          v-model="keyword"
-          type="search"
-          placeholder="搜索文件名…"
-          class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+          v-model.number="cardSize"
+          type="range"
+          :min="CARD_MIN"
+          :max="CARD_MAX"
+          :step="CARD_STEP"
+          class="w-full accent-blue-600"
+          @input="onSizeInput"
         />
-        <select
-          v-model="sortBy"
-          class="rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-          @change="onSortChange"
-        >
-          <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
-            {{ o.label }}
-          </option>
-        </select>
-        <button
-          type="button"
-          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-          :title="sortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
-          @click="toggleSortDesc"
-        >
-          {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
-        </button>
-        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-          <input
-            v-model.number="cardSize"
-            type="range"
-            :min="CARD_MIN"
-            :max="CARD_MAX"
-            :step="CARD_STEP"
-            class="w-32 accent-blue-600"
-            @input="onSizeInput"
-          />
-          <span class="w-10 text-right tabular-nums">{{ cardSize }}px</span>
-        </label>
-        <button
-          type="button"
-          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-          title="回收站"
-          @click="openTrash"
-        >
-          🗑
-        </button>
-        <button
-          type="button"
-          class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
-          :disabled="importing"
-          @click="handleImport"
-        >
-          {{ importing ? "导入中…" : "导入图像" }}
-        </button>
-      </div>
+      </label>      
     </div>
 
     <p v-if="error" class="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
