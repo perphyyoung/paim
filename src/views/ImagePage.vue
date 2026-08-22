@@ -4,6 +4,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
+import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 
 const { showToast } = useToast();
 
@@ -233,6 +234,23 @@ function fmtSize(bytes: number) {
 // 将 SQLite 的 UTC 时间串转为本地时间
 const fmtLocal = formatLocalTime;
 
+// ---- 图像详情（独立组件 ImageDetailModal.vue）----
+const detailOpen = ref(false);
+const detailIndex = ref(0);
+
+function openDetail(img: Image) {
+  detailIndex.value = Math.max(0, sortedImages.value.findIndex((i) => i.id === img.id));
+  detailOpen.value = true;
+}
+function closeDetail() {
+  detailOpen.value = false;
+}
+function onDetailUpdate(updated: Image) {
+  // 同步回主列表（保序替换）
+  const idx = images.value.findIndex((i) => i.id === updated.id);
+  if (idx >= 0) images.value.splice(idx, 1, updated);
+}
+
 onMounted(() => {
   window.addEventListener("click", closeCtxMenu);
   loadImages();
@@ -312,8 +330,9 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       <li
         v-for="img in sortedImages"
         :key="img.id"
-        class="relative cursor-context-menu overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+        class="relative cursor-pointer overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
         :style="{ width: cardSize + 'px', height: cardSize + 'px' }"
+        @click="openDetail(img)"
         @contextmenu.prevent="openCtxMenu($event, img)"
       >
         <img
@@ -430,5 +449,15 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
         </div>
       </div>
     </Teleport>
+
+    <!-- 图像详情（独立组件） -->
+    <ImageDetailModal
+      :open="detailOpen"
+      :images="sortedImages"
+      :initial-index="detailIndex"
+      :thumbs="thumbs"
+      @close="closeDetail"
+      @update="onDetailUpdate"
+    />
   </section>
 </template>

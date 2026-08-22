@@ -44,6 +44,9 @@ pub fn run() {
       features::image::delete_image,
       features::image::restore_image,
       features::image::purge_image,
+      features::image::get_image_detail,
+      features::image::get_image_src,
+      features::image::update_image_detail,
       db::get_data_dir,
       db::open_data_dir,
     ])

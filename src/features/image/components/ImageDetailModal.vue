@@ -1,0 +1,335 @@
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useToast } from "@/components/useToast";
+import { formatLocalTime } from "@/utils/date";
+
+interface Image {
+  id: string;
+  file_name: string;
+  stored_name: string;
+  relative_path: string;
+  thumbnail_path: string | null;
+  md5: string | null;
+  width: number | null;
+  height: number | null;
+  file_size: number;
+  gen_params: string;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  is_favorite: boolean;
+  is_safe: boolean;
+  created_at: string;
+  updated_at: string;
+  note: string;
+}
+
+const props = defineProps<{
+  open: boolean;
+  images: Image[];
+  initialIndex: number;
+  thumbs: Record<string, string>;
+}>();
+
+const emit = defineEmits<{
+  (e: "close"): void;
+  (e: "update", img: Image): void;
+}>();
+
+const { showToast } = useToast();
+
+const index = ref(0);
+const edit = ref(false);
+const fileName = ref("");
+const note = ref("");
+const origSrc = ref("");
+
+const current = computed<Image | null>(() =>
+  props.open ? (props.images[index.value] ?? null) : null
+);
+
+// 打开或切换图像时加载原图（详情页展示原图，不同于卡片缩略图）
+async function loadOrig() {
+  const img = current.value;
+  if (!img) return;
+  origSrc.value = "";
+  try {
+    const p = await invoke<string>("get_image_src", { id: img.id });
+    origSrc.value = convertFileSrc(p);
+  } catch {
+    origSrc.value = "";
+  }
+}
+
+// 打开时跳转到初始图并同步编辑字段
+watch(
+  () => [props.open, props.initialIndex] as const,
+  ([open, initIdx]) => {
+    if (open) {
+      index.value = initIdx;
+      edit.value = false;
+      syncFields();
+      loadOrig();
+    }
+  }
+);
+// 导航切换时加载对应原图
+watch(() => current.value?.id, loadOrig);
+
+function syncFields() {
+  fileName.value = current.value?.file_name ?? "";
+  note.value = current.value?.note ?? "";
+}
+function nav(step: number) {
+  const n = props.images.length;
+  if (n === 0) return;
+  index.value = (index.value + step + n) % n;
+  edit.value = false;
+  syncFields();
+}
+function close() {
+  emit("close");
+}
+
+async function toggleFavorite() {
+  const img = current.value;
+  if (!img) return;
+  const v = !img.is_favorite;
+  await invoke("update_image_detail", { id: img.id, isFavorite: v });
+  img.is_favorite = v;
+  emit("update", img);
+}
+async function toggleSafe() {
+  const img = current.value;
+  if (!img) return;
+  const v = !img.is_safe;
+  await invoke("update_image_detail", { id: img.id, isSafe: v });
+  img.is_safe = v;
+  emit("update", img);
+}
+async function saveFields() {
+  const img = current.value;
+  if (!img) return;
+  const upd = await invoke<Image>("update_image_detail", {
+    id: img.id,
+    fileName: fileName.value,
+    note: note.value,
+  });
+  img.file_name = upd.file_name;
+  img.note = upd.note;
+  emit("update", img);
+  edit.value = false;
+  showToast("已保存");
+}
+
+const fmtLocal = formatLocalTime;
+const fmtSize = (bytes: number) => {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+};
+</script>
+
+<template>
+  <Teleport to="body">
+    <div
+      v-if="open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      @click.self="close"
+      @keydown.esc="close"
+      @keydown.left="nav(-1)"
+      @keydown.right="nav(1)"
+      tabindex="-1"
+    >
+      <div
+        class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+      >
+        <!-- 左：提示词相关信息 -->
+        <div
+          class="flex w-[320px] shrink-0 flex-col gap-4 overflow-auto border-r border-gray-200 p-4 dark:border-gray-700"
+        >
+          <div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标题</div>
+            <div class="mt-1 text-sm text-gray-700 dark:text-gray-200">— 暂无关联提示词 —</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词内容</div>
+            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">—</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词翻译</div>
+            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">—</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词备注</div>
+            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">—</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标签</div>
+            <div class="mt-1 flex flex-wrap gap-1 text-sm text-gray-700 dark:text-gray-200">—</div>
+          </div>
+        </div>
+
+        <!-- 中：图像显示 -->
+        <div class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-100 dark:bg-gray-900">
+          <img
+            v-if="origSrc"
+            :src="origSrc"
+            alt=""
+            class="max-h-full max-w-full object-contain"
+          />
+          <img
+            v-else-if="current && thumbs[current.id]"
+            :src="thumbs[current.id]"
+            alt=""
+            class="max-h-full max-w-full object-contain"
+          />
+          <p v-else class="text-sm text-gray-400 dark:text-gray-500">无图像</p>
+          <button
+            type="button"
+            class="absolute left-3 top-1/2 -translate-y-1/2 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            :disabled="!current"
+            @click="nav(-1)"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            :disabled="!current"
+            @click="nav(1)"
+          >
+            ›
+          </button>
+          <div class="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
+            {{ index + 1 }} / {{ images.length }}
+          </div>
+        </div>
+
+        <!-- 右：图像相关信息 -->
+        <div
+          class="flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-gray-200 p-4 dark:border-gray-700"
+        >
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded border border-gray-300 px-3 py-1.5 text-sm transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+              :title="current?.is_favorite ? '取消收藏' : '收藏'"
+              @click="toggleFavorite"
+            >
+              {{ current?.is_favorite ? "★ 已收藏" : "☆ 收藏" }}
+            </button>
+            <button
+              type="button"
+              class="rounded border px-3 py-1.5 text-sm transition-colors"
+              :class="
+                current?.is_safe
+                  ? 'border-gray-300 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700'
+                  : 'border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30'
+              "
+              @click="toggleSafe"
+            >
+              {{ current?.is_safe ? "安全" : "不安全" }}
+            </button>
+            <button
+              type="button"
+              class="ml-auto rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+              title="关闭"
+              @click="close"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">文件名</span>
+              <button
+                type="button"
+                class="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                @click="edit = !edit"
+              >
+                {{ edit ? "取消" : "编辑" }}
+              </button>
+            </div>
+            <input
+              v-if="edit"
+              v-model="fileName"
+              class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            />
+            <div v-else class="mt-1 break-all text-sm text-gray-700 dark:text-gray-200">{{ fileName }}</div>
+          </div>
+
+          <div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">图像标签</div>
+            <div class="mt-1 flex min-h-6 flex-wrap gap-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">备注</span>
+              <button
+                type="button"
+                class="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                @click="edit = !edit"
+              >
+                编辑
+              </button>
+            </div>
+            <textarea
+              v-if="edit"
+              v-model="note"
+              rows="3"
+              class="mt-1 w-full resize-none rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            />
+            <div v-else class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+              {{ note || "—" }}
+            </div>
+          </div>
+
+          <div v-if="edit" class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+              @click="saveFields"
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              class="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+              @click="edit = false; syncFields()"
+            >
+              取消
+            </button>
+          </div>
+
+          <div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">图像信息</div>
+            <ul class="mt-1 space-y-1 text-sm">
+              <li class="flex justify-between">
+                <span class="text-gray-400 dark:text-gray-500">更新时间</span>
+                <span class="text-gray-700 dark:text-gray-200">{{ fmtLocal(current?.updated_at ?? null) }}</span>
+              </li>
+              <li class="flex justify-between">
+                <span class="text-gray-400 dark:text-gray-500">导入时间</span>
+                <span class="text-gray-700 dark:text-gray-200">{{ fmtLocal(current?.created_at ?? null) }}</span>
+              </li>
+              <li class="flex justify-between">
+                <span class="text-gray-400 dark:text-gray-500">尺寸</span>
+                <span class="text-gray-700 dark:text-gray-200">
+                  {{ current?.width && current.height ? `${current.width} × ${current.height}` : "—" }}
+                </span>
+              </li>
+              <li class="flex justify-between">
+                <span class="text-gray-400 dark:text-gray-500">大小</span>
+                <span class="text-gray-700 dark:text-gray-200">{{ current ? fmtSize(current.file_size) : "—" }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+</template>

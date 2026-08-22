@@ -210,6 +210,45 @@ pub fn restore(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     get_by_id(conn, id)
 }
 
+/// 更新图像详情字段（文件名、备注、收藏、安全评级）。仅更新传入非默认值的字段。
+pub fn update_detail(
+    conn: &Connection,
+    id: &str,
+    file_name: Option<&str>,
+    note: Option<&str>,
+    is_favorite: Option<bool>,
+    is_safe: Option<bool>,
+) -> rusqlite::Result<Option<Image>> {
+    let mut sql = String::from("UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')");
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    if let Some(v) = file_name {
+        if !v.trim().is_empty() {
+            sql.push_str(", file_name = ?");
+            params.push(Box::new(v.trim().to_string()));
+        }
+    }
+    if let Some(v) = note {
+        sql.push_str(", note = ?");
+        params.push(Box::new(v.to_string()));
+    }
+    if let Some(v) = is_favorite {
+        sql.push_str(", is_favorite = ?");
+        params.push(Box::new(if v { 1 } else { 0 }));
+    }
+    if let Some(v) = is_safe {
+        sql.push_str(", is_safe = ?");
+        params.push(Box::new(if v { 1 } else { 0 }));
+    }
+    sql.push_str(" WHERE id = ?");
+    params.push(Box::new(id.to_string()));
+
+    let mut stmt = conn.prepare(&sql)?;
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        params.iter().map(|b| b.as_ref()).collect();
+    stmt.execute(param_refs.as_slice())?;
+    get_by_id(conn, id)
+}
+
 /// 彻底删除：删除磁盘原图与缩略图并移除记录，不可恢复。
 pub fn purge(conn: &Connection, app: &tauri::AppHandle, id: &str) -> rusqlite::Result<()> {
     let row: Option<(Option<String>, Option<String>)> = conn
@@ -233,7 +272,7 @@ pub fn purge(conn: &Connection, app: &tauri::AppHandle, id: &str) -> rusqlite::R
     Ok(())
 }
 
-fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
+pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     let mut stmt = conn.prepare(
         "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
          FROM images WHERE id = ?1",
@@ -375,4 +414,58 @@ pub fn get_thumbnail(
         return Err("缩略图不存在".to_string());
     };
     Ok(crate::db::data_dir(&app).join(&rel).to_string_lossy().into_owned())
+}
+
+/// 返回单张图像详情。
+#[tauri::command]
+pub fn get_image_detail(db: State<crate::db::BkDb>, id: String) -> Result<Image, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    get_by_id(&conn, &id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "图像不存在".to_string())
+}
+
+/// 返回图像原图磁盘路径，前端配合 convertFileSrc 加载（详情页大图使用）。
+#[tauri::command]
+pub fn get_image_src(
+    app: tauri::AppHandle,
+    db: State<crate::db::BkDb>,
+    id: String,
+) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let rel: Option<String> = conn
+        .query_row(
+            "SELECT relative_path FROM images WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let Some(rel) = rel else {
+        return Err("原图不存在".to_string());
+    };
+    Ok(crate::db::data_dir(&app).join(&rel).to_string_lossy().into_owned())
+}
+
+/// 更新图像详情字段（文件名、备注、收藏、安全评级）。
+#[tauri::command]
+pub fn update_image_detail(
+    db: State<crate::db::BkDb>,
+    id: String,
+    file_name: Option<String>,
+    note: Option<String>,
+    is_favorite: Option<bool>,
+    is_safe: Option<bool>,
+) -> Result<Image, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    update_detail(
+        &conn,
+        &id,
+        file_name.as_deref(),
+        note.as_deref(),
+        is_favorite,
+        is_safe,
+    )
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "图像不存在".to_string())
 }
