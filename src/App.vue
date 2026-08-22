@@ -28,7 +28,7 @@ const settingsOpen = ref(false);
 <template>
   <div class="flex min-h-screen bg-gray-100 dark:bg-gray-900">
     <aside
-      class="flex w-14 flex-col items-center gap-2 border-r border-gray-200 bg-white py-4 dark:border-gray-700 dark:bg-gray-800"
+      class="sticky top-0 flex h-screen w-14 flex-col items-center gap-2 border-r border-gray-200 bg-white py-4 dark:border-gray-700 dark:bg-gray-800"
     >
       <RouterLink
         v-for="t in tabs"
