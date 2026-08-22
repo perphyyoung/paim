@@ -69,6 +69,8 @@ async function handleImport() {
   try {
     for (const p of paths) {
       const img = await invoke<Image>("import_image", { path: p });
+      // 后端按 md5 去重，复用已有记录时不再重复插入
+      if (images.value.some((i) => i.id === img.id)) continue;
       images.value.unshift(img);
       try {
         const tp = await invoke<string>("get_thumbnail", { id: img.id });

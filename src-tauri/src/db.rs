@@ -34,6 +34,7 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
             stored_name     TEXT NOT NULL,
             relative_path   TEXT NOT NULL UNIQUE,
             thumbnail_path  TEXT,
+            md5             TEXT UNIQUE,
             width           INTEGER,
             height          INTEGER,
             file_size       INTEGER DEFAULT 0,

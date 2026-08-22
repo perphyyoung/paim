@@ -13,6 +13,7 @@ pub struct Image {
     pub stored_name: String,
     pub relative_path: String,
     pub thumbnail_path: Option<String>,
+    pub md5: Option<String>,
     pub width: Option<i64>,
     pub height: Option<i64>,
     pub file_size: i64,
@@ -45,6 +46,12 @@ pub fn import(conn: &Connection, app: &tauri::AppHandle, source: &str) -> rusqli
         return Err(rusqlite::Error::InvalidParameterName(
             "不支持的图片格式".to_string(),
         ));
+    }
+
+    // MD5 去重：与已入库图像内容相同则直接复用，不再复制/入库
+    let md5 = file_md5(&source)?;
+    if let Some(existing) = find_by_md5(conn, &md5)? {
+        return Ok(existing);
     }
 
     let images_dir = crate::db::images_dir(app);
@@ -106,9 +113,9 @@ pub fn import(conn: &Connection, app: &tauri::AppHandle, source: &str) -> rusqli
 
     let relative_path = format!("images/{yyyymm}/{stored_name}");
     conn.execute(
-        "INSERT INTO images(stored_name, relative_path, thumbnail_path, width, height, file_size)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![stored_name, relative_path, thumb_rel, width, height, file_size],
+        "INSERT INTO images(stored_name, relative_path, thumbnail_path, md5, width, height, file_size)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![stored_name, relative_path, thumb_rel, md5, width, height, file_size],
     )?;
     let id = conn.last_insert_rowid();
     get_by_id(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
@@ -127,7 +134,7 @@ fn make_center_thumb(
 
 pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, width, height, file_size, prompt_id, created_at
+        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at
          FROM images ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], row_to_image)?;
@@ -136,10 +143,19 @@ pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
 
 fn get_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, stored_name, relative_path, thumbnail_path, width, height, file_size, prompt_id, created_at
+        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at
          FROM images WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(rusqlite::params![id], row_to_image)?;
+    rows.next().transpose()
+}
+
+fn find_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, prompt_id, created_at
+         FROM images WHERE md5 = ?1",
+    )?;
+    let mut rows = stmt.query_map(rusqlite::params![md5], row_to_image)?;
     rows.next().transpose()
 }
 
@@ -149,12 +165,24 @@ fn row_to_image(row: &rusqlite::Row) -> rusqlite::Result<Image> {
         stored_name: row.get(1)?,
         relative_path: row.get(2)?,
         thumbnail_path: row.get(3)?,
-        width: row.get(4)?,
-        height: row.get(5)?,
-        file_size: row.get(6)?,
-        prompt_id: row.get(7)?,
-        created_at: row.get(8)?,
+        md5: row.get(4)?,
+        width: row.get(5)?,
+        height: row.get(6)?,
+        file_size: row.get(7)?,
+        prompt_id: row.get(8)?,
+        created_at: row.get(9)?,
     })
+}
+
+/// 计算文件 MD5（小写 32 位 hex）。
+fn file_md5(path: &Path) -> rusqlite::Result<String> {
+    use md5::{Digest, Md5};
+    let bytes = std::fs::read(path).map_err(io_to_sql)?;
+    let digest = Md5::digest(&bytes);
+    Ok(digest
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>())
 }
 
 fn io_to_sql(e: std::io::Error) -> rusqlite::Error {
