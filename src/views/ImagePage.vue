@@ -44,6 +44,11 @@ const SORT_OPTIONS = [
   { value: "height", label: "高度" },
 ];
 
+const TAG_SORT_OPTIONS = [
+  { value: "name", label: "名称" },
+  { value: "count", label: "数量" },
+];
+
 // 卡片边长，localStorage 持久化
 const cardSize = ref(Number(localStorage.getItem(CARD_KEY)) || 160);
 
@@ -78,9 +83,17 @@ function toggleSortDesc() {
 // 前端排序：数据量小，内存内排序即可
 const sortedImages = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
-  const arr = (kw
+  let arr = kw
     ? images.value.filter((i) => i.stored_name.toLowerCase().includes(kw))
-    : [...images.value]);
+    : [...images.value];
+  // 标签筛选（AND）：图像须包含全部选中标签
+  if (selectedTags.value.length > 0) {
+    arr = arr.filter((img) => {
+      const tags = tagNames.value[img.id];
+      return !!tags && selectedTags.value.every((t) => tags.includes(t));
+    });
+  }
+  if (!arr.length) return arr;
   let cmp: (a: Image, b: Image) => number;
   switch (sortBy.value) {
     case "fileSize":
@@ -109,6 +122,82 @@ const images = ref<Image[]>([]);
 const thumbs = ref<Record<string, string>>({});
 const importing = ref(false);
 const error = ref("");
+
+// 标签筛选区
+const allTags = ref<{ id: number; name: string }[]>([]);
+const tagNames = ref<Record<string, string[]>>({});
+const selectedTags = ref<string[]>([]);
+
+function toggleTag(tag: string, e: MouseEvent) {
+  const isCtrl = e.ctrlKey || e.metaKey;
+  const i = selectedTags.value.indexOf(tag);
+  if (!isCtrl) {
+    // 默认单选：点击已选中标签则清除，否则选中该标签
+    selectedTags.value = i >= 0 ? [] : [tag];
+  } else if (i >= 0) {
+    // Ctrl+点击：切换选中状态
+    selectedTags.value.splice(i, 1);
+  } else {
+    selectedTags.value.push(tag);
+  }
+}
+function clearTags() {
+  selectedTags.value = [];
+}
+
+// 每个标签关联的图片数（基于当前未删除图片）用于角标计数
+const tagCounts = computed(() => {
+  const counts: Record<string, number> = {};
+  for (const img of images.value) {
+    const tags = tagNames.value[img.id];
+    if (tags) for (const t of tags) counts[t] = (counts[t] ?? 0) + 1;
+  }
+  return counts;
+});
+
+// 标签排序状态（名称/数量 + 逆序，localStorage 持久化）
+const TAG_SORT_KEY = "image.tagSortBy";
+const TAG_SORT_DESC_KEY = "image.tagSortDesc";
+const tagSortBy = ref(localStorage.getItem(TAG_SORT_KEY) || "name");
+const tagSortDesc = ref(localStorage.getItem(TAG_SORT_DESC_KEY) === "1");
+
+function setTagSortBy(v: string) {
+  tagSortBy.value = v;
+  localStorage.setItem(TAG_SORT_KEY, v);
+}
+function onTagSortChange(e: Event) {
+  setTagSortBy((e.target as HTMLSelectElement).value);
+}
+function toggleTagSortDesc() {
+  tagSortDesc.value = !tagSortDesc.value;
+  localStorage.setItem(TAG_SORT_DESC_KEY, tagSortDesc.value ? "1" : "0");
+}
+
+// 排序后的标签列表
+const sortedTags = computed(() => {
+  const arr = [...allTags.value];
+  let cmp: (a: { id: number; name: string }, b: { id: number; name: string }) => number;
+  if (tagSortBy.value === "count") {
+    cmp = (a, b) => (tagCounts.value[a.name] ?? 0) - (tagCounts.value[b.name] ?? 0);
+  } else {
+    cmp = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+  }
+  arr.sort(cmp);
+  return tagSortDesc.value ? arr.reverse() : arr;
+});
+async function loadTagFilter() {
+  try {
+    allTags.value = await invoke<{ id: number; name: string }[]>(
+      "list_all_image_tags"
+    );
+    tagNames.value = await invoke<Record<string, string[]>>(
+      "get_image_tags_map"
+    );
+  } catch {
+    allTags.value = [];
+    tagNames.value = {};
+  }
+}
 
 // 右键菜单
 const ctxMenu = ref<{ x: number; y: number; image: Image } | null>(null);
@@ -244,6 +333,8 @@ function openDetail(img: Image) {
 }
 function closeDetail() {
   detailOpen.value = false;
+  // 详情页可能修改了图片标签，返回后刷新标签筛选区
+  loadTagFilter();
 }
 function onDetailUpdate(updated: Image) {
   // 同步回主列表（保序替换）
@@ -254,12 +345,15 @@ function onDetailUpdate(updated: Image) {
 onMounted(() => {
   window.addEventListener("click", closeCtxMenu);
   loadImages();
+  loadTagFilter();
 });
 onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
 </script>
 
 <template>
-  <section class="relative">
+  <section class="relative flex h-full flex-col overflow-hidden -mx-6 -mt-6 -mb-6 px-6">
+    <!-- 顶部固定区：工具栏 + 标签筛选区 + 错误提示（不参与滚动） -->
+    <div class="shrink-0 pt-3">
     <div class="mb-4 grid grid-cols-6 items-center gap-3">
       <button
         type="button"
@@ -313,10 +407,73 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       </label>      
     </div>
 
+    <!-- 标签筛选区 -->
+    <div
+      v-if="allTags.length > 0"
+      class="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40"
+    >
+      <span class="text-xs font-medium text-gray-500 dark:text-gray-400">标签</span>
+      <button
+        v-for="t in sortedTags"
+        :key="t.id"
+        type="button"
+        class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
+        :class="
+          selectedTags.includes(t.name)
+            ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
+            : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+        "
+        @click="(e) => toggleTag(t.name, e)"
+      >
+        {{ t.name }}
+        <span
+          class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
+          :class="
+            selectedTags.includes(t.name)
+              ? 'bg-white text-indigo-500'
+              : 'bg-indigo-500 text-white'
+          "
+        >
+          {{ tagCounts[t.name] ?? 0 }}
+        </span>
+      </button>
+      <span v-if="selectedTags.length > 0" class="ml-1 text-xs text-gray-500 dark:text-gray-400">
+        已选 {{ selectedTags.length }}
+      </span>
+      <button
+        v-if="selectedTags.length > 0"
+        type="button"
+        class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        @click="clearTags"
+      >
+        清除
+      </button>
+      <select
+        v-model="tagSortBy"
+        class="ml-auto rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+        @change="onTagSortChange"
+      >
+        <option v-for="o in TAG_SORT_OPTIONS" :key="o.value" :value="o.value">
+          {{ o.label }}
+        </option>
+      </select>
+      <button
+        type="button"
+        class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+        :title="tagSortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
+        @click="toggleTagSortDesc"
+      >
+        {{ tagSortDesc ? "↓" : "↑" }}
+      </button>
+    </div>
+
     <p v-if="error" class="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
       {{ error }}
     </p>
+    </div>
 
+    <!-- 卡片滚动区 -->
+    <div class="flex-1 overflow-y-auto pb-6">
     <div v-if="images.length === 0" class="rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
       <p class="text-sm text-gray-500 dark:text-gray-400">
         暂无图像，点击右上角「导入图像」开始添加。
@@ -383,6 +540,7 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
         </div>
       </li>
     </ul>
+    </div>
 
     <!-- 右键菜单 -->
     <Teleport to="body">

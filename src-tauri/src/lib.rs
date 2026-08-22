@@ -49,6 +49,8 @@ pub fn run() {
       features::image::get_image_tags,
       features::image::add_image_tags,
       features::image::remove_image_tag,
+      features::image::list_all_image_tags,
+      features::image::get_image_tags_map,
       features::image::update_image_detail,
       db::get_data_dir,
       db::open_data_dir,

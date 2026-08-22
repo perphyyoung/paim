@@ -573,3 +573,53 @@ pub fn remove_image_tag(
     .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// 返回全部图像标签（供标签筛选区渲染），按名称排序。
+#[tauri::command]
+pub fn list_all_image_tags(db: State<crate::db::BkDb>) -> Result<Vec<ImageTag>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, name FROM image_tags ORDER BY name")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(ImageTag {
+                id: r.get(0)?,
+                name: r.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut tags = Vec::new();
+    for row in rows {
+        tags.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(tags)
+}
+
+/// 返回非删除图像到其标签名的映射：{imageId: [tagName,...]}，供前端内存过滤。
+#[tauri::command]
+pub fn get_image_tags_map(
+    db: State<crate::db::BkDb>,
+) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT img.id, it.name
+             FROM images img
+             JOIN image_tag_relations itr ON itr.image_id = img.id
+             JOIN image_tags it ON it.id = itr.tag_id
+             WHERE img.is_deleted = 0
+             ORDER BY it.name",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?;
+    let mut map: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let (img_id, tag_name) = row.map_err(|e| e.to_string())?;
+        map.entry(img_id).or_default().push(tag_name);
+    }
+    Ok(map)
+}

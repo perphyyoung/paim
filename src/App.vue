@@ -26,7 +26,7 @@ const settingsOpen = ref(false);
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-gray-100 dark:bg-gray-900">
+  <div class="flex h-screen overflow-hidden bg-gray-100 dark:bg-gray-900">
     <aside
       class="sticky top-0 flex h-screen w-14 flex-col items-center gap-2 border-r border-gray-200 bg-white py-4 dark:border-gray-700 dark:bg-gray-800"
     >
@@ -83,7 +83,7 @@ const settingsOpen = ref(false);
       </button>
     </aside>
 
-    <main class="flex-1 overflow-auto p-6">
+    <main class="flex-1 overflow-hidden p-6">
       <RouterView />
     </main>
 
