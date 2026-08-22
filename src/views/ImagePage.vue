@@ -330,7 +330,12 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       <li
         v-for="img in sortedImages"
         :key="img.id"
-        class="relative cursor-pointer overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+        class="relative cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
+        :class="
+          img.is_favorite
+            ? 'border-amber-500'
+            : 'border-gray-200 dark:border-gray-700'
+        "
         :style="{ width: cardSize + 'px', height: cardSize + 'px' }"
         @click="openDetail(img)"
         @contextmenu.prevent="openCtxMenu($event, img)"
@@ -354,6 +359,17 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
             stroke-linecap="round"
             stroke-linejoin="round"
             d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm8.5 3.5 a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-6 9l4-5 3 3 3-4 4 6"
+          />
+        </svg>
+        <svg
+          v-if="img.is_favorite"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          class="absolute right-1.5 top-1.5 h-4 w-4 text-amber-400 drop-shadow"
+          aria-hidden="true"
+        >
+          <path
+            d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
           />
         </svg>
         <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pt-4 pb-1">
