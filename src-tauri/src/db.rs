@@ -39,8 +39,10 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
             height          INTEGER,
             file_size       INTEGER DEFAULT 0,
             prompt_id       INTEGER REFERENCES prompts(id) ON DELETE SET NULL,
+            is_deleted      INTEGER NOT NULL DEFAULT 0,
             created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            deleted_at      TEXT
         );
 
         CREATE TABLE IF NOT EXISTS prompt_tags (

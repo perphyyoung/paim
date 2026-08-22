@@ -40,6 +40,10 @@ pub fn run() {
       features::image::import_image,
       features::image::list_images,
       features::image::get_thumbnail,
+      features::image::list_trash,
+      features::image::delete_image,
+      features::image::restore_image,
+      features::image::purge_image,
       db::get_data_dir,
       db::open_data_dir,
     ])

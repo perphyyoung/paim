@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
@@ -18,6 +18,8 @@ interface Image {
   prompt_id: number | null;
   created_at: string;
   updated_at: string;
+  is_deleted: boolean;
+  deleted_at: string | null;
 }
 
 const CARD_MIN = 100;
@@ -96,6 +98,63 @@ const thumbs = ref<Record<number, string>>({});
 const importing = ref(false);
 const error = ref("");
 
+// 右键菜单
+const ctxMenu = ref<{ x: number; y: number; image: Image } | null>(null);
+function openCtxMenu(e: MouseEvent, img: Image) {
+  ctxMenu.value = { x: e.clientX, y: e.clientY, image: img };
+}
+function closeCtxMenu() {
+  ctxMenu.value = null;
+}
+
+// 回收站
+const trashOpen = ref(false);
+const trashImages = ref<Image[]>([]);
+const trashThumbs = ref<Record<number, string>>({});
+
+async function loadTrash() {
+  trashImages.value = await invoke<Image[]>("list_trash");
+  trashThumbs.value = {};
+  for (const img of trashImages.value) {
+    try {
+      const p = await invoke<string>("get_thumbnail", { id: img.id });
+      trashThumbs.value[img.id] = convertFileSrc(p);
+    } catch {
+      // 保持占位
+    }
+  }
+}
+function openTrash() {
+  trashOpen.value = true;
+  loadTrash();
+}
+function closeTrash() {
+  trashOpen.value = false;
+}
+
+async function deleteToTrash() {
+  if (!ctxMenu.value) return;
+  const img = ctxMenu.value.image;
+  closeCtxMenu();
+  await invoke("delete_image", { id: img.id });
+  images.value = images.value.filter((i) => i.id !== img.id);
+  delete thumbs.value[img.id];
+  showToast(`已删除「${img.stored_name}」到回收站`);
+}
+
+async function restoreImage(img: Image) {
+  await invoke("restore_image", { id: img.id });
+  trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
+  await loadImages(); // 刷新主列表，使恢复的图回到图像页
+  showToast(`已恢复「${img.stored_name}」`);
+}
+
+async function purgeImage(img: Image) {
+  await invoke("purge_image", { id: img.id });
+  trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
+  showToast(`已彻底删除「${img.stored_name}」`);
+}
+
 interface ImportResult {
   image: Image;
   is_duplicate: boolean;
@@ -160,7 +219,11 @@ function fmtSize(bytes: number) {
   return `${bytes} B`;
 }
 
-onMounted(loadImages);
+onMounted(() => {
+  window.addEventListener("click", closeCtxMenu);
+  loadImages();
+});
+onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
 </script>
 
 <template>
@@ -199,6 +262,14 @@ onMounted(loadImages);
         </label>
         <button
           type="button"
+          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          title="回收站"
+          @click="openTrash"
+        >
+          🗑
+        </button>
+        <button
+          type="button"
           class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
           :disabled="importing"
           @click="handleImport"
@@ -225,8 +296,9 @@ onMounted(loadImages);
       <li
         v-for="img in sortedImages"
         :key="img.id"
-        class="relative overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+        class="relative cursor-context-menu overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
         :style="{ width: cardSize + 'px', height: cardSize + 'px' }"
+        @contextmenu.prevent="openCtxMenu($event, img)"
       >
         <img
           v-if="thumbs[img.id]"
@@ -260,5 +332,87 @@ onMounted(loadImages);
         </div>
       </li>
     </ul>
+
+    <!-- 右键菜单 -->
+    <Teleport to="body">
+      <div
+        v-if="ctxMenu"
+        class="fixed inset-0 z-40"
+        @click="closeCtxMenu"
+        @contextmenu.prevent="closeCtxMenu"
+      />
+      <div
+        v-if="ctxMenu"
+        class="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+        @click.stop
+      >
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
+          @click="deleteToTrash"
+        >
+          删除到回收站
+        </button>
+      </div>
+    </Teleport>
+
+    <!-- 回收站弹窗 -->
+    <Teleport to="body">
+      <div
+        v-if="trashOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        @click.self="closeTrash"
+      >
+        <div class="flex max-h-[80vh] w-[640px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">回收站</h3>
+            <button
+              type="button"
+              class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+              @click="closeTrash"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div v-if="trashImages.length === 0" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            回收站为空
+          </div>
+          <ul v-else class="flex-1 divide-y divide-gray-100 overflow-auto dark:divide-gray-700">
+            <li
+              v-for="img in trashImages"
+              :key="img.id"
+              class="flex items-center gap-3 px-4 py-2"
+            >
+              <img
+                v-if="trashThumbs[img.id]"
+                :src="trashThumbs[img.id]"
+                alt=""
+                class="h-12 w-12 shrink-0 rounded object-cover"
+              />
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm text-gray-800 dark:text-gray-100">{{ img.stored_name }}</p>
+                <p class="text-xs text-gray-400">{{ img.deleted_at }}</p>
+              </div>
+              <button
+                type="button"
+                class="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                @click="restoreImage(img)"
+              >
+                恢复
+              </button>
+              <button
+                type="button"
+                class="rounded border border-red-300 px-3 py-1 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
+                @click="purgeImage(img)"
+              >
+                彻底删除
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
