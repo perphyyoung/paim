@@ -2,6 +2,9 @@
 import { onMounted, ref } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useToast } from "@/components/useToast";
+
+const { showToast } = useToast();
 
 interface Image {
   id: number;
@@ -37,6 +40,11 @@ const thumbs = ref<Record<number, string>>({});
 const importing = ref(false);
 const error = ref("");
 
+interface ImportResult {
+  image: Image;
+  is_duplicate: boolean;
+}
+
 const ALLOWED_FILTER = {
   name: "图像",
   extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
@@ -68,7 +76,11 @@ async function handleImport() {
   importing.value = true;
   try {
     for (const p of paths) {
-      const img = await invoke<Image>("import_image", { path: p });
+      const res = await invoke<ImportResult>("import_image", { path: p });
+      const img = res.image;
+      if (res.is_duplicate) {
+        showToast(`「${img.stored_name}」已存在`);
+      }
       // 后端按 md5 去重，复用已有记录时不再重复插入
       if (images.value.some((i) => i.id === img.id)) continue;
       images.value.unshift(img);
@@ -96,7 +108,7 @@ onMounted(loadImages);
 </script>
 
 <template>
-  <section>
+  <section class="relative">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">图像</h2>
       <div class="flex items-center gap-3">

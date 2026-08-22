@@ -21,6 +21,12 @@ pub struct Image {
     pub created_at: String,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct ImportResult {
+    pub image: Image,
+    pub is_duplicate: bool,
+}
+
 /// 缩略图尺寸（宽=高=200，居中裁剪）。
 const THUMB_SIZE: u32 = 200;
 
@@ -35,7 +41,12 @@ fn ext_ok(path: &Path) -> bool {
 }
 
 /// 复制源图到 images/<年月>/，生成 200×200 居中裁剪的 jpeg 缩略图，入库，返回记录。
-pub fn import(conn: &Connection, app: &tauri::AppHandle, source: &str) -> rusqlite::Result<Image> {
+/// 返回 `(记录, 是否重复)`：重复时复用已存在记录且不落新文件。
+pub fn import(
+    conn: &Connection,
+    app: &tauri::AppHandle,
+    source: &str,
+) -> rusqlite::Result<(Image, bool)> {
     let source = PathBuf::from(source);
     if !source.is_file() {
         return Err(rusqlite::Error::InvalidParameterName(
@@ -51,7 +62,7 @@ pub fn import(conn: &Connection, app: &tauri::AppHandle, source: &str) -> rusqli
     // MD5 去重：与已入库图像内容相同则直接复用，不再复制/入库
     let md5 = file_md5(&source)?;
     if let Some(existing) = find_by_md5(conn, &md5)? {
-        return Ok(existing);
+        return Ok((existing, true));
     }
 
     let images_dir = crate::db::images_dir(app);
@@ -118,7 +129,8 @@ pub fn import(conn: &Connection, app: &tauri::AppHandle, source: &str) -> rusqli
         rusqlite::params![stored_name, relative_path, thumb_rel, md5, width, height, file_size],
     )?;
     let id = conn.last_insert_rowid();
-    get_by_id(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
+    let new_img = get_by_id(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+    Ok((new_img, false))
 }
 
 /// 生成 200×200 居中裁剪的缩略图：先等比缩放覆盖目标尺寸，再裁剪中心。
@@ -213,9 +225,13 @@ pub fn import_image(
     app: tauri::AppHandle,
     db: State<crate::db::BkDb>,
     path: String,
-) -> Result<Image, String> {
+) -> Result<ImportResult, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    import(&conn, &app, &path).map_err(|e| e.to_string())
+    let (image, is_duplicate) = import(&conn, &app, &path).map_err(|e| e.to_string())?;
+    Ok(ImportResult {
+        image,
+        is_duplicate,
+    })
 }
 
 #[tauri::command]

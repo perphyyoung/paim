@@ -3,6 +3,7 @@ import { RouterLink, RouterView, useRoute } from "vue-router";
 import { computed, ref } from "vue";
 import { appVersion } from "@/version";
 import SettingsView from "@/views/SettingsView.vue";
+import ToastHost from "@/components/ToastHost.vue";
 
 const tabs = [
   {
@@ -85,6 +86,8 @@ const settingsOpen = ref(false);
     <main class="flex-1 overflow-auto p-6">
       <RouterView />
     </main>
+
+    <ToastHost />
 
     <!-- 设置悬浮面板 -->
     <Teleport to="body">
