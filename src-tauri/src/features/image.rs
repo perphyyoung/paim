@@ -714,3 +714,31 @@ pub fn get_image_tags_map(
     }
     Ok(map)
 }
+
+/// 返回非删除图像到其关联提示词内容的映射：{imageId: [content,...]}，供卡片 row2 显示。
+#[tauri::command]
+pub fn get_image_prompts_map(
+    db: State<crate::db::BkDb>,
+) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT img.id, pr.content
+             FROM images img
+             JOIN prompt_image_relations pir ON pir.image_id = img.id
+             JOIN prompts pr ON pr.id = pir.prompt_id
+             WHERE img.is_deleted = 0 AND pr.is_deleted = 0
+             ORDER BY pr.created_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?;
+    let mut map: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let (img_id, content) = row.map_err(|e| e.to_string())?;
+        map.entry(img_id).or_default().push(content);
+    }
+    Ok(map)
+}

@@ -128,6 +128,7 @@ const sortedImages = computed(() => {
 
 const images = ref<Image[]>([]);
 const thumbs = ref<Record<string, string>>({});
+const imagePrompts = ref<Record<string, string[]>>({});
 
 // 标签筛选区
 const allTags = ref<{ id: number; name: string; group_id: number | null }[]>([]);
@@ -391,6 +392,15 @@ async function purgeImage(img: Image) {
 async function loadImages() {
   images.value = await invoke<Image[]>("list_images");
   await loadThumbnails();
+  await loadImagePrompts();
+}
+
+async function loadImagePrompts() {
+  try {
+    imagePrompts.value = await invoke<Record<string, string[]>>("get_image_prompts_map");
+  } catch {
+    imagePrompts.value = {};
+  }
 }
 
 async function loadThumbnails() {
@@ -955,8 +965,16 @@ function onImportDone() {
             </div>
           </div>
 
-          <!-- row2 提示词（当前留空，占满中部） -->
-          <div class="flex-1"></div>
+          <!-- row2 关联提示词（若有则显示，省略截断） -->
+          <div class="flex-1 overflow-hidden px-1.5 pt-1">
+            <p
+              v-if="(imagePrompts[img.id] || []).length"
+              class="line-clamp-2 text-[10px] leading-4 text-white drop-shadow"
+              :title="imagePrompts[img.id].join('\n')"
+            >
+              {{ imagePrompts[img.id][0] }}
+            </p>
+          </div>
 
           <!-- row3 标签（组件内截断，剩余显示 +n） -->
           <CardTagRow

@@ -57,6 +57,7 @@ pub fn run() {
       features::image::remove_image_tag,
       features::image::list_all_image_tags,
       features::image::get_image_tags_map,
+      features::image::get_image_prompts_map,
       features::image::update_image_detail,
       features::image_tag::list_image_tag_groups,
       features::image_tag::create_image_tag_group,
