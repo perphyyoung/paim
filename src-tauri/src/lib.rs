@@ -35,9 +35,17 @@ pub fn run() {
     })
     .invoke_handler(tauri::generate_handler![
       features::prompt::commands::list_prompts,
+      features::prompt::commands::get_prompt_tags_map,
+      features::prompt::commands::get_prompt_images_count_map,
+      features::prompt::commands::get_prompt_thumbs_map,
+      features::prompt::commands::get_prompt_tag_data,
+      features::prompt::commands::create_prompt_with_images,
       features::prompt::commands::create_prompt,
       features::prompt::commands::update_prompt_title,
       features::prompt::commands::delete_prompt,
+      features::prompt::commands::list_trashed_prompts,
+      features::prompt::commands::restore_prompt,
+      features::prompt::commands::purge_prompt,
       features::tag::commands::list_tags,
       features::tag::commands::create_tag,
       features::tag::commands::delete_tag,

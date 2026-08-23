@@ -965,15 +965,16 @@ function onUploadDone() {
             </div>
           </div>
 
-          <!-- row2 关联提示词（若有则显示，省略截断） -->
-          <div class="flex-1 overflow-hidden px-1.5 pt-1">
+          <!-- row2 关联提示词（若有则显示，占满勾出超额渐变淡出） -->
+          <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
             <p
               v-if="(imagePrompts[img.id] || []).length"
-              class="line-clamp-2 text-[10px] leading-4 text-white drop-shadow"
+              class="text-[10px] leading-4 text-white drop-shadow"
               :title="imagePrompts[img.id].join('\n')"
             >
               {{ imagePrompts[img.id][0] }}
             </p>
+            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"></div>
           </div>
 
           <!-- row3 标签（组件内截断，剩余显示 +n） -->

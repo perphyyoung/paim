@@ -98,6 +98,31 @@ pub fn remove(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// 列出回收站中的提示词（已软删除），按删除时间倒序。
+pub fn list_trashed(conn: &Connection) -> Result<Vec<Prompt>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note
+         FROM prompts WHERE is_deleted = 1 ORDER BY deleted_at DESC",
+    )?;
+    let rows = stmt.query_map([], row_to_prompt)?;
+    rows.collect()
+}
+
+/// 恢复软删除的提示词。
+pub fn restore(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
+    conn.execute(
+        "UPDATE prompts SET is_deleted = 0, deleted_at = NULL WHERE id = ?1",
+        rusqlite::params![id],
+    )?;
+    get_by_id(conn, id)
+}
+
+/// 彻底删除提示词（从数据库中移除）。
+pub fn purge(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM prompts WHERE id = ?1", rusqlite::params![id])?;
+    Ok(())
+}
+
 fn row_to_prompt(row: &rusqlite::Row) -> Result<Prompt> {
     Ok(Prompt {
         id: row.get(0)?,

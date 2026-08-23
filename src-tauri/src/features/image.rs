@@ -357,6 +357,19 @@ fn relate_prompt(conn: &Connection, image_id: &str, content: &str) -> rusqlite::
     Ok(())
 }
 
+/// 将图片关联到已存在的提示词（幂等），供新建提示词选择图像时使用。
+pub fn relate_image_to_prompt(
+    conn: &Connection,
+    prompt_id: &str,
+    image_id: &str,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO prompt_image_relations(prompt_id, image_id) VALUES (?1, ?2)",
+        rusqlite::params![prompt_id, image_id],
+    )?;
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct ImportError {
     pub path: String,
