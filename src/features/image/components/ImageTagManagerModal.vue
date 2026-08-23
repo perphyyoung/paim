@@ -70,15 +70,14 @@ const sections = computed(() => {
     byGroup.get(key)!.push(t);
   }
   const groups = [...data.value.groups].sort((a, b) => a.sort_order - b.sort_order);
-  const out: { key: string; name: string; sortOrder: number; isFirst: boolean; isGroup: boolean; items: TagItem[] }[] = groups.map((g, i) => ({
-    key: `g${g.id}`,
-    name: g.name,
-    sortOrder: g.sort_order,
-    isFirst: i === 0,
-    isGroup: true,
-    items: byGroup.get(g.id) ?? [],
-  }));
-  out.push({ key: "none", name: "未分组", sortOrder: 0, isFirst: false, isGroup: false, items: byGroup.get("none") ?? [] });
+  const out: { key: string; name: string; sortOrder: number; isFirst: boolean; isGroup: boolean; items: TagItem[] }[] = [
+    // 未分组恒置首位，便于识别
+    { key: "none", name: "未分组", sortOrder: 0, isFirst: false, isGroup: false, items: byGroup.get("none") ?? [] },
+  ];
+  // 真实组按 sort_order 排序，sort_order 最小的为首位组（固定到首位）
+  groups.forEach((g, i) => {
+    out.push({ key: `g${g.id}`, name: g.name, sortOrder: g.sort_order, isFirst: i === 0, isGroup: true, items: byGroup.get(g.id) ?? [] });
+  });
   return out;
 });
 
