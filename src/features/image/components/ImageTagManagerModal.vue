@@ -476,7 +476,6 @@ function refresh() {
       <div
         v-if="dlg.visible"
         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
-        @click.self="closeDlg"
       >
         <div class="w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800">
           <h3 class="mb-3 text-center text-sm font-semibold text-gray-800 dark:text-gray-100">{{ dlg.title }}</h3>
