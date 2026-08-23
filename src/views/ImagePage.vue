@@ -7,6 +7,7 @@ import { formatLocalTime } from "@/utils/date";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImageTagManagerModal from "@/features/image/components/ImageTagManagerModal.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
 const { showToast } = useToast();
 
@@ -507,11 +508,17 @@ function exitBatch() {
   batchOpen.value = false;
 }
 
-async function batchDelete() {
+const deleteConfirmOpen = ref(false);
+
+function batchDelete() {
+  if (selectedIds.value.size === 0) return;
+  deleteConfirmOpen.value = true;
+}
+
+async function doBatchDelete() {
+  deleteConfirmOpen.value = false;
   const ids = Array.from(selectedIds.value);
   if (ids.length === 0) return;
-  const ok = window.confirm(`确定将选中的 ${ids.length} 张图像移入回收站？`);
-  if (!ok) return;
   try {
     for (const id of ids) {
       await invoke("delete_image", { id });
@@ -882,6 +889,17 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       @favorite="batchFavorite"
       @delete="batchDelete"
       @cancel="exitBatch"
+    />
+
+    <!-- 批量删除确认弹窗（自定义样式） -->
+    <ConfirmDialog
+      :open="deleteConfirmOpen"
+      title="确认删除"
+      message="确定将选中的图像移入回收站？"
+      confirm-text="删除"
+      danger
+      @confirm="doBatchDelete"
+      @cancel="deleteConfirmOpen = false"
     />
 
     <!-- 右键菜单 -->
