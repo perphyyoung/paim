@@ -2,6 +2,7 @@
 //! 持久化与文件系统细节集中于此，业务层通过命令调用。
 //! 存储布局参考 prompt-manager：原图存 images/<年月>，缩略图统一 jpeg 存 thumbnails/。
 
+use crate::features::prompt::service as prompt_service;
 use image::GenericImageView;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
@@ -345,6 +346,91 @@ fn unix_to_yyyymm(secs: i64) -> String {
 // ---- Tauri commands ----
 
 use tauri::State;
+
+/// 直接新建一条提示词并与该图片建立关联（幂等）。
+fn relate_prompt(conn: &Connection, image_id: &str, content: &str) -> rusqlite::Result<()> {
+    let prompt_id = prompt_service::create(conn, content, None)?.id;
+    conn.execute(
+        "INSERT OR IGNORE INTO prompt_image_relations(prompt_id, image_id) VALUES (?1, ?2)",
+        rusqlite::params![prompt_id, image_id],
+    )?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ImportError {
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ImportBatchResult {
+    pub results: Vec<ImportResult>,
+    pub errors: Vec<ImportError>,
+}
+
+/// 批量导入图像；prompt 非空时，<b>同一内容提示词</b>会应用到本次导入的每一张图。
+#[tauri::command]
+pub fn import_images(
+    app: tauri::AppHandle,
+    db: State<crate::db::BkDb>,
+    paths: Vec<String>,
+    prompt: Option<String>,
+) -> Result<ImportBatchResult, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let prompt = prompt
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let mut results = Vec::new();
+    let mut errors = Vec::new();
+    for path in &paths {
+        match import(&conn, &app, path) {
+            Ok((image, is_duplicate)) => {
+                if let Some(content) = &prompt {
+                    if let Err(e) = relate_prompt(&conn, &image.id, content) {
+                        errors.push(ImportError {
+                            path: path.clone(),
+                            message: format!("关联提示词失败: {e}"),
+                        });
+                    }
+                }
+                results.push(ImportResult { image, is_duplicate });
+            }
+            Err(e) => errors.push(ImportError {
+                path: path.clone(),
+                message: e.to_string(),
+            }),
+        }
+    }
+    Ok(ImportBatchResult { results, errors })
+}
+
+/// 为导入弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。
+#[tauri::command]
+pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<String, String> {
+    let src = PathBuf::from(&source);
+    if !src.is_file() {
+        return Err("源文件不存在".to_string());
+    }
+    let img = image::open(&src).map_err(|e| format!("无法读取图像: {e}"))?;
+    let thumb = make_center_thumb(&img).map_err(|e| format!("生成缩略图失败: {e}"))?;
+
+    let prev_dir = crate::db::data_dir(&app).join("preview");
+    std::fs::create_dir_all(&prev_dir).map_err(|e| e.to_string())?;
+    // 以源文件路径哈希命名，重复选择复用
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    use std::hash::Hasher;
+    hasher.write(source.as_bytes());
+    let name = format!("pre_{:016x}.jpg", hasher.finish());
+    let dest = prev_dir.join(&name);
+
+    if !dest.exists() {
+        thumb
+            .save(&dest)
+            .map_err(|e| format!("保存预览失败: {e}"))?;
+    }
+    Ok(dest.to_string_lossy().to_string())
+}
 
 #[tauri::command]
 pub fn import_image(

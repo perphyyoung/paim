@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImageTagManagerModal from "@/features/image/components/ImageTagManagerModal.vue";
+import ImageImportModal from "@/features/image/components/ImageImportModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -128,8 +128,6 @@ const sortedImages = computed(() => {
 
 const images = ref<Image[]>([]);
 const thumbs = ref<Record<string, string>>({});
-const importing = ref(false);
-const error = ref("");
 
 // 标签筛选区
 const allTags = ref<{ id: number; name: string; group_id: number | null }[]>([]);
@@ -390,16 +388,6 @@ async function purgeImage(img: Image) {
   showToast(`已彻底删除「${img.stored_name}」`);
 }
 
-interface ImportResult {
-  image: Image;
-  is_duplicate: boolean;
-}
-
-const ALLOWED_FILTER = {
-  name: "图像",
-  extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
-};
-
 async function loadImages() {
   images.value = await invoke<Image[]>("list_images");
   await loadThumbnails();
@@ -413,38 +401,6 @@ async function loadThumbnails() {
     } catch {
       // 缩略图缺失时保持占位
     }
-  }
-}
-
-async function handleImport() {
-  error.value = "";
-  const selected = await open({ multiple: true, filters: [ALLOWED_FILTER] });
-  if (!selected) return;
-
-  const paths = Array.isArray(selected) ? selected : [selected];
-
-  importing.value = true;
-  try {
-    for (const p of paths) {
-      const res = await invoke<ImportResult>("import_image", { path: p });
-      const img = res.image;
-      if (res.is_duplicate) {
-        showToast(`「${img.stored_name}」已存在`);
-      }
-      // 后端按 md5 去重，复用已有记录时不再重复插入
-      if (images.value.some((i) => i.id === img.id)) continue;
-      images.value.unshift(img);
-      try {
-        const tp = await invoke<string>("get_thumbnail", { id: img.id });
-        thumbs.value[img.id] = convertFileSrc(tp);
-      } catch {
-        // 缩略图缺失时保持占位
-      }
-    }
-  } catch (e) {
-    error.value = String(e);
-  } finally {
-    importing.value = false;
   }
 }
 
@@ -632,6 +588,13 @@ onMounted(() => {
   loadTagFilter();
 });
 onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
+
+// ---- 导入图像弹窗 ----
+const importOpen = ref(false);
+function onImportDone() {
+  loadImages();
+  loadTagFilter();
+}
 </script>
 
 <template>
@@ -641,11 +604,10 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
     <div class="mb-4 grid grid-cols-6 items-center gap-3">
       <button
         type="button"
-        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
-        :disabled="importing"
-        @click="handleImport"
+        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+        @click="importOpen = true"
       >
-        {{ importing ? "导入中…" : "导入图像" }}
+        导入图像
       </button>
       <input
         v-model="keyword"
@@ -857,9 +819,12 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       </div>
     </div>
 
-    <p v-if="error" class="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
-      {{ error }}
-    </p>
+    <!-- 导入图像弹窗 -->
+    <ImageImportModal
+      :open="importOpen"
+      @close="importOpen = false"
+      @imported="onImportDone"
+    />
     </div>
 
     <!-- 卡片滚动区 -->

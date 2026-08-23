@@ -1,14 +1,14 @@
 {
   "name": "paim",
   "private": true,
-  "version": "0.1.43",
+  "version": "0.1.44",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "version:sync": "node scripts/sync-version.mjs",
-    "check": "pnpm version:sync && vue-tsc --noEmit && cargo check --manifest-path src-tauri/Cargo.toml"
+    "check": "pnpm version:sync && vue-tsc --noEmit && pnpm build && cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

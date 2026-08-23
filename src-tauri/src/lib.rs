@@ -39,6 +39,8 @@ pub fn run() {
       features::tag::commands::create_tag,
       features::tag::commands::delete_tag,
       features::image::import_image,
+      features::image::import_images,
+      features::image::get_source_thumbnail,
       features::image::list_images,
       features::image::get_thumbnail,
       features::image::list_trash,
