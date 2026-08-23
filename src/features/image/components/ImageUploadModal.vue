@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 导入图像弹窗：选择多图 → 预览（可移除）→ 可选关联提示词 → 确定导入。
+// 上传图像弹窗：选择多图 → 预览（可移除）→ 可选关联提示词 → 确定上传。
 // 参考 pm 的图像上传弹窗：提示词为用户输入，非空则应用到本次每一张图。
 import { ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
@@ -7,7 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 
 const props = defineProps<{ open: boolean }>();
-const emit = defineEmits<{ close: []; imported: [] }>();
+const emit = defineEmits<{ close: []; uploaded: [] }>();
 const { showToast } = useToast();
 
 interface PendingFile {
@@ -16,12 +16,12 @@ interface PendingFile {
   thumb: string;
 }
 
-interface ImportItemImage {
+interface UploadedImage {
   stored_name: string;
 }
 
-interface ImportBatchResult {
-  results: { image: ImportItemImage; is_duplicate: boolean }[];
+interface UploadBatchResult {
+  results: { image: UploadedImage; is_duplicate: boolean }[];
   errors: { path: string; message: string }[];
 }
 
@@ -32,7 +32,7 @@ const ALLOWED_FILTER = {
 
 const files = ref<PendingFile[]>([]);
 const prompt = ref("");
-const importing = ref(false);
+const uploading = ref(false);
 const thumbLoading = ref(false);
 const error = ref("");
 
@@ -73,28 +73,28 @@ function removeFile(idx: number) {
   files.value.splice(idx, 1);
 }
 
-async function doImport() {
+async function doUpload() {
   if (files.value.length === 0) {
     showToast("请先选择图像");
     return;
   }
-  importing.value = true;
+  uploading.value = true;
   error.value = "";
   try {
-    const res = await invoke<ImportBatchResult>("import_images", {
+    const res = await invoke<UploadBatchResult>("upload_images", {
       paths: files.value.map((f) => f.path),
       prompt: prompt.value.trim() || null,
     });
     if (res.errors.length > 0) {
       error.value = res.errors.map((e) => e.message).join("\n");
     }
-    showToast(res.results.length > 0 ? `已导入 ${res.results.length} 张图像` : "没有新导入的图像");
-    emit("imported");
+    showToast(res.results.length > 0 ? `已上传 ${res.results.length} 张图像` : "没有新上传的图像");
+    emit("uploaded");
     emit("close");
   } catch (e) {
     error.value = String(e);
   } finally {
-    importing.value = false;
+    uploading.value = false;
   }
 }
 </script>
@@ -109,7 +109,7 @@ async function doImport() {
         class="flex max-h-[85vh] w-[560px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
       >
         <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-          <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">导入图像</h3>
+          <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">上传图像</h3>
           <button
             type="button"
             class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -193,10 +193,10 @@ async function doImport() {
           <button
             type="button"
             class="rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-            :disabled="importing"
-            @click="doImport"
+            :disabled="uploading"
+            @click="doUpload"
           >
-            {{ importing ? "导入中…" : "确定" }}
+            {{ uploading ? "上传中…" : "确定" }}
           </button>
         </div>
       </div>

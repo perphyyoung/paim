@@ -5,7 +5,7 @@ import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImageTagManagerModal from "@/features/image/components/ImageTagManagerModal.vue";
-import ImageImportModal from "@/features/image/components/ImageImportModal.vue";
+import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -599,9 +599,9 @@ onMounted(() => {
 });
 onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
 
-// ---- 导入图像弹窗 ----
-const importOpen = ref(false);
-function onImportDone() {
+// ---- 上传图像弹窗 ----
+const uploadOpen = ref(false);
+function onUploadDone() {
   loadImages();
   loadTagFilter();
 }
@@ -615,9 +615,9 @@ function onImportDone() {
       <button
         type="button"
         class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
-        @click="importOpen = true"
+        @click="uploadOpen = true"
       >
-        导入图像
+        上传图像
       </button>
       <input
         v-model="keyword"
@@ -829,11 +829,11 @@ function onImportDone() {
       </div>
     </div>
 
-    <!-- 导入图像弹窗 -->
-    <ImageImportModal
-      :open="importOpen"
-      @close="importOpen = false"
-      @imported="onImportDone"
+    <!-- 上传图像弹窗 -->
+    <ImageUploadModal
+      :open="uploadOpen"
+      @close="uploadOpen = false"
+      @uploaded="onUploadDone"
     />
     </div>
 
@@ -841,7 +841,7 @@ function onImportDone() {
     <div class="flex-1 overflow-y-auto pb-6">
     <div v-if="images.length === 0" class="rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
       <p class="text-sm text-gray-500 dark:text-gray-400">
-        暂无图像，点击右上角「导入图像」开始添加。
+        暂无图像，点击左上角「上传图像」开始添加。
       </p>
     </div>
 

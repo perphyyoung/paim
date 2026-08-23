@@ -1,4 +1,4 @@
-//! 图像领域服务：承载图像导入（落盘 + 缩略图 + 入库）与查询。
+//! 图像领域服务：承载图像上传（落盘 + 缩略图 + 入库）与查询。
 //! 持久化与文件系统细节集中于此，业务层通过命令调用。
 //! 存储布局参考 prompt-manager：原图存 images/<年月>，缩略图统一 jpeg 存 thumbnails/。
 
@@ -369,9 +369,9 @@ pub struct ImportBatchResult {
     pub errors: Vec<ImportError>,
 }
 
-/// 批量导入图像；prompt 非空时，<b>同一内容提示词</b>会应用到本次导入的每一张图。
+/// 批量上传图像；prompt 非空时，<b>同一内容提示词</b>会应用到本次上传的每一张图。
 #[tauri::command]
-pub fn import_images(
+pub fn upload_images(
     app: tauri::AppHandle,
     db: State<crate::db::BkDb>,
     paths: Vec<String>,
@@ -405,7 +405,7 @@ pub fn import_images(
     Ok(ImportBatchResult { results, errors })
 }
 
-/// 为导入弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。
+/// 为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。
 #[tauri::command]
 pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<String, String> {
     let src = PathBuf::from(&source);
@@ -433,7 +433,7 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
 }
 
 #[tauri::command]
-pub fn import_image(
+pub fn upload_image(
     app: tauri::AppHandle,
     db: State<crate::db::BkDb>,
     path: String,

@@ -33,11 +33,15 @@ fn validate_content(content: &str) -> Result<String> {
 
 pub fn create(conn: &Connection, content: &str, title: Option<String>) -> Result<Prompt> {
     let content = validate_content(content)?;
-    let title = title
+    let mut title = title
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
         .unwrap_or_default();
     let id = crate::db::gen_id(crate::db::PROMPT_ID_PREFIX);
+    // 与 pm 一致：未提供标题时，用提示词 id 作为标题
+    if title.is_empty() {
+        title = id.clone();
+    }
 
     let tx = conn.unchecked_transaction()?;
     tx.execute(
