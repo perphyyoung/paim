@@ -5,6 +5,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
+import ImageTagManagerModal from "@/features/image/components/ImageTagManagerModal.vue";
 
 const { showToast } = useToast();
 
@@ -143,6 +144,15 @@ function toggleTag(tag: string, e: MouseEvent) {
 }
 function clearTags() {
   selectedTags.value = [];
+}
+
+// 标签管理入口
+const tagManagerOpen = ref(false);
+function openTagManager() {
+  tagManagerOpen.value = true;
+}
+function onTagManagerSaved() {
+  loadTagFilter();
 }
 
 // 每个标签关联的图片数（基于当前未删除图片）用于角标计数
@@ -409,7 +419,6 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
 
     <!-- 标签筛选区 -->
     <div
-      v-if="allTags.length > 0"
       class="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40"
     >
       <span class="text-xs font-medium text-gray-500 dark:text-gray-400">标签</span>
@@ -464,6 +473,14 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
         @click="toggleTagSortDesc"
       >
         {{ tagSortDesc ? "↓" : "↑" }}
+      </button>
+      <button
+        type="button"
+        class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+        title="管理标签"
+        @click="openTagManager"
+      >
+        管理
       </button>
     </div>
 
@@ -632,6 +649,13 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       :thumbs="thumbs"
       @close="closeDetail"
       @update="onDetailUpdate"
+    />
+
+    <!-- 标签管理（独立组件） -->
+    <ImageTagManagerModal
+      :open="tagManagerOpen"
+      @close="tagManagerOpen = false"
+      @saved="onTagManagerSaved"
     />
   </section>
 </template>

@@ -1,0 +1,547 @@
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import { useToast } from "@/components/useToast";
+
+interface TagGroup {
+  id: number;
+  name: string;
+  sort_order: number;
+}
+interface TagItem {
+  id: number;
+  name: string;
+  group_id: number | null;
+  count: number;
+}
+interface ManagerData {
+  groups: TagGroup[];
+  tags: TagItem[];
+}
+
+const props = defineProps<{ open: boolean }>();
+const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
+const { showToast } = useToast();
+
+const data = ref<ManagerData>({ groups: [], tags: [] });
+const search = ref("");
+const loading = ref(false);
+const error = ref("");
+
+const SORT_OPTIONS = [
+  { value: "name", label: "名称" },
+  { value: "count", label: "数量" },
+];
+const sortBy = ref("name");
+const orderDesc = ref(false);
+
+function onSortChange(e: Event) {
+  sortBy.value = (e.target as HTMLSelectElement).value;
+}
+function toggleOrder() {
+  orderDesc.value = !orderDesc.value;
+}
+
+function cmpTags(a: TagItem, b: TagItem): number {
+  let r: number;
+  if (sortBy.value === "count") {
+    r = a.count - b.count;
+  } else {
+    r = a.name.localeCompare(b.name, undefined, { numeric: true });
+  }
+  return orderDesc.value ? -r : r;
+}
+
+// 按搜索过滤后的标签（依 cmpTags 排序，供分组展示）
+const filtered = computed(() => {
+  const kw = search.value.trim().toLowerCase();
+  let arr = kw
+    ? data.value.tags.filter((t) => t.name.toLowerCase().includes(kw))
+    : data.value.tags;
+  return [...arr].sort(cmpTags);
+});
+
+// 展示分段：各组按 sort_order 排序（首位组在最前），「未分组」恒置末尾。
+const sections = computed(() => {
+  const byGroup = new Map<number | "none", TagItem[]>();
+  for (const t of filtered.value) {
+    const key = t.group_id ?? "none";
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key)!.push(t);
+  }
+  const groups = [...data.value.groups].sort((a, b) => a.sort_order - b.sort_order);
+  const out: { key: string; name: string; sortOrder: number; isFirst: boolean; isGroup: boolean; items: TagItem[] }[] = groups.map((g, i) => ({
+    key: `g${g.id}`,
+    name: g.name,
+    sortOrder: g.sort_order,
+    isFirst: i === 0,
+    isGroup: true,
+    items: byGroup.get(g.id) ?? [],
+  }));
+  out.push({ key: "none", name: "未分组", sortOrder: 0, isFirst: false, isGroup: false, items: byGroup.get("none") ?? [] });
+  return out;
+});
+
+// —— 右键固定到首位 ——
+const ctxMenu = ref<{ visible: boolean; x: number; y: number; groupId: number | null }>({
+  visible: false,
+  x: 0,
+  y: 0,
+  groupId: null,
+});
+function onGroupContextMenu(e: MouseEvent, sec: { key: string; isGroup: boolean }) {
+  e.preventDefault();
+  if (!sec.isGroup) return;
+  const g = data.value.groups.find((g) => g.id === Number(sec.key.slice(1)));
+  if (!g) return;
+  ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, groupId: g.id };
+}
+function closeCtxMenu() {
+  ctxMenu.value.visible = false;
+}
+async function pinToTop() {
+  const id = ctxMenu.value.groupId;
+  closeCtxMenu();
+  if (id === null) return;
+  try {
+    await invoke("pin_image_tag_group_to_top", { id });
+    showToast("标签组已固定到首位");
+    await load();
+    emit("saved");
+  } catch (e) {
+    error.value = String(e);
+    await load();
+  }
+}
+
+// 嵌入输入/确认对话框（无原生 prompt，风格统一）
+const dlg = ref<{
+  visible: boolean;
+  mode: "input" | "confirm";
+  title: string;
+  placeholder: string;
+  value: string;
+  groupEnabled: boolean;
+  groupId: string;
+  showSort: boolean;
+  sortOrder: string | number;
+  message: string;
+  onOk: (() => void) | null;
+}>({
+  visible: false,
+  mode: "input",
+  title: "",
+  placeholder: "",
+  value: "",
+  groupEnabled: false,
+  groupId: "",
+  showSort: false,
+  sortOrder: "",
+  message: "",
+  onOk: null,
+});
+
+function openInput(
+  title: string,
+  opts: { initial?: string; groupEnabled?: boolean; initialGroupId?: number | null; showSort?: boolean; initialSort?: number | null }
+) {
+  dlg.value = {
+    visible: true,
+    mode: "input",
+    title,
+    placeholder: "请输入名称…",
+    value: opts.initial ?? "",
+    groupEnabled: !!opts.groupEnabled,
+    groupId: String(opts.initialGroupId ?? ""),
+    showSort: !!opts.showSort,
+    sortOrder: opts.initialSort != null ? String(opts.initialSort) : "",
+    message: "",
+    onOk: null,
+  };
+}
+function openConfirm(title: string, message: string, onOk: () => void) {
+  dlg.value = {
+    visible: true,
+    mode: "confirm",
+    title,
+    placeholder: "",
+    value: "",
+    groupEnabled: false,
+    groupId: "",
+    showSort: false,
+    sortOrder: "",
+    message,
+    onOk,
+  };
+}
+function closeDlg() {
+  dlg.value.visible = false;
+  dlg.value.onOk = null;
+}
+
+async function load() {
+  loading.value = true;
+  error.value = "";
+  try {
+    data.value = await invoke<ManagerData>("list_image_tag_groups");
+  } catch (e) {
+    error.value = String(e);
+  } finally {
+    loading.value = false;
+  }
+}
+watch(
+  () => props.open,
+  (v) => {
+    if (v) {
+      search.value = "";
+      sortBy.value = "name";
+      orderDesc.value = false;
+      load();
+    }
+  }
+);
+
+// —— 标签操作 ——
+function openNewTag() {
+  openInput("新建标签", { groupEnabled: true });
+}
+async function submitNewTag() {
+  const name = dlg.value.value.trim();
+  if (!name) return;
+  await invoke("create_image_tag", {
+    name,
+    groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
+  });
+  showToast(`已新建标签「${name}」`);
+  refresh();
+}
+function openRenameTag(item: TagItem) {
+  openInput("重命名标签", {
+    initial: item.name,
+    groupEnabled: true,
+    initialGroupId: item.group_id,
+  });
+  dlg.value.onOk = async () => {
+    const name = dlg.value.value.trim();
+    if (!name) return;
+    await invoke("rename_image_tag", {
+      id: item.id,
+      name,
+    });
+    await invoke("move_tag_to_group", {
+      id: item.id,
+      groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
+    });
+    showToast("标签已更新");
+    refresh();
+    closeDlg();
+  };
+}
+function openDeleteTag(item: TagItem) {
+  openConfirm("删除标签", `确定删除标签「${item.name}」？其与图像的关联将一并清除。`, async () => {
+    await invoke("delete_image_tag", { id: item.id });
+    showToast("标签已删除");
+    refresh();
+    closeDlg();
+  });
+}
+
+// —— 组操作 ——
+// 排序数值输入框用 type="number"，v-model 填入后为 number，需兼容空字符串。
+function parseSortOrder(v: string | number | null | undefined): number | null {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+function openNewGroup() {
+  openInput("新建组", { showSort: true });
+}
+async function submitNewGroup() {
+  const name = dlg.value.value.trim();
+  if (!name) return;
+  const sortOrder = parseSortOrder(dlg.value.sortOrder);
+  await invoke("create_image_tag_group", { name, sort_order: sortOrder });
+  showToast(`已新建组「${name}」`);
+  refresh();
+}
+function openRenameGroup(g: TagGroup) {
+  openInput("重命名组", { initial: g.name, showSort: true, initialSort: g.sort_order });
+  dlg.value.onOk = async () => {
+    const name = dlg.value.value.trim();
+    if (!name) return;
+    const sortOrder = parseSortOrder(dlg.value.sortOrder);
+    await invoke("update_image_tag_group", { id: g.id, name, sort_order: sortOrder });
+    showToast("组已更新");
+    refresh();
+    closeDlg();
+  };
+}
+function openDeleteGroup(g: TagGroup) {
+  openConfirm("删除组", `确定删除组「${g.name}」？组内标签将变为未分组。`, async () => {
+    await invoke("delete_image_tag_group", { id: g.id });
+    showToast("组已删除");
+    refresh();
+    closeDlg();
+  });
+}
+
+async function submitInput() {
+  if (dlg.value.onOk) {
+    dlg.value.onOk();
+  } else if (dlg.value.title === "新建标签") {
+    await submitNewTag();
+    refresh();
+    closeDlg();
+  } else if (dlg.value.title === "新建组") {
+    await submitNewGroup();
+    refresh();
+    closeDlg();
+  }
+}
+
+function refresh() {
+  load();
+  emit("saved");
+}
+</script>
+
+<template>
+  <Teleport to="body">
+    <div
+      v-if="open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      @click.self="emit('close')"
+    >
+      <div class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <!-- 头部 -->
+        <div class="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-100">图像标签管理</h2>
+          <button
+            type="button"
+            class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+            @click="emit('close')"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="grid shrink-0 grid-cols-5 items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <div class="flex justify-center">
+            <input
+              v-model="search"
+              type="text"
+              placeholder="搜索标签…"
+              class="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+            />
+          </div>
+          <div class="flex justify-center">
+            <button
+              type="button"
+              class="w-full rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+              @click="openNewTag"
+            >
+              + 新建标签
+            </button>
+          </div>
+          <div class="flex justify-center">
+            <button
+              type="button"
+              class="w-full rounded border border-gray-300 px-2.5 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              @click="openNewGroup"
+            >
+              + 新建组
+            </button>
+          </div>
+          <div class="flex justify-center">
+            <select
+              :value="sortBy"
+              class="w-full rounded border border-gray-300 bg-white px-1.5 py-1.5 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+              @change="onSortChange"
+            >
+              <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
+                {{ o.label }}
+              </option>
+            </select>
+          </div>
+          <div class="flex justify-center">
+            <button
+              type="button"
+              class="w-full rounded border border-gray-300 px-1.5 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              title="切换排序顺序"
+              @click="toggleOrder"
+            >
+              {{ orderDesc ? "↓" : "↑" }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 主体 -->
+        <div class="flex-1 overflow-y-auto p-4">
+          <p v-if="error" class="mb-3 rounded bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-900/30 dark:text-red-400">
+            {{ error }}
+          </p>
+          <div v-if="loading" class="py-10 text-center text-xs text-gray-500">加载中…</div>
+
+          <div v-else-if="sections.length === 0 || data.tags.length === 0" class="py-10 text-center text-xs text-gray-500">
+            暂无图像标签
+          </div>
+
+          <div v-else class="grid grid-cols-2 items-start gap-3">
+            <section
+              v-for="sec in sections"
+              :key="sec.key"
+              class="rounded-lg border border-gray-200 bg-gray-50 shadow-sm dark:border-gray-700 dark:bg-gray-800/40"
+              @contextmenu="onGroupContextMenu($event, sec)"
+            >
+              <header class="relative flex items-center justify-between rounded-t-lg border-b border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+                <div class="flex items-center gap-1.5">
+                  <template v-if="sec.isGroup">
+                    <span
+                      class="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-900/40 dark:text-blue-300"
+                      title="排序序号"
+                    >
+                      {{ sec.sortOrder }}
+                    </span>
+                    <span
+                      v-if="sec.isFirst"
+                      class="shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-600 dark:bg-green-900/40 dark:text-green-300"
+                    >
+                      首位组
+                    </span>
+                  </template>
+                </div>
+                <div class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center justify-center gap-1 max-w-[45%]">
+                  <span class="truncate text-xs font-medium text-gray-700 dark:text-gray-200">
+                    {{ sec.name }}
+                    <span class="ml-1 text-gray-400 dark:text-gray-500">{{ sec.items.length }}</span>
+                  </span>
+                </div>
+                <div v-if="sec.isGroup" class="flex items-center gap-1">
+                  <button
+                    type="button"
+                    title="重命名"
+                    class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+                    @click="openRenameGroup(data.groups.find((g) => g.id === Number(sec.key.slice(1))!)!)"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.381-8.379-2.83-2.828z" /></svg>
+                  </button>
+                  <button
+                    type="button"
+                    title="删除"
+                    class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700"
+                    @click="openDeleteGroup(data.groups.find((g) => g.id === Number(sec.key.slice(1))!)!)"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                  </button>
+                </div>
+              </header>
+              <div class="flex flex-wrap gap-1.5 p-3">
+                <div
+                  v-for="item in sec.items"
+                  :key="item.id"
+                  class="group flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                >
+                  <span>{{ item.name }}</span>
+                  <span class="text-[10px] text-gray-400">{{ item.count }}</span>
+                  <span class="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button
+                      type="button"
+                      class="rounded p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      title="重命名"
+                      @click="openRenameTag(item)"
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.381-8.379-2.83-2.828z" /></svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded p-0.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      title="删除"
+                      @click="openDeleteTag(item)"
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                    </button>
+                  </span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- 内嵌输入/确认对话框 -->
+      <div
+        v-if="dlg.visible"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
+        @click.self="closeDlg"
+      >
+        <div class="w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+          <h3 class="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ dlg.title }}</h3>
+          <template v-if="dlg.mode === 'input'">
+            <input
+              v-model="dlg.value"
+              type="text"
+              :placeholder="dlg.placeholder"
+              class="mb-3 w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              @keyup.enter="submitInput"
+            />
+            <select v-if="dlg.groupEnabled" v-model="dlg.groupId" class="mb-3 w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+              <option value="">未分组</option>
+              <option v-for="g in data.groups" :key="g.id" :value="String(g.id)">{{ g.name }}</option>
+            </select>
+            <input
+              v-if="dlg.showSort"
+              v-model="dlg.sortOrder"
+              type="number"
+              step="1"
+              placeholder="留空则追加到末尾"
+              class="mb-3 w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              @keyup.enter="submitInput"
+            />
+          </template>
+          <p v-else class="mb-3 text-sm text-gray-600 dark:text-gray-300">{{ dlg.message }}</p>
+          <div class="flex justify-end gap-2">
+            <button
+              type="button"
+              class="rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              @click="closeDlg"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+              @click="submitInput"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </div>
+    <!-- 右键菜单：固定到首位 -->
+      <div
+        v-if="ctxMenu.visible"
+        class="fixed inset-0 z-[80]"
+        @click="closeCtxMenu"
+        @contextmenu.prevent="closeCtxMenu"
+      ></div>
+      <div
+        v-if="ctxMenu.visible"
+        class="fixed z-[81] min-w-32 overflow-hidden rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-800"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+      >
+        <button
+          type="button"
+          class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+          @click="pinToTop"
+        >
+          固定到首位
+        </button>
+      </div>
+    </div>
+  </Teleport>
+</template>
