@@ -6,6 +6,7 @@ import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImageTagManagerModal from "@/features/image/components/ImageTagManagerModal.vue";
+import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
@@ -456,6 +457,25 @@ function fmtSize(bytes: number) {
 // 将 SQLite 的 UTC 时间串转为本地时间
 const fmtLocal = formatLocalTime;
 
+// row4 显示内容：跟随当前排序依据动态变化
+function rowInfo(img: Image): { label: string; value: string } {
+  switch (sortBy.value) {
+    case "fileSize":
+      return { label: "大小", value: fmtSize(img.file_size) };
+    case "fileName":
+      return { label: "文件名", value: img.file_name };
+    case "width":
+      return { label: "宽", value: img.width ? `${img.width}px` : "—" };
+    case "height":
+      return { label: "高", value: img.height ? `${img.height}px` : "—" };
+    case "updatedAt":
+      return { label: "更新时间", value: fmtLocal(img.updated_at) };
+    case "createdAt":
+    default:
+      return { label: "导入时间", value: fmtLocal(img.created_at) };
+  }
+}
+
 // ---- 图像详情（独立组件 ImageDetailModal.vue）----
 const detailOpen = ref(false);
 const detailIndex = ref(0);
@@ -506,6 +526,48 @@ function batchInvert() {
 function exitBatch() {
   selectedIds.value = new Set();
   batchOpen.value = false;
+}
+
+// ---- 卡片按钮动作 ---- //
+// 复制提示词：当前图片未建立提示词关联（row2 留空），复制占位并提示，待接入关联后改为复制实际提示词
+async function copyPrompt(img: Image) {
+  showToast(`「${img.stored_name}」暂未关联提示词`);
+}
+
+// 切换收藏
+async function toggleFavorite(img: Image) {
+  try {
+    const updated = await invoke<Image>("update_image_detail", {
+      id: img.id,
+      isFavorite: !img.is_favorite,
+    });
+    const idx = images.value.findIndex((i) => i.id === img.id);
+    if (idx >= 0) images.value.splice(idx, 1, updated);
+  } catch (e) {
+    showToast(`操作失败：${e}`);
+  }
+}
+
+// 单张删除（移入回收站，需确认）
+const singleDeleteOpen = ref(false);
+const singleDeleteTarget = ref<Image | null>(null);
+function requestDelete(img: Image) {
+  singleDeleteTarget.value = img;
+  singleDeleteOpen.value = true;
+}
+async function doSingleDelete() {
+  const img = singleDeleteTarget.value;
+  singleDeleteOpen.value = false;
+  singleDeleteTarget.value = null;
+  if (!img) return;
+  try {
+    await invoke("delete_image", { id: img.id });
+    images.value = images.value.filter((i) => i.id !== img.id);
+    delete thumbs.value[img.id];
+    showToast(`已删除「${img.stored_name}」到回收站`);
+  } catch (e) {
+    showToast(`删除失败：${e}`);
+  }
 }
 
 const deleteConfirmOpen = ref(false);
@@ -815,7 +877,7 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       <li
         v-for="img in sortedImages"
         :key="img.id"
-        class="relative cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
+        class="group relative cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
         :class="[
           selectedIds.has(img.id)
             ? 'border-indigo-500 ring-2 ring-indigo-400'
@@ -827,17 +889,12 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
         @click="openDetail(img)"
         @contextmenu.prevent="openCtxMenu($event, img)"
       >
-        <input
-          type="checkbox"
-          class="absolute left-1.5 top-1.5 z-10 h-4 w-4 cursor-pointer accent-indigo-500"
-          :checked="selectedIds.has(img.id)"
-          @click.stop="toggleSelect(img.id)"
-        />
+        <!-- 背景图 -->
         <img
           v-if="thumbs[img.id]"
           :src="thumbs[img.id]"
           alt=""
-          class="h-full w-full object-cover"
+          class="absolute inset-0 h-full w-full object-cover"
         />
         <svg
           v-else
@@ -854,25 +911,104 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
             d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm8.5 3.5 a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-6 9l4-5 3 3 3-4 4 6"
           />
         </svg>
-        <svg
-          v-if="img.is_favorite"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          class="absolute right-1.5 top-1.5 h-4 w-4 text-amber-400 drop-shadow"
-          aria-hidden="true"
-        >
-          <path
-            d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
+
+        <!-- 4 行覆盖层 -->
+        <div class="absolute inset-0 flex flex-col">
+          <!-- row1 按钮行：4 元素水平均分，左右顶格，悬停显示 -->
+          <div
+            class="grid grid-cols-4 items-center py-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          >
+            <!-- 复选框 -->
+            <div class="flex items-center justify-center">
+              <input
+                type="checkbox"
+                class="h-4 w-4 cursor-pointer accent-indigo-500"
+                :checked="selectedIds.has(img.id)"
+                @click.stop="toggleSelect(img.id)"
+              />
+            </div>
+            <!-- 收藏 -->
+            <div class="flex items-center justify-center">
+              <button
+                type="button"
+                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                :title="img.is_favorite ? '取消收藏' : '收藏'"
+                @click.stop="toggleFavorite(img)"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  :fill="img.is_favorite ? 'currentColor' : 'none'"
+                  :stroke="img.is_favorite ? 'none' : 'currentColor'"
+                  stroke-width="1.5"
+                  class="h-4 w-4 text-amber-400"
+                  aria-hidden="true"
+                >
+                  <path d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z" />
+                </svg>
+              </button>
+            </div>
+            <!-- 复制提示词 -->
+            <div class="flex items-center justify-center">
+              <button
+                type="button"
+                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                title="复制提示词"
+                @click.stop="copyPrompt(img)"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              </button>
+            </div>
+            <!-- 删除 -->
+            <div class="flex items-center justify-center">
+              <button
+                type="button"
+                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                title="删除"
+                @click.stop="requestDelete(img)"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- row2 提示词（当前留空，占满中部） -->
+          <div class="flex-1"></div>
+
+          <!-- row3 标签（组件内截断，剩余显示 +n） -->
+          <CardTagRow
+            v-if="(tagNames[img.id] || []).length"
+            :tags="tagNames[img.id] || []"
+            :card-size="cardSize"
           />
-        </svg>
-        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pt-4 pb-1">
-          <p class="truncate text-xs text-white" :title="img.stored_name">
-            {{ img.stored_name }}
-          </p>
-          <p class="text-xs text-gray-200">
-            {{ img.width && img.height ? `${img.width} × ${img.height}` : "—" }}
-            · {{ fmtSize(img.file_size) }}
-          </p>
+
+          <!-- row4 随排序依据动态显示对应字段值 -->
+          <div class="bg-black/70 px-1.5 py-0.5 text-center">
+            <p
+              class="truncate text-[11px] text-white"
+              :title="`${rowInfo(img).label}：${rowInfo(img).value}`"
+            >
+              {{ rowInfo(img).value }}
+            </p>
+          </div>
         </div>
       </li>
     </ul>
@@ -900,6 +1036,17 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       danger
       @confirm="doBatchDelete"
       @cancel="deleteConfirmOpen = false"
+    />
+
+    <!-- 单张删除确认弹窗 -->
+    <ConfirmDialog
+      :open="singleDeleteOpen"
+      title="确认删除"
+      :message="`确定将图像「${singleDeleteTarget?.stored_name ?? ''}」移入回收站？`"
+      confirm-text="删除"
+      danger
+      @confirm="doSingleDelete"
+      @cancel="singleDeleteOpen = false; singleDeleteTarget = null"
     />
 
     <!-- 右键菜单 -->
