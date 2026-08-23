@@ -125,9 +125,27 @@ const importing = ref(false);
 const error = ref("");
 
 // 标签筛选区
-const allTags = ref<{ id: number; name: string }[]>([]);
+const allTags = ref<{ id: number; name: string; group_id: number | null }[]>([]);
 const tagNames = ref<Record<string, string[]>>({});
 const selectedTags = ref<string[]>([]);
+interface TagGroupData {
+  id: number;
+  name: string;
+  sort_order: number;
+}
+const tagGroups = ref<TagGroupData[]>([]);
+interface TagChip {
+  id: number;
+  name: string;
+  group_id: number | null;
+  count: number;
+}
+interface TagSection {
+  key: string;
+  name: string;
+  isGroup: boolean;
+  tags: TagChip[];
+}
 
 function toggleTag(tag: string, e: MouseEvent) {
   const isCtrl = e.ctrlKey || e.metaKey;
@@ -171,6 +189,42 @@ const TAG_SORT_DESC_KEY = "image.tagSortDesc";
 const tagSortBy = ref(localStorage.getItem(TAG_SORT_KEY) || "name");
 const tagSortDesc = ref(localStorage.getItem(TAG_SORT_DESC_KEY) === "1");
 
+// 筛选区按标签组分段：组按 sort_order 排序，首位组显示全部，其它组只显示计数>0；未分组置末尾且只显示计数>0
+const tagSections = computed<TagSection[]>(() => {
+  const sortedGroups = [...tagGroups.value].sort((a, b) => a.sort_order - b.sort_order);
+  const chips: TagChip[] = allTags.value.map((t) => ({
+    ...t,
+    count: tagCounts.value[t.name] ?? 0,
+  }));
+  const byGroup = new Map<number | "none", TagChip[]>();
+  for (const c of chips) {
+    const k = c.group_id ?? "none";
+    if (!byGroup.has(k)) byGroup.set(k, []);
+    byGroup.get(k)!.push(c);
+  }
+  const cmpChip = (a: TagChip, b: TagChip): number => {
+    let r =
+      tagSortBy.value === "count"
+        ? a.count - b.count
+        : a.name.localeCompare(b.name, undefined, { numeric: true });
+    return tagSortDesc.value ? -r : r;
+  };
+  const out: TagSection[] = [];
+  sortedGroups.forEach((g, i) => {
+    const raw = byGroup.get(g.id) ?? [];
+    const items = i === 0 ? raw : raw.filter((t) => t.count > 0);
+    if (items.length === 0) return;
+    items.sort(cmpChip);
+    out.push({ key: `g${g.id}`, name: g.name, isGroup: true, tags: items });
+  });
+  const ungrouped = (byGroup.get("none") ?? []).filter((t) => t.count > 0);
+  if (ungrouped.length > 0) {
+    ungrouped.sort(cmpChip);
+    out.push({ key: "none", name: "未分组", isGroup: false, tags: ungrouped });
+  }
+  return out;
+});
+
 function setTagSortBy(v: string) {
   tagSortBy.value = v;
   localStorage.setItem(TAG_SORT_KEY, v);
@@ -183,28 +237,19 @@ function toggleTagSortDesc() {
   localStorage.setItem(TAG_SORT_DESC_KEY, tagSortDesc.value ? "1" : "0");
 }
 
-// 排序后的标签列表
-const sortedTags = computed(() => {
-  const arr = [...allTags.value];
-  let cmp: (a: { id: number; name: string }, b: { id: number; name: string }) => number;
-  if (tagSortBy.value === "count") {
-    cmp = (a, b) => (tagCounts.value[a.name] ?? 0) - (tagCounts.value[b.name] ?? 0);
-  } else {
-    cmp = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
-  }
-  arr.sort(cmp);
-  return tagSortDesc.value ? arr.reverse() : arr;
-});
 async function loadTagFilter() {
   try {
-    allTags.value = await invoke<{ id: number; name: string }[]>(
-      "list_all_image_tags"
-    );
-    tagNames.value = await invoke<Record<string, string[]>>(
-      "get_image_tags_map"
-    );
+    const [tags, mgr, map] = await Promise.all([
+      invoke<{ id: number; name: string; group_id: number | null }[]>("list_all_image_tags"),
+      invoke<{ groups: TagGroupData[] }>("list_image_tag_groups"),
+      invoke<Record<string, string[]>>("get_image_tags_map"),
+    ]);
+    allTags.value = tags;
+    tagGroups.value = mgr.groups ?? [];
+    tagNames.value = map;
   } catch {
     allTags.value = [];
+    tagGroups.value = [];
     tagNames.value = {};
   }
 }
@@ -417,71 +462,81 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       </label>      
     </div>
 
-    <!-- 标签筛选区 -->
+    <!-- 标签筛选区（按标签组分段） -->
     <div
-      class="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40"
+      class="mb-3 flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40"
     >
-      <span class="text-xs font-medium text-gray-500 dark:text-gray-400">标签</span>
-      <button
-        v-for="t in sortedTags"
-        :key="t.id"
-        type="button"
-        class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
-        :class="
-          selectedTags.includes(t.name)
-            ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
-            : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-        "
-        @click="(e) => toggleTag(t.name, e)"
-      >
-        {{ t.name }}
-        <span
-          class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
-          :class="
-            selectedTags.includes(t.name)
-              ? 'bg-white text-indigo-500'
-              : 'bg-indigo-500 text-white'
-          "
-        >
-          {{ tagCounts[t.name] ?? 0 }}
+      <!-- 工具行 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">标签</span>
+        <span v-if="selectedTags.length > 0" class="ml-1 text-xs text-gray-500 dark:text-gray-400">
+          已选 {{ selectedTags.length }}
         </span>
-      </button>
-      <span v-if="selectedTags.length > 0" class="ml-1 text-xs text-gray-500 dark:text-gray-400">
-        已选 {{ selectedTags.length }}
-      </span>
-      <button
-        v-if="selectedTags.length > 0"
-        type="button"
-        class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-        @click="clearTags"
-      >
-        清除
-      </button>
-      <select
-        v-model="tagSortBy"
-        class="ml-auto rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
-        @change="onTagSortChange"
-      >
-        <option v-for="o in TAG_SORT_OPTIONS" :key="o.value" :value="o.value">
-          {{ o.label }}
-        </option>
-      </select>
-      <button
-        type="button"
-        class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-        :title="tagSortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
-        @click="toggleTagSortDesc"
-      >
-        {{ tagSortDesc ? "↓" : "↑" }}
-      </button>
-      <button
-        type="button"
-        class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-        title="管理标签"
-        @click="openTagManager"
-      >
-        管理
-      </button>
+        <button
+          v-if="selectedTags.length > 0"
+          type="button"
+          class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          @click="clearTags"
+        >
+          清除
+        </button>
+        <select
+          v-model="tagSortBy"
+          class="ml-auto rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+          @change="onTagSortChange"
+        >
+          <option v-for="o in TAG_SORT_OPTIONS" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          :title="tagSortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
+          @click="toggleTagSortDesc"
+        >
+          {{ tagSortDesc ? "↓" : "↑" }}
+        </button>
+        <button
+          type="button"
+          class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          title="管理标签"
+          @click="openTagManager"
+        >
+          管理
+        </button>
+      </div>
+
+      <!-- 分组主体 -->
+      <template v-for="sec in tagSections" :key="sec.key">
+        <div class="self-start text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ sec.name }}</div>
+        <div class="flex flex-wrap items-center gap-2 pl-2">
+          <button
+            v-for="t in sec.tags"
+            :key="t.id"
+            type="button"
+            class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
+            :class="
+              selectedTags.includes(t.name)
+                ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
+                : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+            "
+            @click="(e) => toggleTag(t.name, e)"
+          >
+            {{ t.name }}
+            <span
+              class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
+              :class="
+                selectedTags.includes(t.name)
+                  ? 'bg-white text-indigo-500'
+                  : 'bg-indigo-500 text-white'
+              "
+            >
+              {{ t.count }}
+            </span>
+          </button>
+        </div>
+      </template>
     </div>
 
     <p v-if="error" class="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">

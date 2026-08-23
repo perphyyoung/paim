@@ -475,6 +475,9 @@ pub fn update_image_detail(
 pub struct ImageTag {
     pub id: i64,
     pub name: String,
+    /// 所属标签组，未分组为 None；其它命令不填时默认为 None
+    #[serde(default)]
+    pub group_id: Option<i64>,
 }
 
 /// 返回图像的标签列表。
@@ -495,6 +498,7 @@ pub fn get_image_tags(db: State<crate::db::BkDb>, id: String) -> Result<Vec<Imag
             Ok(ImageTag {
                 id: r.get(0)?,
                 name: r.get(1)?,
+                group_id: None,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -546,7 +550,7 @@ pub fn add_image_tags(
             "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
             rusqlite::params![id, tag_id],
         );
-        result.push(ImageTag { id: tag_id, name: name.to_string() });
+        result.push(ImageTag { id: tag_id, name: name.to_string(), group_id: None });
     }
 
     tx.execute(
@@ -579,13 +583,14 @@ pub fn remove_image_tag(
 pub fn list_all_image_tags(db: State<crate::db::BkDb>) -> Result<Vec<ImageTag>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, name FROM image_tags ORDER BY name")
+        .prepare("SELECT id, name, group_id FROM image_tags ORDER BY name")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |r| {
             Ok(ImageTag {
                 id: r.get(0)?,
                 name: r.get(1)?,
+                group_id: r.get(2)?,
             })
         })
         .map_err(|e| e.to_string())?;
