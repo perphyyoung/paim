@@ -467,7 +467,7 @@ function refresh() {
               :data-drop-group-id="sec.isGroup ? String(Number(sec.key.slice(1))) : ''"
               @contextmenu="onGroupContextMenu($event, sec)"
             >
-              <header class="relative flex items-center justify-between rounded-t-lg border-b border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+              <header class="relative flex h-8 items-center justify-between rounded-t-lg border-b border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-gray-800">
                 <div class="flex items-center gap-1.5">
                   <template v-if="sec.isGroup">
                     <span
