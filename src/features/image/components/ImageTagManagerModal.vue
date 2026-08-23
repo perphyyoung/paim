@@ -261,7 +261,7 @@ async function submitNewGroup() {
   const name = dlg.value.value.trim();
   if (!name) return;
   const sortOrder = parseSortOrder(dlg.value.sortOrder);
-  await invoke("create_image_tag_group", { name, sort_order: sortOrder });
+  await invoke("create_image_tag_group", { name, sortOrder });
   showToast(`已新建组「${name}」`);
   refresh();
 }
@@ -271,7 +271,7 @@ function openRenameGroup(g: TagGroup) {
     const name = dlg.value.value.trim();
     if (!name) return;
     const sortOrder = parseSortOrder(dlg.value.sortOrder);
-    await invoke("update_image_tag_group", { id: g.id, name, sort_order: sortOrder });
+    await invoke("update_image_tag_group", { id: g.id, name, sortOrder });
     showToast("组已更新");
     refresh();
     closeDlg();

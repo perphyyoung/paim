@@ -1,5 +1,6 @@
 pub mod db;
 pub mod features;
+pub mod logging;
 
 use tauri::Manager;
 
@@ -61,6 +62,7 @@ pub fn run() {
       features::image_tag::delete_image_tag,
       features::image_tag::move_tag_to_group,
       features::image_tag::pin_image_tag_group_to_top,
+      logging::log_msg,
       db::get_data_dir,
       db::open_data_dir,
     ])
