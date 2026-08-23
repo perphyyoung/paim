@@ -457,7 +457,7 @@ function refresh() {
             暂无图像标签
           </div>
 
-          <div v-else class="grid grid-cols-2 items-start gap-3">
+          <div v-else class="grid items-start gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
             <section
               v-for="sec in sections"
               :key="sec.key"
