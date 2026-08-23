@@ -439,32 +439,36 @@ function refresh() {
                   </button>
                 </div>
               </header>
-              <div class="flex flex-wrap gap-1.5 p-3">
+              <div class="flex flex-wrap gap-2.5 p-3">
                 <div
                   v-for="item in sec.items"
                   :key="item.id"
-                  class="group flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                  class="group relative flex items-center rounded-full bg-blue-50 px-3 py-0.5 text-xs text-blue-600 dark:bg-blue-950/50 dark:text-blue-400"
                 >
-                  <span>{{ item.name }}</span>
-                  <span class="text-[10px] text-gray-400">{{ item.count }}</span>
-                  <span class="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button
-                      type="button"
-                      class="rounded p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      title="更新"
-                      @click="openRenameTag(item)"
-                    >
-                      <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.381-8.379-2.83-2.828z" /></svg>
-                    </button>
-                    <button
-                      type="button"
-                      class="rounded p-0.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      title="删除"
-                      @click="openDeleteTag(item)"
-                    >
-                      <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
-                    </button>
-                  </span>
+                  <!-- 计数徽章：左上角悬浮 -->
+                  <span
+                    class="absolute -left-2 -top-2 z-[2] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white shadow dark:bg-blue-500"
+                  >{{ item.count }}</span>
+                  <!-- 标签名：hover 时变淡让位给角标 -->
+                  <span class="transition-opacity duration-150 group-hover:opacity-30">{{ item.name }}</span>
+                  <!-- 编辑：顶部中央悬浮，hover 显示 -->
+                  <button
+                    type="button"
+                    title="更新"
+                    class="absolute -top-[13px] left-1/2 z-[2] flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border border-gray-200 bg-white text-blue-600 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 dark:border-gray-600 dark:bg-gray-800 dark:text-blue-400"
+                    @click="openRenameTag(item)"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.381-8.379-2.83-2.828z" /></svg>
+                  </button>
+                  <!-- 删除：右上角悬浮，hover 显示 -->
+                  <button
+                    type="button"
+                    title="删除"
+                    class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border border-gray-200 bg-white text-red-500 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 dark:border-gray-600 dark:bg-gray-800"
+                    @click="openDeleteTag(item)"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                  </button>
                 </div>
               </div>
             </section>
