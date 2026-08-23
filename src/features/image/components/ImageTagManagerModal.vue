@@ -217,7 +217,7 @@ async function submitNewTag() {
   refresh();
 }
 function openRenameTag(item: TagItem) {
-  openInput("重命名标签", {
+  openInput("更新标签", {
     initial: item.name,
     groupEnabled: true,
     initialGroupId: item.group_id,
@@ -266,7 +266,7 @@ async function submitNewGroup() {
   refresh();
 }
 function openRenameGroup(g: TagGroup) {
-  openInput("重命名组", { initial: g.name, showSort: true, initialSort: g.sort_order });
+  openInput("更新标签组", { initial: g.name, showSort: true, initialSort: g.sort_order });
   dlg.value.onOk = async () => {
     const name = dlg.value.value.trim();
     if (!name) return;
@@ -424,7 +424,7 @@ function refresh() {
                 <div v-if="sec.isGroup" class="flex items-center gap-1">
                   <button
                     type="button"
-                    title="重命名"
+                    title="更新"
                     class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
                     @click="openRenameGroup(data.groups.find((g) => g.id === Number(sec.key.slice(1))!)!)"
                   >
@@ -452,7 +452,7 @@ function refresh() {
                     <button
                       type="button"
                       class="rounded p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      title="重命名"
+                      title="更新"
                       @click="openRenameTag(item)"
                     >
                       <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.381-8.379-2.83-2.828z" /></svg>
@@ -480,7 +480,7 @@ function refresh() {
         @click.self="closeDlg"
       >
         <div class="w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-          <h3 class="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">{{ dlg.title }}</h3>
+          <h3 class="mb-3 text-center text-sm font-semibold text-gray-800 dark:text-gray-100">{{ dlg.title }}</h3>
           <template v-if="dlg.mode === 'input'">
             <input
               v-model="dlg.value"
@@ -504,7 +504,7 @@ function refresh() {
             />
           </template>
           <p v-else class="mb-3 text-sm text-gray-600 dark:text-gray-300">{{ dlg.message }}</p>
-          <div class="flex justify-end gap-2">
+          <div class="grid grid-cols-2 gap-2">
             <button
               type="button"
               class="rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
