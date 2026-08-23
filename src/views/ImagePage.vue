@@ -6,6 +6,7 @@ import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImageTagManagerModal from "@/features/image/components/ImageTagManagerModal.vue";
+import BatchActionBar from "@/components/BatchActionBar.vue";
 
 const { showToast } = useToast();
 
@@ -473,6 +474,89 @@ function onDetailUpdate(updated: Image) {
   if (idx >= 0) images.value.splice(idx, 1, updated);
 }
 
+// ---- 批量选择（卡片 checkbox + 底部悬浮工具栏）----
+const batchOpen = ref(false);
+const selectedIds = ref<Set<string>>(new Set());
+
+function toggleSelect(id: string) {
+  const s = new Set(selectedIds.value);
+  if (s.has(id)) s.delete(id);
+  else s.add(id);
+  selectedIds.value = s;
+  batchOpen.value = s.size > 0;
+}
+
+function batchSelectAll() {
+  selectedIds.value = new Set(sortedImages.value.map((i) => i.id));
+  batchOpen.value = true;
+}
+
+function batchInvert() {
+  const all = new Set(sortedImages.value.map((i) => i.id));
+  const s = new Set(selectedIds.value);
+  for (const id of all) {
+    if (s.has(id)) s.delete(id);
+    else s.add(id);
+  }
+  selectedIds.value = s;
+  batchOpen.value = s.size > 0;
+}
+
+function exitBatch() {
+  selectedIds.value = new Set();
+  batchOpen.value = false;
+}
+
+async function batchDelete() {
+  const ids = Array.from(selectedIds.value);
+  if (ids.length === 0) return;
+  const ok = window.confirm(`确定将选中的 ${ids.length} 张图像移入回收站？`);
+  if (!ok) return;
+  try {
+    for (const id of ids) {
+      await invoke("delete_image", { id });
+    }
+    showToast(`已将 ${ids.length} 张图像移入回收站`);
+    exitBatch();
+    await loadImages();
+  } catch (e) {
+    showToast(`批量删除失败：${e}`);
+  }
+}
+
+async function batchFavorite() {
+  const ids = Array.from(selectedIds.value);
+  if (ids.length === 0) return;
+  try {
+    for (const id of ids) {
+      const img = await invoke<Image>("update_image_detail", {
+        id,
+        isFavorite: true,
+      });
+      const idx = images.value.findIndex((i) => i.id === img.id);
+      if (idx >= 0) images.value.splice(idx, 1, img);
+    }
+    showToast(`已收藏 ${ids.length} 张图像`);
+  } catch (e) {
+    showToast(`批量收藏失败：${e}`);
+  }
+}
+
+async function batchAddTag(tags: string[]) {
+  const ids = Array.from(selectedIds.value);
+  if (ids.length === 0) return;
+  try {
+    for (const id of ids) {
+      await invoke("add_image_tags", { id, names: tags });
+    }
+    showToast(`已为 ${ids.length} 张图像添加标签`);
+    exitBatch();
+    await loadTagFilter();
+  } catch (e) {
+    showToast(`批量添加标签失败：${e}`);
+  }
+}
+
 onMounted(() => {
   window.addEventListener("click", closeCtxMenu);
   loadImages();
@@ -725,15 +809,23 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
         v-for="img in sortedImages"
         :key="img.id"
         class="relative cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
-        :class="
-          img.is_favorite
-            ? 'border-amber-500'
-            : 'border-gray-200 dark:border-gray-700'
-        "
+        :class="[
+          selectedIds.has(img.id)
+            ? 'border-indigo-500 ring-2 ring-indigo-400'
+            : img.is_favorite
+              ? 'border-amber-500'
+              : 'border-gray-200 dark:border-gray-700',
+        ]"
         :style="{ width: cardSize + 'px', height: cardSize + 'px' }"
         @click="openDetail(img)"
         @contextmenu.prevent="openCtxMenu($event, img)"
       >
+        <input
+          type="checkbox"
+          class="absolute left-1.5 top-1.5 z-10 h-4 w-4 cursor-pointer accent-indigo-500"
+          :checked="selectedIds.has(img.id)"
+          @click.stop="toggleSelect(img.id)"
+        />
         <img
           v-if="thumbs[img.id]"
           :src="thumbs[img.id]"
@@ -778,6 +870,19 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
       </li>
     </ul>
     </div>
+
+    <!-- 底部批量操作工具栏（独立组件，供提示词端复用） -->
+    <BatchActionBar
+      :open="batchOpen"
+      :count="selectedIds.size"
+      label="图像"
+      @select-all="batchSelectAll"
+      @invert="batchInvert"
+      @add-tag="batchAddTag"
+      @favorite="batchFavorite"
+      @delete="batchDelete"
+      @cancel="exitBatch"
+    />
 
     <!-- 右键菜单 -->
     <Teleport to="body">
