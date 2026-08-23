@@ -113,6 +113,73 @@ async function pinToTop() {
   }
 }
 
+// —— 用 Pointer 事件模拟拖拽标签移动到组（WebView2 原生 HTML5 DnD 不触发 drop） ——
+const dragOverKey = ref("");
+const drag = ref<{ id: number; name: string; groupId: number | null } | null>(null);
+const dragX = ref(0);
+const dragY = ref(0);
+
+function onTagPointerDown(e: PointerEvent, item: TagItem) {
+  const t = e.target as HTMLElement;
+  if (e.button !== 0 || t.closest("button")) return; // 按钮点击不动
+  e.preventDefault();
+  drag.value = { id: item.id, name: item.name, groupId: item.group_id };
+  dragX.value = e.clientX;
+  dragY.value = e.clientY;
+  dragOverKey.value = "";
+  window.addEventListener("pointermove", onDragPointerMove);
+  window.addEventListener("pointerup", onDragPointerUp);
+  window.addEventListener("pointercancel", cancelDrag);
+}
+
+function onDragPointerMove(ev: PointerEvent) {
+  if (!drag.value) return;
+  dragX.value = ev.clientX;
+  dragY.value = ev.clientY;
+  const el = document.elementFromPoint(ev.clientX, ev.clientY);
+  const sec = el?.closest<HTMLElement>("[data-drop-key]");
+  dragOverKey.value = sec?.dataset.dropKey ?? "";
+}
+
+function onDragPointerUp(ev: PointerEvent) {
+  const cur = drag.value;
+  const key = dragOverKey.value;
+  cleanupDrag();
+  if (!cur || !key) return;
+  const dropEl = document.querySelector<HTMLElement>(`[data-drop-key="${key}"]`);
+  const raw = dropEl?.getAttribute("data-drop-group-id") ?? "";
+  const groupId = raw === "" ? null : Number(raw);
+  // 拖放前后为同一组则跳过更新
+  if (groupId === cur.groupId) {
+    return;
+  }
+  void doMoveTag(cur.id, Number.isNaN(groupId as number) ? null : groupId);
+}
+
+function cleanupDrag() {
+  window.removeEventListener("pointermove", onDragPointerMove);
+  window.removeEventListener("pointerup", onDragPointerUp);
+  window.removeEventListener("pointercancel", cancelDrag);
+  drag.value = null;
+  dragOverKey.value = "";
+}
+
+function cancelDrag() {
+  cleanupDrag();
+}
+
+async function doMoveTag(id: number, groupId: number | null) {
+  try {
+    await invoke("move_tag_to_group", { id, groupId });
+    showToast("标签已移动");
+    await load();
+    emit("saved");
+  } catch (e) {
+    error.value = String(e);
+    await load();
+  }
+}
+
 // 嵌入输入/确认对话框（无原生 prompt，风格统一）
 const dlg = ref<{
   visible: boolean;
@@ -394,7 +461,10 @@ function refresh() {
             <section
               v-for="sec in sections"
               :key="sec.key"
-              class="rounded-lg border border-gray-200 bg-gray-50 shadow-sm dark:border-gray-700 dark:bg-gray-800/40"
+              class="rounded-lg border border-gray-200 bg-gray-50 shadow-sm transition-colors dark:border-gray-700 dark:bg-gray-800/40"
+              :class="{ 'border-blue-400 ring-2 ring-blue-300 dark:border-blue-500 dark:ring-blue-500/40': dragOverKey === sec.key }"
+              :data-drop-key="sec.key"
+              :data-drop-group-id="sec.isGroup ? String(Number(sec.key.slice(1))) : ''"
               @contextmenu="onGroupContextMenu($event, sec)"
             >
               <header class="relative flex items-center justify-between rounded-t-lg border-b border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
@@ -443,7 +513,8 @@ function refresh() {
                 <div
                   v-for="item in sec.items"
                   :key="item.id"
-                  class="group relative flex items-center rounded-full bg-blue-50 px-3 py-0.5 text-xs text-blue-600 dark:bg-blue-950/50 dark:text-blue-400"
+                  class="group relative flex min-h-7 cursor-grab select-none items-center rounded-full bg-blue-50 px-3.5 py-1 text-xs text-blue-600 active:cursor-grabbing dark:bg-blue-950/50 dark:text-blue-400"
+                  @pointerdown="onTagPointerDown($event, item)"
                 >
                   <!-- 计数徽章：左上角悬浮 -->
                   <span
@@ -525,6 +596,14 @@ function refresh() {
         </div>
       </div>
     <!-- 右键菜单：固定到首位 -->
+    <!-- 拖拽跟随浮层 -->
+      <div
+        v-if="drag"
+        class="pointer-events-none fixed z-[90] -translate-x-1/2 -translate-y-full rounded-full bg-blue-600 px-3 py-1 text-xs text-white opacity-90 shadow-lg"
+        :style="{ left: dragX + 'px', top: dragY + 'px' }"
+      >
+        {{ drag.name }}
+      </div>
       <div
         v-if="ctxMenu.visible"
         class="fixed inset-0 z-[80]"
