@@ -87,12 +87,16 @@ const sortedImages = computed(() => {
   let arr = kw
     ? images.value.filter((i) => i.stored_name.toLowerCase().includes(kw))
     : [...images.value];
-  // 标签筛选（AND）：图像须包含全部选中标签
+  // 标签筛选（AND）：特殊标签走专用判定，其余要求图像标签包含
   if (selectedTags.value.length > 0) {
-    arr = arr.filter((img) => {
-      const tags = tagNames.value[img.id];
-      return !!tags && selectedTags.value.every((t) => tags.includes(t));
-    });
+    arr = arr.filter((img) =>
+      selectedTags.value.every((t) => {
+        const s = SPECIAL_TAGS.find((x) => x.name === t);
+        if (s) return s.check(img);
+        const tags = tagNames.value[img.id];
+        return !!tags && tags.includes(t);
+      })
+    );
   }
   if (!arr.length) return arr;
   let cmp: (a: Image, b: Image) => number;
@@ -163,6 +167,33 @@ function toggleTag(tag: string, e: MouseEvent) {
 function clearTags() {
   selectedTags.value = [];
 }
+
+// —— 特殊标签（虚拟筛选，参考 pm）——
+// 未引/多引 依赖 prompt_refs，当前无引用数据，故「未引」=全量、「多引」=0，待接入提示词引用后生效
+function refLen(img: Image): number {
+  const r = (img as { prompt_refs?: unknown[] | null }).prompt_refs;
+  return r ? r.length : 0;
+}
+const SPECIAL_TAGS = [
+  { name: "收藏", check: (img: Image) => !!img.is_favorite },
+  { name: "未引", check: (img: Image) => refLen(img) === 0 },
+  { name: "多引", check: (img: Image) => refLen(img) > 1 },
+  { name: "无标", check: (img: Image) => { const t = tagNames.value[img.id]; return !t || t.length === 0; } },
+  { name: "安全", check: (img: Image) => !!img.is_safe },
+  { name: "敏感", check: (img: Image) => !img.is_safe },
+];
+
+function isSpecialTag(name: string): boolean {
+  return SPECIAL_TAGS.some((s) => s.name === name);
+}
+// 特殊标签命中数（基于全部图像）
+const specialCounts = computed<Record<string, number>>(() => {
+  const m: Record<string, number> = {};
+  for (const s of SPECIAL_TAGS) {
+    m[s.name] = images.value.filter((img) => s.check(img)).length;
+  }
+  return m;
+});
 
 // 标签管理入口
 const tagManagerOpen = ref(false);
@@ -507,36 +538,69 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
         </button>
       </div>
 
-      <!-- 分组主体 -->
-      <template v-for="sec in tagSections" :key="sec.key">
-        <div class="self-start text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ sec.name }}</div>
-        <div class="flex flex-wrap items-center gap-2 pl-2">
+      <!-- 主体：左特殊标签列 + 右分组 -->
+      <div class="flex self-stretch">
+        <!-- 左：特殊标签（上下居中，右侧竖线分隔） -->
+        <div class="flex shrink-0 flex-col items-center justify-center justify-items-center gap-1.5 self-stretch border-r border-gray-200 py-1 pr-3 dark:border-gray-700">
+          <template v-for="s in SPECIAL_TAGS" :key="s.name">
           <button
-            v-for="t in sec.tags"
-            :key="t.id"
+            v-if="(specialCounts[s.name] ?? 0) > 0"
             type="button"
             class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
             :class="
-              selectedTags.includes(t.name)
+              selectedTags.includes(s.name)
                 ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
                 : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
             "
-            @click="(e) => toggleTag(t.name, e)"
+            @click="(e) => toggleTag(s.name, e)"
           >
-            {{ t.name }}
+            {{ s.name }}
             <span
               class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
               :class="
-                selectedTags.includes(t.name)
+                selectedTags.includes(s.name)
                   ? 'bg-white text-indigo-500'
                   : 'bg-indigo-500 text-white'
               "
             >
-              {{ t.count }}
+              {{ specialCounts[s.name] ?? 0 }}
             </span>
           </button>
+          </template>
         </div>
-      </template>
+        <!-- 右：分组主体 -->
+        <div class="flex min-w-0 flex-1 flex-col gap-2 pl-3">
+          <template v-for="sec in tagSections" :key="sec.key">
+            <div class="self-start text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ sec.name }}</div>
+            <div class="flex flex-wrap items-center gap-2 pl-2">
+              <button
+                v-for="t in sec.tags"
+                :key="t.id"
+                type="button"
+                class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
+                :class="
+                  selectedTags.includes(t.name)
+                    ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
+                    : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                "
+                @click="(e) => toggleTag(t.name, e)"
+              >
+                {{ t.name }}
+                <span
+                  class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
+                  :class="
+                    selectedTags.includes(t.name)
+                      ? 'bg-white text-indigo-500'
+                      : 'bg-indigo-500 text-white'
+                  "
+                >
+                  {{ t.count }}
+                </span>
+              </button>
+            </div>
+          </template>
+        </div>
+      </div>
     </div>
 
     <p v-if="error" class="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
