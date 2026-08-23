@@ -28,6 +28,9 @@ pub fn run() {
       // 将数据目录加入 asset 协议 scope，使前端能通过 convertFileSrc 读取本地图片
       app.asset_protocol_scope().allow_directory(db::data_dir(app.handle()), true)?;
 
+      // 启动时清空导入预览目录，避免长期积累（需要时由命令按需重建）
+      let _ = std::fs::remove_dir_all(db::data_dir(app.handle()).join("preview"));
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
