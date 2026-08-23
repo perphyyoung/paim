@@ -168,6 +168,13 @@ function clearTags() {
   selectedTags.value = [];
 }
 
+// 标签筛选区收起/展开（持久化）
+const tagFilterCollapsed = ref(localStorage.getItem("image.tagFilterCollapsed") === "1");
+function toggleTagFilter() {
+  tagFilterCollapsed.value = !tagFilterCollapsed.value;
+  localStorage.setItem("image.tagFilterCollapsed", tagFilterCollapsed.value ? "1" : "0");
+}
+
 // —— 特殊标签（虚拟筛选，参考 pm）——
 // 未引/多引 依赖 prompt_refs，当前无引用数据，故「未引」=全量、「多引」=0，待接入提示词引用后生效
 function refLen(img: Image): number {
@@ -212,6 +219,44 @@ const tagCounts = computed(() => {
     if (tags) for (const t of tags) counts[t] = (counts[t] ?? 0) + 1;
   }
   return counts;
+});
+
+// 筛选区收起时头部显示的标签（分特殊/普通两区，特殊不参与排序）：
+// 特殊区：可见特殊标签；普通区：首位组全部标签 + 已选普通标签，按当前排序规则排序
+const headerTags = computed(() => {
+  const selected = new Set(selectedTags.value);
+  const special: { name: string; count: number; active: boolean }[] = [];
+  for (const s of SPECIAL_TAGS) {
+    const cnt = specialCounts.value[s.name] ?? 0;
+    if (cnt > 0) special.push({ name: s.name, count: cnt, active: selected.has(s.name) });
+  }
+  const normal: { name: string; count: number; isTopGroup: boolean; active: boolean }[] = [];
+  // 首位组全部标签（含计数为0）
+  if (tagGroups.value.length > 0) {
+    const top = [...tagGroups.value].sort((a, b) => a.sort_order - b.sort_order)[0];
+    for (const t of allTags.value) {
+      if (t.group_id !== top.id) continue;
+      if (!normal.some((o) => o.name === t.name)) {
+        normal.push({ name: t.name, count: tagCounts.value[t.name] ?? 0, isTopGroup: true, active: selected.has(t.name) });
+      }
+    }
+  }
+  // 已选普通标签（不在特殊、不在首位组）
+  for (const tag of selectedTags.value) {
+    if (SPECIAL_TAGS.some((s) => s.name === tag)) continue;
+    if (!normal.some((o) => o.name === tag)) {
+      normal.push({ name: tag, count: tagCounts.value[tag] ?? 0, isTopGroup: false, active: true });
+    }
+  }
+  // 普通区按当前排序规则（与展开一致）
+  normal.sort((a, b) => {
+    let r =
+      tagSortBy.value === "count"
+        ? a.count - b.count
+        : a.name.localeCompare(b.name, undefined, { numeric: true });
+    return tagSortDesc.value ? -r : r;
+  });
+  return { special, normal };
 });
 
 // 标签排序状态（名称/数量 + 逆序，localStorage 持久化）
@@ -499,6 +544,14 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
     >
       <!-- 工具行 -->
       <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          :title="tagFilterCollapsed ? '展开标签筛选' : '收起标签筛选'"
+          @click="toggleTagFilter"
+        >
+          {{ tagFilterCollapsed ? "▶" : "▼" }}
+        </button>
         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">标签</span>
         <span v-if="selectedTags.length > 0" class="ml-1 text-xs text-gray-500 dark:text-gray-400">
           已选 {{ selectedTags.length }}
@@ -538,8 +591,56 @@ onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
         </button>
       </div>
 
+      <!-- 收起时显示头部标签（左特殊区 + 右普通区，特殊不参与排序） -->
+      <div v-if="tagFilterCollapsed && (headerTags.special.length > 0 || headerTags.normal.length > 0)" class="flex flex-wrap items-start gap-3">
+        <div v-if="headerTags.special.length > 0" class="flex flex-wrap items-center gap-1.5 self-stretch border-r border-gray-200 pr-3 dark:border-gray-700">
+          <button
+            v-for="h in headerTags.special"
+            :key="h.name"
+            type="button"
+            class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
+            :class="
+              h.active
+                ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
+                : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+            "
+            @click="(e) => toggleTag(h.name, e)"
+          >
+            {{ h.name }}
+            <span
+              class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
+              :class="h.active ? 'bg-white text-indigo-500' : 'bg-indigo-500 text-white'"
+            >
+              {{ h.count }}
+            </span>
+          </button>
+        </div>
+        <div v-if="headerTags.normal.length > 0" class="flex min-w-0 flex-1 flex-wrap items-center gap-2 pl-1">
+          <button
+            v-for="h in headerTags.normal"
+            :key="h.name"
+            type="button"
+            class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
+            :class="
+              h.active
+                ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
+                : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
+            "
+            @click="(e) => toggleTag(h.name, e)"
+          >
+            {{ h.name }}
+            <span
+              class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
+              :class="h.active ? 'bg-white text-indigo-500' : 'bg-indigo-500 text-white'"
+            >
+              {{ h.count }}
+            </span>
+          </button>
+        </div>
+      </div>
+
       <!-- 主体：左特殊标签列 + 右分组 -->
-      <div class="flex self-stretch">
+      <div v-if="!tagFilterCollapsed" class="flex self-stretch">
         <!-- 左：特殊标签（上下居中，右侧竖线分隔） -->
         <div class="flex shrink-0 flex-col items-center justify-center justify-items-center gap-1.5 self-stretch border-r border-gray-200 py-1 pr-3 dark:border-gray-700">
           <template v-for="s in SPECIAL_TAGS" :key="s.name">
