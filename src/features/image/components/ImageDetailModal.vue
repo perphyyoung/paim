@@ -46,6 +46,20 @@ const note = ref("");
 const origSrc = ref("");
 const tags = ref<{ id: number; name: string }[]>([]);
 const tagInput = ref("");
+interface LinkedPrompt {
+  id: string;
+  title: string;
+  content: string;
+  content_translate: string;
+  note: string;
+  tags: string[];
+}
+
+const relatedPrompts = ref<LinkedPrompt[]>([]);
+// 详情页左侧每组字段对应一个关联提示词，优先展示第一个
+const firstPrompt = computed<LinkedPrompt | undefined>(() =>
+  props.open ? relatedPrompts.value[0] : undefined
+);
 
 const current = computed<Image | null>(() =>
   props.open ? (props.images[index.value] ?? null) : null
@@ -106,6 +120,20 @@ async function removeTag(tagId: number) {
   tags.value = tags.value.filter((t) => t.id !== tagId);
 }
 
+// 加载当前图像的关联提示词（标题 + 内容）
+async function loadRelatedPrompts() {
+  const img = current.value;
+  if (!img) return;
+  try {
+    relatedPrompts.value = await invoke<LinkedPrompt[]>(
+      "get_image_related_prompts",
+      { id: img.id }
+    );
+  } catch {
+    relatedPrompts.value = [];
+  }
+}
+
 // 打开时跳转到初始图并同步编辑字段
 watch(
   () => [props.open, props.initialIndex] as const,
@@ -116,13 +144,15 @@ watch(
       syncFields();
       loadOrig();
       loadTags();
+      loadRelatedPrompts();
     }
   }
 );
-// 导航切换时加载对应原图与标签
+// 导航切换时加载对应原图与标签、关联提示词
 watch(() => current.value?.id, () => {
   loadOrig();
   loadTags();
+  loadRelatedPrompts();
 });
 
 function syncFields() {
@@ -199,23 +229,40 @@ const fmtSize = (bytes: number) => {
         >
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标题</div>
-            <div class="mt-1 text-sm text-gray-700 dark:text-gray-200">— 暂无关联提示词 —</div>
+            <div class="mt-1 text-sm text-gray-700 dark:text-gray-200">
+              {{ firstPrompt?.title || "— 暂无关联提示词 —" }}
+            </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词内容</div>
-            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">—</div>
+            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+              {{ firstPrompt?.content || "—" }}
+            </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词翻译</div>
-            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">—</div>
+            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+              {{ firstPrompt?.content_translate || "—" }}
+            </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词备注</div>
-            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">—</div>
+            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+              {{ firstPrompt?.note || "—" }}
+            </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标签</div>
-            <div class="mt-1 flex flex-wrap gap-1 text-sm text-gray-700 dark:text-gray-200">—</div>
+            <div v-if="firstPrompt?.tags?.length" class="mt-1 flex flex-wrap gap-1">
+              <span
+                v-for="t in firstPrompt.tags"
+                :key="t"
+                class="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+              >
+                {{ t }}
+              </span>
+            </div>
+            <div v-else class="mt-1 text-sm text-gray-700 dark:text-gray-200">—</div>
           </div>
         </div>
 

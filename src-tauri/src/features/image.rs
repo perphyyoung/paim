@@ -742,3 +742,61 @@ pub fn get_image_prompts_map(
     }
     Ok(map)
 }
+
+#[derive(Debug, Serialize, Clone)]
+pub struct LinkedPrompt {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub content_translate: String,
+    pub note: String,
+    pub tags: Vec<String>,
+}
+
+/// 返回单张图像关联的提示词列表（含标题/内容/翻译/备注/标签），供详情页左侧展示。
+#[tauri::command]
+pub fn get_image_related_prompts(
+    db: State<crate::db::BkDb>,
+    id: String,
+) -> Result<Vec<LinkedPrompt>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT pr.id, pr.title, pr.content, pr.content_translate, pr.note
+             FROM prompt_image_relations pir
+             JOIN prompts pr ON pr.id = pir.prompt_id
+             WHERE pir.image_id = ?1 AND pr.is_deleted = 0
+             ORDER BY pr.created_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![id], |r| {
+            Ok(LinkedPrompt {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                content: r.get(2)?,
+                content_translate: r.get(3)?,
+                note: r.get(4)?,
+                tags: Vec::new(),
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut list: Vec<LinkedPrompt> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+    // 补充分组查询每条提示词的标签
+    for p in list.iter_mut() {
+        let mut t = conn
+            .prepare(
+                "SELECT pt.name
+                 FROM prompt_tag_relations ptr
+                 JOIN prompt_tags pt ON pt.id = ptr.tag_id
+                 WHERE ptr.prompt_id = ?1
+                 ORDER BY pt.name",
+            )
+            .map_err(|e| e.to_string())?;
+        let names = t
+            .query_map(rusqlite::params![p.id], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        p.tags = names.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+    }
+    Ok(list)
+}
