@@ -458,9 +458,9 @@ function refresh() {
           </div>
 
           <div v-else class="grid items-start gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
+            <template v-for="sec in sections" :key="sec.key">
             <section
-              v-for="sec in sections"
-              :key="sec.key"
+              v-if="sec.isGroup || sec.items.length > 0"
               class="rounded-lg border border-gray-200 bg-gray-50 shadow-sm transition-colors dark:border-gray-700 dark:bg-gray-800/40"
               :class="{ 'border-blue-400 ring-2 ring-blue-300 dark:border-blue-500 dark:ring-blue-500/40': dragOverKey === sec.key }"
               :data-drop-key="sec.key"
@@ -487,7 +487,8 @@ function refresh() {
                 <div class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center justify-center gap-1 max-w-[45%]">
                   <span class="truncate text-xs font-medium text-gray-700 dark:text-gray-200">
                     {{ sec.name }}
-                    <span class="ml-1 text-gray-400 dark:text-gray-500">{{ sec.items.length }}</span>
+                    <!-- 未分组计数为 0 时隐藏；其他组正常显示 -->
+                    <span v-if="sec.isGroup || sec.items.length > 0" class="ml-1 text-gray-400 dark:text-gray-500">{{ sec.items.length }}</span>
                   </span>
                 </div>
                 <div v-if="sec.isGroup" class="flex items-center gap-1">
@@ -543,6 +544,7 @@ function refresh() {
                 </div>
               </div>
             </section>
+            </template>
           </div>
         </div>
       </div>
