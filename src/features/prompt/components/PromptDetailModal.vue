@@ -458,11 +458,12 @@ async function onPickerImported() {
               </button>
               <button
                 type="button"
-                class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                :disabled="edit"
-                @click="edit = true"
+                class="rounded border px-2 py-1 text-xs transition-colors"
+                :class="edit ? 'border-transparent bg-blue-600 font-medium text-white hover:bg-blue-500' : 'border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'"
+                :title="edit ? '取消编辑' : '编辑'"
+                @click="edit = !edit"
               >
-                编辑
+                {{ edit ? "取消" : "编辑" }}
               </button>
               <button
                 type="button"
