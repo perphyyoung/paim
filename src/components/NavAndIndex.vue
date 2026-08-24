@@ -18,11 +18,11 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-sm text-white shadow-lg"
+    class="flex flex-nowrap items-center gap-2 whitespace-nowrap rounded-full bg-black/60 px-4 py-2 text-sm text-white shadow-lg"
   >
     <button
       type="button"
-      class="px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+      class="shrink-0 px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
       :disabled="orderLength <= 1"
       title="跳到开头"
       @click="emit('first')"
@@ -31,17 +31,17 @@ const emit = defineEmits<{
     </button>
     <button
       type="button"
-      class="px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+      class="shrink-0 px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
       :disabled="orderLength <= 1"
       title="上一个"
       @click="emit('prev')"
     >
       ‹
     </button>
-    <span>{{ currentIndex + 1 }} / {{ orderLength }}</span>
+    <span class="shrink-0">{{ currentIndex + 1 }} / {{ orderLength }}</span>
     <button
       type="button"
-      class="px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+      class="shrink-0 px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
       :disabled="orderLength <= 1"
       title="下一个"
       @click="emit('next')"
@@ -50,7 +50,7 @@ const emit = defineEmits<{
     </button>
     <button
       type="button"
-      class="px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+      class="shrink-0 px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
       :disabled="orderLength <= 1"
       title="跳到最后"
       @click="emit('last')"
