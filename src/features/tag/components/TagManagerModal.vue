@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 
@@ -199,6 +199,9 @@ async function doMoveTag(id: number, groupId: number | null) {
   }
 }
 
+// 名称输入框 ref（新建/编辑时聚焦）
+const nameInput = ref<HTMLInputElement | null>(null);
+
 // 嵌入输入/确认对话框（无原生 prompt，风格统一）
 const dlg = ref<{
   visible: boolean;
@@ -243,6 +246,8 @@ function openInput(
     message: "",
     onOk: null,
   };
+  // 聚焦名称输入框（新建/编辑均走此入口）
+  nextTick(() => nameInput.value?.focus());
 }
 function openConfirm(title: string, message: string, onOk: () => void) {
   dlg.value = {
@@ -577,6 +582,7 @@ function refresh() {
           <h3 class="mb-3 text-center text-sm font-semibold text-gray-800 dark:text-gray-100">{{ dlg.title }}</h3>
           <template v-if="dlg.mode === 'input'">
             <input
+              ref="nameInput"
               v-model="dlg.value"
               type="text"
               :placeholder="dlg.placeholder"

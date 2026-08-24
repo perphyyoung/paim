@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 上传图像弹窗：选择多图 → 预览（可移除）→ 可选关联提示词 → 确定上传。
 // 参考 pm 的图像上传弹窗：提示词为用户输入，非空则应用到本次每一张图。
-import { ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
@@ -32,6 +32,7 @@ const ALLOWED_FILTER = {
 
 const files = ref<PendingFile[]>([]);
 const prompt = ref("");
+const promptInput = ref<HTMLTextAreaElement | null>(null);
 const uploading = ref(false);
 const thumbLoading = ref(false);
 const error = ref("");
@@ -43,6 +44,7 @@ watch(
       files.value = [];
       prompt.value = "";
       error.value = "";
+      nextTick(() => promptInput.value?.focus());
     }
   }
 );
@@ -170,6 +172,7 @@ async function doUpload() {
               提示词内容 <span class="font-normal text-gray-400">（可选，将应用到本次所有图像）</span>
             </label>
             <textarea
+              ref="promptInput"
               v-model="prompt"
               rows="3"
               placeholder="输入与此批图像相关的提示词内容..."

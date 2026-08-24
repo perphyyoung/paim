@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 新建提示词弹窗：内容必需，可关联图像（本地选图上传预览）。标题留空，由后端用提示词 id 自动生成。
-import { ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
@@ -23,6 +23,7 @@ const ALLOWED_FILTER = {
 };
 
 const content = ref("");
+const contentInput = ref<HTMLTextAreaElement | null>(null);
 const files = ref<{ path: string; name: string; thumb: string }[]>([]);
 const saving = ref(false);
 const thumbLoading = ref(false);
@@ -35,6 +36,7 @@ watch(
       content.value = "";
       files.value = [];
       error.value = "";
+      nextTick(() => contentInput.value?.focus());
     }
   }
 );
@@ -117,6 +119,7 @@ async function doCreate() {
               提示词内容 <span class="text-red-500">*</span>
             </label>
             <textarea
+              ref="contentInput"
               v-model="content"
               rows="5"
               class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
