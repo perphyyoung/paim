@@ -341,3 +341,38 @@ pub fn remove_prompt_image(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     service::remove_image(&conn, &prompt_id, &image_id).map_err(|e| e.to_string())
 }
+
+/// 为已存在的提示词导入外部图像并关联（复用导入 + 幂等关联），供详情页「从外界导入」。
+#[tauri::command]
+pub fn add_images_to_prompt(
+    app: tauri::AppHandle,
+    db: State<BkDb>,
+    prompt_id: String,
+    image_paths: Vec<String>,
+) -> Result<crate::features::image::ImportBatchResult, String> {
+    use crate::features::image::{ImportError, ImportResult};
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut results = Vec::new();
+    let mut errors = Vec::new();
+    for path in &image_paths {
+        match crate::features::image::import(&conn, &app, path) {
+            Ok((image, is_duplicate)) => {
+                if let Err(e) =
+                    crate::features::image::relate_image_to_prompt(&conn, &prompt_id, &image.id)
+                {
+                    errors.push(ImportError {
+                        path: path.clone(),
+                        message: format!("关联图像失败: {e}"),
+                    });
+                } else {
+                    results.push(ImportResult { image, is_duplicate });
+                }
+            }
+            Err(e) => errors.push(ImportError {
+                path: path.clone(),
+                message: e.to_string(),
+            }),
+        }
+    }
+    Ok(crate::features::image::ImportBatchResult { results, errors })
+}

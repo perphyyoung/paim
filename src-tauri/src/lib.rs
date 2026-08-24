@@ -43,6 +43,7 @@ pub fn run() {
       features::prompt::commands::add_prompt_tags,
       features::prompt::commands::remove_prompt_tag,
       features::prompt::commands::remove_prompt_image,
+      features::prompt::commands::add_images_to_prompt,
       features::prompt::commands::get_prompt_tag_data,
       features::prompt::commands::create_prompt_with_images,
       features::prompt::commands::create_prompt,

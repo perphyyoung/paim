@@ -2,6 +2,7 @@
 // 提示词详情弹窗：展示/编辑标题、内容、翻译、备注，标签增删，关联图像网格查看/移除。
 import { computed, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useConfirm } from "@/components/useConfirm";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -272,6 +273,42 @@ async function viewImage(img: RelatedImage) {
     showToast("打开图像详情失败");
   }
 }
+
+// 从外界直接导入图像并关联到当前提示词
+interface ImportBatchResult {
+  results: { is_duplicate: boolean }[];
+  errors: { path: string; message: string }[];
+}
+const ALLOWED_FILTER = {
+  name: "图像",
+  extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
+};
+const importLoading = ref(false);
+async function importFromExternal() {
+  const p = current.value;
+  if (!p) return;
+  const selected = await open({ multiple: true, filters: [ALLOWED_FILTER] });
+  if (!selected) return;
+  const paths = Array.isArray(selected) ? selected : [selected];
+  importLoading.value = true;
+  try {
+    const res = await invoke<ImportBatchResult>("add_images_to_prompt", {
+      promptId: p.id,
+      imagePaths: paths,
+    });
+    await loadRelatedImages();
+    emit("updated");
+    if (res.errors.length > 0) {
+      showToast(`导入 ${res.results.length} 张，失败 ${res.errors.length} 张`);
+    } else {
+      showToast(`已导入并关联 ${res.results.length} 张图像`);
+    }
+  } catch {
+    showToast("导入失败");
+  } finally {
+    importLoading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -338,6 +375,24 @@ async function viewImage(img: RelatedImage) {
                 </button>
               </li>
             </ul>
+          </div>
+
+          <!-- 导入区：从外界导入 / 从图像列表导入 -->
+          <div class="border-t border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between px-4 py-3">
+              <button
+                type="button"
+                class="flex-1 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                :disabled="importLoading"
+                @click="importFromExternal"
+              >
+                {{ importLoading ? "导入中…" : "从外界导入图像" }}
+              </button>
+            </div>
+            <div class="flex items-center justify-between border-t border-gray-200 px-4 py-2 dark:border-gray-700">
+              <span class="text-xs text-gray-400 dark:text-gray-500">从图像列表导入（即将开放）</span>
+              <span class="text-xs text-gray-300 dark:text-gray-600">—</span>
+            </div>
           </div>
         </div>
 
