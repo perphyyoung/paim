@@ -265,3 +265,79 @@ pub fn get_prompt_thumbs_map(
     }
     Ok(map)
 }
+
+/// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。
+#[tauri::command]
+pub fn update_prompt_detail(
+    db: State<BkDb>,
+    id: String,
+    title: Option<String>,
+    content: Option<String>,
+    content_translate: Option<String>,
+    note: Option<String>,
+    is_favorite: Option<bool>,
+    is_safe: Option<bool>,
+) -> Result<service::Prompt, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    service::update_detail(
+        &conn,
+        &id,
+        title,
+        content,
+        content_translate,
+        note,
+        is_favorite,
+        is_safe,
+    )
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "提示词不存在".to_string())
+}
+
+/// 返回一个提示词关联的（未删除）图像列表（含缩略图与标签），供详情页网格展示。
+#[tauri::command]
+pub fn get_prompt_related_images(
+    app: tauri::AppHandle,
+    db: State<BkDb>,
+    id: String,
+) -> Result<Vec<service::RelatedImage>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    service::list_related_images(&conn, &app, &id).map_err(|e| e.to_string())
+}
+
+/// 为提示词添加标签（不存在则创建），返回新增关联的标签。
+#[tauri::command]
+pub fn add_prompt_tags(
+    db: State<BkDb>,
+    id: String,
+    names: Vec<String>,
+) -> Result<Vec<PromptTagItem>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let added = service::add_tags(&conn, &id, &names).map_err(|e| e.to_string())?;
+    Ok(added
+        .into_iter()
+        .map(|(id, name)| PromptTagItem {
+            id,
+            name,
+            group_id: None,
+            count: 0,
+        })
+        .collect())
+}
+
+/// 移除提示词的一个标签关联。
+#[tauri::command]
+pub fn remove_prompt_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    service::remove_tag(&conn, &id, tag_id).map_err(|e| e.to_string())
+}
+
+/// 取消提示词与其一张图像的关联。
+#[tauri::command]
+pub fn remove_prompt_image(
+    db: State<BkDb>,
+    prompt_id: String,
+    image_id: String,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    service::remove_image(&conn, &prompt_id, &image_id).map_err(|e| e.to_string())
+}

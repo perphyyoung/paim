@@ -4,6 +4,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
+import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
@@ -269,6 +270,20 @@ function toggleSelect(id: string) {
 
 // 新建弹窗
 const modalOpen = ref(false);
+// 详情弹窗
+const detailOpen = ref(false);
+const detailIndex = ref(0);
+function openDetail(i: number) {
+  detailIndex.value = i;
+  detailOpen.value = true;
+}
+function closeDetail() {
+  detailOpen.value = false;
+}
+function onDetailUpdated() {
+  loadPrompts();
+  loadTagFilter();
+}
 async function loadPrompts() {
   prompts.value = await invoke<Prompt[]>("list_prompts");
   try { tagNames.value = await invoke<Record<string, string[]>>("get_prompt_tags_map"); } catch { tagNames.value = {}; }
@@ -506,11 +521,12 @@ onMounted(() => {
 
       <ul class="grid gap-3" :style="{ gridTemplateColumns: `repeat(auto-fill, ${cardSize}px)` }">
         <li
-          v-for="p in sortedPrompts"
+          v-for="(p, i) in sortedPrompts"
           :key="p.id"
           class="group relative cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
           :class="selectedIds.has(p.id) ? 'border-indigo-500 ring-2 ring-indigo-400' : p.is_favorite ? 'border-amber-500' : 'border-gray-200 dark:border-gray-700'"
           :style="{ width: cardSize + 'px', height: cardSize + 'px' }"
+          @click="openDetail(i)"
           @contextmenu.prevent
         >
           <!-- 背景图：第一张关联图像缩略图 -->
@@ -571,6 +587,17 @@ onMounted(() => {
 
     <!-- 新建提示词弹窗 -->
     <NewPromptModal :open="modalOpen" @close="modalOpen = false" @uploaded="onModalUploaded" />
+
+    <!-- 提示词详情弹窗 -->
+    <PromptDetailModal
+      :open="detailOpen"
+      :prompts="sortedPrompts"
+      :initial-index="detailIndex"
+      :tag-names="tagNames"
+      :all-tags="allTags"
+      @close="closeDetail"
+      @updated="onDetailUpdated"
+    />
 
     <!-- 删除确认 -->
     <ConfirmDialog

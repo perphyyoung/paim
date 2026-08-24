@@ -2,7 +2,7 @@
 //! 领域层不感知 Tauri，通过注入的事务获取连接访问数据。
 //! 表结构与字段名与 prompt-manager 一致。
 
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, OptionalExtension, Result};
 
 use serde::Serialize;
 
@@ -120,6 +120,188 @@ pub fn restore(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
 /// 彻底删除提示词（从数据库中移除）。
 pub fn purge(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("DELETE FROM prompts WHERE id = ?1", rusqlite::params![id])?;
+    Ok(())
+}
+
+/// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。仅更新传入 Some 的值；
+/// 标题与内容非空才更新；翻译与备注允许清空；收藏/安全按布尔更新。
+pub fn update_detail(
+    conn: &Connection,
+    id: &str,
+    title: Option<String>,
+    content: Option<String>,
+    content_translate: Option<String>,
+    note: Option<String>,
+    is_favorite: Option<bool>,
+    is_safe: Option<bool>,
+) -> Result<Option<Prompt>> {
+    let tx = conn.unchecked_transaction()?;
+    let mut changed = false;
+    if let Some(v) = title {
+        let v = v.trim().to_string();
+        if !v.is_empty() {
+            tx.execute(
+                "UPDATE prompts SET title = ?1 WHERE id = ?2",
+                rusqlite::params![v, id],
+            )?;
+            changed = true;
+        }
+    }
+    if let Some(v) = content {
+        let v = v.trim().to_string();
+        if !v.is_empty() {
+            tx.execute(
+                "UPDATE prompts SET content = ?1 WHERE id = ?2",
+                rusqlite::params![v, id],
+            )?;
+            changed = true;
+        }
+    }
+    if let Some(v) = content_translate {
+        tx.execute(
+            "UPDATE prompts SET content_translate = ?1 WHERE id = ?2",
+            rusqlite::params![v, id],
+        )?;
+        changed = true;
+    }
+    if let Some(v) = note {
+        tx.execute(
+            "UPDATE prompts SET note = ?1 WHERE id = ?2",
+            rusqlite::params![v, id],
+        )?;
+        changed = true;
+    }
+    if let Some(v) = is_favorite {
+        tx.execute(
+            "UPDATE prompts SET is_favorite = ?1 WHERE id = ?2",
+            rusqlite::params![v as i64, id],
+        )?;
+        changed = true;
+    }
+    if let Some(v) = is_safe {
+        tx.execute(
+            "UPDATE prompts SET is_safe = ?1 WHERE id = ?2",
+            rusqlite::params![v as i64, id],
+        )?;
+        changed = true;
+    }
+    if changed {
+        tx.execute(
+            "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+    }
+    tx.commit()?;
+    get_by_id(conn, id)
+}
+
+/// 提示词关联的（未删除）图像及其标签，供详情页图像网格展示。
+#[derive(Debug, serde::Serialize, Clone)]
+pub struct RelatedImage {
+    pub id: String,
+    pub file_name: String,
+    /// 缩略图绝对路径（前端配合 convertFileSrc 加载）。
+    pub thumbnail_path: String,
+    pub tags: Vec<String>,
+}
+
+/// 返回一个提示词关联的（未删除）图像列表：id、文件名、缩略图绝对路径、标签。
+pub fn list_related_images(
+    conn: &Connection,
+    app: &tauri::AppHandle,
+    prompt_id: &str,
+) -> Result<Vec<RelatedImage>> {
+    let data_dir = crate::db::data_dir(app);
+    let mut stmt = conn.prepare(
+        "SELECT img.id, img.file_name, img.thumbnail_path
+         FROM prompt_image_relations pir
+         JOIN images img ON img.id = pir.image_id
+         WHERE pir.prompt_id = ?1 AND img.is_deleted = 0
+         ORDER BY pir.sort_order, pir.rowid",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![prompt_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (id, file_name, thumb_rel) = row?;
+        let mut tags = Vec::new();
+        {
+            let mut ts = conn.prepare(
+                "SELECT pt.name
+                 FROM image_tag_relations itr
+                 JOIN image_tags pt ON pt.id = itr.tag_id
+                 WHERE itr.image_id = ?1
+                 ORDER BY pt.name",
+            )?;
+            let rows = ts.query_map(rusqlite::params![id], |r| r.get::<_, String>(0))?;
+            for t in rows {
+                tags.push(t?);
+            }
+        }
+        out.push(RelatedImage {
+            id,
+            file_name,
+            thumbnail_path: thumb_rel
+                .map(|rel| data_dir.join(&rel).to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            tags,
+        });
+    }
+    Ok(out)
+}
+
+/// 为提示词添加标签（不存在则创建），返回新增关联的标签 (id, name)。
+pub fn add_tags(conn: &Connection, id: &str, names: &[String]) -> Result<Vec<(i64, String)>> {
+    let tx = conn.unchecked_transaction()?;
+    let mut result = Vec::new();
+    for raw in names {
+        let name = raw.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let tag_id: i64 = match tx
+            .query_row(
+                "SELECT id FROM prompt_tags WHERE name = ?1",
+                rusqlite::params![name],
+                |r| r.get(0),
+            )
+            .optional()?
+        {
+            Some(tid) => tid,
+            None => {
+                tx.execute(
+                    "INSERT INTO prompt_tags(name) VALUES (?1)",
+                    rusqlite::params![name],
+                )?;
+                tx.last_insert_rowid()
+            }
+        };
+        let _ = tx.execute(
+            "INSERT OR IGNORE INTO prompt_tag_relations(prompt_id, tag_id) VALUES (?1, ?2)",
+            rusqlite::params![id, tag_id],
+        );
+        result.push((tag_id, name.to_string()));
+    }
+    tx.commit()?;
+    Ok(result)
+}
+
+/// 移除提示词的一个标签关联。
+pub fn remove_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> {
+    conn.execute(
+        "DELETE FROM prompt_tag_relations WHERE prompt_id = ?1 AND tag_id = ?2",
+        rusqlite::params![id, tag_id],
+    )?;
+    Ok(())
+}
+
+/// 取消提示词与其一张图像的关联。
+pub fn remove_image(conn: &Connection, prompt_id: &str, image_id: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM prompt_image_relations WHERE prompt_id = ?1 AND image_id = ?2",
+        rusqlite::params![prompt_id, image_id],
+    )?;
     Ok(())
 }
 

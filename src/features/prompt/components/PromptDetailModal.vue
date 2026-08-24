@@ -1,0 +1,529 @@
+<script setup lang="ts">
+// 提示词详情弹窗：展示/编辑标题、内容、翻译、备注，标签增删，关联图像网格查看/移除。
+import { computed, ref, watch } from "vue";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { useToast } from "@/components/useToast";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
+
+interface Prompt {
+  id: string;
+  title: string;
+  content: string;
+  content_translate: string;
+  note: string;
+  is_favorite: boolean;
+  is_safe: boolean;
+  created_at: string;
+  updated_at: string;
+}
+interface TagItem {
+  id: number;
+  name: string;
+  group_id: number | null;
+  count: number;
+}
+interface RelatedImage {
+  id: string;
+  file_name: string;
+  thumbnail_path: string;
+  tags: string[];
+}
+
+const props = defineProps<{
+  open: boolean;
+  prompts: Prompt[];
+  initialIndex: number;
+  tagNames: Record<string, string[]>;
+  allTags: TagItem[];
+}>();
+
+const emit = defineEmits<{
+  (e: "close"): void;
+  (e: "updated"): void;
+}>();
+
+const { showToast } = useToast();
+
+const index = ref(0);
+const current = computed<Prompt | null>(() =>
+  props.open ? (props.prompts[index.value] ?? null) : null
+);
+
+// 编辑状态
+const edit = ref(false);
+const title = ref("");
+const content = ref("");
+const contentTranslate = ref("");
+const note = ref("");
+// 标签与关联图像
+const tags = ref<{ id: number; name: string }[]>([]);
+const tagInput = ref("");
+const relatedImages = ref<RelatedImage[]>([]);
+const imagesLoading = ref(false);
+
+// 由名称+allTags 还原当前提示词的标签 id
+function loadTags() {
+  const names = props.tagNames[current.value?.id ?? ""] ?? [];
+  tags.value = props.allTags
+    .filter((t) => names.includes(t.name))
+    .map((t) => ({ id: t.id, name: t.name }));
+}
+
+async function loadRelatedImages() {
+  const p = current.value;
+  if (!p) return;
+  imagesLoading.value = true;
+  try {
+    relatedImages.value = await invoke<RelatedImage[]>("get_prompt_related_images", {
+      id: p.id,
+    });
+  } catch {
+    relatedImages.value = [];
+  } finally {
+    imagesLoading.value = false;
+  }
+}
+
+function syncFields() {
+  title.value = current.value?.title ?? "";
+  content.value = current.value?.content ?? "";
+  contentTranslate.value = current.value?.content_translate ?? "";
+  note.value = current.value?.note ?? "";
+}
+
+watch(
+  () => [props.open, props.initialIndex] as const,
+  ([open, initIdx]) => {
+    if (open) {
+      index.value = initIdx;
+      edit.value = false;
+      syncFields();
+      loadTags();
+      loadRelatedImages();
+    }
+  }
+);
+watch(() => current.value?.id, () => {
+  edit.value = false;
+  syncFields();
+  loadTags();
+  loadRelatedImages();
+});
+
+function nav(step: number) {
+  const n = props.prompts.length;
+  if (n === 0) return;
+  index.value = (index.value + step + n) % n;
+}
+
+function close() {
+  emit("close");
+}
+
+async function toggleFavorite() {
+  const p = current.value;
+  if (!p) return;
+  const v = !p.is_favorite;
+  try {
+    const upd = await invoke<Prompt>("update_prompt_detail", { id: p.id, isFavorite: v });
+    p.is_favorite = upd.is_favorite;
+    emit("updated");
+  } catch {
+    showToast("更新失败");
+  }
+}
+async function toggleSafe() {
+  const p = current.value;
+  if (!p) return;
+  const v = !p.is_safe;
+  try {
+    const upd = await invoke<Prompt>("update_prompt_detail", { id: p.id, isSafe: v });
+    p.is_safe = upd.is_safe;
+    emit("updated");
+  } catch {
+    showToast("更新失败");
+  }
+}
+
+async function saveFields() {
+  const p = current.value;
+  if (!p) return;
+  try {
+    await invoke<Prompt>("update_prompt_detail", {
+      id: p.id,
+      title: title.value,
+      content: content.value,
+      contentTranslate: contentTranslate.value,
+      note: note.value,
+    });
+    p.title = title.value;
+    p.content = content.value;
+    p.content_translate = contentTranslate.value;
+    p.note = note.value;
+    edit.value = false;
+    emit("updated");
+    showToast("已保存");
+  } catch {
+    showToast("保存失败");
+  }
+}
+
+async function addTags() {
+  const p = current.value;
+  if (!p) return;
+  const names = tagInput.value
+    .split(/[,，\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (names.length === 0) return;
+  try {
+    const added = await invoke<TagItem[]>("add_prompt_tags", { id: p.id, names });
+    tagInput.value = "";
+    for (const t of added) {
+      if (!tags.value.some((x) => x.id === t.id)) tags.value.push({ id: t.id, name: t.name });
+    }
+    emit("updated");
+    showToast(`已添加 ${added.length} 个标签`);
+  } catch {
+    showToast("添加标签失败");
+  }
+}
+async function removeTag(tagId: number) {
+  const p = current.value;
+  if (!p) return;
+  await invoke("remove_prompt_tag", { id: p.id, tagId });
+  tags.value = tags.value.filter((t) => t.id !== tagId);
+  emit("updated");
+}
+
+async function removeImage(img: RelatedImage) {
+  const p = current.value;
+  if (!p) return;
+  await invoke("remove_prompt_image", { promptId: p.id, imageId: img.id });
+  relatedImages.value = relatedImages.value.filter((i) => i.id !== img.id);
+  emit("updated");
+  showToast("已移除关联图像");
+}
+
+// 通用删除确认：标签/图像移除均需确认
+const delState = ref<{ kind: "tag" | "image"; payload: { id: number | string; name: string }; label: string } | null>(null);
+const delMessage = computed(() => {
+  const s = delState.value;
+  if (!s) return "";
+  return s.kind === "tag"
+    ? `确定删除标签「${s.label}」？`
+    : `确定移除图像「${s.label}」与该提示词的关联？`;
+});
+const delConfirmText = computed(() => (delState.value?.kind === "tag" ? "删除" : "移除"));
+function requestRemoveTag(t: { id: number; name: string }) {
+  delState.value = { kind: "tag", payload: { id: t.id, name: t.name }, label: t.name };
+}
+function requestRemoveImage(img: RelatedImage) {
+  delState.value = { kind: "image", payload: { id: img.id, name: img.file_name }, label: img.file_name };
+}
+function cancelDelete() {
+  delState.value = null;
+}
+async function confirmDelete() {
+  const s = delState.value;
+  if (!s) return;
+  delState.value = null;
+  if (s.kind === "tag") {
+    await removeTag(s.payload.id as number);
+  } else {
+    await removeImage(s.payload as unknown as RelatedImage);
+  }
+}
+
+function thumbUrl(img: RelatedImage) {
+  return img.thumbnail_path ? convertFileSrc(img.thumbnail_path) : "";
+}
+
+// 跳转到图像详情：加载完整图像信息，复用 ImageDetailModal 叠加打开
+interface FullImage {
+  id: string;
+  file_name: string;
+  stored_name: string;
+  relative_path: string;
+  thumbnail_path: string | null;
+  md5: string | null;
+  width: number | null;
+  height: number | null;
+  file_size: number;
+  gen_params: string;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  is_favorite: boolean;
+  is_safe: boolean;
+  created_at: string;
+  updated_at: string;
+  note: string;
+}
+const imgDetailOpen = ref(false);
+const imgDetailImages = ref<FullImage[]>([]);
+const imgDetailThumbs = ref<Record<string, string>>({});
+async function viewImage(img: RelatedImage) {
+  try {
+    const detail = await invoke<FullImage>("get_image_detail", { id: img.id });
+    imgDetailImages.value = [detail];
+    imgDetailThumbs.value = {
+      [img.id]: img.thumbnail_path ? convertFileSrc(img.thumbnail_path) : "",
+    };
+    imgDetailOpen.value = true;
+  } catch {
+    showToast("打开图像详情失败");
+  }
+}
+</script>
+
+<template>
+  <Teleport to="body">
+    <div
+      v-if="open"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      @click.self="close"
+      @keydown.esc="close"
+      @keydown.up="nav(-1)"
+      @keydown.down="nav(1)"
+      tabindex="-1"
+    >
+      <div class="grid h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <!-- 左栏：关联图像 -->
+        <div class="flex min-w-0 flex-col overflow-hidden border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+          <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+            <label class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              关联图像（{{ relatedImages.length }}）
+            </label>
+            <span v-if="imagesLoading" class="text-xs text-gray-400">加载中...</span>
+          </div>
+          <div class="flex-1 overflow-auto p-4">
+            <div v-if="relatedImages.length === 0 && !imagesLoading" class="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600">
+              暂无关联图像
+            </div>
+            <ul v-else class="grid grid-cols-4 gap-2">
+              <li
+                v-for="img in relatedImages"
+                :key="img.id"
+                class="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+              >
+                <img
+                  v-if="thumbUrl(img)"
+                  :src="thumbUrl(img)"
+                  :alt="img.file_name"
+                  :title="img.file_name"
+                  class="aspect-square w-full object-cover"
+                />
+                <div v-else class="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900">
+                  无缩略图
+                </div>
+                <div v-if="img.tags.length" class="truncate bg-black/60 px-1 py-0.5 text-[10px] text-white">
+                  {{ img.tags.join("、") }}
+                </div>
+                <button
+                  type="button"
+                  class="absolute left-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 group-hover:flex"
+                  title="查看图像详情"
+                  @click.stop="viewImage(img)"
+                >
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-red-600/80 text-xs text-white hover:bg-red-700 group-hover:flex"
+                  title="移除关联"
+                  @click.stop="requestRemoveImage(img)"
+                >
+                  ✕
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 右栏：提示词 -->
+        <div class="flex min-w-0 flex-col overflow-hidden">
+          <!-- 顶部操作栏 -->
+          <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200"
+                :class="current?.is_favorite ? 'border-transparent bg-gradient-to-br from-amber-500 to-amber-400 text-white' : 'border-gray-300 bg-white text-gray-400 hover:border-amber-300 hover:text-amber-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'"
+                :title="current?.is_favorite ? '取消收藏' : '收藏'"
+                @click="toggleFavorite"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4" aria-hidden="true">
+                  <path d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z" />
+                </svg>
+              </button>
+              <label class="relative inline-block h-6 w-11" :title="current?.is_safe ? '安全' : '不安全'">
+                <input type="checkbox" class="h-0 w-0 opacity-0" :checked="current?.is_safe" @change="toggleSafe" />
+                <span class="absolute inset-0 cursor-pointer rounded-full transition-colors duration-300" :class="current?.is_safe ? 'bg-green-500' : 'bg-red-500'"></span>
+                <span class="absolute bottom-[3px] left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-300" :class="current?.is_safe ? 'translate-x-5' : ''"></span>
+              </label>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                :disabled="prompts.length <= 1"
+                title="上一个"
+                @click="nav(-1)"
+              >
+                ‹
+              </button>
+              <span class="text-xs text-gray-400">{{ index + 1 }} / {{ prompts.length }}</span>
+              <button
+                type="button"
+                class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                :disabled="prompts.length <= 1"
+                title="下一个"
+                @click="nav(1)"
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                @click="edit = !edit"
+              >
+                {{ edit ? "取消" : "编辑" }}
+              </button>
+              <button
+                type="button"
+                class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                title="关闭"
+                @click="close"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <!-- 字段表单 -->
+          <div class="flex-1 overflow-auto px-4 py-4">
+            <!-- 标题 -->
+            <div class="mb-4">
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">标题</label>
+              <input
+                v-if="edit"
+                v-model="title"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              />
+              <div v-else class="break-all text-sm text-gray-700 dark:text-gray-200">{{ current?.title || "—" }}</div>
+            </div>
+
+            <!-- 内容 -->
+            <div class="mb-4">
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词内容</label>
+              <textarea
+                v-if="edit"
+                v-model="content"
+                rows="6"
+                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              ></textarea>
+              <div v-else class="whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-200">{{ current?.content || "—" }}</div>
+            </div>
+
+            <!-- 翻译 -->
+            <div class="mb-4">
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">翻译</label>
+              <textarea
+                v-if="edit"
+                v-model="contentTranslate"
+                rows="4"
+                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              ></textarea>
+              <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{{ current?.content_translate || "—" }}</div>
+            </div>
+
+            <!-- 备注 -->
+            <div class="mb-4">
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">备注</label>
+              <textarea
+                v-if="edit"
+                v-model="note"
+                rows="3"
+                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                placeholder="输入备注..."
+              ></textarea>
+              <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{{ current?.note || "—" }}</div>
+            </div>
+
+            <div v-if="edit" class="mb-4 flex items-center gap-2">
+              <button
+                type="button"
+                class="rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+                @click="saveFields"
+              >
+                保存
+              </button>
+            </div>
+
+            <!-- 标签 -->
+            <div class="mb-4">
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标签</label>
+              <div v-if="tags.length" class="mb-1 flex flex-wrap gap-1">
+                <span
+                  v-for="t in tags"
+                  :key="t.id"
+                  class="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                >
+                  {{ t.name }}
+                  <button
+                  type="button"
+                  class="text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                  :title="`删除标签 ${t.name}`"
+                  @click.stop="requestRemoveTag(t)"
+                >
+                  ✕
+                </button>
+                </span>
+              </div>
+              <div v-else class="mb-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
+              <div class="flex gap-1">
+                <input
+                  v-model="tagInput"
+                  class="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  placeholder="回车添加，逗号或空格分隔可批量"
+                  @keydown.enter.prevent="addTags"
+                />
+                <button
+                  type="button"
+                  class="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                  @click="addTags"
+                >
+                  添加
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- 叠加的图像详情 -->
+  <ImageDetailModal
+    :open="imgDetailOpen"
+    :images="imgDetailImages"
+    :initial-index="0"
+    :thumbs="imgDetailThumbs"
+    @close="imgDetailOpen = false"
+  />
+
+  <!-- 删除/移除确认 -->
+  <ConfirmDialog
+    :open="!!delState"
+    title="确认操作"
+    :message="delMessage"
+    :confirm-text="delConfirmText"
+    danger
+    @confirm="confirmDelete"
+    @cancel="cancelDelete"
+  />
+</template>
