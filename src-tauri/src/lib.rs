@@ -62,6 +62,7 @@ pub fn run() {
       features::image::get_image_detail,
       features::image::get_image_src,
       features::image::update_image_detail,
+      features::image::create_prompt_for_image,
       features::image::relate_images_to_prompt,
       features::image::list_trash,
       features::image::delete_image,

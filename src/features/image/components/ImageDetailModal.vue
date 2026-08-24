@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from "vue";
+import { computed, nextTick, ref, toRef, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { useConfirm } from "@/components/useConfirm";
@@ -126,6 +126,41 @@ function openEditPrompt() {
   if (!currentPrompt.value) return;
   loadPromptTagData();
   editPromptOpen.value = true;
+}
+
+// —— 新建提示词（无关联时，仅内容输入，创建后关联当前图像）——
+const createPromptOpen = ref(false);
+const createContent = ref("");
+const createSaving = ref(false);
+const createInput = ref<HTMLTextAreaElement | null>(null);
+function openCreatePrompt() {
+  createContent.value = "";
+  createSaving.value = false;
+  createPromptOpen.value = true;
+  nextTick(() => createInput.value?.focus());
+}
+async function doCreatePrompt() {
+  const img = current.value;
+  if (!img) return;
+  if (!createContent.value.trim()) {
+    showToast("请填写提示词内容");
+    return;
+  }
+  createSaving.value = true;
+  try {
+    await invoke("create_prompt_for_image", {
+      content: createContent.value,
+      imageId: img.id,
+    });
+    showToast("提示词已创建并关联");
+    createPromptOpen.value = false;
+    emit("update", img);
+    await loadRelatedPrompts();
+  } catch (e) {
+    showToast(`新建失败：${e}`);
+  } finally {
+    createSaving.value = false;
+  }
 }
 
 // 打开或切换图像时加载原图（详情页展示原图，不同于卡片缩略图）
@@ -339,17 +374,16 @@ const fmtSize = (bytes: number) => {
             <div class="flex items-center justify-between">
               <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标题</div>
               <button
-                v-if="currentPrompt"
                 type="button"
                 class="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                title="编辑提示词"
-                @click="openEditPrompt"
+                :title="currentPrompt ? '编辑提示词' : '新建提示词'"
+                @click="currentPrompt ? openEditPrompt() : openCreatePrompt()"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>
-                {{ relatedPrompts.length > 1 ? `编辑 (${promptIndex + 1})` : "编辑" }}
+                {{ currentPrompt ? (relatedPrompts.length > 1 ? `编辑 (${promptIndex + 1})` : "编辑") : "新建" }}
               </button>
             </div>
             <!-- 多引：编号标题列表，可点选切换 -->
@@ -648,6 +682,44 @@ const fmtSize = (bytes: number) => {
     @confirm="confirmAction"
     @cancel="cancelConfirm"
   />
+
+  <!-- 新建提示词（无关联时，纯内容输入，创建后关联当前图像） -->
+  <Teleport to="body">
+    <div
+      v-if="createPromptOpen"
+      class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40"
+      @click.self="createPromptOpen = false"
+    >
+      <div class="w-[520px] max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <h3 class="text-center text-base font-semibold text-gray-800 dark:text-gray-100">新建提示词</h3>
+        <textarea
+          ref="createInput"
+          v-model="createContent"
+          rows="6"
+          class="mt-3 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+          placeholder="输入提示词内容..."
+          @keydown.enter.exact.prevent="doCreatePrompt"
+        ></textarea>
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+            @click="createPromptOpen = false"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+            :disabled="createSaving"
+            @click="doCreatePrompt"
+          >
+            {{ createSaving ? "创建中…" : "确定" }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 
   <!-- 编辑提示词（复用提示词详情弹窗，父级 v-if 强制整体卸载） -->
   <PromptDetailModal

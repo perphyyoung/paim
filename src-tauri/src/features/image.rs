@@ -5,6 +5,7 @@ use crate::db::BkDb;
 use crate::features::image_service::{
     self, Image, ImageTag, ImportBatchResult, ImportResult, LinkedPrompt,
 };
+use crate::features::prompt_service;
 
 use rusqlite::OptionalExtension;
 use tauri::State;
@@ -437,4 +438,18 @@ pub fn get_image_related_prompts(
         p.tags = names.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
     }
     Ok(list)
+}
+
+/// 为指定图像新建提示词并关联（复用 create_prompt + relate），供图像详情「新建提示词」。
+#[tauri::command]
+pub fn create_prompt_for_image(
+    db: State<BkDb>,
+    content: String,
+    image_id: String,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let prompt = prompt_service::create(&conn, &content, None).map_err(|e| e.to_string())?;
+    image_service::relate_image_to_prompt(&conn, &prompt.id, &image_id)
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
