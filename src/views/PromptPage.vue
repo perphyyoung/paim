@@ -329,6 +329,7 @@ async function batchFavorite() {
       if (idx >= 0) prompts.value.splice(idx, 1, p);
     }
     showToast(`已收藏 ${ids.length} 个提示词`);
+    exitBatch();
   } catch (e) {
     showToast(`批量收藏失败：${e}`);
   }

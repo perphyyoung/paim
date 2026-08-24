@@ -576,6 +576,7 @@ async function batchFavorite() {
       if (idx >= 0) images.value.splice(idx, 1, img);
     }
     showToast(`已收藏 ${ids.length} 张图像`);
+    exitBatch();
   } catch (e) {
     showToast(`批量收藏失败：${e}`);
   }
