@@ -203,6 +203,27 @@ function requestRemoveTag(t: { id: number; name: string }) {
   );
 }
 
+// —— 解除与提示词的关联 ——
+async function unlinkPrompt(p: LinkedPrompt) {
+  const img = current.value;
+  if (!img) return;
+  try {
+    await invoke("remove_prompt_image", { promptId: p.id, imageId: img.id });
+    showToast("已解除与提示词的关联");
+    emit("update", img);
+    await loadRelatedPrompts();
+  } catch (e) {
+    showToast(`解除关联失败：${e}`);
+  }
+}
+function requestUnlink(p: LinkedPrompt) {
+  ask(
+    `确定解除与提示词「${p.title || "未命名"}」的关联？`,
+    { danger: true, confirmText: "解除" },
+    () => unlinkPrompt(p)
+  );
+}
+
 // 加载当前图像的关联提示词（标题 + 内容）
 async function loadRelatedPrompts() {
   const img = current.value;
@@ -333,11 +354,10 @@ const fmtSize = (bytes: number) => {
             </div>
             <!-- 多引：编号标题列表，可点选切换 -->
             <div v-if="relatedPrompts.length > 1" class="mt-1 flex flex-col gap-1">
-              <button
+              <div
                 v-for="(p, i) in relatedPrompts"
                 :key="p.id"
-                type="button"
-                class="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-sm transition-colors"
+                class="group flex items-center gap-1.5 rounded px-1.5 py-0.5 text-sm transition-colors"
                 :class="
                   i === promptIndex
                     ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300'
@@ -346,12 +366,29 @@ const fmtSize = (bytes: number) => {
                 @click="promptIndex = i"
               >
                 <span class="shrink-0 text-gray-400">{{ i + 1 }}.</span>
-                <span class="truncate">{{ p.title || "未命名" }}</span>
-              </button>
+                <span class="min-w-0 flex-1 truncate">{{ p.title || "未命名" }}</span>
+                <button
+                  type="button"
+                  class="shrink-0 rounded px-1 text-red-500 opacity-0 transition-opacity duration-150 hover:bg-red-50 group-hover:opacity-100 dark:text-red-400 dark:hover:bg-red-900/30"
+                  title="解除关联"
+                  @click.stop="requestUnlink(p)"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <!-- 单选：单行标题 -->
-            <div v-else class="mt-1 text-sm text-gray-700 dark:text-gray-200">
-              {{ currentPrompt?.title || "— 暂无关联提示词 —" }}
+            <div v-else class="group mt-1 flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200">
+              <span class="min-w-0 flex-1">{{ currentPrompt?.title || "— 暂无关联提示词 —" }}</span>
+              <button
+                v-if="currentPrompt"
+                type="button"
+                class="shrink-0 rounded px-1 text-red-500 opacity-0 transition-opacity duration-150 hover:bg-red-50 group-hover:opacity-100 dark:text-red-400 dark:hover:bg-red-900/30"
+                title="解除关联"
+                @click.stop="requestUnlink(currentPrompt)"
+              >
+                ✕
+              </button>
             </div>
           </div>
           <div>
