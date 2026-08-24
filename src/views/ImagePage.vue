@@ -4,7 +4,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
-import ImageTagManagerModal from "@/features/image/components/ImageTagManagerModal.vue";
+import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
@@ -1131,9 +1131,10 @@ function onUploadDone() {
       @update="onDetailUpdate"
     />
 
-    <!-- 标签管理（独立组件） -->
-    <ImageTagManagerModal
+    <!-- 标签管理（独立组件，图像域） -->
+    <TagManagerModal
       :open="tagManagerOpen"
+      domain="image"
       @close="tagManagerOpen = false"
       @saved="onTagManagerSaved"
     />

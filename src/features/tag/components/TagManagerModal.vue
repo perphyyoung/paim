@@ -3,6 +3,10 @@ import { computed, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 
+const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();
+const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
+const { showToast } = useToast();
+
 interface TagGroup {
   id: number;
   name: string;
@@ -19,9 +23,24 @@ interface ManagerData {
   tags: TagItem[];
 }
 
-const props = defineProps<{ open: boolean }>();
-const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
-const { showToast } = useToast();
+// 命令映射表：按域分发到对应前缀的命令名
+const cmds = computed(() => {
+  const p = props.domain === "image" ? "image" : "prompt";
+  const groupSuffix = "tag_groups";
+  return {
+    list: `list_${p}_${groupSuffix}`,
+    createGroup: `create_${p}_tag_group`,
+    updateGroup: `update_${p}_tag_group`,
+    deleteGroup: `delete_${p}_tag_group`,
+    createTag: `create_${p}_tag`,
+    renameTag: `rename_${p}_tag`,
+    deleteTag: `delete_${p}_tag`,
+    moveTag: props.domain === "image" ? "move_tag_to_group" : `move_${p}_tag_to_group`,
+    pinGroup: `pin_${p}_tag_group_to_top`,
+  };
+});
+
+const domainLabel = computed(() => (props.domain === "image" ? "图像" : "提示词"));
 
 const data = ref<ManagerData>({ groups: [], tags: [] });
 const search = ref("");
@@ -103,7 +122,7 @@ async function pinToTop() {
   closeCtxMenu();
   if (id === null) return;
   try {
-    await invoke("pin_image_tag_group_to_top", { id });
+    await invoke(cmds.value.pinGroup, { id });
     showToast("标签组已固定到首位");
     await load();
     emit("saved");
@@ -170,7 +189,7 @@ function cancelDrag() {
 
 async function doMoveTag(id: number, groupId: number | null) {
   try {
-    await invoke("move_tag_to_group", { id, groupId });
+    await invoke(cmds.value.moveTag, { id, groupId });
     showToast("标签已移动");
     await load();
     emit("saved");
@@ -249,7 +268,7 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    data.value = await invoke<ManagerData>("list_image_tag_groups");
+    data.value = await invoke<ManagerData>(cmds.value.list);
   } catch (e) {
     error.value = String(e);
   } finally {
@@ -275,7 +294,7 @@ function openNewTag() {
 async function submitNewTag() {
   const name = dlg.value.value.trim();
   if (!name) return;
-  await invoke("create_image_tag", {
+  await invoke(cmds.value.createTag, {
     name,
     groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
   });
@@ -291,11 +310,11 @@ function openRenameTag(item: TagItem) {
   dlg.value.onOk = async () => {
     const name = dlg.value.value.trim();
     if (!name) return;
-    await invoke("rename_image_tag", {
+    await invoke(cmds.value.renameTag, {
       id: item.id,
       name,
     });
-    await invoke("move_tag_to_group", {
+    await invoke(cmds.value.moveTag, {
       id: item.id,
       groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
     });
@@ -305,8 +324,8 @@ function openRenameTag(item: TagItem) {
   };
 }
 function openDeleteTag(item: TagItem) {
-  openConfirm("删除标签", `确定删除标签「${item.name}」？其与图像的关联将一并清除。`, async () => {
-    await invoke("delete_image_tag", { id: item.id });
+  openConfirm("删除标签", `确定删除标签「${item.name}」？其与${domainLabel.value}的关联将一并清除。`, async () => {
+    await invoke(cmds.value.deleteTag, { id: item.id });
     showToast("标签已删除");
     refresh();
     closeDlg();
@@ -327,7 +346,7 @@ async function submitNewGroup() {
   const name = dlg.value.value.trim();
   if (!name) return;
   const sortOrder = parseSortOrder(dlg.value.sortOrder);
-  await invoke("create_image_tag_group", { name, sortOrder });
+  await invoke(cmds.value.createGroup, { name, sortOrder });
   showToast(`已新建组「${name}」`);
   refresh();
 }
@@ -337,7 +356,7 @@ function openRenameGroup(g: TagGroup) {
     const name = dlg.value.value.trim();
     if (!name) return;
     const sortOrder = parseSortOrder(dlg.value.sortOrder);
-    await invoke("update_image_tag_group", { id: g.id, name, sortOrder });
+    await invoke(cmds.value.updateGroup, { id: g.id, name, sortOrder });
     showToast("组已更新");
     refresh();
     closeDlg();
@@ -345,7 +364,7 @@ function openRenameGroup(g: TagGroup) {
 }
 function openDeleteGroup(g: TagGroup) {
   openConfirm("删除组", `确定删除组「${g.name}」？组内标签将变为未分组。`, async () => {
-    await invoke("delete_image_tag_group", { id: g.id });
+    await invoke(cmds.value.deleteGroup, { id: g.id });
     showToast("组已删除");
     refresh();
     closeDlg();
@@ -382,7 +401,7 @@ function refresh() {
       <div class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <!-- 头部 -->
         <div class="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-          <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-100">图像标签管理</h2>
+          <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ domainLabel }}标签管理</h2>
           <button
             type="button"
             class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
@@ -454,7 +473,7 @@ function refresh() {
           <div v-if="loading" class="py-10 text-center text-xs text-gray-500">加载中…</div>
 
           <div v-else-if="sections.length === 0 || data.tags.length === 0" class="py-10 text-center text-xs text-gray-500">
-            暂无图像标签
+            暂无{{ domainLabel }}标签
           </div>
 
           <div v-else class="grid items-start gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">

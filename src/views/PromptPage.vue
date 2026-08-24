@@ -6,6 +6,7 @@ import { formatLocalTime } from "@/utils/date";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
+import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
 const { showToast } = useToast();
@@ -314,6 +315,15 @@ function onModalUploaded() {
   loadTagFilter();
 }
 
+// 标签管理入口
+const tagManagerOpen = ref(false);
+function openTagManager() {
+  tagManagerOpen.value = true;
+}
+function onTagManagerSaved() {
+  loadTagFilter();
+}
+
 // —— 回收站 ——
 const trashOpen = ref(false);
 const trashPrompts = ref<Prompt[]>([]);
@@ -446,6 +456,14 @@ onMounted(() => {
             @click="toggleTagSortDesc"
           >
             {{ tagSortDesc ? "↓" : "↑" }}
+          </button>
+          <button
+            type="button"
+            class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            title="管理标签"
+            @click="openTagManager"
+          >
+            管理
           </button>
         </div>
 
@@ -611,6 +629,14 @@ onMounted(() => {
       danger
       @confirm="doSingleDelete"
       @cancel="singleDeleteOpen = false; singleDeleteTarget = null"
+    />
+
+    <!-- 标签管理（独立组件，提示词域） -->
+    <TagManagerModal
+      :open="tagManagerOpen"
+      domain="prompt"
+      @close="tagManagerOpen = false"
+      @saved="onTagManagerSaved"
     />
 
     <!-- 回收站弹窗 -->
