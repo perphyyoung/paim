@@ -4,6 +4,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
+import NavAndIndex from "@/components/NavAndIndex.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { formatLocalTime } from "@/utils/date";
 
@@ -43,7 +44,7 @@ const emit = defineEmits<{
 
 const { showToast } = useToast();
 
-const { current, currentIndex, nav, init } = useDetailSnapshot<Image>(
+const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<Image>(
   () => props.images,
   toRef(props, "order"),
 );
@@ -307,25 +308,17 @@ const fmtSize = (bytes: number) => {
             class="max-h-full max-w-full object-contain"
           />
           <p v-else class="text-sm text-gray-400 dark:text-gray-500">无图像</p>
-          <button
-            type="button"
-            class="absolute left-3 top-1/2 -translate-y-1/2 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            :disabled="!current"
-            @click="nav(-1)"
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            :disabled="!current"
-            @click="nav(1)"
-          >
-            ›
-          </button>
-          <div class="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
-            {{ currentIndex + 1 }} / {{ order.length }}
-          </div>
+        <!-- 导航 + 索引：图像区底部居中，与提示词详情共用组件 -->
+        <div class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
+          <NavAndIndex
+            :current-index="currentIndex"
+            :order-length="order.length"
+            @first="goFirst"
+            @prev="nav(-1)"
+            @next="nav(1)"
+            @last="goLast"
+          />
+        </div>
         </div>
 
         <!-- 右：图像相关信息 -->

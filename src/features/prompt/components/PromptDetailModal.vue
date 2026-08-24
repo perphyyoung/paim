@@ -6,6 +6,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
+import NavAndIndex from "@/components/NavAndIndex.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
@@ -52,7 +53,7 @@ const emit = defineEmits<{
 const { showToast } = useToast();
 
 // 以「顺序快照」定位当前提示词，避免列表重载/重排后数据或位置漂移
-const { current, currentIndex, nav, init } = useDetailSnapshot<Prompt>(
+const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<Prompt>(
   () => props.prompts,
   toRef(props, "order"),
 );
@@ -569,27 +570,16 @@ async function onPickerImported() {
           </div>
         </div>
 
-        <!-- 索引胶囊：页面底部居中，与图像详情一致 -->
-        <div class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
-          <button
-            type="button"
-            class="px-1 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="order.length <= 1"
-            title="上一个"
-            @click="nav(-1)"
-          >
-            ‹
-          </button>
-          <span>{{ currentIndex + 1 }} / {{ order.length }}</span>
-          <button
-            type="button"
-            class="px-1 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="order.length <= 1"
-            title="下一个"
-            @click="nav(1)"
-          >
-            ›
-          </button>
+        <!-- 导航 + 索引：页面底部居中，与图像详情共用组件 -->
+        <div class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
+          <NavAndIndex
+            :current-index="currentIndex"
+            :order-length="order.length"
+            @first="goFirst"
+            @prev="nav(-1)"
+            @next="nav(1)"
+            @last="goLast"
+          />
         </div>
       </div>
     </div>
