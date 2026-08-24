@@ -18,13 +18,10 @@ const props = withDefaults(
   defineProps<{
     open: boolean;
     count: number;
-    /** 计数单位，如"图像"/"提示词" */
-    label?: string;
     /** 需要显示的按钮，按此处顺序排列 */
     buttons?: BatchAction[];
   }>(),
   {
-    label: "图像",
     buttons: () => [
       "selectAll",
       "invert",
@@ -77,7 +74,7 @@ function submitAddTag() {
       class="fixed bottom-5 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-4 rounded-xl bg-[rgba(30,30,40,0.95)] px-4 py-2.5 shadow-2xl backdrop-blur-md"
     >
       <span class="whitespace-nowrap text-[13px] text-white/80">
-        已选择 {{ count }} 个{{ label }}
+        已选择 {{ count }} 项
       </span>
       <div class="flex items-center gap-1.5">
         <button

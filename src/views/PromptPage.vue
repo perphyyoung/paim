@@ -731,7 +731,6 @@ onMounted(() => {
     <BatchActionBar
       :open="batchOpen"
       :count="selectedIds.size"
-      label="提示词"
       @select-all="batchSelectAll"
       @invert="batchInvert"
       @add-tag="batchAddTag"

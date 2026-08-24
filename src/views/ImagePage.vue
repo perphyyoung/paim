@@ -1006,7 +1006,6 @@ function onUploadDone() {
     <BatchActionBar
       :open="batchOpen"
       :count="selectedIds.size"
-      label="图像"
       @select-all="batchSelectAll"
       @invert="batchInvert"
       @add-tag="batchAddTag"
