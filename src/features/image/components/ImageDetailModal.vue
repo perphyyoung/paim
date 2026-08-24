@@ -3,6 +3,8 @@ import { computed, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
+import { useConfirm } from "@/components/useConfirm";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { formatLocalTime } from "@/utils/date";
 
 interface Image {
@@ -118,6 +120,26 @@ async function removeTag(tagId: number) {
   if (!img) return;
   await invoke("remove_image_tag", { id: img.id, tagId });
   tags.value = tags.value.filter((t) => t.id !== tagId);
+  emit("update", img);
+}
+
+// 标签删除需确认
+const {
+  confirmOpen,
+  confirmTitle,
+  confirmMessage,
+  confirmText: deleteConfirmText,
+  confirmDanger,
+  ask,
+  cancelConfirm,
+  confirmAction,
+} = useConfirm();
+function requestRemoveTag(t: { id: number; name: string }) {
+  ask(
+    `确定删除图像标签「${t.name}」？`,
+    { danger: true, confirmText: "删除" },
+    () => removeTag(t.id)
+  );
 }
 
 // 加载当前图像的关联提示词（标题 + 内容）
@@ -392,9 +414,9 @@ const fmtSize = (bytes: number) => {
                 {{ t.name }}
                 <button
                   type="button"
-                  class="text-blue-400 hover:text-blue-700 dark:hover:text-blue-200"
+                  class="text-red-400 hover:text-red-600 dark:hover:text-red-300"
                   :title="`删除标签 ${t.name}`"
-                  @click="removeTag(t.id)"
+                  @click="requestRemoveTag(t)"
                 >
                   ✕
                 </button>
@@ -484,4 +506,15 @@ const fmtSize = (bytes: number) => {
       </div>
     </div>
   </Teleport>
+
+  <!-- 标签删除确认 -->
+  <ConfirmDialog
+    :open="confirmOpen"
+    :title="confirmTitle"
+    :message="confirmMessage"
+    :confirm-text="deleteConfirmText"
+    :danger="confirmDanger"
+    @confirm="confirmAction"
+    @cancel="cancelConfirm"
+  />
 </template>

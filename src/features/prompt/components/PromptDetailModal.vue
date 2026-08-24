@@ -3,6 +3,7 @@
 import { computed, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
+import { useConfirm } from "@/components/useConfirm";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 
@@ -207,33 +208,29 @@ async function removeImage(img: RelatedImage) {
 }
 
 // 通用删除确认：标签/图像移除均需确认
-const delState = ref<{ kind: "tag" | "image"; payload: { id: number | string; name: string }; label: string } | null>(null);
-const delMessage = computed(() => {
-  const s = delState.value;
-  if (!s) return "";
-  return s.kind === "tag"
-    ? `确定删除标签「${s.label}」？`
-    : `确定移除图像「${s.label}」与该提示词的关联？`;
-});
-const delConfirmText = computed(() => (delState.value?.kind === "tag" ? "删除" : "移除"));
+const {
+  confirmOpen,
+  confirmTitle,
+  confirmMessage,
+  confirmText: deleteConfirmText,
+  confirmDanger,
+  ask,
+  cancelConfirm,
+  confirmAction,
+} = useConfirm();
 function requestRemoveTag(t: { id: number; name: string }) {
-  delState.value = { kind: "tag", payload: { id: t.id, name: t.name }, label: t.name };
+  ask(
+    `确定删除标签「${t.name}」？`,
+    { danger: true, confirmText: "删除" },
+    () => removeTag(t.id)
+  );
 }
 function requestRemoveImage(img: RelatedImage) {
-  delState.value = { kind: "image", payload: { id: img.id, name: img.file_name }, label: img.file_name };
-}
-function cancelDelete() {
-  delState.value = null;
-}
-async function confirmDelete() {
-  const s = delState.value;
-  if (!s) return;
-  delState.value = null;
-  if (s.kind === "tag") {
-    await removeTag(s.payload.id as number);
-  } else {
-    await removeImage(s.payload as unknown as RelatedImage);
-  }
+  ask(
+    `确定移除图像「${img.file_name}」与该提示词的关联？`,
+    { danger: true, confirmText: "移除" },
+    () => removeImage(img)
+  );
 }
 
 function thumbUrl(img: RelatedImage) {
@@ -518,12 +515,12 @@ async function viewImage(img: RelatedImage) {
 
   <!-- 删除/移除确认 -->
   <ConfirmDialog
-    :open="!!delState"
-    title="确认操作"
-    :message="delMessage"
-    :confirm-text="delConfirmText"
-    danger
-    @confirm="confirmDelete"
-    @cancel="cancelDelete"
+    :open="confirmOpen"
+    :title="confirmTitle"
+    :message="confirmMessage"
+    :confirm-text="deleteConfirmText"
+    :danger="confirmDanger"
+    @confirm="confirmAction"
+    @cancel="cancelConfirm"
   />
 </template>
