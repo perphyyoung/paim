@@ -66,9 +66,11 @@ interface LinkedPrompt {
 }
 
 const relatedPrompts = ref<LinkedPrompt[]>([]);
-// 详情页左侧每组字段对应一个关联提示词，优先展示第一个
-const firstPrompt = computed<LinkedPrompt | undefined>(() =>
-  props.open ? relatedPrompts.value[0] : undefined
+// 当前选中的关联提示词下标（多引时可切换）
+const promptIndex = ref(0);
+// 详情页左侧展示的提示词：多引时可切换，单选恒为第一个
+const currentPrompt = computed<LinkedPrompt | undefined>(() =>
+  props.open ? relatedPrompts.value[promptIndex.value] : undefined
 );
 
 // —— 编辑提示词（打开提示词详情弹窗，复用 PromptDetailModal）——
@@ -76,7 +78,7 @@ const editPromptOpen = ref(false);
 // 供 PromptDetailModal 使用的标签数据（由本图像的提示词标签构造）
 const promptAllTags = ref<{ id: number; name: string; group_id: number | null; count: number }[]>([]);
 const promptTagNames = ref<Record<string, string[]>>({});
-// 编辑目标：把当前图像的第一关联提示词转成 PromptDetailModal 需要的 Prompt 对象
+// 编辑目标：把当前选中的提示词转成 PromptDetailModal 需要的 Prompt 对象
 const editPrompt = computed<{
   id: string;
   title: string;
@@ -88,7 +90,7 @@ const editPrompt = computed<{
   created_at: string;
   updated_at: string;
 }[ ]>(() => {
-  const p = firstPrompt.value;
+  const p = currentPrompt.value;
   if (!p) return [];
   return [
     {
@@ -115,13 +117,13 @@ async function loadPromptTagData() {
   } catch {
     promptAllTags.value = [];
   }
-  if (firstPrompt.value) {
-    promptTagNames.value = { [firstPrompt.value.id]: firstPrompt.value.tags ?? [] };
+  if (currentPrompt.value) {
+    promptTagNames.value = { [currentPrompt.value.id]: currentPrompt.value.tags ?? [] };
   }
 }
 
 function openEditPrompt() {
-  if (!firstPrompt.value) return;
+  if (!currentPrompt.value) return;
   loadPromptTagData();
   editPromptOpen.value = true;
 }
@@ -213,6 +215,8 @@ async function loadRelatedPrompts() {
   } catch {
     relatedPrompts.value = [];
   }
+  // 切换图像后复位选中下标，并处理越界兜底
+  if (promptIndex.value >= relatedPrompts.value.length) promptIndex.value = 0;
 }
 
 // 打开时跳转到初始图并同步编辑字段
@@ -314,7 +318,7 @@ const fmtSize = (bytes: number) => {
             <div class="flex items-center justify-between">
               <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标题</div>
               <button
-                v-if="firstPrompt"
+                v-if="currentPrompt"
                 type="button"
                 class="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 title="编辑提示词"
@@ -324,36 +328,55 @@ const fmtSize = (bytes: number) => {
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>
-                编辑
+                {{ relatedPrompts.length > 1 ? `编辑 (${promptIndex + 1})` : "编辑" }}
               </button>
             </div>
-            <div class="mt-1 text-sm text-gray-700 dark:text-gray-200">
-              {{ firstPrompt?.title || "— 暂无关联提示词 —" }}
+            <!-- 多引：编号标题列表，可点选切换 -->
+            <div v-if="relatedPrompts.length > 1" class="mt-1 flex flex-col gap-1">
+              <button
+                v-for="(p, i) in relatedPrompts"
+                :key="p.id"
+                type="button"
+                class="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-sm transition-colors"
+                :class="
+                  i === promptIndex
+                    ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'
+                "
+                @click="promptIndex = i"
+              >
+                <span class="shrink-0 text-gray-400">{{ i + 1 }}.</span>
+                <span class="truncate">{{ p.title || "未命名" }}</span>
+              </button>
+            </div>
+            <!-- 单选：单行标题 -->
+            <div v-else class="mt-1 text-sm text-gray-700 dark:text-gray-200">
+              {{ currentPrompt?.title || "— 暂无关联提示词 —" }}
             </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词内容</div>
             <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
-              {{ firstPrompt?.content || "—" }}
+              {{ currentPrompt?.content || "—" }}
             </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词翻译</div>
             <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
-              {{ firstPrompt?.content_translate || "—" }}
+              {{ currentPrompt?.content_translate || "—" }}
             </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词备注</div>
             <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
-              {{ firstPrompt?.note || "—" }}
+              {{ currentPrompt?.note || "—" }}
             </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标签</div>
-            <div v-if="firstPrompt?.tags?.length" class="mt-1 flex flex-wrap gap-1">
+            <div v-if="currentPrompt?.tags?.length" class="mt-1 flex flex-wrap gap-1">
               <span
-                v-for="t in firstPrompt.tags"
+                v-for="t in currentPrompt.tags"
                 :key="t"
                 class="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
               >
