@@ -1,0 +1,50 @@
+# 日志使用说明
+
+极简调试日志系统，前端加现场打点、后端关键路径打点，统一追加写入 `paim.log`。仅用于排查，写文件失败时静默，不阻塞业务。
+
+## 日志文件位置
+- **开发/运行（当前工作目录）**：`<工作目录>/paim.log`
+- 路径在首次写日志时惰性计算一次（`std::env::current_dir()`）。
+- 实际常见位置：`src-tauri/paim.log`（因为通常以 `src-tauri` 作为运行目录）。
+
+## 日志格式
+每行：`本地时间 [级别] 消息`
+
+```
+2026-08-23 12:00:00.123 [INFO] [FE] [App] mounted, route = /prompt
+```
+
+- 时间：本地时间，毫秒精度（`chrono::Local`）。
+- 级别：`DEBUG` / `INFO` / `WARN` / `ERROR`。
+
+## 一、后端（Rust）
+在 `src-tauri/src/logging.rs` 提供了 4 个宏，crate 内任意模块可直接使用：
+
+```rust
+log_debug!("...");
+log_info!("...");
+log_warn!("...");
+log_error!("...");
+```
+
+## 二、前端（TS/Vue）
+使用 `src/utils/logger.ts` 导出的 `log` 对象，按级别打点。**仅在开发环境（`import.meta.env.DEV`）发送**，发布构建不产生 IPC 开销：
+
+```ts
+import { log } from "@/utils/logger";
+
+log.debug("消息文本");
+log.info("消息文本", { id, step }); // 多参用空格拼接，对象自动 JSON 序列化
+log.warn("消息文本");
+log.error("消息文本");
+```
+
+前端通过 `invoke("log_msg", { level, message })` 上报后端，后端会加上 `[FE]` 前缀写入文件。
+`level` 对应后端映射：`debug` / `info` / `warn` / `error`。
+
+> 注意：仅开发环境生效，发布后前端埋点不会落盘。
+
+## 三、使用建议
+- 排查「启动即弹窗」「路由跳转」「组件挂载时机」等问题时，在 `main.ts`、`App.vue`、组件 `onMounted` / `watch` 处打点。
+- 需要「应用打开时不残留 UI」的排查，可在启动后扫描 `document.querySelectorAll('.fixed.inset-0')` 并 `log.debug` 输出，确认是否有遮罩残留。
+- 日志是调试/临时用途（见文件头注释「仅用于排查，可随时移除」），问题定位后可清理埋点，不必长期保留。

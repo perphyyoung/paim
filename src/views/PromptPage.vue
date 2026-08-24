@@ -588,8 +588,9 @@ onMounted(() => {
     <!-- 新建提示词弹窗 -->
     <NewPromptModal :open="modalOpen" @close="modalOpen = false" @uploaded="onModalUploaded" />
 
-    <!-- 提示词详情弹窗 -->
+    <!-- 提示词详情弹窗（父级 v-if 强制整体卸载，避免 Teleport 残留） -->
     <PromptDetailModal
+      v-if="detailOpen"
       :open="detailOpen"
       :prompts="sortedPrompts"
       :initial-index="detailIndex"

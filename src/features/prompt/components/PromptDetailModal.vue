@@ -104,7 +104,8 @@ watch(
       loadTags();
       loadRelatedImages();
     }
-  }
+  },
+  { immediate: true } // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
 );
 watch(() => current.value?.id, () => {
   edit.value = false;

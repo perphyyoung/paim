@@ -1115,8 +1115,9 @@ function onUploadDone() {
       </div>
     </Teleport>
 
-    <!-- 图像详情（独立组件） -->
+    <!-- 图像详情（独立组件，父级 v-if 强制整体卸载，避免 Teleport 残留） -->
     <ImageDetailModal
+      v-if="detailOpen"
       :open="detailOpen"
       :images="sortedImages"
       :initial-index="detailIndex"

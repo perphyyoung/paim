@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { useConfirm } from "@/components/useConfirm";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -168,7 +167,8 @@ watch(
       loadTags();
       loadRelatedPrompts();
     }
-  }
+  },
+  { immediate: true } // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
 );
 // 导航切换时加载对应原图与标签、关联提示词
 watch(() => current.value?.id, () => {
