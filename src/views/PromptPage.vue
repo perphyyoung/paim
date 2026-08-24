@@ -646,8 +646,8 @@ onMounted(() => {
           />
           <!-- 4 行覆盖层 -->
           <div class="absolute inset-0 flex flex-col">
-            <!-- row1 按钮行（悬停显示） -->
-            <div class="grid grid-cols-4 items-center py-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+            <!-- row1 按钮行（悬停显示；批量模式下常显） -->
+            <div class="grid grid-cols-4 items-center py-0.5 transition-opacity duration-150" :class="batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'">
               <div class="flex items-center justify-center">
                 <input type="checkbox" class="h-4 w-4 cursor-pointer accent-indigo-500" :checked="selectedIds.has(p.id)" @click.stop="toggleSelect(p.id)" />
               </div>

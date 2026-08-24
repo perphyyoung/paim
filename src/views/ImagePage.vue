@@ -893,9 +893,10 @@ function onUploadDone() {
 
         <!-- 4 行覆盖层 -->
         <div class="absolute inset-0 flex flex-col">
-          <!-- row1 按钮行：4 元素水平均分，左右顶格，悬停显示 -->
+          <!-- row1 按钮行：4 元素水平均分，左右顶格，悬停显示；批量模式下常显 -->
           <div
-            class="grid grid-cols-4 items-center py-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            class="grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"
+            :class="batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
           >
             <!-- 复选框 -->
             <div class="flex items-center justify-center">
