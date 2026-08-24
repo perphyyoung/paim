@@ -30,18 +30,23 @@ cargo tauri build
 ```
 src/                          # Vue 前端
 ├── main.ts / App.vue / styles.css
+├── views/                    # 页面（如图像/提示词主页）
 └── features/
-    └── tag/                  # 标签切片
-        ├── api/tag.ts        # invoke 封装，调用 Rust commands
-        └── components/       # 视图组件
+    └── tag/                  # 标签切片（标签管理共用组件）
+        └── components/
+            └── TagManagerModal.vue   # 通用标签管理弹窗（图像/提示词复用）
 src-tauri/
 └── src/
     ├── lib.rs                # 依赖注入（DB 连接）+ 注册 commands
-    ├── db/mod.rs             # 连接管理与 schema 迁移
+    ├── db.rs                 # 连接管理与 schema 迁移
     └── features/
-        └── tag/              # 标签切片
-            ├── commands.rs   # 薄 IPC 适配层
-            └── service.rs    # 领域逻辑
+        ├── prompt.rs        # 提示词命令
+        ├── prompt_service.rs# 提示词领域逻辑
+        ├── image.rs         # 图像命令
+        ├── image_service.rs # 图像领域逻辑
+        ├── prompt_tag.rs    # 提示词标签管理命令
+        ├── image_tag.rs     # 图像标签管理命令
+        └── tag_manager.rs   # TagDomain 泛化 CRUD，图像/提示词共用
 ```
 
 ## 架构约定
