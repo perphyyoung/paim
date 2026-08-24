@@ -7,6 +7,7 @@ import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
+import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 
 const { showToast } = useToast();
@@ -227,9 +228,18 @@ function rowInfo(p: Prompt): { label: string; value: string } {
   }
 }
 
-// 卡片操作（收藏暂未提供后端命令，占位提示）
-async function toggleFavorite() {
-  showToast("提示词暂不支持收藏");
+// 切换收藏
+async function toggleFavorite(p: Prompt) {
+  try {
+    const updated = await invoke<Prompt>("update_prompt_detail", {
+      id: p.id,
+      isFavorite: !p.is_favorite,
+    });
+    const idx = prompts.value.findIndex((x) => x.id === p.id);
+    if (idx >= 0) prompts.value.splice(idx, 1, updated);
+  } catch (e) {
+    showToast(`收藏失败：${e}`);
+  }
 }
 
 async function copyPrompt(p: Prompt) {
@@ -261,12 +271,90 @@ async function doSingleDelete() {
   }
 }
 
+// ---- 批量选择（卡片 checkbox + 底部悬浮工具栏）----
 const selectedIds = ref<Set<string>>(new Set());
+const batchOpen = ref(false);
+
 function toggleSelect(id: string) {
   const s = new Set(selectedIds.value);
   if (s.has(id)) s.delete(id);
   else s.add(id);
   selectedIds.value = s;
+  batchOpen.value = s.size > 0;
+}
+
+function batchSelectAll() {
+  selectedIds.value = new Set(sortedPrompts.value.map((p) => p.id));
+  batchOpen.value = true;
+}
+
+function batchInvert() {
+  const all = new Set(sortedPrompts.value.map((p) => p.id));
+  const s = new Set(selectedIds.value);
+  for (const id of all) {
+    if (s.has(id)) s.delete(id);
+    else s.add(id);
+  }
+  selectedIds.value = s;
+  batchOpen.value = s.size > 0;
+}
+
+function exitBatch() {
+  selectedIds.value = new Set();
+  batchOpen.value = false;
+}
+
+async function batchAddTag(tags: string[]) {
+  const ids = Array.from(selectedIds.value);
+  if (ids.length === 0) return;
+  try {
+    for (const id of ids) {
+      await invoke("add_prompt_tags", { id, names: tags });
+    }
+    showToast(`已为 ${ids.length} 个提示词添加标签`);
+    exitBatch();
+    await loadTagFilter();
+  } catch (e) {
+    showToast(`批量添加标签失败：${e}`);
+  }
+}
+
+async function batchFavorite() {
+  const ids = Array.from(selectedIds.value);
+  if (ids.length === 0) return;
+  try {
+    for (const id of ids) {
+      const p = await invoke<Prompt>("update_prompt_detail", { id, isFavorite: true });
+      const idx = prompts.value.findIndex((x) => x.id === p.id);
+      if (idx >= 0) prompts.value.splice(idx, 1, p);
+    }
+    showToast(`已收藏 ${ids.length} 个提示词`);
+  } catch (e) {
+    showToast(`批量收藏失败：${e}`);
+  }
+}
+
+const batchDeleteOpen = ref(false);
+
+function batchDelete() {
+  if (selectedIds.value.size === 0) return;
+  batchDeleteOpen.value = true;
+}
+
+async function doBatchDelete() {
+  batchDeleteOpen.value = false;
+  const ids = Array.from(selectedIds.value);
+  if (ids.length === 0) return;
+  try {
+    for (const id of ids) {
+      await invoke("delete_prompt", { id });
+    }
+    showToast(`已删除 ${ids.length} 个提示词`);
+    exitBatch();
+    await loadPrompts();
+  } catch (e) {
+    showToast(`批量删除失败：${e}`);
+  }
 }
 
 // 新建弹窗
@@ -564,7 +652,7 @@ onMounted(() => {
                 <input type="checkbox" class="h-4 w-4 cursor-pointer accent-indigo-500" :checked="selectedIds.has(p.id)" @click.stop="toggleSelect(p.id)" />
               </div>
               <div class="flex items-center justify-center">
-                <button type="button" class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60" :title="p.is_favorite ? '取消收藏' : '收藏'" @click.stop="toggleFavorite">
+                <button type="button" class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60" :title="p.is_favorite ? '取消收藏' : '收藏'" @click.stop="toggleFavorite(p)">
                   <svg viewBox="0 0 24 24" :fill="p.is_favorite ? 'currentColor' : 'none'" :stroke="p.is_favorite ? 'none' : 'currentColor'" stroke-width="1.5" class="h-4 w-4 text-amber-400" aria-hidden="true">
                     <path d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z" />
                   </svg>
@@ -637,6 +725,30 @@ onMounted(() => {
       domain="prompt"
       @close="tagManagerOpen = false"
       @saved="onTagManagerSaved"
+    />
+
+    <!-- 底部批量操作工具栏（通用组件，与图像页复用） -->
+    <BatchActionBar
+      :open="batchOpen"
+      :count="selectedIds.size"
+      label="提示词"
+      @select-all="batchSelectAll"
+      @invert="batchInvert"
+      @add-tag="batchAddTag"
+      @favorite="batchFavorite"
+      @delete="batchDelete"
+      @cancel="exitBatch"
+    />
+
+    <!-- 批量删除确认弹窗 -->
+    <ConfirmDialog
+      :open="batchDeleteOpen"
+      title="确认删除"
+      message="确定将选中的提示词删除？"
+      confirm-text="删除"
+      danger
+      @confirm="doBatchDelete"
+      @cancel="batchDeleteOpen = false"
     />
 
     <!-- 回收站弹窗 -->
