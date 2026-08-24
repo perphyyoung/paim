@@ -29,7 +29,7 @@ interface TagItem {
 interface RelatedImage {
   id: string;
   file_name: string;
-  thumbnail_path: string;
+  src: string;
   tags: string[];
 }
 
@@ -236,8 +236,8 @@ function requestRemoveImage(img: RelatedImage) {
   );
 }
 
-function thumbUrl(img: RelatedImage) {
-  return img.thumbnail_path ? convertFileSrc(img.thumbnail_path) : "";
+function imgUrl(img: RelatedImage) {
+  return img.src ? convertFileSrc(img.src) : "";
 }
 
 // 跳转到图像详情：加载完整图像信息，复用 ImageDetailModal 叠加打开
@@ -267,9 +267,7 @@ async function viewImage(img: RelatedImage) {
   try {
     const detail = await invoke<FullImage>("get_image_detail", { id: img.id });
     imgDetailImages.value = [detail];
-    imgDetailThumbs.value = {
-      [img.id]: img.thumbnail_path ? convertFileSrc(img.thumbnail_path) : "",
-    };
+    imgDetailThumbs.value = {};
     imgDetailOpen.value = true;
   } catch {
     showToast("打开图像详情失败");
@@ -350,23 +348,28 @@ async function onPickerImported() {
             <div v-if="relatedImages.length === 0 && !imagesLoading" class="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600">
               暂无关联图像
             </div>
-            <ul v-else class="grid grid-cols-4 gap-2">
+            <ul
+              v-else
+              :class="relatedImages.length === 1 ? 'flex h-full' : 'grid grid-cols-2 gap-2'"
+            >
               <li
                 v-for="img in relatedImages"
                 :key="img.id"
-                class="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+                class="group relative flex items-center justify-center overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+                :class="relatedImages.length === 1 ? 'flex-1' : ''"
               >
                 <img
-                  v-if="thumbUrl(img)"
-                  :src="thumbUrl(img)"
+                  v-if="imgUrl(img)"
+                  :src="imgUrl(img)"
                   :alt="img.file_name"
                   :title="img.file_name"
-                  class="aspect-square w-full object-cover"
+                  :class="relatedImages.length === 1 ? 'h-full w-full' : 'aspect-square w-full'"
+                  class="object-contain"
                 />
-                <div v-else class="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900">
-                  无缩略图
+                <div v-else :class="relatedImages.length === 1 ? 'flex h-full w-full' : 'flex aspect-square w-full'" class="items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900">
+                  无图像
                 </div>
-                <div v-if="img.tags.length" class="truncate bg-black/60 px-1 py-0.5 text-[10px] text-white">
+                <div v-if="img.tags.length" class="absolute bottom-0.5 left-0.5 max-w-[calc(100%-0.75rem)] truncate rounded bg-black/60 px-1 py-0.5 text-[10px] text-white">
                   {{ img.tags.join("、") }}
                 </div>
                 <button

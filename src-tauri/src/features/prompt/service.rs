@@ -200,12 +200,12 @@ pub fn update_detail(
 pub struct RelatedImage {
     pub id: String,
     pub file_name: String,
-    /// 缩略图绝对路径（前端配合 convertFileSrc 加载）。
-    pub thumbnail_path: String,
+    /// 原图像绝对路径（前端配合 convertFileSrc 加载）。
+    pub src: String,
     pub tags: Vec<String>,
 }
 
-/// 返回一个提示词关联的（未删除）图像列表：id、文件名、缩略图绝对路径、标签。
+/// 返回一个提示词关联的（未删除）图像列表：id、文件名、原图绝对路径、标签。
 pub fn list_related_images(
     conn: &Connection,
     app: &tauri::AppHandle,
@@ -213,7 +213,7 @@ pub fn list_related_images(
 ) -> Result<Vec<RelatedImage>> {
     let data_dir = crate::db::data_dir(app);
     let mut stmt = conn.prepare(
-        "SELECT img.id, img.file_name, img.thumbnail_path
+        "SELECT img.id, img.file_name, img.relative_path
          FROM prompt_image_relations pir
          JOIN images img ON img.id = pir.image_id
          WHERE pir.prompt_id = ?1 AND img.is_deleted = 0
@@ -224,7 +224,7 @@ pub fn list_related_images(
     })?;
     let mut out = Vec::new();
     for row in rows {
-        let (id, file_name, thumb_rel) = row?;
+        let (id, file_name, src_rel) = row?;
         let mut tags = Vec::new();
         {
             let mut ts = conn.prepare(
@@ -242,7 +242,7 @@ pub fn list_related_images(
         out.push(RelatedImage {
             id,
             file_name,
-            thumbnail_path: thumb_rel
+            src: src_rel
                 .map(|rel| data_dir.join(&rel).to_string_lossy().into_owned())
                 .unwrap_or_default(),
             tags,
