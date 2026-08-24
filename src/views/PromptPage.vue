@@ -273,14 +273,16 @@ const modalOpen = ref(false);
 // 详情弹窗
 const detailOpen = ref(false);
 const detailIndex = ref(0);
+// 进入详情时生成「顺序快照」：详情停留期间计数/导航按旧顺序走，保存只更新数据不做排序重排
+const detailOrder = ref<string[]>([]);
 function openDetail(i: number) {
+  detailOrder.value = sortedPrompts.value.map((p) => p.id);
   detailIndex.value = i;
   detailOpen.value = true;
 }
 function closeDetail() {
   detailOpen.value = false;
-}
-function onDetailUpdated() {
+  // 关闭详情后才重新同步，让更新的 updated_at 等排序生效
   loadPrompts();
   loadTagFilter();
 }
@@ -593,11 +595,11 @@ onMounted(() => {
       v-if="detailOpen"
       :open="detailOpen"
       :prompts="sortedPrompts"
+      :order="detailOrder"
       :initial-index="detailIndex"
       :tag-names="tagNames"
       :all-tags="allTags"
       @close="closeDetail"
-      @updated="onDetailUpdated"
     />
 
     <!-- 删除确认 -->

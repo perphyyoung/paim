@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 提示词详情弹窗：展示/编辑标题、内容、翻译、备注，标签增删，关联图像网格查看/移除。
-import { computed, ref, watch } from "vue";
+import { computed, ref, toRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useConfirm } from "@/components/useConfirm";
+import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
@@ -36,6 +37,8 @@ interface RelatedImage {
 const props = defineProps<{
   open: boolean;
   prompts: Prompt[];
+  /** 进入详情时的「顺序快照」：详情停留期间计数/导航/位置按此旧顺序走，不随新建排序变化 */
+  order: string[];
   initialIndex: number;
   tagNames: Record<string, string[]>;
   allTags: TagItem[];
@@ -48,9 +51,10 @@ const emit = defineEmits<{
 
 const { showToast } = useToast();
 
-const index = ref(0);
-const current = computed<Prompt | null>(() =>
-  props.open ? (props.prompts[index.value] ?? null) : null
+// 以「顺序快照」定位当前提示词，避免列表重载/重排后数据或位置漂移
+const { current, currentIndex, nav, init } = useDetailSnapshot<Prompt>(
+  () => props.prompts,
+  toRef(props, "order"),
 );
 
 // 编辑状态
@@ -99,7 +103,8 @@ watch(
   () => [props.open, props.initialIndex] as const,
   ([open, initIdx]) => {
     if (open) {
-      index.value = initIdx;
+      // 以快照中的 id 定位初始提示词（initialIndex 对应进入时的顺序）
+      init(initIdx, props.prompts[initIdx]?.id);
       edit.value = false;
       syncFields();
       loadTags();
@@ -114,12 +119,6 @@ watch(() => current.value?.id, () => {
   loadTags();
   loadRelatedImages();
 });
-
-function nav(step: number) {
-  const n = props.prompts.length;
-  if (n === 0) return;
-  index.value = (index.value + step + n) % n;
-}
 
 function close() {
   emit("close");
@@ -441,17 +440,17 @@ async function onPickerImported() {
               <button
                 type="button"
                 class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-                :disabled="prompts.length <= 1"
+                :disabled="order.length <= 1"
                 title="上一个"
                 @click="nav(-1)"
               >
                 ‹
               </button>
-              <span class="text-xs text-gray-400">{{ index + 1 }} / {{ prompts.length }}</span>
+              <span class="text-xs text-gray-400">{{ currentIndex + 1 }} / {{ order.length }}</span>
               <button
                 type="button"
                 class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-                :disabled="prompts.length <= 1"
+                :disabled="order.length <= 1"
                 title="下一个"
                 @click="nav(1)"
               >
@@ -594,6 +593,7 @@ async function onPickerImported() {
   <ImageDetailModal
     :open="imgDetailOpen"
     :images="imgDetailImages"
+    :order="[imgDetailImages[0]?.id ?? '']"
     :initial-index="0"
     :thumbs="imgDetailThumbs"
     @close="imgDetailOpen = false"

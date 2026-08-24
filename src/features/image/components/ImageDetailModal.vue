@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, toRef, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { useConfirm } from "@/components/useConfirm";
+import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { formatLocalTime } from "@/utils/date";
 
@@ -29,6 +30,8 @@ interface Image {
 const props = defineProps<{
   open: boolean;
   images: Image[];
+  /** 进入详情时的「顺序快照」：详情停留期间计数/导航/位置按此旧顺序走 */
+  order: string[];
   initialIndex: number;
   thumbs: Record<string, string>;
 }>();
@@ -40,7 +43,11 @@ const emit = defineEmits<{
 
 const { showToast } = useToast();
 
-const index = ref(0);
+const { current, currentIndex, nav, init } = useDetailSnapshot<Image>(
+  () => props.images,
+  toRef(props, "order"),
+);
+
 const edit = ref(false);
 const fileName = ref("");
 const note = ref("");
@@ -60,10 +67,6 @@ const relatedPrompts = ref<LinkedPrompt[]>([]);
 // 详情页左侧每组字段对应一个关联提示词，优先展示第一个
 const firstPrompt = computed<LinkedPrompt | undefined>(() =>
   props.open ? relatedPrompts.value[0] : undefined
-);
-
-const current = computed<Image | null>(() =>
-  props.open ? (props.images[index.value] ?? null) : null
 );
 
 // 打开或切换图像时加载原图（详情页展示原图，不同于卡片缩略图）
@@ -160,7 +163,8 @@ watch(
   () => [props.open, props.initialIndex] as const,
   ([open, initIdx]) => {
     if (open) {
-      index.value = initIdx;
+      // 以快照中的 id 定位初始图像（initialIndex 对应进入时的顺序）
+      init(initIdx, props.images[initIdx]?.id);
       edit.value = false;
       syncFields();
       loadOrig();
@@ -170,8 +174,10 @@ watch(
   },
   { immediate: true } // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
 );
-// 导航切换时加载对应原图与标签、关联提示词
+// 导航切换时加载对应原图与标签、关联提示词；并复位编辑态
 watch(() => current.value?.id, () => {
+  edit.value = false;
+  syncFields();
   loadOrig();
   loadTags();
   loadRelatedPrompts();
@@ -180,13 +186,6 @@ watch(() => current.value?.id, () => {
 function syncFields() {
   fileName.value = current.value?.file_name ?? "";
   note.value = current.value?.note ?? "";
-}
-function nav(step: number) {
-  const n = props.images.length;
-  if (n === 0) return;
-  index.value = (index.value + step + n) % n;
-  edit.value = false;
-  syncFields();
 }
 function close() {
   emit("close");
@@ -320,7 +319,7 @@ const fmtSize = (bytes: number) => {
             ›
           </button>
           <div class="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
-            {{ index + 1 }} / {{ images.length }}
+            {{ currentIndex + 1 }} / {{ order.length }}
           </div>
         </div>
 

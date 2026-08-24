@@ -445,14 +445,18 @@ function rowInfo(img: Image): { label: string; value: string } {
 // ---- 图像详情（独立组件 ImageDetailModal.vue）----
 const detailOpen = ref(false);
 const detailIndex = ref(0);
+// 进入详情时生成「顺序快照」：详情停留期间计数/导航按旧顺序走，编辑只更新数据不做排序重排
+const detailOrder = ref<string[]>([]);
 
 function openDetail(img: Image) {
+  detailOrder.value = sortedImages.value.map((i) => i.id);
   detailIndex.value = Math.max(0, sortedImages.value.findIndex((i) => i.id === img.id));
   detailOpen.value = true;
 }
 function closeDetail() {
   detailOpen.value = false;
-  // 详情页可能修改了图片标签，返回后刷新标签筛选区
+  // 关闭详情后才重新同步排序与标签筛选（更新的 updated_at/文件名排序此时生效）
+  loadImages();
   loadTagFilter();
 }
 function onDetailUpdate(updated: Image) {
@@ -1120,6 +1124,7 @@ function onUploadDone() {
       v-if="detailOpen"
       :open="detailOpen"
       :images="sortedImages"
+      :order="detailOrder"
       :initial-index="detailIndex"
       :thumbs="thumbs"
       @close="closeDetail"
