@@ -73,7 +73,7 @@ const thumbs = ref<Record<string, string>>({});
 // —— 特殊标签（虚拟筛选）——
 const SPECIAL_TAGS = [
   { name: "收藏", check: (p: Prompt) => !!p.is_favorite },
-  { name: "有图", check: (p: Prompt) => (imgCount.value[p.id] ?? 0) > 0 },
+  { name: "多图", check: (p: Prompt) => (imgCount.value[p.id] ?? 0) > 1 },
   { name: "无图", check: (p: Prompt) => (imgCount.value[p.id] ?? 0) === 0 },
   { name: "无标", check: (p: Prompt) => { const t = tagNames.value[p.id]; return !t || t.length === 0; } },
   { name: "安全", check: (p: Prompt) => !!p.is_safe },
