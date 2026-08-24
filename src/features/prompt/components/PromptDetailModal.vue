@@ -459,10 +459,11 @@ async function onPickerImported() {
               </button>
               <button
                 type="button"
-                class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                @click="edit = !edit"
+                class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                :disabled="edit"
+                @click="edit = true"
               >
-                {{ edit ? "取消" : "编辑" }}
+                编辑
               </button>
               <button
                 type="button"
@@ -525,16 +526,6 @@ async function onPickerImported() {
               <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{{ current?.note || "—" }}</div>
             </div>
 
-            <div v-if="edit" class="mb-4 flex items-center gap-2">
-              <button
-                type="button"
-                class="rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-                @click="saveFields"
-              >
-                保存
-              </button>
-            </div>
-
             <!-- 标签 -->
             <div class="mb-4">
               <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标签</label>
@@ -572,6 +563,27 @@ async function onPickerImported() {
                 </button>
               </div>
             </div>
+
+          <!-- 编辑态悬浮操作栏（sticky 贴底，居中左右对称） -->
+          <div
+            v-if="edit"
+            class="sticky bottom-0 z-10 flex items-center justify-center gap-2 border-t border-gray-100 bg-white/90 px-4 py-2.5 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90"
+          >
+            <button
+              type="button"
+              class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+              @click="edit = false"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+              @click="saveFields"
+            >
+              保存
+            </button>
+          </div>
           </div>
         </div>
       </div>
