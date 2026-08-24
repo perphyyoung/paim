@@ -187,6 +187,11 @@ function syncFields() {
   fileName.value = current.value?.file_name ?? "";
   note.value = current.value?.note ?? "";
 }
+// 顶部编辑/取消：取消时恢复字段原值，避免残留未保存的编辑
+function toggleEdit() {
+  if (edit.value) syncFields();
+  edit.value = !edit.value;
+}
 function close() {
   emit("close");
 }
@@ -325,9 +330,9 @@ const fmtSize = (bytes: number) => {
 
         <!-- 右：图像相关信息 -->
         <div
-          class="flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-gray-200 p-4 dark:border-gray-700"
+          class="relative flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-gray-200 p-4 dark:border-gray-700"
         >
-          <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
             <button
               type="button"
               class="flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200"
@@ -375,7 +380,16 @@ const fmtSize = (bytes: number) => {
             </label>
             <button
               type="button"
-              class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+              class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              :class="edit ? 'font-medium dark:text-gray-200' : ''"
+              :title="edit ? '取消编辑' : '编辑'"
+              @click="toggleEdit"
+            >
+              {{ edit ? "取消" : "编辑" }}
+            </button>
+            <button
+              type="button"
+              class="ml-auto rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
               title="关闭"
               @click="close"
             >
@@ -384,16 +398,7 @@ const fmtSize = (bytes: number) => {
           </div>
 
           <div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">文件名</span>
-              <button
-                type="button"
-                class="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                @click="edit = !edit"
-              >
-                {{ edit ? "取消" : "编辑" }}
-              </button>
-            </div>
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">文件名</div>
             <input
               v-if="edit"
               v-model="fileName"
@@ -440,16 +445,7 @@ const fmtSize = (bytes: number) => {
           </div>
 
           <div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">备注</span>
-              <button
-                type="button"
-                class="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                @click="edit = !edit"
-              >
-                编辑
-              </button>
-            </div>
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">备注</div>
             <textarea
               v-if="edit"
               v-model="note"
@@ -459,23 +455,6 @@ const fmtSize = (bytes: number) => {
             <div v-else class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
               {{ note || "—" }}
             </div>
-          </div>
-
-          <div v-if="edit" class="flex items-center gap-2">
-            <button
-              type="button"
-              class="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-              @click="saveFields"
-            >
-              保存
-            </button>
-            <button
-              type="button"
-              class="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-              @click="edit = false; syncFields()"
-            >
-              取消
-            </button>
           </div>
 
           <div>
@@ -501,6 +480,27 @@ const fmtSize = (bytes: number) => {
               </li>
             </ul>
           </div>
+
+      <!-- 编辑态悬浮按钮组：脱离文档流，不占/不遮挡编辑区域，顺序与提示词详情一致（取消前、保存后） -->
+      <div
+        v-if="edit"
+        class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2"
+      >
+        <button
+          type="button"
+          class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-lg transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          @click="edit = false; syncFields()"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg transition-colors hover:bg-blue-500"
+          @click="saveFields"
+        >
+          保存
+        </button>
+      </div>
         </div>
       </div>
     </div>

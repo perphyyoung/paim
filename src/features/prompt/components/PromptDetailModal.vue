@@ -415,7 +415,7 @@ async function onPickerImported() {
         </div>
 
         <!-- 右栏：提示词 -->
-        <div class="flex min-w-0 flex-col overflow-hidden">
+        <div class="relative flex min-w-0 flex-col overflow-hidden">
           <!-- 顶部操作栏 -->
           <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
             <div class="flex items-center gap-2">
@@ -564,26 +564,27 @@ async function onPickerImported() {
               </div>
             </div>
 
-          <!-- 编辑态悬浮操作栏（sticky 贴底，居中左右对称） -->
+          </div>
+
+          <!-- 编辑态悬浮按钮组：脱离文档流，不占/不遮挡编辑区域，仅按钮本身 -->
           <div
             v-if="edit"
-            class="sticky bottom-0 z-10 flex items-center justify-center gap-2 border-t border-gray-100 bg-white/90 px-4 py-2.5 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/90"
+            class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2"
           >
             <button
               type="button"
-              class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+              class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-lg transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
               @click="edit = false"
             >
               取消
             </button>
             <button
               type="button"
-              class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+              class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg transition-colors hover:bg-blue-500"
               @click="saveFields"
             >
               保存
             </button>
-          </div>
           </div>
         </div>
       </div>
