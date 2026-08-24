@@ -357,17 +357,16 @@ fn relate_prompt(conn: &Connection, image_id: &str, content: &str) -> rusqlite::
     Ok(())
 }
 
-/// 将图片关联到已存在的提示词（幂等），供新建提示词选择图像时使用。
+/// 将图片关联到已存在的提示词（幂等），返回实际新增的关联数；供新建提示词选择图像时使用。
 pub fn relate_image_to_prompt(
     conn: &Connection,
     prompt_id: &str,
     image_id: &str,
-) -> rusqlite::Result<()> {
+) -> rusqlite::Result<usize> {
     conn.execute(
         "INSERT OR IGNORE INTO prompt_image_relations(prompt_id, image_id) VALUES (?1, ?2)",
         rusqlite::params![prompt_id, image_id],
-    )?;
-    Ok(())
+    )
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -463,6 +462,22 @@ pub fn upload_image(
 pub fn list_images(db: State<crate::db::BkDb>) -> Result<Vec<Image>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     list(&conn).map_err(|e| e.to_string())
+}
+
+/// 将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。
+#[tauri::command]
+pub fn relate_images_to_prompt(
+    db: State<crate::db::BkDb>,
+    prompt_id: String,
+    image_ids: Vec<String>,
+) -> Result<usize, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut count = 0usize;
+    for id in &image_ids {
+        count += relate_image_to_prompt(&conn, &prompt_id, id)
+            .map_err(|e| e.to_string())? as usize;
+    }
+    Ok(count)
 }
 
 #[tauri::command]

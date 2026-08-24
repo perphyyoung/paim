@@ -7,6 +7,7 @@ import { useToast } from "@/components/useToast";
 import { useConfirm } from "@/components/useConfirm";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
+import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
 
 interface Prompt {
   id: string;
@@ -310,6 +311,19 @@ async function importFromExternal() {
     importLoading.value = false;
   }
 }
+
+// 从图像列表导入
+const pickerOpen = ref(false);
+function importFromPicker() {
+  if (!current.value) return;
+  pickerOpen.value = true;
+}
+async function onPickerImported() {
+  pickerOpen.value = false;
+  await loadRelatedImages();
+  emit("updated");
+  showToast("已关联所选图像");
+}
 </script>
 
 <template>
@@ -378,22 +392,23 @@ async function importFromExternal() {
             </ul>
           </div>
 
-          <!-- 导入区：从外界导入 / 从图像列表导入 -->
-          <div class="border-t border-gray-200 dark:border-gray-700">
-            <div class="flex items-center justify-between px-4 py-3">
-              <button
-                type="button"
-                class="flex-1 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                :disabled="importLoading"
-                @click="importFromExternal"
-              >
-                {{ importLoading ? "导入中…" : "从外界导入图像" }}
-              </button>
-            </div>
-            <div class="flex items-center justify-between border-t border-gray-200 px-4 py-2 dark:border-gray-700">
-              <span class="text-xs text-gray-400 dark:text-gray-500">从图像列表导入（即将开放）</span>
-              <span class="text-xs text-gray-300 dark:text-gray-600">—</span>
-            </div>
+          <!-- 导入区：从外界导入 / 从图像列表导入（左右布局，压缩高度以保留关联图像区域） -->
+          <div class="grid grid-cols-2 gap-2 border-t border-gray-200 px-4 py-2.5 dark:border-gray-700">
+            <button
+              type="button"
+              class="rounded-lg border border-blue-300 bg-blue-50 px-2 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="importLoading"
+              @click="importFromExternal"
+            >
+              {{ importLoading ? "导入中…" : "从外界导入图像" }}
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border border-blue-300 bg-blue-50 px-2 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+              @click="importFromPicker"
+            >
+              从图像列表导入
+            </button>
           </div>
         </div>
 
@@ -567,6 +582,15 @@ async function importFromExternal() {
     :initial-index="0"
     :thumbs="imgDetailThumbs"
     @close="imgDetailOpen = false"
+  />
+
+  <!-- 从图像列表导入选择器 -->
+  <ImagePickerModal
+    v-if="pickerOpen"
+    :open="pickerOpen"
+    :prompt-id="current?.id ?? ''"
+    @close="pickerOpen = false"
+    @imported="onPickerImported"
   />
 
   <!-- 删除/移除确认 -->

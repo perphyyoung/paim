@@ -59,6 +59,7 @@ pub fn run() {
       features::image::upload_images,
       features::image::get_source_thumbnail,
       features::image::list_images,
+      features::image::relate_images_to_prompt,
       features::image::get_thumbnail,
       features::image::list_trash,
       features::image::delete_image,
