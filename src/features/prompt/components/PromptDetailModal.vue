@@ -334,7 +334,7 @@ async function onPickerImported() {
       @keydown.down="nav(1)"
       tabindex="-1"
     >
-      <div class="grid h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div class="relative grid h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <!-- 左栏：关联图像 -->
         <div class="flex min-w-0 flex-col overflow-hidden border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
           <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
@@ -437,25 +437,6 @@ async function onPickerImported() {
               </label>
             </div>
             <div class="flex items-center gap-1.5">
-              <button
-                type="button"
-                class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-                :disabled="order.length <= 1"
-                title="上一个"
-                @click="nav(-1)"
-              >
-                ‹
-              </button>
-              <span class="text-xs text-gray-400">{{ currentIndex + 1 }} / {{ order.length }}</span>
-              <button
-                type="button"
-                class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-                :disabled="order.length <= 1"
-                title="下一个"
-                @click="nav(1)"
-              >
-                ›
-              </button>
               <button
                 type="button"
                 class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -586,6 +567,29 @@ async function onPickerImported() {
               保存
             </button>
           </div>
+        </div>
+
+        <!-- 索引胶囊：页面底部居中，与图像详情一致 -->
+        <div class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
+          <button
+            type="button"
+            class="px-1 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="order.length <= 1"
+            title="上一个"
+            @click="nav(-1)"
+          >
+            ‹
+          </button>
+          <span>{{ currentIndex + 1 }} / {{ order.length }}</span>
+          <button
+            type="button"
+            class="px-1 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="order.length <= 1"
+            title="下一个"
+            @click="nav(1)"
+          >
+            ›
+          </button>
         </div>
       </div>
     </div>
