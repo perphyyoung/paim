@@ -325,69 +325,77 @@ const fmtSize = (bytes: number) => {
         <div
           class="relative flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-gray-200 p-4 dark:border-gray-700"
         >
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200"
-              :class="
-                current?.is_favorite
-                  ? 'border-transparent bg-gradient-to-br from-amber-500 to-amber-400 text-white'
-                  : 'border-gray-300 bg-white text-gray-400 hover:border-amber-300 hover:text-amber-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'
-              "
-              :title="current?.is_favorite ? '取消收藏' : '收藏'"
-              @click="toggleFavorite"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                class="h-4 w-4"
-                aria-hidden="true"
-              >
-                <path
-                  d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
-                />
-              </svg>
-            </button>
-            <label
-              class="relative inline-block h-6 w-11"
-              :title="current?.is_safe ? '安全' : '不安全'"
-            >
-              <input
-                type="checkbox"
-                class="h-0 w-0 opacity-0"
-                :checked="current?.is_safe"
-                @change="toggleSafe"
-              />
-              <span
-                class="absolute inset-0 cursor-pointer rounded-full transition-colors duration-300"
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <button
+                type="button"
+                class="flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200"
                 :class="
-                  current?.is_safe
-                    ? 'bg-green-500'
-                    : 'bg-red-500'
+                  current?.is_favorite
+                    ? 'border-transparent bg-gradient-to-br from-amber-500 to-amber-400 text-white'
+                    : 'border-gray-300 bg-white text-gray-400 hover:border-amber-300 hover:text-amber-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'
                 "
-              ></span>
-              <span
-                class="absolute bottom-[3px] left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-300"
-                :class="current?.is_safe ? 'translate-x-5' : ''"
-              ></span>
-            </label>
-            <button
-              type="button"
-              class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-              :class="edit ? 'font-medium dark:text-gray-200' : ''"
-              :title="edit ? '取消编辑' : '编辑'"
-              @click="toggleEdit"
-            >
-              {{ edit ? "取消" : "编辑" }}
-            </button>
-            <button
-              type="button"
-              class="ml-auto rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-              title="关闭"
-              @click="close"
+                :title="current?.is_favorite ? '取消收藏' : '收藏'"
+                @click="toggleFavorite"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div class="flex items-center">
+              <label
+                class="relative inline-block h-6 w-11"
+                :title="current?.is_safe ? '安全' : '不安全'"
+              >
+                <input
+                  type="checkbox"
+                  class="h-0 w-0 opacity-0"
+                  :checked="current?.is_safe"
+                  @change="toggleSafe"
+                />
+                <span
+                  class="absolute inset-0 cursor-pointer rounded-full transition-colors duration-300"
+                  :class="
+                    current?.is_safe
+                      ? 'bg-green-500'
+                      : 'bg-red-500'
+                  "
+                ></span>
+                <span
+                  class="absolute bottom-[3px] left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-300"
+                  :class="current?.is_safe ? 'translate-x-5' : ''"
+                ></span>
+              </label>
+            </div>
+            <div class="flex items-center">
+              <button
+                type="button"
+                class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                :class="edit ? 'font-medium dark:text-gray-200' : ''"
+                :title="edit ? '取消编辑' : '编辑'"
+                @click="toggleEdit"
+              >
+                {{ edit ? "取消" : "编辑" }}
+              </button>
+            </div>
+            <div class="flex items-center">
+              <button
+                type="button"
+                class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                title="关闭"
+                @click="close"
             >
               ✕
             </button>
+            </div>
           </div>
 
           <div>

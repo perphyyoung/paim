@@ -417,9 +417,9 @@ async function onPickerImported() {
 
         <!-- 右栏：提示词 -->
         <div class="relative flex min-w-0 flex-col overflow-hidden">
-          <!-- 顶部操作栏 -->
+          <!-- 顶部操作栏：收藏 / 安全 / 编辑 / 关闭，两端对齐、间距均分 -->
           <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center">
               <button
                 type="button"
                 class="flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200"
@@ -431,13 +431,15 @@ async function onPickerImported() {
                   <path d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z" />
                 </svg>
               </button>
+            </div>
+            <div class="flex items-center">
               <label class="relative inline-block h-6 w-11" :title="current?.is_safe ? '安全' : '不安全'">
                 <input type="checkbox" class="h-0 w-0 opacity-0" :checked="current?.is_safe" @change="toggleSafe" />
                 <span class="absolute inset-0 cursor-pointer rounded-full transition-colors duration-300" :class="current?.is_safe ? 'bg-green-500' : 'bg-red-500'"></span>
                 <span class="absolute bottom-[3px] left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-300" :class="current?.is_safe ? 'translate-x-5' : ''"></span>
               </label>
             </div>
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center">
               <button
                 type="button"
                 class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -447,6 +449,8 @@ async function onPickerImported() {
               >
                 {{ edit ? "取消" : "编辑" }}
               </button>
+            </div>
+            <div class="flex items-center">
               <button
                 type="button"
                 class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
