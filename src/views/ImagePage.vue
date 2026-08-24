@@ -138,10 +138,9 @@ interface TagGroupData {
 const tagGroups = ref<TagGroupData[]>([]);
 
 // —— 特殊标签（虚拟筛选，参考 pm）——
-// 未引/多引 依赖 prompt_refs，当前无引用数据，故「未引」=全量、「多引」=0，待接入提示词引用后生效
+// 未引/多引 依据图像关联的提示词数量（imagePrompts 映射：{imageId: [content,...]}）
 function refLen(img: Image): number {
-  const r = (img as { prompt_refs?: unknown[] | null }).prompt_refs;
-  return r ? r.length : 0;
+  return imagePrompts.value[img.id]?.length ?? 0;
 }
 const SPECIAL_TAGS = [
   { name: "收藏", check: (img: Image) => !!img.is_favorite },
