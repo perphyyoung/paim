@@ -6,6 +6,7 @@ import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import { formatLocalTime } from "@/utils/date";
 
 interface Image {
@@ -69,6 +70,61 @@ const relatedPrompts = ref<LinkedPrompt[]>([]);
 const firstPrompt = computed<LinkedPrompt | undefined>(() =>
   props.open ? relatedPrompts.value[0] : undefined
 );
+
+// —— 编辑提示词（打开提示词详情弹窗，复用 PromptDetailModal）——
+const editPromptOpen = ref(false);
+// 供 PromptDetailModal 使用的标签数据（由本图像的提示词标签构造）
+const promptAllTags = ref<{ id: number; name: string; group_id: number | null; count: number }[]>([]);
+const promptTagNames = ref<Record<string, string[]>>({});
+// 编辑目标：把当前图像的第一关联提示词转成 PromptDetailModal 需要的 Prompt 对象
+const editPrompt = computed<{
+  id: string;
+  title: string;
+  content: string;
+  content_translate: string;
+  note: string;
+  is_favorite: boolean;
+  is_safe: boolean;
+  created_at: string;
+  updated_at: string;
+}[ ]>(() => {
+  const p = firstPrompt.value;
+  if (!p) return [];
+  return [
+    {
+      id: p.id,
+      title: p.title,
+      content: p.content,
+      content_translate: p.content_translate,
+      note: p.note,
+      is_favorite: false,
+      is_safe: true,
+      created_at: "",
+      updated_at: "",
+    },
+  ];
+});
+
+async function loadPromptTagData() {
+  try {
+    const data = await invoke<{
+      groups: { id: number; name: string; sort_order: number }[];
+      tags: { id: number; name: string; group_id: number | null; count: number }[];
+    }>("get_prompt_tag_data");
+    promptAllTags.value = data.tags ?? [];
+  } catch {
+    promptAllTags.value = [];
+  }
+  if (firstPrompt.value) {
+    promptTagNames.value = { [firstPrompt.value.id]: firstPrompt.value.tags ?? [] };
+  }
+}
+
+function openEditPrompt() {
+  if (!firstPrompt.value) return;
+  loadPromptTagData();
+  editPromptOpen.value = true;
+}
 
 // 打开或切换图像时加载原图（详情页展示原图，不同于卡片缩略图）
 async function loadOrig() {
@@ -255,7 +311,22 @@ const fmtSize = (bytes: number) => {
           class="flex w-[320px] shrink-0 flex-col gap-4 overflow-auto border-r border-gray-200 p-4 dark:border-gray-700"
         >
           <div>
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标题</div>
+            <div class="flex items-center justify-between">
+              <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标题</div>
+              <button
+                v-if="firstPrompt"
+                type="button"
+                class="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                title="编辑提示词"
+                @click="openEditPrompt"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                编辑
+              </button>
+            </div>
             <div class="mt-1 text-sm text-gray-700 dark:text-gray-200">
               {{ firstPrompt?.title || "— 暂无关联提示词 —" }}
             </div>
@@ -516,5 +587,18 @@ const fmtSize = (bytes: number) => {
     :danger="confirmDanger"
     @confirm="confirmAction"
     @cancel="cancelConfirm"
+  />
+
+  <!-- 编辑提示词（复用提示词详情弹窗，父级 v-if 强制整体卸载） -->
+  <PromptDetailModal
+    v-if="editPromptOpen"
+    :open="editPromptOpen"
+    :prompts="editPrompt"
+    :order="[editPrompt[0]?.id ?? '']"
+    :initial-index="0"
+    :tag-names="promptTagNames"
+    :all-tags="promptAllTags"
+    @close="editPromptOpen = false; loadRelatedPrompts()"
+    @updated="loadRelatedPrompts()"
   />
 </template>
