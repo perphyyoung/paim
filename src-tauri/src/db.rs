@@ -1,6 +1,7 @@
 //! 数据库连接管理与 schema 初始化。
 //! 持久化细节集中在基础设施层，业务层通过 repository 接口访问。
 
+use crate::error::AppError;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
@@ -267,12 +268,12 @@ pub fn get_data_dir(app: tauri::AppHandle) -> String {
 }
 
 #[tauri::command]
-pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
+pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), AppError> {
     let dir = data_dir(&app);
     std::process::Command::new("explorer")
         .arg(&dir)
         .spawn()
-        .map_err(|e| format!("打开目录失败: {e}"))?;
+        .map_err(|e| AppError::Message(format!("打开目录失败: {e}")))?;
     Ok(())
 }
 

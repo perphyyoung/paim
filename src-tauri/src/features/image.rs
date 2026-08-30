@@ -1,6 +1,7 @@
 //! 图像命令层：薄适配，从 managed state 取连接，转调领域服务。
 //! 路径 `features::image::`，与提示词侧 `features::prompt::` 对称。
 
+use crate::error::AppError;
 use crate::db::BkDb;
 use crate::features::image_service::{
     self, Image, ImageTag, ImportBatchResult, ImportResult, LinkedPrompt,
@@ -16,8 +17,8 @@ pub fn upload_images(
     db: State<BkDb>,
     paths: Vec<String>,
     prompt: Option<String>,
-) -> Result<ImportBatchResult, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<ImportBatchResult, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let prompt = prompt
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
@@ -47,18 +48,18 @@ pub fn upload_images(
 
 /// 为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。
 #[tauri::command]
-pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<String, String> {
+pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<String, AppError> {
     use std::path::PathBuf;
     let src = PathBuf::from(&source);
     if !src.is_file() {
-        return Err("源文件不存在".to_string());
+        return Err("源文件不存在".into());
     }
-    let img = image::open(&src).map_err(|e| format!("无法读取图像: {e}"))?;
+    let img = image::open(&src).map_err(|e| AppError::Message(format!("无法读取图像: {e}")))?;
     let thumb =
-        image_service::make_center_thumb(&img).map_err(|e| format!("生成缩略图失败: {e}"))?;
+        image_service::make_center_thumb(&img).map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
 
     let prev_dir = crate::db::data_dir(&app).join("preview");
-    std::fs::create_dir_all(&prev_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&prev_dir).map_err(|e| AppError::Message(e.to_string()))?;
     // 以源文件路径哈希命名，重复选择复用
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     use std::hash::Hasher;
@@ -69,7 +70,7 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
     if !dest.exists() {
         thumb
             .save(&dest)
-            .map_err(|e| format!("保存预览失败: {e}"))?;
+            .map_err(|e| AppError::Message(format!("保存预览失败: {e}")))?;
     }
     Ok(dest.to_string_lossy().to_string())
 }
@@ -79,10 +80,10 @@ pub fn upload_image(
     app: tauri::AppHandle,
     db: State<BkDb>,
     path: String,
-) -> Result<ImportResult, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<ImportResult, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let (image, is_duplicate) =
-        image_service::import(&conn, &app, &path).map_err(|e| e.to_string())?;
+        image_service::import(&conn, &app, &path).map_err(|e| AppError::Message(e.to_string()))?;
     Ok(ImportResult {
         image,
         is_duplicate,
@@ -90,9 +91,9 @@ pub fn upload_image(
 }
 
 #[tauri::command]
-pub fn list_images(db: State<BkDb>) -> Result<Vec<Image>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    image_service::list(&conn).map_err(|e| e.to_string())
+pub fn list_images(db: State<BkDb>) -> Result<Vec<Image>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    image_service::list(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。
@@ -101,49 +102,49 @@ pub fn relate_images_to_prompt(
     db: State<BkDb>,
     prompt_id: String,
     image_ids: Vec<String>,
-) -> Result<usize, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<usize, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut count = 0usize;
     for id in &image_ids {
         count += image_service::relate_image_to_prompt(&conn, &prompt_id, id)
-            .map_err(|e| e.to_string())? as usize;
+            .map_err(|e| AppError::Message(e.to_string()))? as usize;
     }
     Ok(count)
 }
 
 #[tauri::command]
-pub fn list_trash(db: State<BkDb>) -> Result<Vec<Image>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    image_service::list_trashed(&conn).map_err(|e| e.to_string())
+pub fn list_trash(db: State<BkDb>) -> Result<Vec<Image>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    image_service::list_trashed(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
 
 #[tauri::command]
-pub fn delete_image(db: State<BkDb>, id: String) -> Result<Image, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub fn delete_image(db: State<BkDb>, id: String) -> Result<Image, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::soft_delete(&conn, &id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "图像不存在".to_string())
+        .map_err(|e| AppError::Message(e.to_string()))?
+        .ok_or_else(|| "图像不存在".into())
 }
 
 #[tauri::command]
-pub fn restore_image(db: State<BkDb>, id: String) -> Result<Image, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub fn restore_image(db: State<BkDb>, id: String) -> Result<Image, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::restore(&conn, &id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "图像不存在".to_string())
+        .map_err(|e| AppError::Message(e.to_string()))?
+        .ok_or_else(|| "图像不存在".into())
 }
 
 #[tauri::command]
-pub fn purge_image(app: tauri::AppHandle, db: State<BkDb>, id: String) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    image_service::purge(&conn, &app, &id).map_err(|e| e.to_string())
+pub fn purge_image(app: tauri::AppHandle, db: State<BkDb>, id: String) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    image_service::purge(&conn, &app, &id).map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 恢复全部回收站图像，返回恢复数量。
 #[tauri::command]
-pub fn restore_all_images(db: State<BkDb>) -> Result<usize, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    image_service::restore_all(&conn).map_err(|e| e.to_string())
+pub fn restore_all_images(db: State<BkDb>) -> Result<usize, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    image_service::restore_all(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 清空图像回收站（逐项彻底删除，含磁盘文件），逐项容错。
@@ -151,8 +152,8 @@ pub fn restore_all_images(db: State<BkDb>) -> Result<usize, String> {
 pub fn empty_image_trash(
     app: tauri::AppHandle,
     db: State<BkDb>,
-) -> Result<image_service::TrashBatchResult, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<image_service::TrashBatchResult, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     Ok(image_service::empty_trash(&conn, &app))
 }
 
@@ -162,29 +163,29 @@ pub fn get_thumbnail(
     app: tauri::AppHandle,
     db: State<BkDb>,
     id: String,
-) -> Result<String, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<String, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let rel: Option<String> = conn
         .query_row(
             "SELECT thumbnail_path FROM images WHERE id = ?1",
             rusqlite::params![id],
             |r| r.get(0),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
 
     let Some(rel) = rel else {
-        return Err("缩略图不存在".to_string());
+        return Err("缩略图不存在".into());
     };
     Ok(crate::db::data_dir(&app).join(&rel).to_string_lossy().into_owned())
 }
 
 /// 返回单张图像详情。
 #[tauri::command]
-pub fn get_image_detail(db: State<BkDb>, id: String) -> Result<Image, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub fn get_image_detail(db: State<BkDb>, id: String) -> Result<Image, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::get_by_id(&conn, &id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "图像不存在".to_string())
+        .map_err(|e| AppError::Message(e.to_string()))?
+        .ok_or_else(|| "图像不存在".into())
 }
 
 /// 返回图像原图磁盘路径，前端配合 convertFileSrc 加载（详情页大图使用）。
@@ -193,18 +194,18 @@ pub fn get_image_src(
     app: tauri::AppHandle,
     db: State<BkDb>,
     id: String,
-) -> Result<String, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<String, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let rel: Option<String> = conn
         .query_row(
             "SELECT relative_path FROM images WHERE id = ?1",
             rusqlite::params![id],
             |r| r.get(0),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
 
     let Some(rel) = rel else {
-        return Err("原图不存在".to_string());
+        return Err("原图不存在".into());
     };
     Ok(crate::db::data_dir(&app).join(&rel).to_string_lossy().into_owned())
 }
@@ -218,8 +219,8 @@ pub fn update_image_detail(
     note: Option<String>,
     is_favorite: Option<bool>,
     is_safe: Option<bool>,
-) -> Result<Image, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<Image, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::update_detail(
         &conn,
         &id,
@@ -228,14 +229,14 @@ pub fn update_image_detail(
         is_favorite,
         is_safe,
     )
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| "图像不存在".to_string())
+    .map_err(|e| AppError::Message(e.to_string()))?
+    .ok_or_else(|| "图像不存在".into())
 }
 
 /// 返回图像的标签列表。
 #[tauri::command]
-pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut stmt = conn
         .prepare(
             "SELECT it.id, it.name
@@ -244,7 +245,7 @@ pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, Stri
              WHERE itr.image_id = ?1
              ORDER BY it.name",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let rows = stmt
         .query_map(rusqlite::params![id], |r| {
             Ok(ImageTag {
@@ -253,10 +254,10 @@ pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, Stri
                 group_id: None,
             })
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let mut tags = Vec::new();
     for row in rows {
-        tags.push(row.map_err(|e| e.to_string())?);
+        tags.push(row.map_err(|e| AppError::Message(e.to_string()))?);
     }
     Ok(tags)
 }
@@ -267,9 +268,9 @@ pub fn add_image_tags(
     db: State<BkDb>,
     id: String,
     names: Vec<String>,
-) -> Result<Vec<ImageTag>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+) -> Result<Vec<ImageTag>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    let tx = conn.unchecked_transaction().map_err(|e| AppError::Message(e.to_string()))?;
 
     let mut result = Vec::new();
     for raw in names {
@@ -285,7 +286,7 @@ pub fn add_image_tags(
                 |r| r.get(0),
             )
             .optional()
-            .map_err(|e| e.to_string())?
+            .map_err(|e| AppError::Message(e.to_string()))?
         {
             Some(tid) => tid,
             None => {
@@ -293,7 +294,7 @@ pub fn add_image_tags(
                     "INSERT INTO image_tags(name) VALUES (?1)",
                     rusqlite::params![name],
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| AppError::Message(e.to_string()))?;
                 tx.last_insert_rowid()
             }
         };
@@ -309,8 +310,8 @@ pub fn add_image_tags(
         "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
         rusqlite::params![id],
     )
-    .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
+    .map_err(|e| AppError::Message(e.to_string()))?;
+    tx.commit().map_err(|e| AppError::Message(e.to_string()))?;
     Ok(result)
 }
 
@@ -320,23 +321,23 @@ pub fn remove_image_tag(
     db: State<BkDb>,
     id: String,
     tag_id: i64,
-) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     conn.execute(
         "DELETE FROM image_tag_relations WHERE image_id = ?1 AND tag_id = ?2",
         rusqlite::params![id, tag_id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(())
 }
 
 /// 返回全部图像标签（供标签筛选区渲染），按名称排序。
 #[tauri::command]
-pub fn list_all_image_tags(db: State<BkDb>) -> Result<Vec<ImageTag>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub fn list_all_image_tags(db: State<BkDb>) -> Result<Vec<ImageTag>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut stmt = conn
         .prepare("SELECT id, name, group_id FROM image_tags ORDER BY name")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let rows = stmt
         .query_map([], |r| {
             Ok(ImageTag {
@@ -345,10 +346,10 @@ pub fn list_all_image_tags(db: State<BkDb>) -> Result<Vec<ImageTag>, String> {
                 group_id: r.get(2)?,
             })
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let mut tags = Vec::new();
     for row in rows {
-        tags.push(row.map_err(|e| e.to_string())?);
+        tags.push(row.map_err(|e| AppError::Message(e.to_string()))?);
     }
     Ok(tags)
 }
@@ -357,8 +358,8 @@ pub fn list_all_image_tags(db: State<BkDb>) -> Result<Vec<ImageTag>, String> {
 #[tauri::command]
 pub fn get_image_tags_map(
     db: State<BkDb>,
-) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut stmt = conn
         .prepare(
             "SELECT img.id, it.name
@@ -368,14 +369,14 @@ pub fn get_image_tags_map(
              WHERE img.is_deleted = 0
              ORDER BY it.name",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let rows = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let mut map: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     for row in rows {
-        let (img_id, tag_name) = row.map_err(|e| e.to_string())?;
+        let (img_id, tag_name) = row.map_err(|e| AppError::Message(e.to_string()))?;
         map.entry(img_id).or_default().push(tag_name);
     }
     Ok(map)
@@ -385,8 +386,8 @@ pub fn get_image_tags_map(
 #[tauri::command]
 pub fn get_image_prompts_map(
     db: State<BkDb>,
-) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut stmt = conn
         .prepare(
             "SELECT img.id, pr.content
@@ -396,14 +397,14 @@ pub fn get_image_prompts_map(
              WHERE img.is_deleted = 0 AND pr.is_deleted = 0
              ORDER BY pr.created_at",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let rows = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let mut map: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     for row in rows {
-        let (img_id, content) = row.map_err(|e| e.to_string())?;
+        let (img_id, content) = row.map_err(|e| AppError::Message(e.to_string()))?;
         map.entry(img_id).or_default().push(content);
     }
     Ok(map)
@@ -414,8 +415,8 @@ pub fn get_image_prompts_map(
 pub fn get_image_related_prompts(
     db: State<BkDb>,
     id: String,
-) -> Result<Vec<LinkedPrompt>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+) -> Result<Vec<LinkedPrompt>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut stmt = conn
         .prepare(
             "SELECT pr.id, pr.title, pr.content, pr.content_translate, pr.note
@@ -424,7 +425,7 @@ pub fn get_image_related_prompts(
              WHERE pir.image_id = ?1 AND pr.is_deleted = 0
              ORDER BY pr.created_at",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let rows = stmt
         .query_map(rusqlite::params![id], |r| {
             Ok(LinkedPrompt {
@@ -436,8 +437,8 @@ pub fn get_image_related_prompts(
                 tags: Vec::new(),
             })
         })
-        .map_err(|e| e.to_string())?;
-    let mut list: Vec<LinkedPrompt> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
+    let mut list: Vec<LinkedPrompt> = rows.collect::<Result<_, _>>().map_err(|e| AppError::Message(e.to_string()))?;
     // 补充分组查询每条提示词的标签
     for p in list.iter_mut() {
         let mut t = conn
@@ -448,11 +449,11 @@ pub fn get_image_related_prompts(
                  WHERE ptr.prompt_id = ?1
                  ORDER BY pt.name",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Message(e.to_string()))?;
         let names = t
             .query_map(rusqlite::params![p.id], |r| r.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
-        p.tags = names.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Message(e.to_string()))?;
+        p.tags = names.collect::<Result<_, _>>().map_err(|e| AppError::Message(e.to_string()))?;
     }
     Ok(list)
 }
@@ -463,10 +464,10 @@ pub fn create_prompt_for_image(
     db: State<BkDb>,
     content: String,
     image_id: String,
-) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let prompt = prompt_service::create(&conn, &content, None).map_err(|e| e.to_string())?;
+) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    let prompt = prompt_service::create(&conn, &content, None).map_err(|e| AppError::Message(e.to_string()))?;
     image_service::relate_image_to_prompt(&conn, &prompt.id, &image_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(())
 }
