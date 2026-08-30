@@ -269,6 +269,8 @@ async function deleteToTrash() {
   await invoke("delete_image", { id: img.id });
   images.value = images.value.filter((i) => i.id !== img.id);
   delete thumbs.value[img.id];
+  // 提示词主页的背景图与关联计数按 is_deleted 过滤，需重载
+  markPageStale("prompts");
   showToast(`已删除「${img.stored_name}」到回收站`);
 }
 
@@ -276,6 +278,8 @@ async function restoreImage(img: Image) {
   await invoke("restore_image", { id: img.id });
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
   await loadImages(); // 刷新主列表，使恢复的图回到图像页
+  // 恢复的图像重新成为提示词卡片的候选背景图
+  markPageStale("prompts");
   showToast(`已恢复「${img.stored_name}」`);
 }
 
@@ -421,6 +425,7 @@ async function doSingleDelete() {
     await invoke("delete_image", { id: img.id });
     images.value = images.value.filter((i) => i.id !== img.id);
     delete thumbs.value[img.id];
+    markPageStale("prompts");
     showToast(`已删除「${img.stored_name}」到回收站`);
   } catch (e) {
     showToast(`删除失败：${e}`);
@@ -442,6 +447,7 @@ async function doBatchDelete() {
     for (const id of ids) {
       await invoke("delete_image", { id });
     }
+    markPageStale("prompts");
     showToast(`已将 ${ids.length} 张图像移入回收站`);
     exitBatch();
     await loadImages();

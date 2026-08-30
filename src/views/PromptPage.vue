@@ -354,6 +354,8 @@ async function loadTagFilter() {
   }
 }
 function onModalUploaded() {
+  // 新建提示词若选择了图像，图像主页卡片的关联提示词文案已变化
+  markPageStale("images");
   loadPrompts();
   loadTagFilter();
 }
