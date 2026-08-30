@@ -1,10 +1,10 @@
 //! pm(prompt-manager)全量备份导入服务。
 //! 备份包结构（prompt-manager 的 ExportFullBackupService 导出）：
 //!   manifest.json + database/prompt-manager.db + files/images/{YYYYMM}/。
-//! 语义与 pm 的导入一致：整体替换当前数据。安全性依赖两点：数据库替换是
-//! ATTACH + 单事务（失败自动回滚）；图像文件复制只增不删（两边 stored_name
-//! 命名空间不重叠），失败路径不会破坏现有数据。导入前如需保留整份数据集，
-//! 由用户按数据集切换约定自行复制目录。
+//! 语义与 pm 的导入一致：整体替换当前数据。导入前整个数据目录改名让位
+//! （同级 `paim-data_{时间戳}`，含图像与缩略图，改回原名即可直接使用），
+//! 原路径重建后灌入备份数据；数据库写入为 ATTACH + 单事务，失败自动回滚
+//! 目录与数据。应用数据库连接经内存占位连接换绑（见 import 注释）。
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use zip::ZipArchive;
 
-use crate::db;
+use crate::db::{self, BkDb};
 
 /// 进度推送事件名（前端 listen 用）。
 pub const PROGRESS_EVENT: &str = "pm-import-progress";
@@ -56,6 +56,8 @@ pub struct PmImportSummary {
     pub prompts: i64,
     pub images: i64,
     pub thumbnail_failures: usize,
+    /// 原数据目录的备份位置（整体改名让位）；无原数据时为空串。
+    pub backup_dir: String,
 }
 
 /// 导入进度推送载荷。
@@ -102,9 +104,19 @@ pub fn inspect(zip_path: &str) -> Result<PmBackupInfo, String> {
     result
 }
 
-/// 执行导入：整体替换当前数据。数据库替换为单事务（失败自动回滚）；
-/// 图像复制只增不删，失败不会破坏现有数据。
-pub fn import<F>(app: &tauri::AppHandle, conn: &Connection, zip_path: &str, emit: F) -> Result<PmImportSummary, String>
+/// 在指定路径打开应用数据库（含建表），返回裸连接供装入 BkDb。
+fn open_app_db(path: &Path) -> Result<Connection, String> {
+    db::init(path.to_path_buf())
+        .map_err(|e| format!("初始化数据库失败: {e}"))?
+        .0
+        .into_inner()
+        .map_err(|_| "数据库句柄已损坏".to_string())
+}
+
+/// 执行导入：整体替换当前数据。与 pm 一致——导入前整个数据目录改名让位
+/// （同级 `paim-data_{时间戳}`，含图像与缩略图，改回原名即可直接使用），
+/// 原路径重建后灌入备份数据；失败自动回滚（删半成品、备份目录归位、重开原库）。
+pub fn import<F>(app: &tauri::AppHandle, bk: &BkDb, zip_path: &str, emit: F) -> Result<PmImportSummary, String>
 where
     F: Fn(ImportProgress) + Sync,
 {
@@ -128,25 +140,92 @@ where
     let manifest = read_manifest(&mut archive, &root)?;
     validate_manifest(&manifest)?;
 
-    let images_dir = db::images_dir(app);
-    std::fs::create_dir_all(&images_dir).map_err(|e| format!("创建图像目录失败: {e}"))?;
+    let data_dir = db::data_dir(app);
+    let db_path = db::user_db_path(app);
+    let dir_name = data_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("paim-data")
+        .to_string();
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let backup_dir = data_dir
+        .parent()
+        .unwrap_or(&data_dir)
+        .join(format!("{dir_name}_{ts}"));
+    let had_data_dir = data_dir.exists();
 
-    let tmp = create_temp_dir()?;
-    let result = import_inner(app, conn, &mut archive, &root, &images_dir, &tmp, &emit);
-    let _ = std::fs::remove_dir_all(&tmp);
-    let (prompts, images, thumbnail_failures) = result?;
+    // 整目录备份（与 pm 一致）：换成内存连接以关闭真连接、释放 paim.db 文件锁
+    //（关闭时 WAL 自动合并，备份目录里的库文件即完整）。导入全程持有该锁，
+    // 占位连接不会被其他命令碰到。
+    let mut guard = bk.0.lock().map_err(|e| e.to_string())?;
+    if had_data_dir {
+        *guard = Connection::open_in_memory().map_err(|e| format!("切换临时连接失败: {e}"))?;
+        if let Err(e) = std::fs::rename(&data_dir, &backup_dir) {
+            *guard = open_app_db(&db_path)?;
+            return Err(format!(
+                "备份原数据目录失败，请关闭可能占用数据目录的程序（如资源管理器窗口）后重试: {e}"
+            ));
+        }
+    }
 
-    emit(ImportProgress {
-        stage: "complete".into(),
-        percent: 100,
-        status: "导入完成！".into(),
-        detail: None,
-    });
-    Ok(PmImportSummary {
-        prompts,
-        images,
-        thumbnail_failures,
-    })
+    let mut run = || -> Result<PmImportSummary, String> {
+        std::fs::create_dir_all(&data_dir).map_err(|e| format!("创建数据目录失败: {e}"))?;
+        *guard = open_app_db(&db_path)?;
+        let images_dir = db::images_dir(app);
+        std::fs::create_dir_all(&images_dir).map_err(|e| format!("创建图像目录失败: {e}"))?;
+        let tmp = create_temp_dir()?;
+        let result = import_inner(app, &guard, &mut archive, &root, &images_dir, &tmp, &emit);
+        let _ = std::fs::remove_dir_all(&tmp);
+        let (prompts, images, thumbnail_failures) = result?;
+        emit(ImportProgress {
+            stage: "complete".into(),
+            percent: 100,
+            status: "导入完成！".into(),
+            detail: None,
+        });
+        Ok(PmImportSummary {
+            prompts,
+            images,
+            thumbnail_failures,
+            backup_dir: if had_data_dir {
+                backup_dir.to_string_lossy().into_owned()
+            } else {
+                String::new()
+            },
+        })
+    };
+
+    let outcome = run();
+    match outcome {
+        Ok(summary) => Ok(summary),
+        Err(e) => {
+            // 回滚：关新连接（换占位）→ 删半成品目录 → 备份目录归位 → 重开原库
+            let placeholder = Connection::open_in_memory()
+                .map_err(|pe| format!("{e}；回滚时切换临时连接也失败: {pe}"))?;
+            *guard = placeholder;
+            let _ = std::fs::remove_dir_all(&data_dir);
+            let rename_back_ok = if had_data_dir {
+                std::fs::rename(&backup_dir, &data_dir).is_ok()
+            } else {
+                true
+            };
+            match open_app_db(&db_path) {
+                Ok(conn) => {
+                    *guard = conn;
+                    if rename_back_ok {
+                        Err(format!("{e}（已回滚到原数据）"))
+                    } else {
+                        Err(format!(
+                            "{e}；自动归位失败，原数据完整保留在 {}，请手动改名为「{}」后重启应用",
+                            backup_dir.display(),
+                            dir_name
+                        ))
+                    }
+                }
+                Err(re_err) => Err(format!("{e}；回滚后重开数据库失败: {re_err}，请重启应用")),
+            }
+        }
+    }
 }
 
 /// 导入主体：解包落文件 → 事务替换数据 → 重建缩略图，返回统计。

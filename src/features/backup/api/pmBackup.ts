@@ -16,6 +16,8 @@ export interface PmImportSummary {
   prompts: number;
   images: number;
   thumbnail_failures: number;
+  /** 原数据目录的备份位置（整体改名让位），为空表示导入前没有数据目录 */
+  backup_dir: string;
 }
 
 /** 导入进度推送（事件 pm-import-progress） */

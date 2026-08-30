@@ -94,6 +94,12 @@ function close() {
           >
             {{ summary.thumbnail_failures }} 张图像缩略图生成失败（不影响数据，可重新导入修复）。
           </p>
+          <p
+            v-if="summary.backup_dir"
+            class="mt-3 break-all text-xs text-gray-400 dark:text-gray-500"
+          >
+            原数据目录已整体备份至 {{ summary.backup_dir }}，改名为 paim-data 即可切回。
+          </p>
         </div>
 
         <div v-else-if="phase === 'error'" class="mt-4 text-sm">

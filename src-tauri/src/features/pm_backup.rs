@@ -22,9 +22,8 @@ pub async fn import_pm_backup(
     zip_path: String,
 ) -> Result<PmImportSummary, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let db = app.state::<BkDb>();
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        pm_backup_service::import(&app, &conn, &zip_path, |p: ImportProgress| {
+        let bk = app.state::<BkDb>();
+        pm_backup_service::import(&app, &bk, &zip_path, |p: ImportProgress| {
             let _ = app.emit(pm_backup_service::PROGRESS_EVENT, p);
         })
     })
