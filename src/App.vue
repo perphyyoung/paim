@@ -83,7 +83,8 @@ const settingsOpen = ref(false);
       </button>
     </aside>
 
-    <main class="flex-1 overflow-hidden p-6">
+    <!-- 主页自管内边距(原 p-6 会被 h-full 的子页负 margin hack 抵消不掉,窗底留白) -->
+    <main class="flex-1 overflow-hidden">
       <!-- KeepAlive 缓存页面实例：主页间切换不重新加载，保留数据与滚动位置（对齐 pm 行为）；
            数据失效场景由各页显式刷新（上传/删除后自刷新），导入完成走整页 reload -->
       <RouterView v-slot="{ Component }">

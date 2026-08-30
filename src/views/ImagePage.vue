@@ -515,7 +515,7 @@ function onUploadDone() {
 </script>
 
 <template>
-  <section class="relative flex h-full flex-col overflow-hidden -mx-6 -mt-6 -mb-6 px-6">
+  <section class="relative flex h-full flex-col overflow-hidden px-6">
     <!-- 顶部固定区：工具栏 + 标签筛选区 + 错误提示（不参与滚动） -->
     <div class="shrink-0 pt-3">
     <div class="mb-4 grid grid-cols-6 items-center gap-3">
@@ -601,7 +601,7 @@ function onUploadDone() {
     </div>
 
     <!-- 卡片滚动区：虚拟网格 + 自定义滚动条 -->
-    <div class="flex min-h-0 flex-1 gap-1 pb-6">
+    <div class="flex min-h-0 flex-1 gap-1">
       <div
         v-if="images.length === 0"
         class="flex-1 rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600"
