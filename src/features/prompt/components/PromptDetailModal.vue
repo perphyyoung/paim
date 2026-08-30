@@ -10,6 +10,7 @@ import NavAndIndex from "@/components/NavAndIndex.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
+import { markPageStale } from "@/utils/crossPageCache";
 
 interface Prompt {
   id: string;
@@ -166,6 +167,8 @@ async function saveFields() {
     p.content_translate = contentTranslate.value;
     p.note = note.value;
     edit.value = false;
+    // 内容会显示在图像主页卡片的关联提示词文案里
+    markPageStale("images");
     emit("updated");
     showToast("已保存");
   } catch {
@@ -206,6 +209,8 @@ async function removeImage(img: RelatedImage) {
   if (!p) return;
   await invoke("remove_prompt_image", { promptId: p.id, imageId: img.id });
   relatedImages.value = relatedImages.value.filter((i) => i.id !== img.id);
+  // 关联关系变化影响图像主页卡片的关联提示词文案
+  markPageStale("images");
   emit("updated");
   showToast("已移除关联图像");
 }

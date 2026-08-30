@@ -119,6 +119,13 @@ watch([keyword, sortBy, sortDesc, selectedTags], () => {
   gridRef.value?.scrollToPosition(0);
 });
 
+// 详情弹窗内的编辑就地改原始对象（shallowRef 下需整表重拉触发更新）；
+// 同时内容/关联变化会影响图像主页
+function onModalUpdated() {
+  loadPrompts();
+  markPageStale("images");
+}
+
 // 标签筛选区分组数据
 interface TagGroupData { id: number; name: string; sort_order: number }
 interface TagItem { id: number; name: string; group_id: number | null; count: number }
@@ -603,6 +610,7 @@ onActivated(() => {
       :tag-names="tagNames"
       :all-tags="allTags"
       @close="closeDetail"
+      @updated="onModalUpdated"
     />
 
     <!-- 删除确认 -->
