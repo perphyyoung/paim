@@ -8,6 +8,7 @@ import NavAndIndex from "@/components/NavAndIndex.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import { formatLocalTime } from "@/utils/date";
+import { markPageStale } from "@/utils/crossPageCache";
 
 interface Image {
   id: string;
@@ -152,6 +153,8 @@ async function doCreatePrompt() {
       content: createContent.value,
       imageId: img.id,
     });
+    // 新提示词卡片需要出现在提示词主页
+    markPageStale("prompts");
     showToast("提示词已创建并关联");
     createPromptOpen.value = false;
     emit("update", img);

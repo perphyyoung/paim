@@ -12,6 +12,7 @@ import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
+import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
 
@@ -280,6 +281,8 @@ async function restoreImage(img: Image) {
 
 async function purgeImage(img: Image) {
   await invoke("purge_image", { id: img.id });
+  // 关联关系级联删除，提示词主页的关联图像计数已变化
+  markPageStale("prompts");
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
   showToast(`已彻底删除「${img.stored_name}」`);
 }
@@ -487,6 +490,10 @@ onMounted(() => {
 });
 onActivated(() => {
   window.addEventListener("click", closeCtxMenu);
+  if (consumePageStale("images")) {
+    loadImages();
+    loadTagFilter();
+  }
   gridRef.value?.scrollToPosition(savedGridTop);
 });
 onDeactivated(() => window.removeEventListener("click", closeCtxMenu));
@@ -494,6 +501,8 @@ onDeactivated(() => window.removeEventListener("click", closeCtxMenu));
 // ---- 上传图像弹窗 ----
 const uploadOpen = ref(false);
 function onUploadDone() {
+  // 上传可能携带提示词（自动创建提示词卡片），提示词主页需重载
+  markPageStale("prompts");
   loadImages();
   loadTagFilter();
 }

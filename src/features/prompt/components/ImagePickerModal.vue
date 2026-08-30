@@ -2,6 +2,7 @@
 // 图像选择弹窗：从已有图像列表中多选并导入到指定提示词。供提示词详情「从图像列表导入」使用。
 import { computed, onMounted, ref } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { markPageStale } from "@/utils/crossPageCache";
 
 interface Image {
   id: string;
@@ -126,6 +127,8 @@ async function confirm() {
       promptId: props.promptId,
       imageIds: ids,
     });
+    // 关联后图像主页卡片的关联提示词文案已变化
+    markPageStale("images");
     emit("imported");
   } catch {
     /* 由父级统一 toast */

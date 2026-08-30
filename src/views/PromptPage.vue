@@ -12,6 +12,7 @@ import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
+import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
 
@@ -202,6 +203,8 @@ async function doSingleDelete() {
   try {
     await invoke("delete_prompt", { id: p.id });
     prompts.value = prompts.value.filter((x) => x.id !== p.id);
+    // 图像主页卡片的关联提示词文案过滤已删除提示词，需重载
+    markPageStale("images");
     showToast(`已删除「${p.title}」`);
   } catch (e) {
     showToast(`删除失败：${e}`);
@@ -286,6 +289,7 @@ async function doBatchDelete() {
     for (const id of ids) {
       await invoke("delete_prompt", { id });
     }
+    markPageStale("images");
     showToast(`已删除 ${ids.length} 个提示词`);
     exitBatch();
     await loadPrompts();
@@ -384,6 +388,8 @@ async function restorePrompt(p: Prompt) {
     await invoke("restore_prompt", { id: p.id });
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);
     await loadPrompts();
+    // 恢复的提示词重新出现在图像主页的关联文案里
+    markPageStale("images");
     showToast(`已恢复「${p.title}」`);
   } catch (e) {
     showToast(`恢复失败：${e}`);
@@ -393,6 +399,8 @@ async function restorePrompt(p: Prompt) {
 async function purgePrompt(p: Prompt) {
   try {
     await invoke("purge_prompt", { id: p.id });
+    // 关联关系级联删除，图像主页的关联提示词文案已变化
+    markPageStale("images");
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);
     showToast(`已彻底删除「${p.title}」`);
   } catch (e) {
@@ -400,12 +408,19 @@ async function purgePrompt(p: Prompt) {
   }
 }
 
-// KeepAlive:数据仅在首次进入加载;激活时恢复滚动位置(对齐 pm 切页不重载的行为)
+// KeepAlive:数据仅在首次进入加载;激活时消费脏标记按需重载,并恢复滚动位置
+// (对齐 pm 切页不重载的行为)
 onMounted(() => {
   loadPrompts();
   loadTagFilter();
 });
-onActivated(() => gridRef.value?.scrollToPosition(savedGridTop));
+onActivated(() => {
+  if (consumePageStale("prompts")) {
+    loadPrompts();
+    loadTagFilter();
+  }
+  gridRef.value?.scrollToPosition(savedGridTop);
+});
 </script>
 
 <template>
