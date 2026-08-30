@@ -80,7 +80,8 @@ fn ext_ok(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// 复制源图到 images/<年月>/，生成 200×200 居中裁剪的 jpeg 缩略图，入库，返回记录。
+/// 复制源图到 images/<年月>/（stored_name 与 pm 一致，为 "{id}{ext}"），
+/// 生成 200×200 居中裁剪的 jpeg 缩略图到 thumbnails/<年月>/thumb_{id}.jpg，入库，返回记录。
 /// 返回 `(记录, 是否重复)`：重复时复用已存在记录且不落新文件。
 pub fn import(
     conn: &Connection,
@@ -132,11 +133,9 @@ pub fn import(
         .and_then(|e| e.to_str())
         .unwrap_or("png")
         .to_lowercase();
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let stored_name = format!("{stamp}.{ext}");
+    // stored_name 与 pm 一致："{imageId}{ext}"，缩略图随之命名
+    let id = crate::db::gen_id(crate::db::IMAGE_ID_PREFIX);
+    let stored_name = format!("{id}.{ext}");
     let dest = month_dir.join(&stored_name);
     std::fs::copy(&source, &dest).map_err(io_to_sql)?;
 
@@ -146,8 +145,10 @@ pub fn import(
             let (w, h) = img.dimensions();
             match make_center_thumb(&img) {
                 Ok(thumb) => {
-                    let thumb_name = format!("thumb_{stamp}.jpg");
-                    let thumb_abs = thumbnails_dir.join(&thumb_name);
+                    let thumb_name = format!("thumb_{id}.jpg");
+                    let thumb_month_dir = thumbnails_dir.join(&yyyymm);
+                    std::fs::create_dir_all(&thumb_month_dir).map_err(io_to_sql)?;
+                    let thumb_abs = thumb_month_dir.join(&thumb_name);
                     thumb.save(&thumb_abs).map_err(|e| {
                         rusqlite::Error::ToSqlConversionFailure(Box::new(
                             std::io::Error::new(
@@ -159,7 +160,7 @@ pub fn import(
                     (
                         Some(w as i64),
                         Some(h as i64),
-                        Some(format!("thumbnails/{}", thumb_name)),
+                        Some(format!("thumbnails/{yyyymm}/{thumb_name}")),
                     )
                 }
                 Err(_) => (Some(w as i64), Some(h as i64), None),
@@ -169,7 +170,6 @@ pub fn import(
     };
 
     let relative_path = format!("images/{yyyymm}/{stored_name}");
-    let id = crate::db::gen_id(crate::db::IMAGE_ID_PREFIX);
     let file_name = source
         .file_name()
         .and_then(|n| n.to_str())

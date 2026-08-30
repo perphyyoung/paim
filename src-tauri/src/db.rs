@@ -124,26 +124,55 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
             version INTEGER PRIMARY KEY,
             applied_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         );
+
+        -- 索引定义与 prompt-manager 保持一致,保证导入 pm 数据后查询性能对齐
+        CREATE INDEX IF NOT EXISTS idx_prompts_updated_at ON prompts(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_prompts_created_at ON prompts(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_prompts_is_deleted ON prompts(is_deleted);
+        CREATE INDEX IF NOT EXISTS idx_prompts_is_favorite ON prompts(is_favorite);
+        CREATE INDEX IF NOT EXISTS idx_prompts_is_safe ON prompts(is_safe);
+        CREATE INDEX IF NOT EXISTS idx_prompts_deleted_updated ON prompts(is_deleted, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_prompts_title_deleted ON prompts(title, is_deleted);
+        CREATE INDEX IF NOT EXISTS idx_images_updated_at ON images(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_images_created_at ON images(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_images_is_deleted ON images(is_deleted);
+        CREATE INDEX IF NOT EXISTS idx_images_is_favorite ON images(is_favorite);
+        CREATE INDEX IF NOT EXISTS idx_images_is_safe ON images(is_safe);
+        CREATE INDEX IF NOT EXISTS idx_images_md5 ON images(md5);
+        CREATE INDEX IF NOT EXISTS idx_images_deleted_updated ON images(is_deleted, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_prompt_image_relations_prompt_sort ON prompt_image_relations(prompt_id, sort_order ASC);
+        CREATE INDEX IF NOT EXISTS idx_prompt_image_relations_image_id ON prompt_image_relations(image_id);
+        CREATE INDEX IF NOT EXISTS idx_prompt_tag_relations_tag_id ON prompt_tag_relations(tag_id);
+        CREATE INDEX IF NOT EXISTS idx_image_tag_relations_image_id ON image_tag_relations(image_id);
+        CREATE INDEX IF NOT EXISTS idx_image_tag_relations_tag_id ON image_tag_relations(tag_id);
+        CREATE INDEX IF NOT EXISTS idx_prompt_tags_group_id ON prompt_tags(group_id);
+        CREATE INDEX IF NOT EXISTS idx_image_tags_group_id ON image_tags(group_id);
+        CREATE INDEX IF NOT EXISTS idx_prompts_active_updated ON prompts(updated_at DESC) WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_images_active_updated ON images(updated_at DESC) WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_prompts_active_favorite ON prompts(updated_at DESC) WHERE is_deleted = 0 AND is_favorite = 1;
+        CREATE INDEX IF NOT EXISTS idx_images_active_favorite ON images(updated_at DESC) WHERE is_deleted = 0 AND is_favorite = 1;
         "#,
     )?;
     Ok(BkDb(std::sync::Mutex::new(conn)))
 }
 
-/// 生成与 prompt-manager 同格式的文本主键："{prefix}_{毫秒时间戳}_{随机4位hex}"。
-/// 导入时保留 prompt-manager 原有 id；此处仅用于本应用新建记录。
+/// 生成与 prompt-manager 同格式的文本主键："{prefix}_{YYYYMMDDHHmmss}_{随机5位base36}"。
+/// 导入 pm 备份时保留其原有 id；此处仅用于本应用新建记录。
 pub fn gen_id(prefix: &str) -> String {
     use md5::{Digest, Md5};
+    const BASE36: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let digest = Md5::digest(format!("{nanos}").as_bytes());
-    let rand_hex: String = digest
+    let rand_part: String = digest
         .iter()
-        .take(2)
-        .map(|b| format!("{:02x}", b))
+        .take(5)
+        .map(|b| BASE36[(*b as usize) % BASE36.len()] as char)
         .collect();
-    format!("{prefix}_{nanos}_{}", rand_hex)
+    let stamp = chrono::Local::now().format("%Y%m%d%H%M%S");
+    format!("{prefix}_{stamp}_{rand_part}")
 }
 
 /// 提示词主键前缀。
