@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
@@ -67,10 +67,10 @@ function toggleSortDesc() {
   localStorage.setItem(SORT_DESC_KEY, sortDesc.value ? "1" : "0");
 }
 
-const prompts = ref<Prompt[]>([]);
-const tagNames = ref<Record<string, string[]>>({});
-const imgCount = ref<Record<string, number>>({});
-const thumbs = ref<Record<string, string>>({});
+const prompts = shallowRef<Prompt[]>([]);
+const tagNames = shallowRef<Record<string, string[]>>({});
+const imgCount = shallowRef<Record<string, number>>({});
+const thumbs = shallowRef<Record<string, string>>({});
 
 // —— 特殊标签（虚拟筛选）——
 const SPECIAL_TAGS = [
@@ -171,8 +171,7 @@ async function toggleFavorite(p: Prompt) {
       id: p.id,
       isFavorite: !p.is_favorite,
     });
-    const idx = prompts.value.findIndex((x) => x.id === p.id);
-    if (idx >= 0) prompts.value.splice(idx, 1, updated);
+    prompts.value = prompts.value.map((x) => (x.id === p.id ? updated : x));
   } catch (e) {
     showToast(`收藏失败：${e}`);
   }
@@ -261,8 +260,7 @@ async function batchFavorite() {
   try {
     for (const id of ids) {
       const p = await invoke<Prompt>("update_prompt_detail", { id, isFavorite: true });
-      const idx = prompts.value.findIndex((x) => x.id === p.id);
-      if (idx >= 0) prompts.value.splice(idx, 1, p);
+      prompts.value = prompts.value.map((x) => (x.id === p.id ? p : x));
     }
     showToast(`已收藏 ${ids.length} 个提示词`);
     exitBatch();
@@ -313,17 +311,24 @@ function closeDetail() {
   loadTagFilter();
 }
 async function loadPrompts() {
-  prompts.value = await invoke<Prompt[]>("list_prompts");
-  try { tagNames.value = await invoke<Record<string, string[]>>("get_prompt_tags_map"); } catch { tagNames.value = {}; }
-  try { imgCount.value = await invoke<Record<string, number>>("get_prompt_images_count_map"); } catch { imgCount.value = {}; }
-  try {
-    const raw = await invoke<Record<string, string>>("get_prompt_thumbs_map");
-    const urls: Record<string, string> = {};
-    for (const k of Object.keys(raw)) urls[k] = convertFileSrc(raw[k]);
-    thumbs.value = urls;
-  } catch {
-    thumbs.value = {};
-  }
+  const [ps, tagMap, countMap, raw] = await Promise.all([
+    invoke<Prompt[]>("list_prompts"),
+    invoke<Record<string, string[]>>("get_prompt_tags_map").catch(
+      () => ({}) as Record<string, string[]>,
+    ),
+    invoke<Record<string, number>>("get_prompt_images_count_map").catch(
+      () => ({}) as Record<string, number>,
+    ),
+    invoke<Record<string, string>>("get_prompt_thumbs_map").catch(
+      () => ({}) as Record<string, string>,
+    ),
+  ]);
+  prompts.value = ps;
+  tagNames.value = tagMap;
+  imgCount.value = countMap;
+  const urls: Record<string, string> = {};
+  for (const k of Object.keys(raw)) urls[k] = convertFileSrc(raw[k]);
+  thumbs.value = urls;
 }
 async function loadTagFilter() {
   try {

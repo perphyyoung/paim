@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
@@ -124,13 +124,13 @@ const sortedImages = computed(() => {
   return sortDesc.value ? arr.reverse() : arr;
 });
 
-const images = ref<Image[]>([]);
-const thumbs = ref<Record<string, string>>({});
-const imagePrompts = ref<Record<string, string[]>>({});
+const images = shallowRef<Image[]>([]);
+const thumbs = shallowRef<Record<string, string>>({});
+const imagePrompts = shallowRef<Record<string, string[]>>({});
 
 // 标签筛选区
 const allTags = ref<{ id: number; name: string; group_id: number | null }[]>([]);
-const tagNames = ref<Record<string, string[]>>({});
+const tagNames = shallowRef<Record<string, string[]>>({});
 const selectedTags = ref<string[]>([]);
 
 // —— 虚拟网格 + 自定义滚动条 ——
@@ -283,28 +283,19 @@ async function purgeImage(img: Image) {
 }
 
 async function loadImages() {
-  images.value = await invoke<Image[]>("list_images");
-  await loadThumbnails();
-  await loadImagePrompts();
-}
-
-async function loadImagePrompts() {
-  try {
-    imagePrompts.value = await invoke<Record<string, string[]>>("get_image_prompts_map");
-  } catch {
-    imagePrompts.value = {};
+  // 并行拉取;缩略图 URL 直接由行内 thumbnail_path 构建,不再逐图 IPC
+  const [imgs, promptsMap, dir] = await Promise.all([
+    invoke<Image[]>("list_images"),
+    invoke<Record<string, string[]>>("get_image_prompts_map").catch(() => ({})),
+    invoke<string>("get_data_dir"),
+  ]);
+  images.value = imgs;
+  imagePrompts.value = promptsMap;
+  const map: Record<string, string> = {};
+  for (const img of imgs) {
+    if (img.thumbnail_path) map[img.id] = convertFileSrc(`${dir}/${img.thumbnail_path}`);
   }
-}
-
-async function loadThumbnails() {
-  for (const img of images.value) {
-    try {
-      const p = await invoke<string>("get_thumbnail", { id: img.id });
-      thumbs.value[img.id] = convertFileSrc(p);
-    } catch {
-      // 缩略图缺失时保持占位
-    }
-  }
+  thumbs.value = map;
 }
 
 function fmtSize(bytes: number) {
@@ -353,9 +344,8 @@ function closeDetail() {
   loadTagFilter();
 }
 function onDetailUpdate(updated: Image) {
-  // 同步回主列表（保序替换）
-  const idx = images.value.findIndex((i) => i.id === updated.id);
-  if (idx >= 0) images.value.splice(idx, 1, updated);
+  // 同步回主列表（保序替换；shallowRef 需整体替换触发更新）
+  images.value = images.value.map((i) => (i.id === updated.id ? updated : i));
 }
 
 // ---- 批量选择（卡片 checkbox + 底部悬浮工具栏）----
@@ -404,8 +394,7 @@ async function toggleFavorite(img: Image) {
       id: img.id,
       isFavorite: !img.is_favorite,
     });
-    const idx = images.value.findIndex((i) => i.id === img.id);
-    if (idx >= 0) images.value.splice(idx, 1, updated);
+    images.value = images.value.map((i) => (i.id === img.id ? updated : i));
   } catch (e) {
     showToast(`操作失败：${e}`);
   }
@@ -465,8 +454,7 @@ async function batchFavorite() {
         id,
         isFavorite: true,
       });
-      const idx = images.value.findIndex((i) => i.id === img.id);
-      if (idx >= 0) images.value.splice(idx, 1, img);
+      images.value = images.value.map((i) => (i.id === img.id ? img : i));
     }
     showToast(`已收藏 ${ids.length} 张图像`);
     exitBatch();
