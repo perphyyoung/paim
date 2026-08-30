@@ -28,3 +28,4 @@ rusqlite = { version = "0.34", features = ["bundled"] }
 tauri-plugin-dialog = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp"] }
 md-5 = "0.10"
+zip = { version = "4", default-features = false, features = ["deflate"] }

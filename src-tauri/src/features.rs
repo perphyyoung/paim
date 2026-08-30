@@ -1,6 +1,8 @@
 pub mod image;
 pub mod image_service;
 pub mod image_tag;
+pub mod pm_backup;
+pub mod pm_backup_service;
 pub mod prompt;
 pub mod prompt_service;
 pub mod prompt_tag;

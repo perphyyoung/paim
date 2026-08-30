@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { appVersion } from "@/version";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import { useToast } from "@/components/useToast";
+import { inspectPmBackup, type PmBackupInfo } from "@/features/backup/api/pmBackup";
+import PmBackupImportModal from "@/features/backup/components/PmBackupImportModal.vue";
+
+const { showToast } = useToast();
 
 const dataDir = ref("");
 const openError = ref("");
@@ -16,6 +23,62 @@ async function openDir() {
     await invoke("open_data_dir");
   } catch (e) {
     openError.value = String(e);
+  }
+}
+
+// —— pm 备份导入 ——
+const inspecting = ref(false);
+const importError = ref("");
+const importZipPath = ref("");
+const importInfo = ref<PmBackupInfo | null>(null);
+const confirmOpen = ref(false);
+const modalOpen = ref(false);
+const importSucceeded = ref(false);
+
+const confirmMessage = computed(() => {
+  const info = importInfo.value;
+  if (!info) return "";
+  return (
+    `将导入 ${info.prompt_count} 条提示词、${info.image_count} 张图像` +
+    `（含回收站 ${info.trashed_image_count} 张）。` +
+    "当前数据将自动备份后被整体替换。"
+  );
+});
+
+async function pickBackup() {
+  importError.value = "";
+  const selected = await openFileDialog({
+    multiple: false,
+    filters: [{ name: "pm 备份文件", extensions: ["zip"] }],
+  });
+  if (!selected) return;
+  inspecting.value = true;
+  try {
+    importZipPath.value = selected as string;
+    importInfo.value = await inspectPmBackup(selected);
+    confirmOpen.value = true;
+  } catch (e) {
+    importError.value = String(e);
+  } finally {
+    inspecting.value = false;
+  }
+}
+
+function startImport() {
+  confirmOpen.value = false;
+  importSucceeded.value = false;
+  modalOpen.value = true;
+}
+
+function onImported() {
+  importSucceeded.value = true;
+}
+
+function onModalClose() {
+  modalOpen.value = false;
+  if (importSucceeded.value) {
+    // 数据已整体替换，整页刷新以加载新数据
+    window.location.reload();
   }
 }
 
@@ -55,7 +118,44 @@ onMounted(loadDataDir);
         </button>
       </div>
 
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <dt class="text-gray-600 dark:text-gray-400">pm 备份导入</dt>
+          <dd class="text-sm text-gray-400 dark:text-gray-500">
+            导入 prompt-manager 导出的全量备份，当前数据将被替换
+          </dd>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 rounded-lg bg-blue-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="inspecting"
+          @click="pickBackup"
+        >
+          {{ inspecting ? "检查备份..." : "导入 pm 备份" }}
+        </button>
+      </div>
+
       <p v-if="openError" class="py-2 text-sm text-red-600 dark:text-red-400">{{ openError }}</p>
+      <p v-if="importError" class="py-2 text-sm text-red-600 dark:text-red-400">
+        {{ importError }}
+      </p>
     </dl>
+
+    <ConfirmDialog
+      :open="confirmOpen"
+      title="导入 pm 备份"
+      :message="confirmMessage"
+      confirm-text="替换导入"
+      danger
+      @confirm="startImport"
+      @cancel="confirmOpen = false"
+    />
+
+    <PmBackupImportModal
+      :open="modalOpen"
+      :zip-path="importZipPath"
+      @close="onModalClose"
+      @imported="onImported"
+    />
   </section>
 </template>

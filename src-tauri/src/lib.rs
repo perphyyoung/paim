@@ -99,6 +99,9 @@ pub fn run() {
       logging::log_msg,
       db::get_data_dir,
       db::open_data_dir,
+      // —— pm 备份导入 ——
+      features::pm_backup::inspect_pm_backup,
+      features::pm_backup::import_pm_backup,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
