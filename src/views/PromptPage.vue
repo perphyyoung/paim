@@ -450,7 +450,7 @@ onMounted(() => {
     <!-- 卡片滚动区 -->
     <div class="flex-1 overflow-y-auto pb-6">
       <div v-if="prompts.length === 0" class="rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
-        <p class="text-sm text-gray-500 dark:text-gray-400">暂无提示词，点击右上角「新建提示词」开始添加。</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">暂无提示词，点击左上角「新建提示词」开始添加。</p>
       </div>
 
       <ul class="grid gap-3" :style="{ gridTemplateColumns: `repeat(auto-fill, ${cardSize}px)` }">
