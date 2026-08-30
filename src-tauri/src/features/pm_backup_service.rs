@@ -639,4 +639,5 @@ fn io_err(e: std::io::Error) -> String {
 
 
 #[cfg(test)]
+#[path = "pm_backup_service.test.rs"]
 mod tests;

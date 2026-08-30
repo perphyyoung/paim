@@ -277,4 +277,5 @@ pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[cfg(test)]
+#[path = "db.test.rs"]
 mod tests;
