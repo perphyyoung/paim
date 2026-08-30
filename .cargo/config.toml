@@ -1,0 +1,3 @@
+# 构建产物目录钉回 src-tauri，避免 workspace 把 target 迁到根目录导致缓存作废
+[build]
+target-dir = "src-tauri/target"
