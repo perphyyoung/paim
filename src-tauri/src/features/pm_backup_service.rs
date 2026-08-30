@@ -406,8 +406,16 @@ fn build_thumbnail(data_dir: &Path, thumbs_root: &Path, rel: &str) -> Result<Str
         .and_then(|s| s.to_str())
         .ok_or_else(|| format!("无效的图像路径: {rel}"))?;
     let name = format!("thumb_{stem}.jpg");
-    thumb
-        .save(thumb_dir.join(&name))
+    // 编码用 jpeg-encoder（SIMD，image 自带编码器无 SIMD），质量 80 与 pm 一致
+    let rgb = thumb.to_rgb8();
+    let mut file = std::fs::File::create(thumb_dir.join(&name)).map_err(io_err)?;
+    jpeg_encoder::Encoder::new(&mut file, 80)
+        .encode(
+            rgb.as_raw(),
+            rgb.width() as u16,
+            rgb.height() as u16,
+            jpeg_encoder::ColorType::Rgb,
+        )
         .map_err(|e| format!("保存缩略图失败: {e}"))?;
     Ok(format!("{thumb_rel_prefix}/{name}"))
 }

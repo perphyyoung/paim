@@ -27,5 +27,6 @@ tauri-plugin-log = "2"
 rusqlite = { version = "0.34", features = ["bundled"] }
 tauri-plugin-dialog = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp"] }
+jpeg-encoder = { version = "0.6", features = ["simd"] }
 md-5 = "0.10"
 zip = { version = "4", default-features = false, features = ["deflate"] }
