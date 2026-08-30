@@ -41,7 +41,7 @@ const confirmMessage = computed(() => {
   return (
     `将导入 ${info.prompt_count} 条提示词、${info.image_count} 张图像` +
     `（含回收站 ${info.trashed_image_count} 张）。` +
-    "当前数据将自动备份后被整体替换。"
+    "当前数据将被整体替换，如需保留请先备份数据目录。"
   );
 });
 

@@ -94,19 +94,12 @@ function close() {
           >
             {{ summary.thumbnail_failures }} 张图像缩略图生成失败（不影响数据，可重新导入修复）。
           </p>
-          <div class="mt-3 text-xs text-gray-400 dark:text-gray-500">
-            <p>导入前的数据已自动备份：</p>
-            <p class="break-all">{{ summary.backup_db }}</p>
-            <p v-if="summary.backup_images_dir" class="break-all">
-              {{ summary.backup_images_dir }}
-            </p>
-          </div>
         </div>
 
         <div v-else-if="phase === 'error'" class="mt-4 text-sm">
           <p class="text-red-600 dark:text-red-400">{{ error }}</p>
           <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-            导入已中止；如数据被改动过，会自动回滚到导入前的状态。
+            导入已中止，数据库未发生改动（事务自动回滚）。
           </p>
         </div>
 

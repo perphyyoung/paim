@@ -1,8 +1,10 @@
 //! pm(prompt-manager)全量备份导入服务。
 //! 备份包结构（prompt-manager 的 ExportFullBackupService 导出）：
 //!   manifest.json + database/prompt-manager.db + files/images/{YYYYMM}/。
-//! 语义与 pm 的导入一致：整体替换当前数据。执行顺序为“文件先行、数据库事务提交为
-//! 不可逆点”，数据库写入用 ATTACH + 单事务完成，失败自动回滚文件与数据。
+//! 语义与 pm 的导入一致：整体替换当前数据。安全性依赖两点：数据库替换是
+//! ATTACH + 单事务（失败自动回滚）；图像文件复制只增不删（两边 stored_name
+//! 命名空间不重叠），失败路径不会破坏现有数据。导入前如需保留整份数据集，
+//! 由用户按数据集切换约定自行复制目录。
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -52,8 +54,6 @@ pub struct PmImportSummary {
     pub prompts: i64,
     pub images: i64,
     pub thumbnail_failures: usize,
-    pub backup_db: String,
-    pub backup_images_dir: Option<String>,
 }
 
 /// 导入进度推送载荷。
@@ -100,7 +100,8 @@ pub fn inspect(zip_path: &str) -> Result<PmBackupInfo, String> {
     result
 }
 
-/// 执行导入：整体替换当前数据，旧数据自动备份，失败自动回滚。
+/// 执行导入：整体替换当前数据。数据库替换为单事务（失败自动回滚）；
+/// 图像复制只增不删，失败不会破坏现有数据。
 pub fn import<F>(app: &tauri::AppHandle, conn: &Connection, zip_path: &str, emit: F) -> Result<PmImportSummary, String>
 where
     F: Fn(ImportProgress),
@@ -125,62 +126,14 @@ where
     let manifest = read_manifest(&mut archive, &root)?;
     validate_manifest(&manifest)?;
 
-    // 备份当前数据：checkpoint 后复制 db 文件，images/thumbnails 改名让位
-    let data_dir = db::data_dir(app);
     let images_dir = db::images_dir(app);
-    let thumbnails_dir = db::thumbnails_dir(app);
-    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let backup_db = data_dir.join(format!("paim.db.bak-{ts}"));
-    let backup_images = data_dir.join(format!("images_bak-{ts}"));
-    let backup_thumbnails = data_dir.join(format!("thumbnails_bak-{ts}"));
-
-    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
-        .map_err(|e| format!("数据库 checkpoint 失败: {e}"))?;
-    std::fs::copy(db::user_db_path(app), &backup_db)
-        .map_err(|e| format!("备份当前数据库失败: {e}"))?;
-    let had_images = images_dir.exists();
-    if had_images {
-        std::fs::rename(&images_dir, &backup_images)
-            .map_err(|e| format!("备份当前图像目录失败: {e}"))?;
-    }
-    let had_thumbnails = thumbnails_dir.exists();
-    if had_thumbnails {
-        std::fs::rename(&thumbnails_dir, &backup_thumbnails)
-            .map_err(|e| format!("备份当前缩略图目录失败: {e}"))?;
-    }
     std::fs::create_dir_all(&images_dir).map_err(|e| format!("创建图像目录失败: {e}"))?;
 
-    // 从此处起任何失败都要还原文件（数据库尚未写入）
-    let rollback = FileRollback {
-        images_dir: images_dir.clone(),
-        backup_images,
-        had_images,
-        thumbnails_dir,
-        backup_thumbnails,
-        had_thumbnails,
-    };
-    let tmp = match create_temp_dir() {
-        Ok(t) => t,
-        Err(e) => {
-            rollback.restore();
-            return Err(e);
-        }
-    };
-
+    let tmp = create_temp_dir()?;
     let result = import_inner(app, conn, &mut archive, &root, &images_dir, &tmp, &emit);
     let _ = std::fs::remove_dir_all(&tmp);
-    let (prompts, images, thumbnail_failures) = match result {
-        Ok(v) => v,
-        Err(e) => {
-            rollback.restore();
-            return Err(e);
-        }
-    };
+    let (prompts, images, thumbnail_failures) = result?;
 
-    // 成功：旧缩略图目录可彻底删除（缩略图全部由导入数据重建）
-    if had_thumbnails {
-        let _ = std::fs::remove_dir_all(&rollback.backup_thumbnails);
-    }
     emit(ImportProgress {
         stage: "complete".into(),
         percent: 100,
@@ -191,14 +144,10 @@ where
         prompts,
         images,
         thumbnail_failures,
-        backup_db: backup_db.to_string_lossy().into_owned(),
-        backup_images_dir: had_images
-            .then(|| rollback.backup_images.to_string_lossy().into_owned()),
     })
 }
 
 /// 导入主体：解包落文件 → 事务替换数据 → 重建缩略图，返回统计。
-/// 任一步失败由调用方负责文件回滚（数据库事务自身原子回滚）。
 fn import_inner<F>(
     app: &tauri::AppHandle,
     conn: &Connection,
@@ -428,29 +377,6 @@ where
         });
     }
     Ok(failures)
-}
-
-/// 失败回滚：清掉已复制的新文件，把改名让位的原目录还原。
-struct FileRollback {
-    images_dir: PathBuf,
-    backup_images: PathBuf,
-    had_images: bool,
-    thumbnails_dir: PathBuf,
-    backup_thumbnails: PathBuf,
-    had_thumbnails: bool,
-}
-
-impl FileRollback {
-    fn restore(&self) {
-        let _ = std::fs::remove_dir_all(&self.images_dir);
-        let _ = std::fs::remove_dir_all(&self.thumbnails_dir);
-        if self.had_images {
-            let _ = std::fs::rename(&self.backup_images, &self.images_dir);
-        }
-        if self.had_thumbnails {
-            let _ = std::fs::rename(&self.backup_thumbnails, &self.thumbnails_dir);
-        }
-    }
 }
 
 /// 在包内定位 manifest.json，返回其目录前缀（"" 或 "dir/"）。

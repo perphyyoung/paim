@@ -16,8 +16,6 @@ export interface PmImportSummary {
   prompts: number;
   images: number;
   thumbnail_failures: number;
-  backup_db: string;
-  backup_images_dir: string | null;
 }
 
 /** 导入进度推送（事件 pm-import-progress） */
