@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
@@ -10,6 +10,8 @@ import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import CustomScrollBar from "@/components/CustomScrollBar.vue";
+import VirtualGrid from "@/components/VirtualGrid.vue";
 
 const { showToast } = useToast();
 
@@ -130,6 +132,33 @@ const imagePrompts = ref<Record<string, string[]>>({});
 const allTags = ref<{ id: number; name: string; group_id: number | null }[]>([]);
 const tagNames = ref<Record<string, string[]>>({});
 const selectedTags = ref<string[]>([]);
+
+// —— 虚拟网格 + 自定义滚动条 ——
+const gridRef = ref<{ scrollToPosition: (top: number) => void } | null>(null);
+const scrollIndex = ref(0);
+const gridPageSize = ref(1);
+let gridMaxTop = 0;
+
+function onGridScroll(p: { top: number; maxTop: number; pageSize: number }) {
+  gridMaxTop = p.maxTop;
+  gridPageSize.value = p.pageSize;
+  const maxOffset = Math.max(0, sortedImages.value.length - p.pageSize);
+  scrollIndex.value = Math.min(
+    maxOffset,
+    Math.round((p.maxTop > 0 ? p.top / p.maxTop : 0) * maxOffset),
+  );
+}
+
+function onScrollbarSeek(startIndex: number) {
+  scrollIndex.value = startIndex;
+  const maxOffset = Math.max(1, sortedImages.value.length - gridPageSize.value);
+  gridRef.value?.scrollToPosition((startIndex / maxOffset) * gridMaxTop);
+}
+
+// 筛选/排序变化后回到顶部
+watch([keyword, sortBy, sortDesc, selectedTags], () => {
+  gridRef.value?.scrollToPosition(0);
+});
 interface TagGroupData {
   id: number;
   name: string;
@@ -562,33 +591,39 @@ function onUploadDone() {
     />
     </div>
 
-    <!-- 卡片滚动区 -->
-    <div class="flex-1 overflow-y-auto pb-6">
-    <div v-if="images.length === 0" class="rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
-      <p class="text-sm text-gray-500 dark:text-gray-400">
-        暂无图像，点击左上角「上传图像」开始添加。
-      </p>
-    </div>
-
-    <ul
-      class="grid gap-3"
-      :style="{ gridTemplateColumns: `repeat(auto-fill, ${cardSize}px)` }"
-    >
-      <li
-        v-for="img in sortedImages"
-        :key="img.id"
-        class="group relative cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
-        :class="[
-          selectedIds.has(img.id)
-            ? 'border-indigo-500 ring-2 ring-indigo-400'
-            : img.is_favorite
-              ? 'border-amber-500'
-              : 'border-gray-200 dark:border-gray-700',
-        ]"
-        :style="{ width: cardSize + 'px', height: cardSize + 'px' }"
-        @click="openDetail(img)"
-        @contextmenu.prevent="openCtxMenu($event, img)"
+    <!-- 卡片滚动区：虚拟网格 + 自定义滚动条 -->
+    <div class="flex min-h-0 flex-1 gap-1 pb-6">
+      <div
+        v-if="images.length === 0"
+        class="flex-1 rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600"
       >
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          暂无图像，点击左上角「上传图像」开始添加。
+        </p>
+      </div>
+      <template v-else>
+        <VirtualGrid
+          ref="gridRef"
+          class="min-w-0 flex-1"
+          :items="sortedImages"
+          :item-width="cardSize"
+          :item-height="cardSize"
+          :gap="12"
+          @scroll="onGridScroll"
+        >
+          <template #default="{ item: img }">
+            <div
+              class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
+              :class="[
+                selectedIds.has(img.id)
+                  ? 'border-indigo-500 ring-2 ring-indigo-400'
+                  : img.is_favorite
+                    ? 'border-amber-500'
+                    : 'border-gray-200 dark:border-gray-700',
+              ]"
+              @click="openDetail(img)"
+              @contextmenu.prevent="openCtxMenu($event, img)"
+            >
         <!-- 背景图 -->
         <img
           v-if="thumbs[img.id]"
@@ -719,9 +754,18 @@ function onUploadDone() {
               {{ rowInfo(img).value }}
             </p>
           </div>
+          </div>
         </div>
-      </li>
-    </ul>
+        </template>
+      </VirtualGrid>
+      <CustomScrollBar
+        class="w-4 shrink-0"
+        :total="sortedImages.length"
+        :page-size="gridPageSize"
+        :model-value="scrollIndex"
+        @update:model-value="onScrollbarSeek"
+      />
+      </template>
     </div>
 
     <!-- 底部批量操作工具栏（独立组件，供提示词端复用） -->

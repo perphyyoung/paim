@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
@@ -10,6 +10,8 @@ import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import CustomScrollBar from "@/components/CustomScrollBar.vue";
+import VirtualGrid from "@/components/VirtualGrid.vue";
 
 const { showToast } = useToast();
 
@@ -86,6 +88,33 @@ const specialCounts = computed<Record<string, number>>(() => {
 });
 
 const selectedTags = ref<string[]>([]);
+
+// —— 虚拟网格 + 自定义滚动条 ——
+const gridRef = ref<{ scrollToPosition: (top: number) => void } | null>(null);
+const scrollIndex = ref(0);
+const gridPageSize = ref(1);
+let gridMaxTop = 0;
+
+function onGridScroll(p: { top: number; maxTop: number; pageSize: number }) {
+  gridMaxTop = p.maxTop;
+  gridPageSize.value = p.pageSize;
+  const maxOffset = Math.max(0, sortedPrompts.value.length - p.pageSize);
+  scrollIndex.value = Math.min(
+    maxOffset,
+    Math.round((p.maxTop > 0 ? p.top / p.maxTop : 0) * maxOffset),
+  );
+}
+
+function onScrollbarSeek(startIndex: number) {
+  scrollIndex.value = startIndex;
+  const maxOffset = Math.max(1, sortedPrompts.value.length - gridPageSize.value);
+  gridRef.value?.scrollToPosition((startIndex / maxOffset) * gridMaxTop);
+}
+
+// 筛选/排序变化后回到顶部
+watch([keyword, sortBy, sortDesc, selectedTags], () => {
+  gridRef.value?.scrollToPosition(0);
+});
 
 // 标签筛选区分组数据
 interface TagGroupData { id: number; name: string; sort_order: number }
@@ -447,22 +476,31 @@ onMounted(() => {
       </TagFilterPanel>
     </div>
 
-    <!-- 卡片滚动区 -->
-    <div class="flex-1 overflow-y-auto pb-6">
-      <div v-if="prompts.length === 0" class="rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
+    <!-- 卡片滚动区：虚拟网格 + 自定义滚动条 -->
+    <div class="flex min-h-0 flex-1 gap-1 pb-6">
+      <div
+        v-if="prompts.length === 0"
+        class="flex-1 rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600"
+      >
         <p class="text-sm text-gray-500 dark:text-gray-400">暂无提示词，点击左上角「新建提示词」开始添加。</p>
       </div>
-
-      <ul class="grid gap-3" :style="{ gridTemplateColumns: `repeat(auto-fill, ${cardSize}px)` }">
-        <li
-          v-for="(p, i) in sortedPrompts"
-          :key="p.id"
-          class="group relative cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
-          :class="selectedIds.has(p.id) ? 'border-indigo-500 ring-2 ring-indigo-400' : p.is_favorite ? 'border-amber-500' : 'border-gray-200 dark:border-gray-700'"
-          :style="{ width: cardSize + 'px', height: cardSize + 'px' }"
-          @click="openDetail(i)"
-          @contextmenu.prevent
+      <template v-else>
+        <VirtualGrid
+          ref="gridRef"
+          class="min-w-0 flex-1"
+          :items="sortedPrompts"
+          :item-width="cardSize"
+          :item-height="cardSize"
+          :gap="12"
+          @scroll="onGridScroll"
         >
+          <template #default="{ item: p, index }">
+            <div
+              class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
+              :class="selectedIds.has(p.id) ? 'border-indigo-500 ring-2 ring-indigo-400' : p.is_favorite ? 'border-amber-500' : 'border-gray-200 dark:border-gray-700'"
+              @click="openDetail(index)"
+              @contextmenu.prevent
+            >
           <!-- 背景图：第一张关联图像缩略图 -->
           <img
             v-if="thumbs[p.id]"
@@ -515,8 +553,17 @@ onMounted(() => {
               <p class="truncate text-[11px] text-white" :title="`${rowInfo(p).label}：${rowInfo(p).value}`">{{ rowInfo(p).value }}</p>
             </div>
           </div>
-        </li>
-      </ul>
+            </div>
+          </template>
+        </VirtualGrid>
+        <CustomScrollBar
+          class="w-4 shrink-0"
+          :total="sortedPrompts.length"
+          :page-size="gridPageSize"
+          :model-value="scrollIndex"
+          @update:model-value="onScrollbarSeek"
+        />
+      </template>
     </div>
 
     <!-- 新建提示词弹窗 -->
