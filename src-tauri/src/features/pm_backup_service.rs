@@ -10,6 +10,8 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 use zip::ZipArchive;
 
 use crate::db;
@@ -104,7 +106,7 @@ pub fn inspect(zip_path: &str) -> Result<PmBackupInfo, String> {
 /// 图像复制只增不删，失败不会破坏现有数据。
 pub fn import<F>(app: &tauri::AppHandle, conn: &Connection, zip_path: &str, emit: F) -> Result<PmImportSummary, String>
 where
-    F: Fn(ImportProgress),
+    F: Fn(ImportProgress) + Sync,
 {
     emit(ImportProgress {
         stage: "start".into(),
@@ -158,7 +160,7 @@ fn import_inner<F>(
     emit: &F,
 ) -> Result<(i64, i64, usize), String>
 where
-    F: Fn(ImportProgress),
+    F: Fn(ImportProgress) + Sync,
 {
     let image_prefix = format!("{root}{IMAGES_ENTRY_PREFIX}");
     let total_images = count_image_entries(archive, &image_prefix);
@@ -292,17 +294,64 @@ INSERT INTO db_version (version, applied_at)
   SELECT version, applied_at FROM pm_import.db_version;
 ";
 
-/// 全量重建缩略图（paim 布局：thumbnails/{YYYYMM}/thumb_{stored_name 去扩展名}.jpg），
+/// 缩略图生成工作线程数上限：解码是 CPU 密集的独立任务，并行近似线性加速
+/// （参照 pm 的并发模型）；设上限控制峰值内存（每线程持有一张解码位图）。
+const THUMB_WORKERS_MAX: usize = 8;
+
+/// 单图缩略图生成：读原图 → 解码 → 200×200 居中裁剪 → 存
+/// thumbnails/{YYYYMM}/thumb_{stored_name 词干}.jpg，
+/// 返回要写回 images.thumbnail_path 的相对路径；失败原因以 Err 返回。
+fn build_thumbnail(data_dir: &Path, thumbs_root: &Path, rel: &str) -> Result<String, String> {
+    // 年月子目录取自 relative_path 第二段（images/202608/x.png → 202608）
+    let rel_path = Path::new(rel);
+    let month = rel_path
+        .components()
+        .nth(1)
+        .and_then(|c| c.as_os_str().to_str())
+        .unwrap_or("");
+    let thumb_dir = if month.is_empty() {
+        thumbs_root.to_path_buf()
+    } else {
+        thumbs_root.join(month)
+    };
+    let thumb_rel_prefix = if month.is_empty() {
+        "thumbnails".to_string()
+    } else {
+        format!("thumbnails/{month}")
+    };
+
+    let img = image::open(data_dir.join(rel)).map_err(|e| format!("读取图像失败: {e}"))?;
+    let thumb = crate::features::image_service::make_center_thumb(&img)
+        .map_err(|e| format!("生成缩略图失败: {e}"))?;
+    std::fs::create_dir_all(&thumb_dir).map_err(io_err)?;
+    // relative_path 以 stored_name 结尾，取词干即 pm 的缩略图命名
+    let stem = rel_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("无效的图像路径: {rel}"))?;
+    let name = format!("thumb_{stem}.jpg");
+    thumb
+        .save(thumb_dir.join(&name))
+        .map_err(|e| format!("保存缩略图失败: {e}"))?;
+    Ok(format!("{thumb_rel_prefix}/{name}"))
+}
+
+/// 全量重建缩略图（paim 布局：thumbnails/{YYYYMM}/thumb_{stored_name 词干}.jpg），
 /// 并重写 thumbnail_path；解码失败的记录置空并计数。返回失败数。
-fn regenerate_thumbnails<F>(app: &tauri::AppHandle, conn: &Connection, emit: &F) -> Result<usize, String>
+/// 参照 pm 的并发模型：多工作线程并发生成，结束后单事务批量回写。
+fn regenerate_thumbnails<F>(
+    app: &tauri::AppHandle,
+    conn: &Connection,
+    emit: &F,
+) -> Result<usize, String>
 where
-    F: Fn(ImportProgress),
+    F: Fn(ImportProgress) + Sync,
 {
     let data_dir = db::data_dir(app);
     let thumbs_root = db::thumbnails_dir(app);
     std::fs::create_dir_all(&thumbs_root).map_err(io_err)?;
 
-    // 先收集再逐条处理，避免边查询边更新同一张表
+    // 先收集再处理，避免边查询边更新同一张表
     let rows: Vec<(String, String)> = {
         let mut stmt = conn
             .prepare("SELECT id, relative_path FROM images")
@@ -314,68 +363,69 @@ where
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("读取图像记录失败: {e}"))?
     };
-    let total = rows.len().max(1);
-    let mut failures = 0usize;
-    for (idx, (id, rel)) in rows.iter().enumerate() {
-        // 年月子目录取自 relative_path 第二段（images/202608/x.png → 202608）
-        let rel_path = Path::new(rel);
-        let month = rel_path
-            .components()
-            .nth(1)
-            .and_then(|c| c.as_os_str().to_str())
-            .unwrap_or("");
-        let thumb_dir = if month.is_empty() {
-            thumbs_root.clone()
-        } else {
-            thumbs_root.join(month)
-        };
-        let thumb_rel_prefix = if month.is_empty() {
-            "thumbnails".to_string()
-        } else {
-            format!("thumbnails/{month}")
-        };
+    let total = rows.len();
+    if total == 0 {
+        return Ok(0);
+    }
 
-        let outcome = image::open(data_dir.join(rel))
-            .map_err(|e| format!("读取图像失败: {e}"))
-            .and_then(|img| {
-                let thumb = crate::features::image_service::make_center_thumb(&img)
-                    .map_err(|e| format!("生成缩略图失败: {e}"))?;
-                std::fs::create_dir_all(&thumb_dir).map_err(io_err)?;
-                // relative_path 以 stored_name 结尾，取词干即 pm 的缩略图命名
-                let stem = rel_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .ok_or_else(|| format!("无效的图像路径: {rel}"))?;
-                let name = format!("thumb_{stem}.jpg");
-                thumb
-                    .save(thumb_dir.join(&name))
-                    .map_err(|e| format!("保存缩略图失败: {e}"))?;
-                Ok(format!("{thumb_rel_prefix}/{name}"))
+    // 并发生成：游标领任务，结果集中收集；进度计数共享，由完成线程直接推送
+    let next = AtomicUsize::new(0);
+    let completed = AtomicUsize::new(0);
+    let results: Mutex<Vec<(String, Result<String, String>)>> = Mutex::new(Vec::with_capacity(total));
+    let workers = total
+        .min(
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4),
+        )
+        .min(THUMB_WORKERS_MAX);
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                let idx = next.fetch_add(1, Ordering::Relaxed);
+                if idx >= rows.len() {
+                    break;
+                }
+                let (id, rel) = &rows[idx];
+                let outcome = build_thumbnail(&data_dir, &thumbs_root, rel);
+                results.lock().unwrap().push((id.clone(), outcome));
+                let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                emit(ImportProgress {
+                    stage: "thumbnails".into(),
+                    percent: 65 + (done * 33 / total) as u32,
+                    status: format!("正在重建缩略图... ({done}/{total})"),
+                    detail: None,
+                });
             });
-        match outcome {
-            Ok(thumb_rel) => {
-                conn.execute(
-                    "UPDATE images SET thumbnail_path = ?1 WHERE id = ?2",
-                    rusqlite::params![thumb_rel, id],
-                )
-                .map_err(|e| format!("更新缩略图路径失败: {e}"))?;
-            }
+        }
+    });
+
+    // 单事务批量回写 thumbnail_path（失败置 NULL 并计数）
+    let outcomes = results
+        .into_inner()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    conn.execute_batch("BEGIN IMMEDIATE;")
+        .map_err(|e| format!("开启缩略图回写事务失败: {e}"))?;
+    let mut failures = 0usize;
+    for (id, outcome) in outcomes {
+        let thumb_rel = match outcome {
+            Ok(rel) => Some(rel),
             Err(msg) => {
                 failures += 1;
                 log::warn!("缩略图重建失败 id={id}: {msg}");
-                let _ = conn.execute(
-                    "UPDATE images SET thumbnail_path = NULL WHERE id = ?1",
-                    rusqlite::params![id],
-                );
+                None
             }
+        };
+        if let Err(e) = conn.execute(
+            "UPDATE images SET thumbnail_path = ?1 WHERE id = ?2",
+            rusqlite::params![thumb_rel, id],
+        ) {
+            let _ = conn.execute_batch("ROLLBACK;");
+            return Err(format!("更新缩略图路径失败: {e}"));
         }
-        emit(ImportProgress {
-            stage: "thumbnails".into(),
-            percent: 65 + ((idx + 1) * 33 / total) as u32,
-            status: format!("正在重建缩略图... ({}/{})", idx + 1, rows.len()),
-            detail: None,
-        });
     }
+    conn.execute_batch("COMMIT;")
+        .map_err(|e| format!("提交缩略图回写事务失败: {e}"))?;
     Ok(failures)
 }
 
