@@ -128,7 +128,7 @@ fn replace_tables_copies_all_rows_and_wipes_old() {
 
     // 主库先放一条旧数据，导入后应被整体替换
     let main_path = dir.join("paim.db");
-    let bk = db::init(main_path).expect("init main db");
+        let bk = db::init(main_path.clone()).expect("init main db");
     let conn = bk.0.lock().unwrap();
     conn.execute(
         "INSERT INTO prompts (id, title, content) VALUES ('pmt_old', 'old', 'old')",
@@ -164,6 +164,18 @@ fn replace_tables_copies_all_rows_and_wipes_old() {
         count("SELECT COUNT(*) FROM db_version WHERE version = 1"),
         1
     );
+
+    // 用独立连接验证数据已真正提交（同连接能看到未提交数据，查不出来）
+    let verify = rusqlite::Connection::open_with_flags(
+        &main_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let committed: i64 = verify
+        .query_row("SELECT COUNT(*) FROM prompts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(committed, 2, "replace_tables 必须提交事务，而非留在打开的事务里");
+
     let _ = std::fs::remove_dir_all(&dir);
 }
 

@@ -252,7 +252,8 @@ fn replace_tables(conn: &Connection, pm_db: &Path) -> Result<(i64, i64), String>
              DELETE FROM db_version;",
         )?;
         conn.execute_batch(REPLACE_SQL)?;
-        Ok(())
+        // 必须显式提交：否则数据停留在未提交事务里，仅本连接可见，断开即回滚
+        conn.execute_batch("COMMIT;")
     };
     let outcome = run();
     if outcome.is_err() {
