@@ -374,10 +374,6 @@ INSERT INTO db_version (version, applied_at)
   SELECT version, applied_at FROM pm_import.db_version;
 ";
 
-/// 缩略图生成工作线程数上限：解码是 CPU 密集的独立任务，并行近似线性加速
-/// （参照 pm 的并发模型）；设上限控制峰值内存（每线程持有一张解码位图）。
-const THUMB_WORKERS_MAX: usize = 8;
-
 /// 单图缩略图生成：读原图 → 解码 → 200×200 居中裁剪 → 存
 /// thumbnails/{YYYYMM}/thumb_{stored_name 词干}.jpg，
 /// 返回要写回 images.thumbnail_path 的相对路径；失败原因以 Err 返回。
@@ -419,6 +415,8 @@ fn build_thumbnail(data_dir: &Path, thumbs_root: &Path, rel: &str) -> Result<Str
 /// 全量重建缩略图（paim 布局：thumbnails/{YYYYMM}/thumb_{stored_name 词干}.jpg），
 /// 并重写 thumbnail_path；解码失败的记录置空并计数。返回失败数。
 /// 参照 pm 的并发模型：多工作线程并发生成，结束后单事务批量回写。
+/// 线程数取系统可用并行度（满核跑，不做写死上限），代价是峰值内存
+/// （每线程持有一张解码位图，详见 导入优化.md）。
 fn regenerate_thumbnails<F>(
     app: &tauri::AppHandle,
     conn: &Connection,
@@ -452,13 +450,11 @@ where
     let next = AtomicUsize::new(0);
     let completed = AtomicUsize::new(0);
     let results: Mutex<Vec<(String, Result<String, String>)>> = Mutex::new(Vec::with_capacity(total));
-    let workers = total
-        .min(
-            std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(4),
-        )
-        .min(THUMB_WORKERS_MAX);
+    let workers = total.min(
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4),
+    );
     std::thread::scope(|scope| {
         for _ in 0..workers {
             scope.spawn(|| loop {
