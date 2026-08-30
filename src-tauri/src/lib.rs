@@ -18,6 +18,34 @@ pub fn run() {
         )?;
       }
 
+      // 启动防呆：激活数据目录缺失但存在备用数据集
+      // 目录时，说明切换未完成——不静默创建空库，提示用户完成改名后退出。
+      let pending = db::pending_switch_datasets(app.handle());
+      if !pending.is_empty() {
+        use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+        let data_dir = db::data_dir(app.handle());
+        let dir_name = data_dir
+          .file_name()
+          .and_then(|n| n.to_str())
+          .unwrap_or("paim-data")
+          .to_string();
+        app
+          .handle()
+          .dialog()
+          .message(format!(
+            "未找到数据目录：\n{}\n\n但发现了备用数据集：\n{}\n\n可能是数据集切换未完成。请关闭本提示后将目标数据集目录改名为「{}」，再重新启动应用。",
+            data_dir.display(),
+            pending.join("\n"),
+            dir_name
+          ))
+          .title("paim")
+          .kind(MessageDialogKind::Warning)
+          .buttons(MessageDialogButtons::Ok)
+          .blocking_show();
+        // setup 阶段事件循环尚未运行，且此时未打开数据库，直接退出进程即可
+        std::process::exit(0);
+      }
+
       let db_path = db::user_db_path(app.handle());
       if let Some(dir) = db_path.parent() {
         std::fs::create_dir_all(dir)?;

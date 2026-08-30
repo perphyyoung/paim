@@ -2,7 +2,7 @@
 //! 持久化细节集中在基础设施层，业务层通过 repository 接口访问。
 
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 应用持有的数据库连接（单连接 + Mutex），通过 Tauri managed state 注入。
 pub struct BkDb(pub std::sync::Mutex<Connection>);
@@ -221,6 +221,44 @@ pub fn thumbnails_dir(app: &tauri::AppHandle) -> PathBuf {
     base_data_dir(app).join("thumbnails")
 }
 
+/// 数据集切换防呆的核心检查：激活数据目录不存在时，
+/// 扫描其父目录下「<数据目录名>.」前缀的兄弟目录，返回发现的备用数据集目录名。
+/// 非空即视为切换未完成，调用方应提示用户而不是静默创建空库。
+fn pending_switch_datasets_at(base: &Path) -> Vec<String> {
+    if base.exists() {
+        return Vec::new();
+    }
+    let Some(name) = base.file_name().and_then(|n| n.to_str()) else {
+        return Vec::new();
+    };
+    let Some(parent) = base.parent() else {
+        return Vec::new();
+    };
+    let prefix = format!("{name}.");
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if let Some(n) = path.file_name().and_then(|n| n.to_str()) {
+            if n.starts_with(&prefix) {
+                found.push(n.to_string());
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// 见 [`pending_switch_datasets_at`]。
+pub fn pending_switch_datasets(app: &tauri::AppHandle) -> Vec<String> {
+    pending_switch_datasets_at(&base_data_dir(app))
+}
+
 // ---- Tauri commands ----
 
 #[tauri::command]
@@ -237,3 +275,6 @@ pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| format!("打开目录失败: {e}"))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
