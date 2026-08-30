@@ -84,7 +84,13 @@ const settingsOpen = ref(false);
     </aside>
 
     <main class="flex-1 overflow-hidden p-6">
-      <RouterView />
+      <!-- KeepAlive 缓存页面实例：主页间切换不重新加载，保留数据与滚动位置（对齐 pm 行为）；
+           数据失效场景由各页显式刷新（上传/删除后自刷新），导入完成走整页 reload -->
+      <RouterView v-slot="{ Component }">
+        <KeepAlive>
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
     </main>
 
     <ToastHost />

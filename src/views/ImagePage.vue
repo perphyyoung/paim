@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
@@ -138,9 +138,11 @@ const gridRef = ref<{ scrollToPosition: (top: number) => void } | null>(null);
 const scrollIndex = ref(0);
 const gridPageSize = ref(1);
 let gridMaxTop = 0;
+let savedGridTop = 0;
 
 function onGridScroll(p: { top: number; maxTop: number; pageSize: number }) {
   gridMaxTop = p.maxTop;
+  savedGridTop = p.top;
   gridPageSize.value = p.pageSize;
   const maxOffset = Math.max(0, sortedImages.value.length - p.pageSize);
   scrollIndex.value = Math.min(
@@ -478,12 +480,16 @@ async function batchAddTag(tags: string[]) {
   }
 }
 
+// KeepAlive:数据仅在首次进入加载;激活时恢复滚动位置并接管外点关闭,失活时释放监听
 onMounted(() => {
-  window.addEventListener("click", closeCtxMenu);
   loadImages();
   loadTagFilter();
 });
-onUnmounted(() => window.removeEventListener("click", closeCtxMenu));
+onActivated(() => {
+  window.addEventListener("click", closeCtxMenu);
+  gridRef.value?.scrollToPosition(savedGridTop);
+});
+onDeactivated(() => window.removeEventListener("click", closeCtxMenu));
 
 // ---- 上传图像弹窗 ----
 const uploadOpen = ref(false);
