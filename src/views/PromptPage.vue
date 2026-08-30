@@ -12,6 +12,8 @@ import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
+import TrashOverlay from "@/components/TrashOverlay.vue";
+import { useGridScrollSync } from "@/components/useGridScrollSync";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
@@ -91,33 +93,18 @@ const specialCounts = computed<Record<string, number>>(() => {
 const selectedTags = ref<string[]>([]);
 
 // —— 虚拟网格 + 自定义滚动条 ——
-const gridRef = ref<{ scrollToPosition: (top: number) => void } | null>(null);
-const scrollIndex = ref(0);
-const gridPageSize = ref(1);
-let gridMaxTop = 0;
-let savedGridTop = 0;
-
-function onGridScroll(p: { top: number; maxTop: number; pageSize: number }) {
-  gridMaxTop = p.maxTop;
-  savedGridTop = p.top;
-  gridPageSize.value = p.pageSize;
-  const maxOffset = Math.max(0, sortedPrompts.value.length - p.pageSize);
-  scrollIndex.value = Math.min(
-    maxOffset,
-    Math.round((p.maxTop > 0 ? p.top / p.maxTop : 0) * maxOffset),
-  );
-}
-
-function onScrollbarSeek(startIndex: number) {
-  scrollIndex.value = startIndex;
-  const maxOffset = Math.max(1, sortedPrompts.value.length - gridPageSize.value);
-  gridRef.value?.scrollToPosition((startIndex / maxOffset) * gridMaxTop);
-}
+const {
+  gridRef,
+  scrollIndex,
+  pageSize: gridPageSize,
+  onGridScroll,
+  onScrollbarSeek,
+  backToTop,
+  restoreSaved,
+} = useGridScrollSync(() => sortedPrompts.value.length);
 
 // 筛选/排序变化后回到顶部
-watch([keyword, sortBy, sortDesc, selectedTags], () => {
-  gridRef.value?.scrollToPosition(0);
-});
+watch([keyword, sortBy, sortDesc, selectedTags], backToTop);
 
 // 详情弹窗内的编辑就地改原始对象（shallowRef 下需整表重拉触发更新）；
 // 同时内容/关联变化会影响图像主页
@@ -371,17 +358,16 @@ function onTagManagerSaved() {
 
 // —— 回收站 ——
 const trashOpen = ref(false);
-const trashPrompts = ref<Prompt[]>([]);
-const trashLoading = ref(false);
+const trashPrompts = shallowRef<Prompt[]>([]);
+const emptyTrashOpen = ref(false);
+const purgeTarget = ref<Prompt | null>(null);
+const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
-  trashLoading.value = true;
   try {
     trashPrompts.value = await invoke<Prompt[]>("list_trashed_prompts");
   } catch {
     trashPrompts.value = [];
-  } finally {
-    trashLoading.value = false;
   }
 }
 function openTrash() {
@@ -390,6 +376,55 @@ function openTrash() {
 }
 function closeTrash() {
   trashOpen.value = false;
+}
+
+// —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
+async function restoreAllTrash() {
+  if (trashPrompts.value.length === 0) {
+    showToast("回收站已为空");
+    return;
+  }
+  try {
+    const restored = await invoke<number>("restore_all_prompts");
+    await Promise.all([loadTrash(), loadPrompts()]);
+    markPageStale("images");
+    showToast(`已恢复 ${restored} 个提示词`);
+  } catch (e) {
+    showToast(`恢复失败：${e}`);
+  }
+}
+
+function requestEmptyTrash() {
+  if (trashPrompts.value.length === 0) {
+    showToast("回收站已为空");
+    return;
+  }
+  emptyTrashOpen.value = true;
+}
+
+async function doEmptyTrash() {
+  emptyTrashOpen.value = false;
+  try {
+    const r = await invoke<{ count: number; failures: number }>("empty_prompt_trash");
+    trashPrompts.value = [];
+    await loadPrompts();
+    markPageStale("images");
+    showToast(r.failures > 0 ? `已清空 ${r.count} 个（${r.failures} 个失败）` : "回收站已清空");
+  } catch (e) {
+    showToast(`清空失败：${e}`);
+  }
+}
+
+function requestPurgePrompt(p: Prompt) {
+  purgeTarget.value = p;
+  purgeConfirmOpen.value = true;
+}
+
+async function doPurgePrompt() {
+  purgeConfirmOpen.value = false;
+  const p = purgeTarget.value;
+  purgeTarget.value = null;
+  if (p) await purgePrompt(p);
 }
 
 async function restorePrompt(p: Prompt) {
@@ -428,7 +463,7 @@ onActivated(() => {
     loadPrompts();
     loadTagFilter();
   }
-  gridRef.value?.scrollToPosition(savedGridTop);
+  restoreSaved();
 });
 </script>
 
@@ -657,56 +692,85 @@ onActivated(() => {
       @cancel="batchDeleteOpen = false"
     />
 
-    <!-- 回收站弹窗 -->
-    <Teleport to="body">
-      <div
-        v-if="trashOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-        @click.self="closeTrash"
-      >
-        <div class="flex max-h-[80vh] w-[640px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">提示词回收站</h3>
-            <button
-              type="button"
-              class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-              @click="closeTrash"
-            >
-              ✕
-            </button>
+    <!-- 回收站（整页，参考 pm） -->
+    <TrashOverlay
+      :open="trashOpen"
+      title="提示词回收站"
+      :items="trashPrompts"
+      :item-width="cardSize"
+      :item-height="cardSize"
+      @close="closeTrash"
+      @restore-all="restoreAllTrash"
+      @empty="requestEmptyTrash"
+      @restore="restorePrompt"
+      @purge="requestPurgePrompt"
+    >
+      <template #default="{ item: p }">
+        <div
+          class="group relative h-full w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+        >
+          <img
+            v-if="thumbs[p.id]"
+            :src="thumbs[p.id]"
+            alt=""
+            class="absolute inset-0 h-full w-full object-cover"
+          />
+          <div class="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-center">
+            <p class="truncate text-[11px] text-white" :title="p.title">{{ p.title }}</p>
+            <p class="truncate text-[10px] text-gray-300">删除于 {{ formatLocalTime(p.deleted_at) }}</p>
           </div>
-
-          <div v-if="trashPrompts.length === 0 && !trashLoading" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">回收站为空</div>
-          <div v-else-if="trashLoading" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">加载中...</div>
-          <ul v-else class="flex-1 divide-y divide-gray-100 overflow-auto dark:divide-gray-700">
-            <li
-              v-for="p in trashPrompts"
-              :key="p.id"
-              class="flex items-center gap-3 px-4 py-2"
-            >
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ p.title }}</p>
-                <p class="truncate text-xs text-gray-400">{{ p.content }}</p>
-                <p class="text-xs text-gray-400">删除于 {{ formatLocalTime(p.deleted_at) }}</p>
-              </div>
+          <div
+            class="absolute inset-x-0 top-0 grid grid-cols-2 items-center py-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          >
+            <div class="flex items-center justify-center">
               <button
                 type="button"
-                class="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                @click="restorePrompt(p)"
+                title="恢复"
+                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                @click.stop="restorePrompt(p)"
               >
-                恢复
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
               </button>
+            </div>
+            <div class="flex items-center justify-center">
               <button
                 type="button"
-                class="rounded border border-red-300 px-3 py-1 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
-                @click="purgePrompt(p)"
+                title="彻底删除"
+                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                @click.stop="requestPurgePrompt(p)"
               >
-                彻底删除
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" />
+                </svg>
               </button>
-            </li>
-          </ul>
+            </div>
+          </div>
         </div>
-      </div>
-    </Teleport>
+      </template>
+    </TrashOverlay>
+
+    <!-- 彻底删除确认 -->
+    <ConfirmDialog
+      :open="purgeConfirmOpen"
+      title="彻底删除"
+      :message="`确定彻底删除提示词「${purgeTarget?.title || ''}」？此操作不可恢复。`"
+      confirm-text="删除"
+      danger
+      @confirm="doPurgePrompt"
+      @cancel="purgeConfirmOpen = false"
+    />
+
+    <!-- 清空回收站确认 -->
+    <ConfirmDialog
+      :open="emptyTrashOpen"
+      title="清空回收站"
+      :message="`确定彻底删除回收站中的全部 ${trashPrompts.length} 个提示词？此操作不可恢复。`"
+      confirm-text="清空"
+      danger
+      @confirm="doEmptyTrash"
+      @cancel="emptyTrashOpen = false"
+    />
   </section>
 </template>

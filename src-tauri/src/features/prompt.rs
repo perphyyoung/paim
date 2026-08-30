@@ -2,6 +2,7 @@
 //! 路径 `features::prompt::`，与图像侧 `features::image::` 对称。
 
 use crate::db::BkDb;
+use crate::features::image_service;
 use crate::features::prompt_service;
 
 use serde::Serialize;
@@ -233,6 +234,22 @@ pub fn restore_prompt(db: State<BkDb>, id: String) -> Result<prompt_service::Pro
 pub fn purge_prompt(db: State<BkDb>, id: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     prompt_service::purge(&conn, &id).map_err(|e| e.to_string())
+}
+
+/// 恢复全部回收站提示词，返回恢复数量。
+#[tauri::command]
+pub fn restore_all_prompts(db: State<BkDb>) -> Result<usize, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    prompt_service::restore_all(&conn).map_err(|e| e.to_string())
+}
+
+/// 清空提示词回收站（关联关系级联删除）。
+#[tauri::command]
+pub fn empty_prompt_trash(db: State<BkDb>) -> Result<image_service::TrashBatchResult, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    prompt_service::empty_trash(&conn)
+        .map(|count| image_service::TrashBatchResult { count: count as usize, failures: 0 })
+        .map_err(|e| e.to_string())
 }
 
 /// 返回每个提示词第一张关联（未删除）图像的缩略图磁盘路径：{promptId: absPath}，供卡片背景。

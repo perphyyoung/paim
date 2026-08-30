@@ -12,6 +12,8 @@ import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
+import TrashOverlay from "@/components/TrashOverlay.vue";
+import { useGridScrollSync } from "@/components/useGridScrollSync";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
@@ -135,33 +137,18 @@ const tagNames = shallowRef<Record<string, string[]>>({});
 const selectedTags = ref<string[]>([]);
 
 // —— 虚拟网格 + 自定义滚动条 ——
-const gridRef = ref<{ scrollToPosition: (top: number) => void } | null>(null);
-const scrollIndex = ref(0);
-const gridPageSize = ref(1);
-let gridMaxTop = 0;
-let savedGridTop = 0;
-
-function onGridScroll(p: { top: number; maxTop: number; pageSize: number }) {
-  gridMaxTop = p.maxTop;
-  savedGridTop = p.top;
-  gridPageSize.value = p.pageSize;
-  const maxOffset = Math.max(0, sortedImages.value.length - p.pageSize);
-  scrollIndex.value = Math.min(
-    maxOffset,
-    Math.round((p.maxTop > 0 ? p.top / p.maxTop : 0) * maxOffset),
-  );
-}
-
-function onScrollbarSeek(startIndex: number) {
-  scrollIndex.value = startIndex;
-  const maxOffset = Math.max(1, sortedImages.value.length - gridPageSize.value);
-  gridRef.value?.scrollToPosition((startIndex / maxOffset) * gridMaxTop);
-}
+const {
+  gridRef,
+  scrollIndex,
+  pageSize: gridPageSize,
+  onGridScroll,
+  onScrollbarSeek,
+  backToTop,
+  restoreSaved,
+} = useGridScrollSync(() => sortedImages.value.length);
 
 // 筛选/排序变化后回到顶部
-watch([keyword, sortBy, sortDesc, selectedTags], () => {
-  gridRef.value?.scrollToPosition(0);
-});
+watch([keyword, sortBy, sortDesc, selectedTags], backToTop);
 interface TagGroupData {
   id: number;
   name: string;
@@ -239,20 +226,23 @@ function closeCtxMenu() {
 
 // 回收站
 const trashOpen = ref(false);
-const trashImages = ref<Image[]>([]);
-const trashThumbs = ref<Record<string, string>>({});
+const trashImages = shallowRef<Image[]>([]);
+const trashThumbs = shallowRef<Record<string, string>>({});
+const emptyTrashOpen = ref(false);
+const purgeTarget = ref<Image | null>(null);
+const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
-  trashImages.value = await invoke<Image[]>("list_trash");
-  trashThumbs.value = {};
-  for (const img of trashImages.value) {
-    try {
-      const p = await invoke<string>("get_thumbnail", { id: img.id });
-      trashThumbs.value[img.id] = convertFileSrc(p);
-    } catch {
-      // 保持占位
-    }
+  const [items, dir] = await Promise.all([
+    invoke<Image[]>("list_trash"),
+    invoke<string>("get_data_dir"),
+  ]);
+  trashImages.value = items;
+  const map: Record<string, string> = {};
+  for (const img of items) {
+    if (img.thumbnail_path) map[img.id] = convertFileSrc(`${dir}/${img.thumbnail_path}`);
   }
+  trashThumbs.value = map;
 }
 function openTrash() {
   trashOpen.value = true;
@@ -260,6 +250,56 @@ function openTrash() {
 }
 function closeTrash() {
   trashOpen.value = false;
+}
+
+// —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
+async function restoreAllTrash() {
+  if (trashImages.value.length === 0) {
+    showToast("回收站已为空");
+    return;
+  }
+  try {
+    const restored = await invoke<number>("restore_all_images");
+    await Promise.all([loadTrash(), loadImages()]);
+    markPageStale("prompts");
+    showToast(`已恢复 ${restored} 张图像`);
+  } catch (e) {
+    showToast(`恢复失败：${e}`);
+  }
+}
+
+function requestEmptyTrash() {
+  if (trashImages.value.length === 0) {
+    showToast("回收站已为空");
+    return;
+  }
+  emptyTrashOpen.value = true;
+}
+
+async function doEmptyTrash() {
+  emptyTrashOpen.value = false;
+  try {
+    const r = await invoke<{ count: number; failures: number }>("empty_image_trash");
+    trashImages.value = [];
+    trashThumbs.value = {};
+    await loadImages();
+    markPageStale("prompts");
+    showToast(r.failures > 0 ? `已清空 ${r.count} 张（${r.failures} 张失败）` : "回收站已清空");
+  } catch (e) {
+    showToast(`清空失败：${e}`);
+  }
+}
+
+function requestPurgeImage(img: Image) {
+  purgeTarget.value = img;
+  purgeConfirmOpen.value = true;
+}
+
+async function doPurgeImage() {
+  purgeConfirmOpen.value = false;
+  const img = purgeTarget.value;
+  purgeTarget.value = null;
+  if (img) await purgeImage(img);
 }
 
 async function deleteToTrash() {
@@ -500,7 +540,7 @@ onActivated(() => {
     loadImages();
     loadTagFilter();
   }
-  gridRef.value?.scrollToPosition(savedGridTop);
+  restoreSaved();
 });
 onDeactivated(() => window.removeEventListener("click", closeCtxMenu));
 
@@ -835,63 +875,101 @@ function onUploadDone() {
       </div>
     </Teleport>
 
-    <!-- 回收站弹窗 -->
-    <Teleport to="body">
-      <div
-        v-if="trashOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-        @click.self="closeTrash"
-      >
-        <div class="flex max-h-[80vh] w-[640px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">回收站</h3>
-            <button
-              type="button"
-              class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-              @click="closeTrash"
-            >
-              ✕
-            </button>
+    <!-- 回收站（整页，参考 pm） -->
+    <TrashOverlay
+      :open="trashOpen"
+      title="图像回收站"
+      :items="trashImages"
+      :item-width="cardSize"
+      :item-height="cardSize"
+      @close="closeTrash"
+      @restore-all="restoreAllTrash"
+      @empty="requestEmptyTrash"
+      @restore="restoreImage"
+      @purge="requestPurgeImage"
+    >
+      <template #default="{ item: img }">
+        <div
+          class="group relative h-full w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+        >
+          <img
+            v-if="trashThumbs[img.id]"
+            :src="trashThumbs[img.id]"
+            alt=""
+            class="absolute inset-0 h-full w-full object-cover"
+          />
+          <svg
+            v-else
+            xmlns="http://www.w3.org/2000/svg"
+            class="absolute inset-0 m-auto h-10 w-10 text-gray-400 dark:text-gray-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm8.5 3.5 a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-6 9l4-5 3 3 3-4 4 6"
+            />
+          </svg>
+          <div class="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-center">
+            <p class="truncate text-[11px] text-white" :title="img.stored_name">{{ img.stored_name }}</p>
+            <p class="truncate text-[10px] text-gray-300">删除于 {{ fmtLocal(img.deleted_at) }}</p>
           </div>
-
-          <div v-if="trashImages.length === 0" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            回收站为空
-          </div>
-          <ul v-else class="flex-1 divide-y divide-gray-100 overflow-auto dark:divide-gray-700">
-            <li
-              v-for="img in trashImages"
-              :key="img.id"
-              class="flex items-center gap-3 px-4 py-2"
-            >
-              <img
-                v-if="trashThumbs[img.id]"
-                :src="trashThumbs[img.id]"
-                alt=""
-                class="h-12 w-12 shrink-0 rounded object-cover"
-              />
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm text-gray-800 dark:text-gray-100">{{ img.stored_name }}</p>
-                <p class="text-xs text-gray-400">{{ fmtLocal(img.deleted_at) }}</p>
-              </div>
+          <div
+            class="absolute inset-x-0 top-0 grid grid-cols-2 items-center py-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          >
+            <div class="flex items-center justify-center">
               <button
                 type="button"
-                class="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                @click="restoreImage(img)"
+                title="恢复"
+                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                @click.stop="restoreImage(img)"
               >
-                恢复
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
               </button>
+            </div>
+            <div class="flex items-center justify-center">
               <button
                 type="button"
-                class="rounded border border-red-300 px-3 py-1 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
-                @click="purgeImage(img)"
+                title="彻底删除"
+                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                @click.stop="requestPurgeImage(img)"
               >
-                彻底删除
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" />
+                </svg>
               </button>
-            </li>
-          </ul>
+            </div>
+          </div>
         </div>
-      </div>
-    </Teleport>
+      </template>
+    </TrashOverlay>
+
+    <!-- 彻底删除确认 -->
+    <ConfirmDialog
+      :open="purgeConfirmOpen"
+      title="彻底删除"
+      :message="`确定彻底删除「${purgeTarget?.stored_name ?? ''}」？此操作不可恢复。`"
+      confirm-text="删除"
+      danger
+      @confirm="doPurgeImage"
+      @cancel="purgeConfirmOpen = false"
+    />
+
+    <!-- 清空回收站确认 -->
+    <ConfirmDialog
+      :open="emptyTrashOpen"
+      title="清空回收站"
+      :message="`确定彻底删除回收站中的全部 ${trashImages.length} 张图像？此操作不可恢复。`"
+      confirm-text="清空"
+      danger
+      @confirm="doEmptyTrash"
+      @cancel="emptyTrashOpen = false"
+    />
 
     <!-- 图像详情（独立组件，父级 v-if 强制整体卸载，避免 Teleport 残留） -->
     <ImageDetailModal

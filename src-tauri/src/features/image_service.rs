@@ -242,6 +242,37 @@ pub fn restore(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     get_by_id(conn, id)
 }
 
+/// 批量操作结果：成功数与失败数。
+#[derive(Debug, Serialize, Clone)]
+pub struct TrashBatchResult {
+    pub count: usize,
+    pub failures: usize,
+}
+
+/// 恢复全部回收站图像，返回恢复数量。
+pub fn restore_all(conn: &Connection) -> rusqlite::Result<usize> {
+    conn.execute(
+        "UPDATE images SET is_deleted = 0, deleted_at = NULL WHERE is_deleted = 1",
+        [],
+    )
+}
+
+/// 清空回收站：逐项彻底删除（含磁盘原图与缩略图），逐项容错。
+pub fn empty_trash(conn: &Connection, app: &tauri::AppHandle) -> TrashBatchResult {
+    let ids: Vec<String> = match list_trashed(conn) {
+        Ok(items) => items.into_iter().map(|i| i.id).collect(),
+        Err(_) => return TrashBatchResult { count: 0, failures: 0 },
+    };
+    let mut result = TrashBatchResult { count: 0, failures: 0 };
+    for id in ids {
+        match purge(conn, app, &id) {
+            Ok(_) => result.count += 1,
+            Err(_) => result.failures += 1,
+        }
+    }
+    result
+}
+
 /// 更新图像详情字段（文件名、备注、收藏、安全评级）。仅更新传入非默认值的字段。
 pub fn update_detail(
     conn: &Connection,

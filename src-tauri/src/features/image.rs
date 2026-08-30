@@ -139,6 +139,23 @@ pub fn purge_image(app: tauri::AppHandle, db: State<BkDb>, id: String) -> Result
     image_service::purge(&conn, &app, &id).map_err(|e| e.to_string())
 }
 
+/// 恢复全部回收站图像，返回恢复数量。
+#[tauri::command]
+pub fn restore_all_images(db: State<BkDb>) -> Result<usize, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    image_service::restore_all(&conn).map_err(|e| e.to_string())
+}
+
+/// 清空图像回收站（逐项彻底删除，含磁盘文件），逐项容错。
+#[tauri::command]
+pub fn empty_image_trash(
+    app: tauri::AppHandle,
+    db: State<BkDb>,
+) -> Result<image_service::TrashBatchResult, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    Ok(image_service::empty_trash(&conn, &app))
+}
+
 /// 返回指定图像的缩略图磁盘路径，前端配合 convertFileSrc 加载。
 #[tauri::command]
 pub fn get_thumbnail(

@@ -123,6 +123,19 @@ pub fn purge(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// 恢复全部回收站提示词，返回恢复数量。
+pub fn restore_all(conn: &Connection) -> Result<usize> {
+    conn.execute(
+        "UPDATE prompts SET is_deleted = 0, deleted_at = NULL WHERE is_deleted = 1",
+        [],
+    )
+}
+
+/// 清空回收站提示词（关联关系随外键级联删除），返回清理数量。
+pub fn empty_trash(conn: &Connection) -> Result<usize> {
+    conn.execute("DELETE FROM prompts WHERE is_deleted = 1", [])
+}
+
 /// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。仅更新传入 Some 的值；
 /// 标题与内容非空才更新；翻译与备注允许清空；收藏/安全按布尔更新。
 pub fn update_detail(
