@@ -194,8 +194,8 @@ fn build_thumbnail_follows_year_month_layout() {
     let thumb_rel = build_thumbnail(&data_dir, &thumbs_root, rel).expect("生成成功");
     assert_eq!(thumb_rel, "thumbnails/202606/thumb_img_x.jpg");
     let decoded = image::open(root.join(&thumb_rel)).unwrap();
-    // make_center_thumb 为等比缩放后裁剪，非正方形输入得 200×150
-    assert_eq!((decoded.width(), decoded.height()), (200, 150));
+    // make_center_thumb 短边贴满居中裁剪，恒为 200×200 方形
+    assert_eq!((decoded.width(), decoded.height()), (200, 200));
 
     // 无年月段的 relative_path 回退到 thumbnails 根目录
     image::DynamicImage::new_rgb8(100, 80)

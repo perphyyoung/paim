@@ -194,15 +194,15 @@ pub fn import(
     Ok((new_img, false))
 }
 
-/// 生成 200×200 居中裁剪的缩略图：先等比缩放覆盖目标尺寸，再裁剪中心。
+/// 生成 200×200 方形缩略图：短边贴满 + 居中裁剪（等价 pm sharp 的 fit: cover）。
 pub(crate) fn make_center_thumb(
     img: &image::DynamicImage,
 ) -> Result<image::DynamicImage, image::ImageError> {
-    let scaled = img.thumbnail(THUMB_SIZE, THUMB_SIZE);
-    let (w, h) = scaled.dimensions();
-    let x = w.saturating_sub(THUMB_SIZE) / 2;
-    let y = h.saturating_sub(THUMB_SIZE) / 2;
-    Ok(scaled.crop_imm(x, y, THUMB_SIZE.min(w), THUMB_SIZE.min(h)))
+    Ok(img.resize_to_fill(
+        THUMB_SIZE,
+        THUMB_SIZE,
+        image::imageops::FilterType::Triangle,
+    ))
 }
 
 pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
