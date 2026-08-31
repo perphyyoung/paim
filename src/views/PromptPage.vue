@@ -3,6 +3,7 @@ import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
+import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
@@ -33,10 +34,6 @@ interface Prompt {
   note: string;
 }
 
-const CARD_MIN = 100;
-const CARD_MAX = 400;
-const CARD_STEP = 20;
-const CARD_KEY = "prompt.cardSize";
 const SORT_KEY = "prompt.sortBy";
 const SORT_DESC_KEY = "prompt.sortDesc";
 
@@ -46,14 +43,8 @@ const SORT_OPTIONS = [
   { value: "title", label: "标题" },
 ];
 
-const cardSize = ref(Number(localStorage.getItem(CARD_KEY)) || 300);
-function setCardSize(v: number) {
-  cardSize.value = v;
-  localStorage.setItem(CARD_KEY, String(v));
-}
-function onSizeInput(e: Event) {
-  setCardSize(Number((e.target as HTMLInputElement).value));
-}
+// 卡片边长，localStorage 持久化（范围/持久化逻辑见 utils/cardSize）
+const { cardSize, onSizeInput } = useCardSize("prompt", 200);
 
 const keyword = ref("");
 
@@ -525,7 +516,7 @@ onActivated(() => {
 </script>
 
 <template>
-  <section class="relative flex h-full flex-col overflow-hidden px-6 pt-4">
+  <section class="relative flex h-full flex-col overflow-hidden px-6">
     <!-- 顶部固定区 -->
     <div class="shrink-0 pt-3">
       <div class="mb-4 grid grid-cols-6 items-center gap-3">
@@ -569,9 +560,9 @@ onActivated(() => {
           <input
             v-model.number="cardSize"
             type="range"
-            :min="CARD_MIN"
-            :max="CARD_MAX"
-            :step="CARD_STEP"
+            :min="CARD_SIZE_LIMITS.min"
+            :max="CARD_SIZE_LIMITS.max"
+            :step="CARD_SIZE_LIMITS.step"
             class="w-full accent-blue-600"
             @input="onSizeInput"
           />

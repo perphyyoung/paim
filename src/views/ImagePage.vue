@@ -3,6 +3,7 @@ import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
+import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
@@ -40,10 +41,6 @@ interface Image {
   note: string;
 }
 
-const CARD_MIN = 100;
-const CARD_MAX = 400;
-const CARD_STEP = 20;
-const CARD_KEY = "image.cardSize";
 const SORT_KEY = "image.sortBy";
 const SORT_DESC_KEY = "image.sortDesc";
 
@@ -56,17 +53,8 @@ const SORT_OPTIONS = [
   { value: "height", label: "高度" },
 ];
 
-// 卡片边长，localStorage 持久化
-const cardSize = ref(Number(localStorage.getItem(CARD_KEY)) || 160);
-
-function setCardSize(v: number) {
-  cardSize.value = v;
-  localStorage.setItem(CARD_KEY, String(v));
-}
-
-function onSizeInput(e: Event) {
-  setCardSize(Number((e.target as HTMLInputElement).value));
-}
+// 卡片边长，localStorage 持久化（范围/持久化逻辑见 utils/cardSize）
+const { cardSize, onSizeInput } = useCardSize("image", 200);
 
 // 前端搜索关键字（按文件名模糊匹配）
 const keyword = ref("");
@@ -647,9 +635,9 @@ function onUploadDone() {
           <input
             v-model.number="cardSize"
             type="range"
-            :min="CARD_MIN"
-            :max="CARD_MAX"
-            :step="CARD_STEP"
+            :min="CARD_SIZE_LIMITS.min"
+            :max="CARD_SIZE_LIMITS.max"
+            :step="CARD_SIZE_LIMITS.step"
             class="w-full accent-blue-600"
             @input="onSizeInput"
           />
