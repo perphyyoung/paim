@@ -339,8 +339,8 @@ pub fn add_prompt_tag(
     name: String,
 ) -> Result<Vec<PromptTagItem>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let added =
-        prompt_service::add_tag(&conn, &id, &name).map_err(|e| AppError::Message(e.to_string()))?;
+    let added = prompt_service::add_prompt_tag(&conn, &id, &name)
+        .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(added
         .into_iter()
         .map(|(id, name)| PromptTagItem {
@@ -361,7 +361,7 @@ pub fn add_prompt_tag_batch(
 ) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-    prompt_service::batch_add_tag(&conn, &id_refs, &name)
+    prompt_service::batch_add_prompt_tag(&conn, &id_refs, &name)
         .map_err(|e| AppError::Message(e.to_string()))
 }
 
