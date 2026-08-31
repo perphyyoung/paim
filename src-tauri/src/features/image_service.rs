@@ -212,29 +212,51 @@ pub(crate) fn make_center_thumb(
     ))
 }
 
-/// 非软删除图像列表；limit 为 Some(n) 时只取前 n 张（按创建时间倒序，与 pm 选择器一致）。
-pub fn list(conn: &Connection, limit: Option<i64>) -> rusqlite::Result<Vec<Image>> {
-    let base_sql = "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
-         FROM images WHERE is_deleted = 0 ORDER BY created_at DESC";
-    let mut stmt = if limit.is_some() {
-        conn.prepare(&format!("{base_sql} LIMIT ?"))?
-    } else {
-        conn.prepare(base_sql)?
-    };
-    let rows = match limit {
-        Some(n) => stmt.query_map(rusqlite::params![n], row_to_image)?,
-        None => stmt.query_map([], row_to_image)?,
-    };
+/// 拼接搜索/标签的 WHERE 条件子句与参数（search 匹配文件名，tag 需存在同名标签关联）。
+fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) {
+    let mut clauses = String::new();
+    let mut params = Vec::new();
+    let search = search.unwrap_or("").trim();
+    if !search.is_empty() {
+        clauses.push_str(" AND file_name LIKE ?");
+        params.push(format!("%{search}%"));
+    }
+    let tag = tag.unwrap_or("").trim();
+    if !tag.is_empty() {
+        clauses.push_str(
+            " AND EXISTS (SELECT 1 FROM image_tag_relations r JOIN image_tags t ON t.id = r.tag_id WHERE r.image_id = images.id AND t.name = ?)",
+        );
+        params.push(tag.to_string());
+    }
+    (clauses, params)
+}
+
+/// 非软删除图像列表；search/tag 参与 SQL 过滤，limit 为 Some(n) 时只取前 n 张（按创建时间倒序）。
+pub fn list(
+    conn: &Connection,
+    search: Option<&str>,
+    tag: Option<&str>,
+    limit: Option<i64>,
+) -> rusqlite::Result<Vec<Image>> {
+    let (clauses, mut params) = filter_sql(search, tag);
+    let mut sql = format!(
+        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
+         FROM images WHERE is_deleted = 0{clauses} ORDER BY created_at DESC"
+    );
+    if let Some(n) = limit {
+        sql.push_str(" LIMIT ?");
+        params.push(n.to_string());
+    }
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params), row_to_image)?;
     rows.collect()
 }
 
-/// 非软删除图像总数（分页信息栏用）。
-pub fn count(conn: &Connection) -> rusqlite::Result<i64> {
-    conn.query_row(
-        "SELECT COUNT(*) FROM images WHERE is_deleted = 0",
-        [],
-        |r| r.get(0),
-    )
+/// 非软删除图像总数（与 list 相同的搜索/标签条件；分页信息栏用）。
+pub fn count(conn: &Connection, search: Option<&str>, tag: Option<&str>) -> rusqlite::Result<i64> {
+    let (clauses, params) = filter_sql(search, tag);
+    let sql = format!("SELECT COUNT(*) FROM images WHERE is_deleted = 0{clauses}");
+    conn.query_row(&sql, rusqlite::params_from_iter(params), |r| r.get(0))
 }
 
 /// 回收站列表（软删除的图像）。

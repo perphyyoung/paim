@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 图像选择弹窗：从已有图像列表中多选并导入到指定提示词。供提示词详情「从图像列表导入」使用。
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { markPageStale } from "@/utils/crossPageCache";
 
@@ -32,7 +32,6 @@ const loading = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 const keyword = ref("");
 const allTags = ref<string[]>([]);
-const imageTags = ref<Record<string, string[]>>({});
 const selectedTag = ref("");
 const sortBy = ref("updatedAt");
 const sortDesc = ref(true);
@@ -47,13 +46,7 @@ const SORT_OPTIONS = [
 ];
 
 const sortedImages = computed(() => {
-  const kw = keyword.value.trim().toLowerCase();
-  let arr = kw
-    ? images.value.filter((i) => i.file_name.toLowerCase().includes(kw))
-    : [...images.value];
-  if (selectedTag.value) {
-    arr = arr.filter((i) => (imageTags.value[i.id] ?? []).includes(selectedTag.value));
-  }
+  let arr = [...images.value];
   let cmp: (a: Image, b: Image) => number;
   switch (sortBy.value) {
     case "createdAt":
@@ -92,8 +85,12 @@ function toggleSelect(id: string) {
 async function loadImages() {
   loading.value = true;
   try {
-    // 与 pm 一致：最多加载 100 张（查询层 limit）
-    const page = await invoke<{ items: Image[]; total: number }>("list_images", { limit: 100 });
+    // 与 pm 一致：搜索/标签进后端过滤，最多加载 100 张（查询层 limit）
+    const page = await invoke<{ items: Image[]; total: number }>("list_images", {
+      limit: 100,
+      search: keyword.value.trim(),
+      tag: selectedTag.value,
+    });
     images.value = page.items;
     total.value = page.total;
     for (const img of images.value) {
@@ -119,12 +116,14 @@ async function loadTags() {
   } catch {
     allTags.value = [];
   }
-  try {
-    imageTags.value = await invoke<Record<string, string[]>>("get_image_tags_map");
-  } catch {
-    imageTags.value = {};
-  }
 }
+
+// 搜索/标签变化时重查（对齐 pm 的输入即查；防抖避免逐键请求）
+let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+watch([keyword, selectedTag], () => {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => loadImages(), 300);
+});
 
 onMounted(() => {
   if (props.open) {

@@ -94,10 +94,17 @@ pub fn upload_image(
 }
 
 #[tauri::command]
-pub fn list_images(db: State<BkDb>, limit: Option<i64>) -> Result<PaginatedImages, AppError> {
+pub fn list_images(
+    db: State<BkDb>,
+    limit: Option<i64>,
+    search: Option<String>,
+    tag: Option<String>,
+) -> Result<PaginatedImages, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let items = image_service::list(&conn, limit).map_err(|e| AppError::Message(e.to_string()))?;
-    let total = image_service::count(&conn).map_err(|e| AppError::Message(e.to_string()))?;
+    let items = image_service::list(&conn, search.as_deref(), tag.as_deref(), limit)
+        .map_err(|e| AppError::Message(e.to_string()))?;
+    let total = image_service::count(&conn, search.as_deref(), tag.as_deref())
+        .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(PaginatedImages { items, total })
 }
 
