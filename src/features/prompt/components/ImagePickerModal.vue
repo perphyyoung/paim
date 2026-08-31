@@ -161,22 +161,20 @@ function close() {
       @click.self="close()"
     >
       <div
-        class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
         <!-- 顶部：标题 + 搜索 + 排序 -->
-        <div
-          class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700"
-        >
-          <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">从图像列表导入</h3>
+        <div class="flex items-center justify-between border-b px-4 py-3 border-gray-700">
+          <h3 class="text-base font-semibold text-gray-100">从图像列表导入</h3>
           <div class="flex items-center gap-2">
             <input
               v-model="keyword"
-              class="w-48 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              class="w-48 rounded-lg border px-3 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
               placeholder="搜索文件名、备注、标签..."
             />
             <select
               v-model="selectedTag"
-              class="w-40 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              class="w-40 rounded-lg border px-2 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
               title="按标签筛选"
             >
               <option value="">所有标签</option>
@@ -184,7 +182,7 @@ function close() {
             </select>
             <select
               v-model="sortBy"
-              class="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              class="rounded-lg border px-2 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
             >
               <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
                 {{ o.label }}
@@ -192,7 +190,7 @@ function close() {
             </select>
             <button
               type="button"
-              class="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              class="flex h-8 w-8 items-center justify-center rounded-lg border text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               :title="sortDesc ? '降序' : '升序'"
               @click="sortDesc = !sortDesc"
             >
@@ -200,7 +198,7 @@ function close() {
             </button>
             <button
               type="button"
-              class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+              class="rounded px-2 py-1 text-gray-400 hover:bg-gray-700"
               title="关闭"
               @click="close()"
             >
@@ -211,13 +209,8 @@ function close() {
 
         <!-- 图像网格 -->
         <div class="flex-1 overflow-auto p-4">
-          <div v-if="loading" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            加载中...
-          </div>
-          <div
-            v-else-if="sortedImages.length === 0"
-            class="p-8 text-center text-sm text-gray-500 dark:text-gray-400"
-          >
+          <div v-if="loading" class="p-8 text-center text-sm text-gray-400">加载中...</div>
+          <div v-else-if="sortedImages.length === 0" class="p-8 text-center text-sm text-gray-400">
             暂无图像
           </div>
           <ul v-else class="grid grid-cols-6 gap-2 xl:grid-cols-8">
@@ -228,7 +221,7 @@ function close() {
               :class="
                 selectedIds.has(img.id)
                   ? 'border-blue-500 ring-2 ring-blue-500'
-                  : 'border-gray-200 hover:border-blue-300 dark:border-gray-700'
+                  : 'hover:border-blue-300 border-gray-700'
               "
               @click="toggleSelect(img.id)"
             >
@@ -241,7 +234,7 @@ function close() {
               />
               <div
                 v-else
-                class="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900"
+                class="flex aspect-square w-full items-center justify-center text-xs text-gray-400 bg-gray-900"
               >
                 无缩略图
               </div>
@@ -263,16 +256,14 @@ function close() {
         </div>
 
         <!-- 底部：已选 + 取消/确认 -->
-        <div
-          class="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-700"
-        >
-          <span class="text-sm text-gray-500 dark:text-gray-400"
+        <div class="flex items-center justify-between border-t px-4 py-3 border-gray-700">
+          <span class="text-sm text-gray-400"
             >已显示 {{ images.length }} / {{ total }} 张 · 已选 {{ selectedIds.size }} 张</span
           >
           <div class="grid grid-cols-2 gap-2">
             <button
               type="button"
-              class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+              class="rounded-lg border px-4 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
               @click="close()"
             >
               取消

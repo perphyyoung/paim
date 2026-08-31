@@ -185,34 +185,32 @@ const tagSections = computed<TagSection[]>(() => {
 </script>
 
 <template>
-  <div
-    class="mb-3 flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40"
-  >
+  <div class="mb-3 flex flex-col gap-2 rounded-lg border px-3 py-2 border-gray-700 bg-gray-800/40">
     <!-- 工具行 -->
     <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        class="text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        class="text-xs transition-colors text-gray-400 hover:text-gray-200"
         :title="tagFilterCollapsed ? '展开标签筛选' : '收起标签筛选'"
         @click="toggleTagFilter"
       >
         {{ tagFilterCollapsed ? "▶" : "▼" }}
       </button>
-      <span class="text-xs font-medium text-gray-500 dark:text-gray-400">标签</span>
-      <span v-if="selectedTags.length > 0" class="ml-1 text-xs text-gray-500 dark:text-gray-400">
+      <span class="text-xs font-medium text-gray-400">标签</span>
+      <span v-if="selectedTags.length > 0" class="ml-1 text-xs text-gray-400">
         已选 {{ selectedTags.length }}
       </span>
       <button
         v-if="selectedTags.length > 0"
         type="button"
-        class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        class="text-xs text-gray-400 hover:text-gray-200"
         @click="clearTags"
       >
         清除
       </button>
       <select
         v-model="tagSortBy"
-        class="ml-auto rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+        class="ml-auto rounded border px-1.5 py-0.5 text-xs border-gray-600 bg-gray-800 text-gray-300"
         @change="onTagSortChange"
       >
         <option value="name">名称</option>
@@ -220,7 +218,7 @@ const tagSections = computed<TagSection[]>(() => {
       </select>
       <button
         type="button"
-        class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+        class="rounded border px-1.5 py-0.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
         :title="tagSortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
         @click="toggleTagSortDesc"
       >
@@ -236,7 +234,7 @@ const tagSections = computed<TagSection[]>(() => {
     >
       <div
         v-if="headerTags.special.length > 0"
-        class="flex flex-wrap items-center gap-1.5 self-stretch border-r border-gray-200 pr-3 dark:border-gray-700"
+        class="flex flex-wrap items-center gap-1.5 self-stretch border-r pr-3 border-gray-700"
       >
         <TagChip
           v-for="h in headerTags.special"
@@ -270,7 +268,7 @@ const tagSections = computed<TagSection[]>(() => {
     <div v-if="!tagFilterCollapsed" class="flex self-stretch">
       <!-- 左：特殊标签 -->
       <div
-        class="flex shrink-0 flex-col items-center justify-center justify-items-center gap-1.5 self-stretch border-r border-gray-200 py-1 pr-3 dark:border-gray-700"
+        class="flex shrink-0 flex-col items-center justify-center justify-items-center gap-1.5 self-stretch border-r py-1 pr-3 border-gray-700"
       >
         <template v-for="s in specialTags" :key="s.name">
           <TagChip
@@ -287,7 +285,7 @@ const tagSections = computed<TagSection[]>(() => {
       <!-- 右：分组主体 -->
       <div class="flex min-w-0 flex-1 flex-col gap-2 pl-3">
         <template v-for="sec in tagSections" :key="sec.key">
-          <div class="self-start text-[11px] font-medium text-gray-500 dark:text-gray-400">
+          <div class="self-start text-[11px] font-medium text-gray-400">
             {{ sec.name }}
           </div>
           <div class="flex flex-wrap items-center gap-2 pl-2">

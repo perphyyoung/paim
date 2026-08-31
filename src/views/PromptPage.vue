@@ -551,11 +551,11 @@ onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
           v-model="keyword"
           type="search"
           placeholder="搜索内容/标题…"
-          class="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+          class="min-w-0 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
         />
         <button
           type="button"
-          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
           title="回收站"
           @click="openTrash"
         >
@@ -563,20 +563,20 @@ onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
         </button>
         <select
           v-model="sortBy"
-          class="min-w-0 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          class="min-w-0 rounded-lg border px-2 py-2 text-sm border-gray-600 bg-gray-800 text-gray-200"
           @change="onSortChange"
         >
           <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
         <button
           type="button"
-          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
           :title="sortDesc ? '当前逆序' : '当前正序'"
           @click="toggleSortDesc"
         >
           {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
         </button>
-        <label class="flex items-center text-gray-600 dark:text-gray-400">
+        <label class="flex items-center text-gray-400">
           <input
             v-model.number="cardSize"
             type="range"
@@ -602,7 +602,7 @@ onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
         <template #toolbar-extra>
           <button
             type="button"
-            class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            class="rounded border px-1.5 py-0.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
             title="管理标签"
             @click="openTagManager"
           >
@@ -616,11 +616,9 @@ onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
     <div class="flex min-h-0 flex-1 gap-1">
       <div
         v-if="prompts.length === 0"
-        class="flex-1 rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600"
+        class="flex-1 rounded-lg border border-dashed p-8 text-center border-gray-600"
       >
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          暂无提示词，点击左上角「新建提示词」开始添加。
-        </p>
+        <p class="text-sm text-gray-400">暂无提示词，点击左上角「新建提示词」开始添加。</p>
       </div>
       <template v-else>
         <VirtualGrid
@@ -634,13 +632,13 @@ onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
         >
           <template #default="{ item: p, index }">
             <div
-              class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
+              class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-800"
               :class="
                 selectedIds.has(p.id)
                   ? 'border-indigo-500 ring-2 ring-indigo-400'
                   : p.is_favorite
                     ? 'border-amber-500'
-                    : 'border-gray-200 dark:border-gray-700'
+                    : 'border-gray-700'
               "
               @click="openDetail(index)"
             >
@@ -846,7 +844,7 @@ onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
     >
       <template #default="{ item: p }">
         <div
-          class="group relative h-full w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+          class="group relative h-full w-full overflow-hidden rounded-lg border border-gray-700 bg-gray-800"
         >
           <img
             v-if="thumbs[p.id]"

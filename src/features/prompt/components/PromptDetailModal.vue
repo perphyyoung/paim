@@ -368,18 +368,12 @@ async function onPickerImported() {
       @click.self="close"
     >
       <div
-        class="relative grid h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        class="relative grid h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] grid-cols-2 overflow-hidden rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
         <!-- 左栏：关联图像 -->
-        <div
-          class="flex min-w-0 flex-col overflow-hidden border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40"
-        >
-          <div
-            class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700"
-          >
-            <label
-              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
+        <div class="flex min-w-0 flex-col overflow-hidden border-r border-gray-700 bg-gray-900/40">
+          <div class="flex items-center justify-between border-b px-4 py-3 border-gray-700">
+            <label class="text-xs font-medium uppercase tracking-wide text-gray-500">
               关联图像（{{ relatedImages.length }}）
             </label>
             <span v-if="imagesLoading" class="text-xs text-gray-400">加载中...</span>
@@ -387,7 +381,7 @@ async function onPickerImported() {
           <div class="flex-1 overflow-auto p-4">
             <div
               v-if="relatedImages.length === 0 && !imagesLoading"
-              class="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600"
+              class="rounded-lg border border-dashed p-8 text-center text-sm text-gray-500 border-gray-600"
             >
               暂无关联图像
             </div>
@@ -398,7 +392,7 @@ async function onPickerImported() {
               <li
                 v-for="(img, index) in relatedImages"
                 :key="img.id"
-                class="group relative flex items-center justify-center overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+                class="group relative flex items-center justify-center overflow-hidden rounded-lg border border-gray-700"
                 :class="relatedImages.length === 1 ? 'flex-1' : ''"
                 @dblclick.stop="openFullscreen(index)"
               >
@@ -415,7 +409,7 @@ async function onPickerImported() {
                   :class="
                     relatedImages.length === 1 ? 'flex h-full w-full' : 'flex aspect-square w-full'
                   "
-                  class="items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900"
+                  class="items-center justify-center text-xs text-gray-400 bg-gray-900"
                 >
                   无图像
                 </div>
@@ -457,12 +451,10 @@ async function onPickerImported() {
           </div>
 
           <!-- 导入区：从外界导入 / 从图像列表导入（左右布局，压缩高度以保留关联图像区域） -->
-          <div
-            class="grid grid-cols-2 gap-2 border-t border-gray-200 px-4 py-2.5 dark:border-gray-700"
-          >
+          <div class="grid grid-cols-2 gap-2 border-t px-4 py-2.5 border-gray-700">
             <button
               type="button"
-              class="rounded-lg border border-blue-300 bg-blue-50 px-2 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+              class="rounded-lg border px-2 py-2 text-sm font-medium transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 border-blue-800 bg-blue-900/30 text-blue-300"
               :disabled="importLoading"
               @click="importFromExternal"
             >
@@ -470,7 +462,7 @@ async function onPickerImported() {
             </button>
             <button
               type="button"
-              class="rounded-lg border border-blue-300 bg-blue-50 px-2 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+              class="rounded-lg border px-2 py-2 text-sm font-medium transition-colors hover:bg-blue-100 border-blue-800 bg-blue-900/30 text-blue-300"
               @click="importFromPicker"
             >
               从图像列表导入
@@ -481,9 +473,7 @@ async function onPickerImported() {
         <!-- 右栏：提示词 -->
         <div class="relative flex min-w-0 flex-col overflow-hidden">
           <!-- 顶部操作栏：收藏 / 安全 / 编辑 / 关闭，两端对齐、间距均分 -->
-          <div
-            class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700"
-          >
+          <div class="flex items-center justify-between border-b px-4 py-3 border-gray-700">
             <div class="flex items-center">
               <button
                 type="button"
@@ -491,7 +481,7 @@ async function onPickerImported() {
                 :class="
                   current?.is_favorite
                     ? 'border-transparent bg-gradient-to-br from-amber-500 to-amber-400 text-white'
-                    : 'border-gray-300 bg-white text-gray-400 hover:border-amber-300 hover:text-amber-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                    : 'hover:border-amber-300 hover:text-amber-600 border-gray-600 bg-gray-800 text-gray-400'
                 "
                 :title="current?.is_favorite ? '取消收藏' : '收藏'"
                 @click="toggleFavorite"
@@ -527,8 +517,8 @@ async function onPickerImported() {
             <div class="flex items-center">
               <button
                 type="button"
-                class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                :class="edit ? 'font-medium dark:text-gray-200' : ''"
+                class="rounded border px-2 py-1 text-xs border-gray-600 text-gray-300 hover:bg-gray-700"
+                :class="edit ? 'font-medium text-gray-200' : ''"
                 :title="edit ? '取消编辑' : '编辑'"
                 @click="edit = !edit"
               >
@@ -538,7 +528,7 @@ async function onPickerImported() {
             <div class="flex items-center">
               <button
                 type="button"
-                class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                class="rounded px-2 py-1 text-gray-400 hover:bg-gray-700"
                 title="关闭"
                 @click="close"
               >
@@ -551,19 +541,15 @@ async function onPickerImported() {
           <div class="flex-1 overflow-auto px-4 py-4">
             <!-- 标题 -->
             <div class="mb-4">
-              <label
-                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500"
                 >标题</label
               >
               <input
                 v-if="edit"
                 v-model="title"
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
               />
-              <div
-                v-else
-                class="break-all text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
-              >
+              <div v-else class="break-all text-[length:var(--fs-detail)] text-gray-200">
                 {{ current?.title || "—" }}
               </div>
             </div>
@@ -571,13 +557,12 @@ async function onPickerImported() {
             <!-- 内容 -->
             <div class="mb-4">
               <div class="mb-1 flex items-center justify-between">
-                <label
-                  class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                <label class="text-xs font-medium uppercase tracking-wide text-gray-500"
                   >提示词内容</label
                 >
                 <button
                   type="button"
-                  class="rounded px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                  class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
                   @click="copyContent"
                 >
                   复制
@@ -587,11 +572,11 @@ async function onPickerImported() {
                 v-if="edit"
                 v-model="content"
                 rows="6"
-                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="w-full resize-y rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
               ></textarea>
               <div
                 v-else
-                class="whitespace-pre-wrap text-[length:var(--fs-detail)] leading-relaxed text-gray-700 dark:text-gray-200"
+                class="whitespace-pre-wrap text-[length:var(--fs-detail)] leading-relaxed text-gray-200"
               >
                 {{ current?.content || "—" }}
               </div>
@@ -600,13 +585,12 @@ async function onPickerImported() {
             <!-- 翻译 -->
             <div class="mb-4">
               <div class="mb-1 flex items-center justify-between">
-                <label
-                  class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                <label class="text-xs font-medium uppercase tracking-wide text-gray-500"
                   >翻译</label
                 >
                 <button
                   type="button"
-                  class="rounded px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                  class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
                   @click="copyTranslate"
                 >
                   复制
@@ -616,41 +600,33 @@ async function onPickerImported() {
                 v-if="edit"
                 v-model="contentTranslate"
                 rows="4"
-                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="w-full resize-y rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
               ></textarea>
-              <div
-                v-else
-                class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
-              >
+              <div v-else class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
                 {{ current?.content_translate || "—" }}
               </div>
             </div>
 
             <!-- 备注 -->
             <div class="mb-4">
-              <label
-                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500"
                 >备注</label
               >
               <textarea
                 v-if="edit"
                 v-model="note"
                 rows="3"
-                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="w-full resize-y rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
                 placeholder="输入备注..."
               ></textarea>
-              <div
-                v-else
-                class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
-              >
+              <div v-else class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
                 {{ current?.note || "—" }}
               </div>
             </div>
 
             <!-- 标签 -->
             <div class="mb-4">
-              <label
-                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500"
                 >提示词标签</label
               >
               <div v-if="tags.length" class="mb-1 flex flex-wrap gap-1">
@@ -658,17 +634,17 @@ async function onPickerImported() {
                   {{ t.name }}
                 </TagChip>
               </div>
-              <div v-else class="mb-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
+              <div v-else class="mb-1 text-sm text-gray-500">暂无标签</div>
               <div class="flex gap-1">
                 <input
                   v-model="tagInput"
-                  class="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  class="min-w-0 flex-1 rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
                   placeholder="回车添加单个标签"
                   @keydown.enter.prevent="addTag"
                 />
                 <button
                   type="button"
-                  class="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                  class="rounded border px-2 py-1 text-sm border-gray-600 text-gray-200 hover:bg-gray-700"
                   @click="addTag"
                 >
                   添加
@@ -684,7 +660,7 @@ async function onPickerImported() {
           >
             <button
               type="button"
-              class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-lg transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              class="rounded-lg border px-4 py-2 text-sm shadow-lg transition-colors border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700"
               @click="edit = false"
             >
               取消

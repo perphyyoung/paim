@@ -105,15 +105,13 @@ async function doUpload() {
   <Teleport to="body">
     <div v-if="props.open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div
-        class="flex max-h-[85vh] w-[560px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        class="flex max-h-[85vh] w-[560px] max-w-[90vw] flex-col rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
-        <div
-          class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700"
-        >
-          <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">上传图像</h3>
+        <div class="flex items-center justify-between border-b px-4 py-3 border-gray-700">
+          <h3 class="text-base font-semibold text-gray-100">上传图像</h3>
           <button
             type="button"
-            class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+            class="rounded px-2 py-1 text-gray-500 hover:bg-gray-700"
             @click="emit('close')"
           >
             ✕
@@ -124,12 +122,12 @@ async function doUpload() {
           <!-- 选择图像 -->
           <div class="mb-4">
             <div class="mb-2 flex items-center justify-between">
-              <label class="text-sm font-medium text-gray-700 dark:text-gray-200">
+              <label class="text-sm font-medium text-gray-200">
                 选择图像 <span class="text-red-500">*</span>
               </label>
               <button
                 type="button"
-                class="rounded-lg border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                class="rounded-lg border px-3 py-1 text-sm border-gray-600 text-gray-200 hover:bg-gray-700"
                 :disabled="thumbLoading"
                 @click="pickFiles"
               >
@@ -139,17 +137,15 @@ async function doUpload() {
 
             <div
               v-if="files.length === 0"
-              class="rounded-lg border border-dashed border-gray-300 p-6 text-center dark:border-gray-600"
+              class="rounded-lg border border-dashed p-6 text-center border-gray-600"
             >
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                点击「选择图像」添加文件（可多选）
-              </p>
+              <p class="text-sm text-gray-400">点击「选择图像」添加文件（可多选）</p>
             </div>
             <ul v-else class="grid grid-cols-4 gap-2">
               <li
                 v-for="(f, i) in files"
                 :key="f.path"
-                class="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+                class="group relative overflow-hidden rounded-lg border border-gray-700"
               >
                 <img
                   v-if="f.thumb"
@@ -159,7 +155,7 @@ async function doUpload() {
                 />
                 <div
                   v-else
-                  class="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900"
+                  class="flex aspect-square w-full items-center justify-center text-xs text-gray-400 bg-gray-900"
                 >
                   无预览
                 </div>
@@ -180,7 +176,7 @@ async function doUpload() {
 
           <!-- 提示词内容（可选） -->
           <div>
-            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
+            <label class="mb-2 block text-sm font-medium text-gray-200">
               提示词内容
               <span class="font-normal text-gray-400">（可选，将应用到本次所有图像）</span>
             </label>
@@ -189,22 +185,22 @@ async function doUpload() {
               v-model="prompt"
               rows="3"
               placeholder="输入与此批图像相关的提示词内容..."
-              class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+              class="w-full resize-y rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
             ></textarea>
           </div>
 
           <div
             v-if="error"
-            class="mt-3 whitespace-pre-line rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400"
+            class="mt-3 whitespace-pre-line rounded-lg px-3 py-2 text-sm bg-red-900/30 text-red-400"
           >
             {{ error }}
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 border-t border-gray-100 p-4 dark:border-gray-700">
+        <div class="grid grid-cols-2 gap-2 border-t p-4 border-gray-700">
           <button
             type="button"
-            class="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+            class="rounded-lg border py-2 text-sm border-gray-600 text-gray-200 hover:bg-gray-700"
             @click="emit('close')"
           >
             取消

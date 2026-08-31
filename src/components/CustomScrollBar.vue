@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       title="上一页"
-      class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+      class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:bg-gray-700 hover:text-gray-200"
       :disabled="!canScroll"
       @click="page(-1)"
     >
@@ -128,14 +128,12 @@ onBeforeUnmount(() => {
     <div
       ref="trackRef"
       class="relative w-2 flex-1 rounded-full"
-      :class="
-        canScroll ? 'cursor-pointer bg-gray-200 dark:bg-gray-700' : 'bg-gray-100 dark:bg-gray-800'
-      "
+      :class="canScroll ? 'cursor-pointer bg-gray-700' : 'bg-gray-800'"
       @click="onTrackClick"
     >
       <div
         v-if="canScroll"
-        class="absolute left-0 w-full cursor-pointer rounded-full bg-gray-400/70 transition-colors hover:bg-gray-500/90 dark:bg-gray-500/70 dark:hover:bg-gray-400/90"
+        class="absolute left-0 w-full cursor-pointer rounded-full transition-colors bg-gray-500/70 hover:bg-gray-400/90"
         :style="{ top: thumbTop + 'px', height: thumbHeight + 'px' }"
         @mousedown.stop.prevent="onThumbMouseDown"
       />
@@ -144,7 +142,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       title="下一页"
-      class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+      class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition-colors disabled:cursor-not-allowed disabled:opacity-40 hover:bg-gray-700 hover:text-gray-200"
       :disabled="!canScroll"
       @click="page(1)"
     >

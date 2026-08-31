@@ -47,9 +47,9 @@ function reloadAll() {
 </script>
 
 <template>
-  <div class="flex h-screen overflow-hidden bg-gray-100 dark:bg-gray-900">
+  <div class="flex h-screen overflow-hidden bg-gray-900">
     <aside
-      class="sticky top-0 flex h-screen w-14 flex-col items-center gap-2 border-r border-gray-200 bg-white py-4 dark:border-gray-700 dark:bg-gray-800"
+      class="sticky top-0 flex h-screen w-14 flex-col items-center gap-2 border-r py-4 border-gray-700 bg-gray-800"
     >
       <RouterLink
         v-for="t in tabs"
@@ -58,9 +58,7 @@ function reloadAll() {
         :title="t.label"
         class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
         :class="
-          isActive(t.path).value
-            ? 'bg-blue-600 text-white'
-            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+          isActive(t.path).value ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'
         "
       >
         <svg
@@ -79,7 +77,7 @@ function reloadAll() {
       <button
         type="button"
         title="刷新缓存"
-        class="mt-auto flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+        class="mt-auto flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
         @click="reloadAll"
       >
         <svg
@@ -100,7 +98,7 @@ function reloadAll() {
       <button
         type="button"
         title="设置 (Ctrl+Shift+,)"
-        class="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+        class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
         @click="settingsOpen = true"
       >
         <svg

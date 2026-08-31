@@ -125,24 +125,20 @@ function submitAddTag() {
       class="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
       @click.self="tagDlgOpen = false"
     >
-      <div
-        class="w-80 max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
-      >
-        <h3 class="text-center text-base font-semibold text-gray-800 dark:text-gray-100">
-          批量添加标签
-        </h3>
+      <div class="w-80 max-w-[90vw] rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800">
+        <h3 class="text-center text-base font-semibold text-gray-100">批量添加标签</h3>
         <input
           ref="tagInputEl"
           v-model="tagInput"
           type="text"
           placeholder="标签名"
-          class="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+          class="mt-3 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
           @keydown.enter="submitAddTag"
         />
         <div class="mt-3 grid grid-cols-2 gap-2">
           <button
             type="button"
-            class="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+            class="rounded-lg border py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
             @click="tagDlgOpen = false"
           >
             取消

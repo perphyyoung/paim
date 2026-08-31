@@ -61,53 +61,44 @@ function close() {
       class="fixed inset-0 z-[120] flex items-center justify-center bg-black/40"
       @click.self="close"
     >
-      <div
-        class="w-96 max-w-[90vw] rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800"
-      >
-        <h3 class="text-center text-base font-semibold text-gray-800 dark:text-gray-100">
-          导入 pm 备份
-        </h3>
+      <div class="w-96 max-w-[90vw] rounded-lg border p-5 shadow-sm border-gray-700 bg-gray-800">
+        <h3 class="text-center text-base font-semibold text-gray-100">导入 pm 备份</h3>
 
         <div v-if="phase === 'progress' && progress" class="mt-4">
-          <div class="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+          <div class="h-2 overflow-hidden rounded-full bg-gray-700">
             <div
               class="h-full rounded-full bg-blue-600 transition-all"
               :style="{ width: `${Math.min(100, Math.max(0, progress.percent))}%` }"
             ></div>
           </div>
-          <p class="mt-3 text-sm text-gray-700 dark:text-gray-200">{{ progress.status }}</p>
-          <p v-if="progress.detail" class="mt-1 break-all text-xs text-gray-400 dark:text-gray-500">
+          <p class="mt-3 text-sm text-gray-200">{{ progress.status }}</p>
+          <p v-if="progress.detail" class="mt-1 break-all text-xs text-gray-500">
             {{ progress.detail }}
           </p>
         </div>
 
         <div v-else-if="phase === 'done' && summary" class="mt-4 text-sm">
-          <p class="text-gray-700 dark:text-gray-200">
+          <p class="text-gray-200">
             已导入 {{ summary.prompts }} 条提示词、{{ summary.images }} 张图像。
           </p>
-          <p v-if="summary.thumbnail_failures > 0" class="mt-1 text-red-600 dark:text-red-400">
+          <p v-if="summary.thumbnail_failures > 0" class="mt-1 text-red-400">
             {{ summary.thumbnail_failures }} 张图像缩略图生成失败（不影响数据，可重新导入修复）。
           </p>
-          <p
-            v-if="summary.backup_dir"
-            class="mt-3 break-all text-xs text-gray-400 dark:text-gray-500"
-          >
+          <p v-if="summary.backup_dir" class="mt-3 break-all text-xs text-gray-500">
             原数据目录已整体备份至 {{ summary.backup_dir }}，改名为 paim-data 即可切回。
           </p>
         </div>
 
         <div v-else-if="phase === 'error'" class="mt-4 text-sm">
-          <p class="text-red-600 dark:text-red-400">{{ error }}</p>
-          <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-            导入已中止，数据库未发生改动（事务自动回滚）。
-          </p>
+          <p class="text-red-400">{{ error }}</p>
+          <p class="mt-2 text-xs text-gray-500">导入已中止，数据库未发生改动（事务自动回滚）。</p>
         </div>
 
         <div class="mt-4">
           <button
             v-if="phase !== 'progress'"
             type="button"
-            class="w-full rounded-lg border border-gray-300 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+            class="w-full rounded-lg border py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
             @click="close"
           >
             关闭

@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
   /* 全局字体缩放：--font-size-scale 由 utils/font.ts 写入，字号 token 均乘此值 */
   --font-size-scale: 1;
   --fs-10: calc(12px * var(--font-size-scale));

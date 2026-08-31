@@ -39,11 +39,11 @@ const canOperate = computed(() => props.items.length > 0);
       @click.self="emit('close')"
     >
       <div
-        class="flex h-[85vh] w-[90vw] max-h-[calc(100vh-80px)] max-w-[calc(100vw-80px)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-900"
+        class="flex h-[85vh] w-[90vw] max-h-[calc(100vh-80px)] max-w-[calc(100vw-80px)] flex-col overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
       >
         <!-- 头部：四元素水平分布，间距大致相等 -->
         <div class="flex shrink-0 items-center justify-between gap-2 px-6 pt-4 pb-2">
-          <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">
+          <h3 class="text-lg font-semibold text-gray-100">
             {{ title }}
             <span v-if="items.length" class="ml-1 text-sm font-normal text-gray-400">
               （{{ items.length }}）
@@ -68,7 +68,7 @@ const canOperate = computed(() => props.items.length > 0);
           <button
             type="button"
             title="关闭"
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700"
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
             @click="emit('close')"
           >
             <svg
@@ -87,7 +87,7 @@ const canOperate = computed(() => props.items.length > 0);
         <!-- 空状态 -->
         <div
           v-if="items.length === 0"
-          class="flex flex-1 flex-col items-center justify-center gap-3 text-gray-400 dark:text-gray-500"
+          class="flex flex-1 flex-col items-center justify-center gap-3 text-gray-500"
         >
           <svg
             viewBox="0 0 24 24"

@@ -626,11 +626,11 @@ function onUploadDone() {
           v-model="keyword"
           type="search"
           placeholder="搜索文件名…"
-          class="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+          class="min-w-0 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
         />
         <button
           type="button"
-          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
           title="回收站"
           @click="openTrash"
         >
@@ -638,7 +638,7 @@ function onUploadDone() {
         </button>
         <select
           v-model="sortBy"
-          class="min-w-0 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          class="min-w-0 rounded-lg border px-2 py-2 text-sm border-gray-600 bg-gray-800 text-gray-200"
           @change="onSortChange"
         >
           <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
@@ -647,13 +647,13 @@ function onUploadDone() {
         </select>
         <button
           type="button"
-          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
           :title="sortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
           @click="toggleSortDesc"
         >
           {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
         </button>
-        <label class="flex items-center text-gray-600 dark:text-gray-400">
+        <label class="flex items-center text-gray-400">
           <input
             v-model.number="cardSize"
             type="range"
@@ -679,7 +679,7 @@ function onUploadDone() {
         <template #toolbar-extra>
           <button
             type="button"
-            class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            class="rounded border px-1.5 py-0.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
             title="管理标签"
             @click="openTagManager"
           >
@@ -696,11 +696,9 @@ function onUploadDone() {
     <div class="flex min-h-0 flex-1 gap-1">
       <div
         v-if="images.length === 0"
-        class="flex-1 rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600"
+        class="flex-1 rounded-lg border border-dashed p-8 text-center border-gray-600"
       >
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          暂无图像，点击左上角「上传图像」开始添加。
-        </p>
+        <p class="text-sm text-gray-400">暂无图像，点击左上角「上传图像」开始添加。</p>
       </div>
       <template v-else>
         <VirtualGrid
@@ -714,13 +712,13 @@ function onUploadDone() {
         >
           <template #default="{ item: img }">
             <div
-              class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
+              class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-800"
               :class="[
                 selectedIds.has(img.id)
                   ? 'border-indigo-500 ring-2 ring-indigo-400'
                   : img.is_favorite
                     ? 'border-amber-500'
-                    : 'border-gray-200 dark:border-gray-700',
+                    : 'border-gray-700',
               ]"
               @click="openDetail(img)"
               @contextmenu.prevent="openCtxMenu($event, img)"
@@ -735,7 +733,7 @@ function onUploadDone() {
               <svg
                 v-else
                 xmlns="http://www.w3.org/2000/svg"
-                class="absolute inset-0 m-auto h-10 w-10 text-gray-400 dark:text-gray-500"
+                class="absolute inset-0 m-auto h-10 w-10 text-gray-500"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -922,13 +920,13 @@ function onUploadDone() {
       />
       <div
         v-if="ctxMenu"
-        class="fixed z-50 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+        class="fixed z-50 w-44 rounded-lg border py-1 shadow-lg border-gray-700 bg-gray-800"
         :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
         @click.stop
       >
         <button
           type="button"
-          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
+          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-400 hover:bg-gray-700"
           @click="deleteToTrash"
         >
           删除到回收站
@@ -951,7 +949,7 @@ function onUploadDone() {
     >
       <template #default="{ item: img }">
         <div
-          class="group relative h-full w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
+          class="group relative h-full w-full overflow-hidden rounded-lg border border-gray-700 bg-gray-800"
         >
           <img
             v-if="trashThumbs[img.id]"
@@ -962,7 +960,7 @@ function onUploadDone() {
           <svg
             v-else
             xmlns="http://www.w3.org/2000/svg"
-            class="absolute inset-0 m-auto h-10 w-10 text-gray-400 dark:text-gray-500"
+            class="absolute inset-0 m-auto h-10 w-10 text-gray-500"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"

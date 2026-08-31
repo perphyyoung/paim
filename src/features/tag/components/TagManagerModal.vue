@@ -434,18 +434,14 @@ function refresh() {
       @click.self="emit('close')"
     >
       <div
-        class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col overflow-hidden rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
         <!-- 头部 -->
-        <div
-          class="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700"
-        >
-          <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            {{ domainLabel }}标签管理
-          </h2>
+        <div class="flex shrink-0 items-center justify-between border-b px-4 py-3 border-gray-700">
+          <h2 class="text-sm font-semibold text-gray-100">{{ domainLabel }}标签管理</h2>
           <button
             type="button"
-            class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+            class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 hover:bg-gray-700"
             @click="emit('close')"
           >
             <svg
@@ -464,14 +460,14 @@ function refresh() {
 
         <!-- 工具栏 -->
         <div
-          class="grid shrink-0 grid-cols-5 items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+          class="grid shrink-0 grid-cols-5 items-center gap-2 border-b px-4 py-3 border-gray-700"
         >
           <div class="flex justify-center">
             <input
               v-model="search"
               type="text"
               placeholder="搜索标签…"
-              class="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+              class="w-full rounded border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
             />
           </div>
           <div class="flex justify-center">
@@ -486,7 +482,7 @@ function refresh() {
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded border border-gray-300 px-2.5 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              class="w-full rounded border px-2.5 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               @click="openNewGroup"
             >
               + 新建组
@@ -495,7 +491,7 @@ function refresh() {
           <div class="flex justify-center">
             <select
               :value="sortBy"
-              class="w-full rounded border border-gray-300 bg-white px-1.5 py-1.5 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+              class="w-full rounded border px-1.5 py-1.5 text-xs border-gray-600 bg-gray-800 text-gray-300"
               @change="onSortChange"
             >
               <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
@@ -506,7 +502,7 @@ function refresh() {
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded border border-gray-300 px-1.5 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              class="w-full rounded border px-1.5 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               title="切换排序顺序"
               @click="toggleOrder"
             >
@@ -517,10 +513,7 @@ function refresh() {
 
         <!-- 主体 -->
         <div class="flex-1 overflow-y-auto p-4">
-          <p
-            v-if="error"
-            class="mb-3 rounded bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-900/30 dark:text-red-400"
-          >
+          <p v-if="error" class="mb-3 rounded px-3 py-2 text-xs bg-red-900/30 text-red-400">
             {{ error }}
           </p>
           <div v-if="loading" class="py-10 text-center text-xs text-gray-500">加载中…</div>
@@ -539,29 +532,28 @@ function refresh() {
             <template v-for="sec in sections" :key="sec.key">
               <section
                 v-if="sec.isGroup || sec.items.length > 0"
-                class="rounded-lg border border-gray-200 bg-gray-50 shadow-sm transition-colors dark:border-gray-700 dark:bg-gray-800/40"
+                class="rounded-lg border shadow-sm transition-colors border-gray-700 bg-gray-800/40"
                 :class="{
-                  'border-blue-400 ring-2 ring-blue-300 dark:border-blue-500 dark:ring-blue-500/40':
-                    dragOverKey === sec.key,
+                  'ring-2 border-blue-500 ring-blue-500/40': dragOverKey === sec.key,
                 }"
                 :data-drop-key="sec.key"
                 :data-drop-group-id="sec.isGroup ? String(Number(sec.key.slice(1))) : ''"
                 @contextmenu="onGroupContextMenu($event, sec)"
               >
                 <header
-                  class="relative flex h-8 items-center justify-between rounded-t-lg border-b border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-gray-800"
+                  class="relative flex h-8 items-center justify-between rounded-t-lg border-b px-3 border-gray-700 bg-gray-800"
                 >
                   <div class="flex items-center gap-1.5">
                     <template v-if="sec.isGroup">
                       <span
-                        class="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-900/40 dark:text-blue-300"
+                        class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-blue-900/40 text-blue-300"
                         title="排序序号"
                       >
                         {{ sec.sortOrder }}
                       </span>
                       <span
                         v-if="sec.isFirst"
-                        class="shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-600 dark:bg-green-900/40 dark:text-green-300"
+                        class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-green-900/40 text-green-300"
                       >
                         首位组
                       </span>
@@ -570,21 +562,19 @@ function refresh() {
                   <div
                     class="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center justify-center gap-1 max-w-[45%]"
                   >
-                    <span class="truncate text-xs font-medium text-gray-700 dark:text-gray-200">
+                    <span class="truncate text-xs font-medium text-gray-200">
                       {{ sec.name }}
                       <!-- 未分组计数为 0 时隐藏；其他组正常显示 -->
-                      <span
-                        v-if="sec.isGroup || sec.items.length > 0"
-                        class="ml-1 text-gray-400 dark:text-gray-500"
-                        >{{ sec.items.length }}</span
-                      >
+                      <span v-if="sec.isGroup || sec.items.length > 0" class="ml-1 text-gray-500">{{
+                        sec.items.length
+                      }}</span>
                     </span>
                   </div>
                   <div v-if="sec.isGroup" class="flex items-center gap-1">
                     <button
                       type="button"
                       title="更新"
-                      class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+                      class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 hover:bg-gray-700"
                       @click="
                         openRenameGroup(
                           data.groups.find((g) => g.id === Number(sec.key.slice(1))!)!,
@@ -600,7 +590,7 @@ function refresh() {
                     <button
                       type="button"
                       title="删除"
-                      class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700"
+                      class="rounded p-1 text-gray-400 transition-colors hover:text-red-500 hover:bg-gray-700"
                       @click="
                         openDeleteGroup(
                           data.groups.find((g) => g.id === Number(sec.key.slice(1))!)!,
@@ -629,7 +619,7 @@ function refresh() {
                     <button
                       type="button"
                       title="更新"
-                      class="absolute -top-[13px] left-1/2 z-[2] flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border border-gray-200 bg-white text-blue-600 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 dark:border-gray-600 dark:bg-gray-800 dark:text-blue-400"
+                      class="absolute -top-[13px] left-1/2 z-[2] flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800 text-blue-400"
                       @click="openRenameTag(item)"
                     >
                       <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
@@ -642,7 +632,7 @@ function refresh() {
                     <button
                       type="button"
                       title="删除"
-                      class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border border-gray-200 bg-white text-red-500 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 dark:border-gray-600 dark:bg-gray-800"
+                      class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-red-500 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800"
                       @click="openDeleteTag(item)"
                     >
                       <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
@@ -666,10 +656,8 @@ function refresh() {
         v-if="dlg.visible"
         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
       >
-        <div
-          class="w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800"
-        >
-          <h3 class="mb-3 text-center text-sm font-semibold text-gray-800 dark:text-gray-100">
+        <div class="w-80 rounded-lg border p-4 shadow-lg border-gray-700 bg-gray-800">
+          <h3 class="mb-3 text-center text-sm font-semibold text-gray-100">
             {{ dlg.title }}
           </h3>
           <template v-if="dlg.mode === 'input'">
@@ -678,13 +666,13 @@ function refresh() {
               v-model="dlg.value"
               type="text"
               :placeholder="dlg.placeholder"
-              class="mb-3 w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200"
               @keyup.enter="submitInput"
             />
             <select
               v-if="dlg.groupEnabled"
               v-model="dlg.groupId"
-              class="mb-3 w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
             >
               <option value="">未分组</option>
               <option v-for="g in data.groups" :key="g.id" :value="String(g.id)">
@@ -697,15 +685,15 @@ function refresh() {
               type="number"
               step="1"
               placeholder="留空则追加到末尾"
-              class="mb-3 w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200"
               @keyup.enter="submitInput"
             />
           </template>
-          <p v-else class="mb-3 text-sm text-gray-600 dark:text-gray-300">{{ dlg.message }}</p>
+          <p v-else class="mb-3 text-sm text-gray-300">{{ dlg.message }}</p>
           <div class="grid grid-cols-2 gap-2">
             <button
               type="button"
-              class="rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              class="rounded border px-3 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               @click="closeDlg"
             >
               取消
@@ -737,12 +725,12 @@ function refresh() {
       ></div>
       <div
         v-if="ctxMenu.visible"
-        class="fixed z-[81] min-w-32 overflow-hidden rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-800"
+        class="fixed z-[81] min-w-32 overflow-hidden rounded-md border py-1 text-sm shadow-lg border-gray-700 bg-gray-800"
         :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
       >
         <button
           type="button"
-          class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="block w-full px-3 py-1.5 text-left text-gray-200 hover:bg-gray-700"
           @click="pinToTop"
         >
           固定到首位

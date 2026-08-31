@@ -395,22 +395,20 @@ const fmtSize = (bytes: number) => {
       @click.self="close"
     >
       <div
-        class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] overflow-hidden rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
         <!-- 左：提示词相关信息 -->
         <div
-          class="flex w-[320px] shrink-0 flex-col gap-4 overflow-auto border-r border-gray-200 p-4 dark:border-gray-700"
+          class="flex w-[320px] shrink-0 flex-col gap-4 overflow-auto border-r p-4 border-gray-700"
         >
           <div>
             <div class="flex items-center justify-between">
-              <div
-                class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-              >
+              <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
                 提示词标题
               </div>
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs border-gray-600 text-gray-300 hover:bg-gray-700"
                 :title="currentPrompt ? '编辑提示词' : '新建提示词'"
                 @click="currentPrompt ? openEditPrompt() : openCreatePrompt()"
               >
@@ -442,8 +440,8 @@ const fmtSize = (bytes: number) => {
                 class="group flex items-center gap-1.5 rounded px-1.5 py-0.5 text-sm transition-colors"
                 :class="
                   i === promptIndex
-                    ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300'
-                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'
+                    ? 'bg-indigo-900/30 text-indigo-300'
+                    : 'text-gray-200 hover:bg-gray-700'
                 "
                 @click="promptIndex = i"
               >
@@ -451,7 +449,7 @@ const fmtSize = (bytes: number) => {
                 <span class="min-w-0 flex-1 truncate">{{ p.title || "未命名" }}</span>
                 <button
                   type="button"
-                  class="shrink-0 rounded px-1 text-red-500 opacity-0 transition-opacity duration-150 hover:bg-red-50 group-hover:opacity-100 dark:text-red-400 dark:hover:bg-red-900/30"
+                  class="shrink-0 rounded px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 text-red-400 hover:bg-red-900/30"
                   title="解除关联"
                   @click.stop="requestUnlink(p)"
                 >
@@ -460,15 +458,12 @@ const fmtSize = (bytes: number) => {
               </div>
             </div>
             <!-- 单选：单行标题 -->
-            <div
-              v-else
-              class="group mt-1 flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200"
-            >
+            <div v-else class="group mt-1 flex items-center gap-1.5 text-sm text-gray-200">
               <span class="min-w-0 flex-1">{{ currentPrompt?.title || "— 暂无关联提示词 —" }}</span>
               <button
                 v-if="currentPrompt"
                 type="button"
-                class="shrink-0 rounded px-1 text-red-500 opacity-0 transition-opacity duration-150 hover:bg-red-50 group-hover:opacity-100 dark:text-red-400 dark:hover:bg-red-900/30"
+                class="shrink-0 rounded px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 text-red-400 hover:bg-red-900/30"
                 title="解除关联"
                 @click.stop="requestUnlink(currentPrompt)"
               >
@@ -478,77 +473,57 @@ const fmtSize = (bytes: number) => {
           </div>
           <div>
             <div class="flex items-center justify-between">
-              <div
-                class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-              >
+              <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
                 提示词内容
               </div>
               <button
                 type="button"
-                class="rounded px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
                 @click="copyPromptContent"
               >
                 复制
               </button>
             </div>
-            <div
-              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
-            >
+            <div class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
               {{ currentPrompt?.content || "—" }}
             </div>
           </div>
           <div>
             <div class="flex items-center justify-between">
-              <div
-                class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-              >
+              <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
                 提示词翻译
               </div>
               <button
                 type="button"
-                class="rounded px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
                 @click="copyPromptTranslate"
               >
                 复制
               </button>
             </div>
-            <div
-              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
-            >
+            <div class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
               {{ currentPrompt?.content_translate || "—" }}
             </div>
           </div>
           <div>
-            <div
-              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
-              提示词备注
-            </div>
-            <div
-              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
-            >
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500">提示词备注</div>
+            <div class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
               {{ currentPrompt?.note || "—" }}
             </div>
           </div>
           <div>
-            <div
-              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
-              提示词标签
-            </div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500">提示词标签</div>
             <div v-if="currentPrompt?.tags?.length" class="mt-1 flex flex-wrap gap-1">
               <TagChip v-for="t in currentPrompt.tags" :key="t">
                 {{ t }}
               </TagChip>
             </div>
-            <div v-else class="mt-1 text-sm text-gray-700 dark:text-gray-200">—</div>
+            <div v-else class="mt-1 text-sm text-gray-200">—</div>
           </div>
         </div>
 
         <!-- 中：图像显示 -->
-        <div
-          class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-100 dark:bg-gray-900"
-        >
+        <div class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-900">
           <img
             v-if="origSrc"
             :src="origSrc"
@@ -563,7 +538,7 @@ const fmtSize = (bytes: number) => {
             class="max-h-full max-w-full object-contain"
             @dblclick.stop="openFullscreen"
           />
-          <p v-else class="text-sm text-gray-400 dark:text-gray-500">无图像</p>
+          <p v-else class="text-sm text-gray-500">无图像</p>
           <!-- 导航 + 索引：图像区底部居中，与提示词详情共用组件 -->
           <div class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
             <NavAndIndex
@@ -579,7 +554,7 @@ const fmtSize = (bytes: number) => {
 
         <!-- 右：图像相关信息 -->
         <div
-          class="relative flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-gray-200 p-4 dark:border-gray-700"
+          class="relative flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l p-4 border-gray-700"
         >
           <div class="flex items-center justify-between">
             <div class="flex items-center">
@@ -589,7 +564,7 @@ const fmtSize = (bytes: number) => {
                 :class="
                   current?.is_favorite
                     ? 'border-transparent bg-gradient-to-br from-amber-500 to-amber-400 text-white'
-                    : 'border-gray-300 bg-white text-gray-400 hover:border-amber-300 hover:text-amber-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                    : 'hover:border-amber-300 hover:text-amber-600 border-gray-600 bg-gray-800 text-gray-400'
                 "
                 :title="current?.is_favorite ? '取消收藏' : '收藏'"
                 @click="toggleFavorite"
@@ -625,8 +600,8 @@ const fmtSize = (bytes: number) => {
             <div class="flex items-center">
               <button
                 type="button"
-                class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                :class="edit ? 'font-medium dark:text-gray-200' : ''"
+                class="rounded border px-2 py-1 text-xs border-gray-600 text-gray-300 hover:bg-gray-700"
+                :class="edit ? 'font-medium text-gray-200' : ''"
                 :title="edit ? '取消编辑' : '编辑'"
                 @click="toggleEdit"
               >
@@ -636,7 +611,7 @@ const fmtSize = (bytes: number) => {
             <div class="flex items-center">
               <button
                 type="button"
-                class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                class="rounded px-2 py-1 text-gray-400 hover:bg-gray-700"
                 title="关闭"
                 @click="close"
               >
@@ -646,46 +621,35 @@ const fmtSize = (bytes: number) => {
           </div>
 
           <div>
-            <div
-              class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
-              文件名
-            </div>
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">文件名</div>
             <input
               v-if="edit"
               v-model="fileName"
-              class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              class="mt-1 w-full rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
             />
-            <div
-              v-else
-              class="mt-1 break-all text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
-            >
+            <div v-else class="mt-1 break-all text-[length:var(--fs-detail)] text-gray-200">
               {{ fileName }}
             </div>
           </div>
 
           <div>
-            <div
-              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
-              图像标签
-            </div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500">图像标签</div>
             <div v-if="tags.length" class="mt-1 flex flex-wrap gap-1">
               <TagChip v-for="t in tags" :key="t.id" removable @remove="requestRemoveTag(t)">
                 {{ t.name }}
               </TagChip>
             </div>
-            <div v-else class="mt-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
+            <div v-else class="mt-1 text-sm text-gray-500">暂无标签</div>
             <div class="mt-2 flex gap-1">
               <input
                 v-model="tagInput"
-                class="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="min-w-0 flex-1 rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
                 placeholder="回车添加单个标签"
                 @keydown.enter.prevent="addTag"
               />
               <button
                 type="button"
-                class="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                class="rounded border px-2 py-1 text-sm border-gray-600 text-gray-200 hover:bg-gray-700"
                 @click="addTag"
               >
                 添加
@@ -694,57 +658,43 @@ const fmtSize = (bytes: number) => {
           </div>
 
           <div>
-            <div
-              class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
-              备注
-            </div>
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">备注</div>
             <textarea
               v-if="edit"
               v-model="note"
               rows="3"
-              class="mt-1 w-full resize-none rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              class="mt-1 w-full resize-none rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
             />
             <div
               v-else
-              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200"
             >
               {{ note || "—" }}
             </div>
           </div>
 
           <div>
-            <div
-              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
-              图像信息
-            </div>
+            <div class="text-xs font-medium uppercase tracking-wide text-gray-500">图像信息</div>
             <ul class="mt-1 space-y-1 text-sm">
               <li class="flex justify-between">
-                <span class="text-gray-400 dark:text-gray-500">更新时间</span>
-                <span class="text-gray-700 dark:text-gray-200">{{
-                  fmtLocal(current?.updated_at ?? null)
-                }}</span>
+                <span class="text-gray-500">更新时间</span>
+                <span class="text-gray-200">{{ fmtLocal(current?.updated_at ?? null) }}</span>
               </li>
               <li class="flex justify-between">
-                <span class="text-gray-400 dark:text-gray-500">导入时间</span>
-                <span class="text-gray-700 dark:text-gray-200">{{
-                  fmtLocal(current?.created_at ?? null)
-                }}</span>
+                <span class="text-gray-500">导入时间</span>
+                <span class="text-gray-200">{{ fmtLocal(current?.created_at ?? null) }}</span>
               </li>
               <li class="flex justify-between">
-                <span class="text-gray-400 dark:text-gray-500">尺寸</span>
-                <span class="text-gray-700 dark:text-gray-200">
+                <span class="text-gray-500">尺寸</span>
+                <span class="text-gray-200">
                   {{
                     current?.width && current.height ? `${current.width} × ${current.height}` : "—"
                   }}
                 </span>
               </li>
               <li class="flex justify-between">
-                <span class="text-gray-400 dark:text-gray-500">大小</span>
-                <span class="text-gray-700 dark:text-gray-200">{{
-                  current ? fmtSize(current.file_size) : "—"
-                }}</span>
+                <span class="text-gray-500">大小</span>
+                <span class="text-gray-200">{{ current ? fmtSize(current.file_size) : "—" }}</span>
               </li>
             </ul>
           </div>
@@ -756,7 +706,7 @@ const fmtSize = (bytes: number) => {
           >
             <button
               type="button"
-              class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-lg transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              class="rounded-lg border px-4 py-2 text-sm shadow-lg transition-colors border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700"
               @click="
                 edit = false;
                 syncFields();
@@ -796,23 +746,21 @@ const fmtSize = (bytes: number) => {
       @click.self="createPromptOpen = false"
     >
       <div
-        class="w-[520px] max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        class="w-[520px] max-w-[90vw] rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800"
       >
-        <h3 class="text-center text-base font-semibold text-gray-800 dark:text-gray-100">
-          新建提示词
-        </h3>
+        <h3 class="text-center text-base font-semibold text-gray-100">新建提示词</h3>
         <textarea
           ref="createInput"
           v-model="createContent"
           rows="6"
-          class="mt-3 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+          class="mt-3 w-full resize-none rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
           placeholder="输入提示词内容..."
           @keydown.enter.exact.prevent="doCreatePrompt"
         ></textarea>
         <div class="mt-3 grid grid-cols-2 gap-2">
           <button
             type="button"
-            class="rounded-lg border border-gray-300 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+            class="rounded-lg border py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
             @click="createPromptOpen = false"
           >
             取消

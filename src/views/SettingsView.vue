@@ -110,28 +110,18 @@ onMounted(loadDataDir);
 </script>
 
 <template>
-  <section
-    class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
-  >
+  <section class="rounded-lg border p-6 shadow-sm border-gray-700 bg-gray-800">
     <div class="relative mb-4 flex h-6 items-center justify-center">
-      <h2 class="absolute left-0 text-lg font-semibold text-gray-800 dark:text-gray-100">设置</h2>
-      <span class="text-xs font-normal text-gray-500 dark:text-gray-400">
-        paim v{{ appVersion }}
-      </span>
+      <h2 class="absolute left-0 text-lg font-semibold text-gray-100">设置</h2>
+      <span class="text-xs font-normal text-gray-400"> paim v{{ appVersion }} </span>
     </div>
 
-    <h3
-      class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500"
-    >
-      外观
-    </h3>
-    <dl class="divide-y divide-gray-100 dark:divide-gray-700">
+    <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">外观</h3>
+    <dl class="divide-y divide-gray-700">
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
-          <dt class="text-gray-600 dark:text-gray-400">全局字体大小</dt>
-          <dd class="text-sm text-gray-400 dark:text-gray-500">
-            提示词/图像主页卡片文字，当前 {{ fontScale }}%
-          </dd>
+          <dt class="text-gray-400">全局字体大小</dt>
+          <dd class="text-sm text-gray-500">提示词/图像主页卡片文字，当前 {{ fontScale }}%</dd>
         </div>
         <input
           v-model.number="fontScale"
@@ -146,10 +136,8 @@ onMounted(loadDataDir);
 
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
-          <dt class="text-gray-600 dark:text-gray-400">详情页字体大小</dt>
-          <dd class="text-sm text-gray-400 dark:text-gray-500">
-            提示词/图像详情页正文，当前 {{ detailFontScale }}%
-          </dd>
+          <dt class="text-gray-400">详情页字体大小</dt>
+          <dd class="text-sm text-gray-500">提示词/图像详情页正文，当前 {{ detailFontScale }}%</dd>
         </div>
         <input
           v-model.number="detailFontScale"
@@ -163,22 +151,18 @@ onMounted(loadDataDir);
       </div>
     </dl>
 
-    <h3
-      class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500"
-    >
-      数据
-    </h3>
-    <dl class="divide-y divide-gray-100 dark:divide-gray-700">
+    <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">数据</h3>
+    <dl class="divide-y divide-gray-700">
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
-          <dt class="text-gray-600 dark:text-gray-400">数据目录</dt>
-          <dd class="break-all text-sm text-gray-400 dark:text-gray-500" :title="dataDir">
+          <dt class="text-gray-400">数据目录</dt>
+          <dd class="break-all text-sm text-gray-500" :title="dataDir">
             {{ dataDir }}
           </dd>
         </div>
         <button
           type="button"
-          class="shrink-0 rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
           @click="openDir"
         >
           打开目录
@@ -187,14 +171,12 @@ onMounted(loadDataDir);
 
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
-          <dt class="text-gray-600 dark:text-gray-400">重建缩略图</dt>
-          <dd class="text-sm text-gray-400 dark:text-gray-500">
-            扫描所有图像，重新生成丢失的缩略图文件
-          </dd>
+          <dt class="text-gray-400">重建缩略图</dt>
+          <dd class="text-sm text-gray-500">扫描所有图像，重新生成丢失的缩略图文件</dd>
         </div>
         <button
           type="button"
-          class="shrink-0 rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
           @click="rebuildOpen = true"
         >
           重建
@@ -203,8 +185,8 @@ onMounted(loadDataDir);
 
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
-          <dt class="text-gray-600 dark:text-gray-400">pm 备份导入</dt>
-          <dd class="text-sm text-gray-400 dark:text-gray-500">
+          <dt class="text-gray-400">pm 备份导入</dt>
+          <dd class="text-sm text-gray-500">
             导入 prompt-manager 导出的全量备份，当前数据将被替换
           </dd>
         </div>
@@ -218,8 +200,8 @@ onMounted(loadDataDir);
         </button>
       </div>
 
-      <p v-if="openError" class="py-2 text-sm text-red-600 dark:text-red-400">{{ openError }}</p>
-      <p v-if="importError" class="py-2 text-sm text-red-600 dark:text-red-400">
+      <p v-if="openError" class="py-2 text-sm text-red-400">{{ openError }}</p>
+      <p v-if="importError" class="py-2 text-sm text-red-400">
         {{ importError }}
       </p>
     </dl>

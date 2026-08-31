@@ -36,7 +36,7 @@ const rootClass = computed(() => [
   props.size === "sm" ? "px-1 text-[10px] leading-4" : "px-2.5 py-0.5 text-xs",
   props.variant === "solid"
     ? "bg-blue-600 text-white hover:bg-blue-700"
-    : "border border-blue-300 bg-white text-blue-700 hover:border-blue-500 hover:text-blue-800 dark:border-blue-700 dark:bg-gray-800 dark:text-blue-300",
+    : "border hover:border-blue-500 hover:text-blue-800 border-blue-700 bg-gray-800 text-blue-300",
 ]);
 </script>
 
@@ -62,7 +62,7 @@ const rootClass = computed(() => [
     <button
       v-if="removable"
       type="button"
-      class="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-300"
+      class="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-red-400 transition-colors hover:bg-red-900/30 hover:text-red-300"
       title="删除标签"
       @click.stop="emit('remove')"
     >
