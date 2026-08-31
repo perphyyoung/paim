@@ -88,9 +88,25 @@ onUnmounted(() => {
   window.removeEventListener("keydown", onCaptureKeydown, true);
 });
 
+// 全屏期间接管键盘（capture 阶段拦截下层详情弹窗；Esc 仅拦截不动作，全屏只 ✕ 关闭）
+// 键位与 NavAndIndex 一致：←/→ 前后、Home/End 首尾
 function onCaptureKeydown(e: KeyboardEvent) {
   e.preventDefault();
   e.stopPropagation();
+  switch (e.key) {
+    case "ArrowLeft":
+      nav(-1);
+      break;
+    case "ArrowRight":
+      nav(1);
+      break;
+    case "Home":
+      goFirst();
+      break;
+    case "End":
+      goLast();
+      break;
+  }
 }
 
 // 打开时以父级传入索引为起点

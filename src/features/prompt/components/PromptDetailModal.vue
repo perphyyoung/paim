@@ -365,10 +365,6 @@ async function onPickerImported() {
       v-if="open"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       @click.self="close"
-      @keydown.esc="close"
-      @keydown.up="nav(-1)"
-      @keydown.down="nav(1)"
-      tabindex="-1"
     >
       <div
         class="relative grid h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
