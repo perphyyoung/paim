@@ -290,6 +290,13 @@ async function batchAddTag(tag: string) {
   if (ids.length === 0) return;
   try {
     await invoke("add_prompt_tag_batch", { ids, name: tag });
+    // 卡片标签行数据源是 tagNames（仅 loadPrompts 拉取），这里本地同步避免陈旧
+    const next = { ...tagNames.value };
+    for (const id of ids) {
+      const cur = next[id] ?? [];
+      if (!cur.includes(tag)) next[id] = [...cur, tag];
+    }
+    tagNames.value = next;
     showToast(`已为 ${ids.length} 个提示词添加标签`);
     exitBatch();
     await loadTagFilter();
