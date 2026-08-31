@@ -180,3 +180,85 @@ fn rebuild_all_empty_db_returns_zero() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn ensure_heals_missing_and_reports_unfixable() {
+    let root = unique_test_dir("ensure");
+    let data_dir = root.join("data");
+    // 懒自愈的存在性检查按 data_dir + 相对路径解析，缩略图须在数据目录内（真实布局）
+    let thumbs_root = data_dir.join("thumbnails");
+    std::fs::create_dir_all(data_dir.join("images").join("202606")).unwrap();
+
+    let bk = db::init(root.join("paim.db")).expect("init db");
+    let conn = bk.0.lock().unwrap();
+
+    let insert = |id: &str, rel: &str, thumb: Option<&str>| {
+        conn.execute(
+            "INSERT INTO images (id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size)
+             VALUES (?1, ?2, ?2, ?3, ?4, ?1, 10, 10, 100)",
+            rusqlite::params![id, format!("{id}.png"), rel, thumb],
+        )
+        .unwrap();
+    };
+
+    // 情形1：路径为空、原图存在 → 生成并回写
+    image::DynamicImage::new_rgb8(300, 200)
+        .save(data_dir.join("images/202606/img_a.png"))
+        .unwrap();
+    insert("img_a", "images/202606/img_a.png", None);
+    // 情形2：路径指向的文件丢失、原图存在 → 重建
+    image::DynamicImage::new_rgb8(300, 200)
+        .save(data_dir.join("images/202606/img_b.png"))
+        .unwrap();
+    insert("img_b", "images/202606/img_b.png", Some("thumbnails/202606/thumb_img_b.jpg"));
+    // 情形3：路径有效、文件存在 → 跳过（不应出现在 fixed/missing）
+    image::DynamicImage::new_rgb8(300, 200)
+        .save(data_dir.join("images/202606/img_c.png"))
+        .unwrap();
+    std::fs::create_dir_all(thumbs_root.join("202606")).unwrap();
+    std::fs::write(thumbs_root.join("202606/thumb_img_c.jpg"), b"ok").unwrap();
+    insert("img_c", "images/202606/img_c.png", Some("thumbnails/202606/thumb_img_c.jpg"));
+    // 情形4：原图缺失 → missing
+    insert("img_d", "images/202606/img_d.png", None);
+    // 情形5：未知 id → missing
+    let ids = vec![
+        "img_a".to_string(),
+        "img_b".to_string(),
+        "img_c".to_string(),
+        "img_d".to_string(),
+        "img_unknown".to_string(),
+    ];
+
+    let result = ensure(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
+    let fixed_ids: Vec<&str> = result.fixed.iter().map(|f| f.id.as_str()).collect();
+    assert_eq!(fixed_ids, vec!["img_a", "img_b"]);
+    assert_eq!(result.fixed[0].thumbnail_path, "thumbnails/202606/thumb_img_a.jpg");
+    assert_eq!(result.fixed[1].thumbnail_path, "thumbnails/202606/thumb_img_b.jpg");
+    assert_eq!(result.missing, vec!["img_d", "img_unknown"]);
+
+    // 回写已落库
+    let thumb_of = |id: &str| -> Option<String> {
+        conn.query_row(
+            "SELECT thumbnail_path FROM images WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        thumb_of("img_a").as_deref(),
+        Some("thumbnails/202606/thumb_img_a.jpg")
+    );
+    // 情形3 的已有文件未被重写
+    assert_eq!(
+        std::fs::read(thumbs_root.join("202606/thumb_img_c.jpg")).unwrap(),
+        b"ok"
+    );
+
+    // 幂等：再跑一遍无修复项
+    let again = ensure(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
+    assert!(again.fixed.is_empty());
+    assert_eq!(again.missing, vec!["img_d", "img_unknown"]);
+
+    let _ = std::fs::remove_dir_all(&root);
+}

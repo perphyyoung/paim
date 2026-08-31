@@ -109,6 +109,7 @@ pub fn run() {
       features::image::get_image_prompts_map,
       features::image::get_image_related_prompts,
       features::image::rebuild_thumbnails,
+      features::image::ensure_image_thumbnails,
       // —— 提示词标签管理 ——
       features::prompt_tag::list_prompt_tag_groups,
       features::prompt_tag::create_prompt_tag_group,

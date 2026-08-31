@@ -13,7 +13,9 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import TrashOverlay from "@/components/TrashOverlay.vue";
-import { useGridScrollSync } from "@/components/useGridScrollSync";
+import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
+import { useThumbnailSelfHeal } from "@/components/useThumbnailSelfHeal";
+import type { ThumbnailEnsureFixed } from "@/features/image/api/thumbnails";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
@@ -130,6 +132,36 @@ const sortedImages = computed(() => {
 const images = shallowRef<Image[]>([]);
 const thumbs = shallowRef<Record<string, string>>({});
 const imagePrompts = shallowRef<Record<string, string[]>>({});
+
+// 懒自愈：可见窗口稳定后批量校验缩略图文件（缺失且原图存在时后端按需生成）
+const dataDir = ref("");
+const visibleIds = computed(() => {
+  const list = sortedImages.value;
+  if (list.length === 0) return [];
+  const start = Math.max(0, scrollIndex.value);
+  const count = Math.max(1, gridPageSize.value);
+  return list.slice(start, start + count).map((i) => i.id);
+});
+const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } =
+  useThumbnailSelfHeal(visibleIds, onThumbsFixed);
+
+function onThumbsFixed(fixed: ThumbnailEnsureFixed[]) {
+  const dir = dataDir.value;
+  if (!dir || fixed.length === 0) return;
+  // 同步记录与缩略图 URL（shallowRef 需整体替换触发更新）
+  const fixedById = new Map(fixed.map((f) => [f.id, f.thumbnail_path]));
+  images.value = images.value.map((i) =>
+    fixedById.has(i.id) ? { ...i, thumbnail_path: fixedById.get(i.id) ?? i.thumbnail_path } : i,
+  );
+  const map = { ...thumbs.value };
+  for (const f of fixed) map[f.id] = convertFileSrc(`${dir}/${f.thumbnail_path}`);
+  thumbs.value = map;
+}
+
+function handleGridScroll(p: GridScrollPayload) {
+  onGridScroll(p);
+  scheduleThumbCheck();
+}
 
 // 标签筛选区
 const allTags = ref<{ id: number; name: string; group_id: number | null }[]>([]);
@@ -340,11 +372,15 @@ async function loadImages() {
   ]);
   images.value = imgs;
   imagePrompts.value = promptsMap;
+  dataDir.value = dir;
   const map: Record<string, string> = {};
   for (const img of imgs) {
     if (img.thumbnail_path) map[img.id] = convertFileSrc(`${dir}/${img.thumbnail_path}`);
   }
   thumbs.value = map;
+  // 数据重载后重置已校验记忆并检查当前可见窗口
+  resetThumbChecked();
+  scheduleThumbCheck();
 }
 
 function fmtSize(bytes: number) {
@@ -658,7 +694,7 @@ function onUploadDone() {
           :item-width="cardSize"
           :item-height="cardSize"
           :gap="12"
-          @scroll="onGridScroll"
+          @scroll="handleGridScroll"
         >
           <template #default="{ item: img }">
             <div

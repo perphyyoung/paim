@@ -13,7 +13,8 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import TrashOverlay from "@/components/TrashOverlay.vue";
-import { useGridScrollSync } from "@/components/useGridScrollSync";
+import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
+import { useThumbnailSelfHeal } from "@/components/useThumbnailSelfHeal";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
@@ -105,6 +106,34 @@ const {
 
 // 筛选/排序变化后回到顶部
 watch([keyword, sortBy, sortDesc, selectedTags], backToTop);
+
+// 懒自愈：可见窗口稳定后批量校验缩略图文件（缺失且原图存在时后端按需生成）；
+// 提示词卡片背景经 thumbs 映射加载，修复后整体重拉该映射即可
+const visibleIds = computed(() => {
+  const list = sortedPrompts.value;
+  if (list.length === 0) return [];
+  const start = Math.max(0, scrollIndex.value);
+  const count = Math.max(1, gridPageSize.value);
+  return list.slice(start, start + count).map((p) => p.id);
+});
+const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } =
+  useThumbnailSelfHeal(visibleIds, onThumbsFixed);
+
+async function onThumbsFixed() {
+  try {
+    const raw = await invoke<Record<string, string>>("get_prompt_thumbs_map");
+    const urls: Record<string, string> = {};
+    for (const k of Object.keys(raw)) urls[k] = convertFileSrc(raw[k]);
+    thumbs.value = urls;
+  } catch {
+    // 重拉失败保持现状，下次窗口变化会再试
+  }
+}
+
+function handleGridScroll(p: GridScrollPayload) {
+  onGridScroll(p);
+  scheduleThumbCheck();
+}
 
 // 详情弹窗内的编辑就地改原始对象（shallowRef 下需整表重拉触发更新）；
 // 同时内容/关联变化会影响图像主页
@@ -329,6 +358,9 @@ async function loadPrompts() {
   const urls: Record<string, string> = {};
   for (const k of Object.keys(raw)) urls[k] = convertFileSrc(raw[k]);
   thumbs.value = urls;
+  // 数据重载后重置已校验记忆并检查当前可见窗口
+  resetThumbChecked();
+  scheduleThumbCheck();
 }
 async function loadTagFilter() {
   try {
@@ -560,7 +592,7 @@ onActivated(() => {
           :item-width="cardSize"
           :item-height="cardSize"
           :gap="12"
-          @scroll="onGridScroll"
+          @scroll="handleGridScroll"
         >
           <template #default="{ item: p, index }">
             <div

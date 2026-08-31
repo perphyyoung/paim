@@ -7,7 +7,9 @@ use crate::features::image_service::{
     self, Image, ImageTag, ImportBatchResult, ImportResult, LinkedPrompt,
 };
 use crate::features::prompt_service;
-use crate::features::thumbnail_service::{self, RebuildProgress, RebuildSummary};
+use crate::features::thumbnail_service::{
+    self, EnsureResult, RebuildProgress, RebuildSummary,
+};
 
 use rusqlite::OptionalExtension;
 use tauri::{Emitter, Manager, State};
@@ -495,5 +497,23 @@ pub async fn rebuild_thumbnails(app: tauri::AppHandle) -> Result<RebuildSummary,
     })
     .await
     .map_err(|e| AppError::Message(format!("重建缩略图任务执行失败: {e}")))?
+    .map_err(AppError::from)
+}
+
+/// 懒自愈：批量校验指定图像的缩略图文件，缺失且原图存在时按需生成并回写。
+/// 正常路径仅 N 次文件存在性检查，同步命令即可。
+#[tauri::command]
+pub fn ensure_image_thumbnails(
+    app: tauri::AppHandle,
+    db: State<BkDb>,
+    ids: Vec<String>,
+) -> Result<EnsureResult, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    thumbnail_service::ensure(
+        &crate::db::data_dir(&app),
+        &crate::db::thumbnails_dir(&app),
+        &conn,
+        &ids,
+    )
     .map_err(AppError::from)
 }

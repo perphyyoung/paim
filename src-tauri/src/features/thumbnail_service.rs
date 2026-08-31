@@ -3,7 +3,7 @@
 //! 重建语义与 pm 一致：扫描所有图像记录，缩略图文件已存在的直接复用，
 //! 只对丢失的重新生成；失败的单张计数，不中断整体、不改动其已有路径。
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -27,6 +27,20 @@ pub struct RebuildProgress {
     pub current: usize,
     pub total: usize,
     pub file_name: String,
+}
+
+/// 懒自愈结果：fixed 为已补齐缩略图的记录（含新回写路径），
+/// missing 为无法修复的 id（记录不存在 / 原图缺失 / 生成失败）。
+#[derive(Debug, Serialize)]
+pub struct EnsureResult {
+    pub fixed: Vec<EnsureFixed>,
+    pub missing: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EnsureFixed {
+    pub id: String,
+    pub thumbnail_path: String,
 }
 
 /// 单图缩略图生成：读原图 → 解码 → 200×200 居中裁剪 → 存
@@ -174,6 +188,54 @@ where
 
 fn io_err(e: std::io::Error) -> String {
     e.to_string()
+}
+
+/// 懒自愈：批量校验指定图像的缩略图文件，缺失且原图存在时按需生成并回写。
+/// 记录的 thumbnail_path 非空且文件存在 → 跳过；否则走 build_thumbnail
+/// （其内部同样跳过已存在文件）。修复项计入 fixed，无法修复的 id 计入 missing。
+/// 调用方为浏览页的可见窗口（一屏项数），顺序执行即可。
+pub fn ensure(
+    data_dir: &Path,
+    thumbs_root: &Path,
+    conn: &Connection,
+    ids: &[String],
+) -> Result<EnsureResult, String> {
+    let mut result = EnsureResult { fixed: Vec::new(), missing: Vec::new() };
+    for id in ids {
+        let row: Option<(String, String, Option<String>)> = conn
+            .query_row(
+                "SELECT relative_path, file_name, thumbnail_path FROM images WHERE id = ?1",
+                rusqlite::params![id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .map_err(|e| format!("读取图像记录失败: {e}"))?;
+        let Some((rel, _file_name, current)) = row else {
+            result.missing.push(id.clone());
+            continue;
+        };
+        // 已有路径且文件还在 → 无需处理
+        if let Some(cur) = &current {
+            if data_dir.join(cur).is_file() {
+                continue;
+            }
+        }
+        match build_thumbnail(data_dir, thumbs_root, &rel) {
+            Ok(thumb_rel) => {
+                conn.execute(
+                    "UPDATE images SET thumbnail_path = ?1 WHERE id = ?2",
+                    rusqlite::params![thumb_rel, id],
+                )
+                .map_err(|e| format!("更新缩略图路径失败: {e}"))?;
+                result.fixed.push(EnsureFixed { id: id.clone(), thumbnail_path: thumb_rel });
+            }
+            Err(msg) => {
+                log::warn!("缩略图懒自愈失败 id={id}: {msg}");
+                result.missing.push(id.clone());
+            }
+        }
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
