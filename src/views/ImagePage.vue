@@ -4,6 +4,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
+import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
@@ -550,18 +551,14 @@ async function batchFavorite() {
   }
 }
 
-async function batchAddTag(tag: string) {
-  const ids = Array.from(selectedIds.value);
-  if (ids.length === 0) return;
-  try {
-    await invoke("add_image_tag_batch", { ids, name: tag });
-    showToast(`已为 ${ids.length} 张图像添加标签`);
-    exitBatch();
-    await loadTagFilter();
-  } catch (e) {
-    showToast(`批量添加标签失败：${e}`);
-  }
-}
+// 批量添加标签（与提示词主页共用逻辑）
+const { batchAddTag } = useBatchTagAdd({
+  domain: "image",
+  selectedIds,
+  exitBatch,
+  loadTagFilter,
+  showToast,
+});
 
 // KeepAlive:数据仅在首次进入加载;激活时恢复滚动位置并接管外点关闭,失活时释放监听
 onMounted(() => {

@@ -4,6 +4,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
+import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
@@ -285,25 +286,14 @@ function exitBatch() {
   batchOpen.value = false;
 }
 
-async function batchAddTag(tag: string) {
-  const ids = Array.from(selectedIds.value);
-  if (ids.length === 0) return;
-  try {
-    await invoke("add_prompt_tag_batch", { ids, name: tag });
-    // 卡片标签行数据源是 tagNames（仅 loadPrompts 拉取），这里本地同步避免陈旧
-    const next = { ...tagNames.value };
-    for (const id of ids) {
-      const cur = next[id] ?? [];
-      if (!cur.includes(tag)) next[id] = [...cur, tag];
-    }
-    tagNames.value = next;
-    showToast(`已为 ${ids.length} 个提示词添加标签`);
-    exitBatch();
-    await loadTagFilter();
-  } catch (e) {
-    showToast(`批量添加标签失败：${e}`);
-  }
-}
+// 批量添加标签（与图像主页共用逻辑）
+const { batchAddTag } = useBatchTagAdd({
+  domain: "prompt",
+  selectedIds,
+  exitBatch,
+  loadTagFilter,
+  showToast,
+});
 
 async function batchFavorite() {
   const ids = Array.from(selectedIds.value);
@@ -387,9 +377,16 @@ async function loadPrompts() {
 }
 async function loadTagFilter() {
   try {
-    const data = await invoke<{ groups: TagGroupData[]; tags: TagItem[] }>("get_prompt_tag_data");
+    // 与图像主页对称：同时刷新筛选区与卡片标签源（tagNames）
+    const [data, map] = await Promise.all([
+      invoke<{ groups: TagGroupData[]; tags: TagItem[] }>("get_prompt_tag_data"),
+      invoke<Record<string, string[]>>("get_prompt_tags_map").catch(
+        () => ({}) as Record<string, string[]>,
+      ),
+    ]);
     tagGroups.value = data.groups ?? [];
     allTags.value = data.tags ?? [];
+    tagNames.value = map;
   } catch {
     tagGroups.value = [];
     allTags.value = [];
