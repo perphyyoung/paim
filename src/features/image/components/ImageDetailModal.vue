@@ -444,7 +444,9 @@ const fmtSize = (bytes: number) => {
             >
               提示词内容
             </div>
-            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+            <div
+              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+            >
               {{ currentPrompt?.content || "—" }}
             </div>
           </div>
@@ -454,7 +456,9 @@ const fmtSize = (bytes: number) => {
             >
               提示词翻译
             </div>
-            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+            <div
+              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+            >
               {{ currentPrompt?.content_translate || "—" }}
             </div>
           </div>
@@ -464,7 +468,9 @@ const fmtSize = (bytes: number) => {
             >
               提示词备注
             </div>
-            <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+            <div
+              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+            >
               {{ currentPrompt?.note || "—" }}
             </div>
           </div>
@@ -591,7 +597,10 @@ const fmtSize = (bytes: number) => {
               v-model="fileName"
               class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
             />
-            <div v-else class="mt-1 break-all text-sm text-gray-700 dark:text-gray-200">
+            <div
+              v-else
+              class="mt-1 break-all text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+            >
               {{ fileName }}
             </div>
           </div>
@@ -649,7 +658,10 @@ const fmtSize = (bytes: number) => {
               rows="3"
               class="mt-1 w-full resize-none rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
             />
-            <div v-else class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+            <div
+              v-else
+              class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+            >
               {{ note || "—" }}
             </div>
           </div>
@@ -746,7 +758,7 @@ const fmtSize = (bytes: number) => {
           ref="createInput"
           v-model="createContent"
           rows="6"
-          class="mt-3 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+          class="mt-3 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
           placeholder="输入提示词内容..."
           @keydown.enter.exact.prevent="doCreatePrompt"
         ></textarea>

@@ -517,9 +517,12 @@ async function onPickerImported() {
               <input
                 v-if="edit"
                 v-model="title"
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
               />
-              <div v-else class="break-all text-sm text-gray-700 dark:text-gray-200">
+              <div
+                v-else
+                class="break-all text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+              >
                 {{ current?.title || "—" }}
               </div>
             </div>
@@ -534,11 +537,11 @@ async function onPickerImported() {
                 v-if="edit"
                 v-model="content"
                 rows="6"
-                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
               ></textarea>
               <div
                 v-else
-                class="whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-200"
+                class="whitespace-pre-wrap text-[length:var(--fs-detail)] leading-relaxed text-gray-700 dark:text-gray-200"
               >
                 {{ current?.content || "—" }}
               </div>
@@ -554,9 +557,12 @@ async function onPickerImported() {
                 v-if="edit"
                 v-model="contentTranslate"
                 rows="4"
-                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
               ></textarea>
-              <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+              <div
+                v-else
+                class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+              >
                 {{ current?.content_translate || "—" }}
               </div>
             </div>
@@ -571,10 +577,13 @@ async function onPickerImported() {
                 v-if="edit"
                 v-model="note"
                 rows="3"
-                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-[length:var(--fs-detail)] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                 placeholder="输入备注..."
               ></textarea>
-              <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+              <div
+                v-else
+                class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
+              >
                 {{ current?.note || "—" }}
               </div>
             </div>
