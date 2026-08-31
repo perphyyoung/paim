@@ -6,6 +6,7 @@ import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
+import ImageFullscreenViewer, { type FullscreenItem } from "./ImageFullscreenViewer.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import { formatLocalTime } from "@/utils/date";
@@ -181,6 +182,28 @@ async function loadOrig() {
   } catch {
     origSrc.value = "";
   }
+}
+
+// ---- 全屏查看（双击大图进入） ----
+// 全屏列表为进入详情时的顺序快照（props.images），与详情导航一致
+const fullscreenOpen = ref(false);
+const fullscreenItems = computed<FullscreenItem[]>(() =>
+  props.images.map((img) => ({ id: img.id, src: "", name: img.file_name })),
+);
+
+function openFullscreen() {
+  fullscreenOpen.value = true;
+}
+
+async function resolveFullscreenSrc(id: string) {
+  const p = await invoke<string>("get_image_src", { id });
+  return convertFileSrc(p);
+}
+
+// 全屏信息条：名称已由 items.name 预置，此处惰性补标签
+async function resolveFullscreenMeta(id: string) {
+  const tags = await invoke<{ id: number; name: string }[]>("get_image_tags", { id });
+  return { tags: tags.map((t) => t.name) };
 }
 
 // 加载当前图像的标签
@@ -533,12 +556,19 @@ const fmtSize = (bytes: number) => {
         <div
           class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-100 dark:bg-gray-900"
         >
-          <img v-if="origSrc" :src="origSrc" alt="" class="max-h-full max-w-full object-contain" />
+          <img
+            v-if="origSrc"
+            :src="origSrc"
+            alt=""
+            class="max-h-full max-w-full object-contain"
+            @dblclick.stop="openFullscreen"
+          />
           <img
             v-else-if="current && thumbs[current.id]"
             :src="thumbs[current.id]"
             alt=""
             class="max-h-full max-w-full object-contain"
+            @dblclick.stop="openFullscreen"
           />
           <p v-else class="text-sm text-gray-400 dark:text-gray-500">无图像</p>
           <!-- 导航 + 索引：图像区底部居中，与提示词详情共用组件 -->
@@ -833,5 +863,16 @@ const fmtSize = (bytes: number) => {
       loadRelatedPrompts();
     "
     @updated="loadRelatedPrompts()"
+  />
+
+  <!-- 全屏查看（双击中区大图进入，列表为详情快照 props.images） -->
+  <ImageFullscreenViewer
+    v-if="fullscreenOpen"
+    :open="fullscreenOpen"
+    :items="fullscreenItems"
+    :current-index="currentIndex"
+    :resolve-src="resolveFullscreenSrc"
+    :resolve-meta="resolveFullscreenMeta"
+    @close="fullscreenOpen = false"
   />
 </template>

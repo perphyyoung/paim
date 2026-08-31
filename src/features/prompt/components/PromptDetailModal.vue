@@ -8,6 +8,9 @@ import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
+import ImageFullscreenViewer, {
+  type FullscreenItem,
+} from "@/features/image/components/ImageFullscreenViewer.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
@@ -213,6 +216,28 @@ async function removeTag(tagId: number) {
   emit("updated");
 }
 
+// ---- 全屏查看（双击关联图像直接进入，对齐 pm） ----
+const fullscreenOpen = ref(false);
+const fullscreenIndex = ref(0);
+const fullscreenItems = computed<FullscreenItem[]>(() =>
+  relatedImages.value.map((img) => ({
+    id: img.id,
+    src: "",
+    name: img.file_name,
+    tags: img.tags,
+  })),
+);
+
+function openFullscreen(index: number) {
+  fullscreenIndex.value = index;
+  fullscreenOpen.value = true;
+}
+
+async function resolveFullscreenSrc(id: string) {
+  const p = await invoke<string>("get_image_src", { id });
+  return convertFileSrc(p);
+}
+
 async function removeImage(img: RelatedImage) {
   const p = current.value;
   if (!p) return;
@@ -374,10 +399,11 @@ async function onPickerImported() {
               :class="relatedImages.length === 1 ? 'flex h-full' : 'grid grid-cols-2 gap-2'"
             >
               <li
-                v-for="img in relatedImages"
+                v-for="(img, index) in relatedImages"
                 :key="img.id"
                 class="group relative flex items-center justify-center overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
                 :class="relatedImages.length === 1 ? 'flex-1' : ''"
+                @dblclick.stop="openFullscreen(index)"
               >
                 <img
                   v-if="imgUrl(img)"
@@ -731,5 +757,15 @@ async function onPickerImported() {
     :danger="confirmDanger"
     @confirm="confirmAction"
     @cancel="cancelConfirm"
+  />
+
+  <!-- 全屏查看（双击关联图像直接进入，列表为当前提示词的关联图像） -->
+  <ImageFullscreenViewer
+    v-if="fullscreenOpen"
+    :open="fullscreenOpen"
+    :items="fullscreenItems"
+    :current-index="fullscreenIndex"
+    :resolve-src="resolveFullscreenSrc"
+    @close="fullscreenOpen = false"
   />
 </template>
