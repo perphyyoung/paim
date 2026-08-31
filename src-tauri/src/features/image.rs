@@ -9,7 +9,6 @@ use crate::features::image_service::{
 use crate::features::prompt_service;
 use crate::features::thumbnail_service::{self, EnsureResult, RebuildProgress, RebuildSummary};
 
-use rusqlite::OptionalExtension;
 use tauri::{Emitter, Manager, State};
 
 #[tauri::command]
@@ -276,26 +275,7 @@ pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, AppE
 #[tauri::command]
 pub fn add_image_tag(db: State<BkDb>, id: String, name: String) -> Result<Vec<ImageTag>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|e| AppError::Message(e.to_string()))?;
-
-    let tag_id = get_or_create_image_tag(&tx, &name)?;
-    let _ = tx.execute(
-        "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
-        rusqlite::params![id, tag_id],
-    );
-    tx.execute(
-        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
-        rusqlite::params![id],
-    )
-    .map_err(|e| AppError::Message(e.to_string()))?;
-    tx.commit().map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(vec![ImageTag {
-        id: tag_id,
-        name: name.trim().to_string(),
-        group_id: None,
-    }])
+    image_service::add_image_tag(&conn, &id, &name).map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。
@@ -306,47 +286,9 @@ pub fn add_image_tag_batch(
     name: String,
 ) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|e| AppError::Message(e.to_string()))?;
-
-    let tag_id = get_or_create_image_tag(&tx, &name)?;
-    for id in &ids {
-        let _ = tx.execute(
-            "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
-            rusqlite::params![id, tag_id],
-        );
-        tx.execute(
-            "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
-            rusqlite::params![id],
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    }
-    tx.commit().map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(())
-}
-
-/// 获取图像标签 id，不存在则创建（供单标签与批量场景复用）。
-fn get_or_create_image_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i64, AppError> {
-    match tx
-        .query_row(
-            "SELECT id FROM image_tags WHERE name = ?1",
-            rusqlite::params![name],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(|e| AppError::Message(e.to_string()))?
-    {
-        Some(tid) => Ok(tid),
-        None => {
-            tx.execute(
-                "INSERT INTO image_tags(name) VALUES (?1)",
-                rusqlite::params![name],
-            )
-            .map_err(|e| AppError::Message(e.to_string()))?;
-            Ok(tx.last_insert_rowid())
-        }
-    }
+    let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
+    image_service::batch_add_image_tag(&conn, &id_refs, &name)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 移除图像的一个标签关联。

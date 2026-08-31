@@ -281,6 +281,65 @@ pub fn empty_trash(conn: &Connection, app: &tauri::AppHandle) -> TrashBatchResul
     result
 }
 
+/// 为单个图像添加一个标签（不存在则创建，关联存在则忽略），并更新图像的 updated_at。
+pub fn add_image_tag(conn: &Connection, id: &str, name: &str) -> Result<Vec<ImageTag>> {
+    let tx = conn.unchecked_transaction()?;
+    let tag_id = get_or_create_image_tag(&tx, name)?;
+    let _ = tx.execute(
+        "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
+        rusqlite::params![id, tag_id],
+    );
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![id],
+    )?;
+    tx.commit()?;
+    Ok(vec![ImageTag {
+        id: tag_id,
+        name: name.trim().to_string(),
+        group_id: None,
+    }])
+}
+
+/// 为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。
+pub fn batch_add_image_tag(conn: &Connection, ids: &[&str], name: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    let tag_id = get_or_create_image_tag(&tx, name)?;
+    for id in ids {
+        let _ = tx.execute(
+            "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
+            rusqlite::params![id, tag_id],
+        );
+        tx.execute(
+            "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// 获取图像标签 id，不存在则创建（供单标签与批量场景复用）。
+fn get_or_create_image_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i64> {
+    match tx
+        .query_row(
+            "SELECT id FROM image_tags WHERE name = ?1",
+            rusqlite::params![name],
+            |r| r.get(0),
+        )
+        .optional()?
+    {
+        Some(tid) => Ok(tid),
+        None => {
+            tx.execute(
+                "INSERT INTO image_tags(name) VALUES (?1)",
+                rusqlite::params![name],
+            )?;
+            Ok(tx.last_insert_rowid())
+        }
+    }
+}
+
 /// 更新图像详情字段（文件名、备注、收藏、安全评级）。仅更新传入非默认值的字段。
 pub fn update_detail(
     conn: &Connection,
