@@ -468,9 +468,19 @@ function exitBatch() {
 }
 
 // ---- 卡片按钮动作 ---- //
-// 复制提示词：当前图片未建立提示词关联（row2 留空），复制占位并提示，待接入关联后改为复制实际提示词
+// 复制关联的第一条提示词内容；未关联时提示
 async function copyPrompt(img: Image) {
-  showToast(`「${img.stored_name}」暂未关联提示词`);
+  const first = imagePrompts.value[img.id]?.[0];
+  if (!first) {
+    showToast(`「${img.stored_name}」暂未关联提示词`);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(first);
+    showToast("已复制提示词内容");
+  } catch {
+    showToast("复制失败");
+  }
 }
 
 // 切换收藏
