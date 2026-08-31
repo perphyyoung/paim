@@ -202,6 +202,24 @@ const { tagInput, addTag } = useTagAdd({
   tags,
   showToast,
 });
+// 复制提示词字段内容（图像详情为纯展示，无编辑态）
+function copyPromptField(text: string, label: string) {
+  if (!text) {
+    showToast(`${label}为空`);
+    return;
+  }
+  navigator.clipboard
+    .writeText(text)
+    .then(() => showToast(`已复制${label}`))
+    .catch(() => showToast("复制失败"));
+}
+function copyPromptContent() {
+  copyPromptField(currentPrompt.value?.content ?? "", "提示词内容");
+}
+function copyPromptTranslate() {
+  copyPromptField(currentPrompt.value?.content_translate ?? "", "翻译");
+}
+
 async function removeTag(tagId: number) {
   const img = current.value;
   if (!img) return;
@@ -439,10 +457,19 @@ const fmtSize = (bytes: number) => {
             </div>
           </div>
           <div>
-            <div
-              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
-              提示词内容
+            <div class="flex items-center justify-between">
+              <div
+                class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+              >
+                提示词内容
+              </div>
+              <button
+                type="button"
+                class="rounded px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                @click="copyPromptContent"
+              >
+                复制
+              </button>
             </div>
             <div
               class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
@@ -451,10 +478,19 @@ const fmtSize = (bytes: number) => {
             </div>
           </div>
           <div>
-            <div
-              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-            >
-              提示词翻译
+            <div class="flex items-center justify-between">
+              <div
+                class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+              >
+                提示词翻译
+              </div>
+              <button
+                type="button"
+                class="rounded px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                @click="copyPromptTranslate"
+              >
+                复制
+              </button>
             </div>
             <div
               class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-700 dark:text-gray-200"
