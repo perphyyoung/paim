@@ -713,7 +713,9 @@ onActivated(() => {
 
                 <!-- row2 提示词内容（占满 row2 才由底部渐变淡出，无固定行数截断） -->
                 <div class="relative flex-1 overflow-hidden px-2 pt-1">
-                  <p class="text-[10px] leading-4 text-white/90 drop-shadow">{{ p.content }}</p>
+                  <p class="text-[length:var(--fs-10)] leading-4 text-white/90 drop-shadow">
+                    {{ p.content }}
+                  </p>
                   <div
                     class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"
                   ></div>
@@ -729,7 +731,7 @@ onActivated(() => {
                 <!-- row4 排序字段 -->
                 <div class="bg-black/70 px-1.5 py-0.5 text-center">
                   <p
-                    class="truncate text-[11px] text-white"
+                    class="truncate text-[length:var(--fs-11)] text-white"
                     :title="`${rowInfo(p).label}：${rowInfo(p).value}`"
                   >
                     {{ rowInfo(p).value }}
@@ -834,8 +836,10 @@ onActivated(() => {
             class="absolute inset-0 h-full w-full object-cover"
           />
           <div class="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-center">
-            <p class="truncate text-[11px] text-white" :title="p.title">{{ p.title }}</p>
-            <p class="truncate text-[10px] text-gray-300">
+            <p class="truncate text-[length:var(--fs-11)] text-white" :title="p.title">
+              {{ p.title }}
+            </p>
+            <p class="truncate text-[length:var(--fs-10)] text-gray-300">
               删除于 {{ formatLocalTime(p.deleted_at) }}
             </p>
           </div>

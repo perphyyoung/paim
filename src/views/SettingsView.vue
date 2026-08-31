@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { appVersion } from "@/version";
+import { useFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { useToast } from "@/components/useToast";
 import { markPageStale } from "@/utils/crossPageCache";
@@ -11,6 +12,12 @@ import PmBackupImportModal from "@/features/backup/components/PmBackupImportModa
 import ThumbnailRebuildModal from "@/features/image/components/ThumbnailRebuildModal.vue";
 
 const { showToast } = useToast();
+
+// 全局字体大小（%），写 CSS 变量 --font-size-scale，--fs-* token 随之缩放
+const { fontScale, setFontScale } = useFontScale();
+function onFontScaleInput(e: Event) {
+  setFontScale(Number((e.target as HTMLInputElement).value));
+}
 
 const dataDir = ref("");
 const openError = ref("");
@@ -122,6 +129,24 @@ onMounted(loadDataDir);
         >
           打开目录
         </button>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <dt class="text-gray-600 dark:text-gray-400">全局字体大小</dt>
+          <dd class="text-sm text-gray-400 dark:text-gray-500">
+            对卡片等界面统一缩放，当前 {{ fontScale }}%
+          </dd>
+        </div>
+        <input
+          v-model.number="fontScale"
+          type="range"
+          :min="FONT_SCALE_LIMITS.min"
+          :max="FONT_SCALE_LIMITS.max"
+          :step="FONT_SCALE_LIMITS.step"
+          class="w-40 shrink-0 accent-blue-600"
+          @input="onFontScaleInput"
+        />
       </div>
 
       <div class="flex items-center justify-between gap-3 py-3">

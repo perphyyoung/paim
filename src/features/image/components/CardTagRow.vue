@@ -68,12 +68,12 @@ onMounted(() => requestAnimationFrame(measure));
     <span
       v-for="t in tags"
       :key="t"
-      class="card-tag mr-0.5 flex-none rounded bg-black/50 px-1 text-[10px] leading-4 text-white"
+      class="card-tag mr-0.5 flex-none rounded bg-black/50 px-1 text-[length:var(--fs-10)] leading-4 text-white"
     >
       {{ t }}
     </span>
     <span
-      class="card-plus flex-none rounded bg-black/60 px-1 text-[10px] leading-4 font-semibold text-amber-400"
+      class="card-plus flex-none rounded bg-black/60 px-1 text-[length:var(--fs-10)] leading-4 font-semibold text-amber-400"
     ></span>
   </div>
 </template>

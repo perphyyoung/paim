@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import { computed, ref } from "vue";
-import { appVersion } from "@/version";
+import { initFontScale } from "@/utils/font";
 import SettingsView from "@/views/SettingsView.vue";
 import ToastHost from "@/components/ToastHost.vue";
+
+// 应用启动即应用持久化的全局字体缩放
+initFontScale();
 
 const tabs = [
   {

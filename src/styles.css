@@ -4,6 +4,12 @@
 
 :root {
   color-scheme: light dark;
+  /* 全局字体缩放：--font-size-scale 由 utils/font.ts 写入，字号 token 均乘此值 */
+  --font-size-scale: 1;
+  --fs-10: calc(12px * var(--font-size-scale));
+  --fs-11: calc(13px * var(--font-size-scale));
+  --fs-12: calc(14px * var(--font-size-scale));
+  --fs-13: calc(15px * var(--font-size-scale));
 }
 /* 隐藏原生滚动条（配合 CustomScrollBar 使用） */
 .no-scrollbar {

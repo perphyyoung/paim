@@ -813,7 +813,7 @@ function onUploadDone() {
                 <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
                   <p
                     v-if="(imagePrompts[img.id] || []).length"
-                    class="text-[10px] leading-4 text-white drop-shadow"
+                    class="text-[length:var(--fs-10)] leading-4 text-white drop-shadow"
                     :title="imagePrompts[img.id].join('\n')"
                   >
                     {{ imagePrompts[img.id][0] }}
@@ -833,7 +833,7 @@ function onUploadDone() {
                 <!-- row4 随排序依据动态显示对应字段值 -->
                 <div class="bg-black/70 px-1.5 py-0.5 text-center">
                   <p
-                    class="truncate text-[11px] text-white"
+                    class="truncate text-[length:var(--fs-11)] text-white"
                     :title="`${rowInfo(img).label}：${rowInfo(img).value}`"
                   >
                     {{ rowInfo(img).value }}
@@ -953,10 +953,12 @@ function onUploadDone() {
             />
           </svg>
           <div class="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-center">
-            <p class="truncate text-[11px] text-white" :title="img.stored_name">
+            <p class="truncate text-[length:var(--fs-11)] text-white" :title="img.stored_name">
               {{ img.stored_name }}
             </p>
-            <p class="truncate text-[10px] text-gray-300">删除于 {{ fmtLocal(img.deleted_at) }}</p>
+            <p class="truncate text-[length:var(--fs-10)] text-gray-300">
+              删除于 {{ fmtLocal(img.deleted_at) }}
+            </p>
           </div>
           <div
             class="absolute inset-x-0 top-0 grid grid-cols-2 items-center py-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
