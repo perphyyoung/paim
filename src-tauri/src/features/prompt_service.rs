@@ -316,7 +316,7 @@ fn get_or_create_prompt_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i6
 }
 
 /// 移除提示词的一个标签关联。
-pub fn remove_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> {
+pub fn remove_prompt_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> {
     conn.execute(
         "DELETE FROM prompt_tag_relations WHERE prompt_id = ?1 AND tag_id = ?2",
         rusqlite::params![id, tag_id],

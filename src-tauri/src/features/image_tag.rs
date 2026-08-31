@@ -88,9 +88,13 @@ pub fn delete_image_tag(db: State<BkDb>, id: i64) -> Result<(), AppError> {
         .map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 移动标签到指定组（group_id 为 null 表示未分组）。
+/// 将标签移动到指定组（group_id 为 null 表示未分组）。
 #[tauri::command]
-pub fn move_tag_to_group(db: State<BkDb>, id: i64, group_id: Option<i64>) -> Result<(), AppError> {
+pub fn move_image_tag_to_group(
+    db: State<BkDb>,
+    id: i64,
+    group_id: Option<i64>,
+) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     tag_manager::move_tag(&conn, TagDomain::Image, id, group_id)
         .map_err(|e| AppError::Message(e.to_string()))

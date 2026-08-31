@@ -130,7 +130,7 @@ pub fn run() {
       features::image_tag::create_image_tag,
       features::image_tag::rename_image_tag,
       features::image_tag::delete_image_tag,
-      features::image_tag::move_tag_to_group,
+      features::image_tag::move_image_tag_to_group,
       features::image_tag::pin_image_tag_group_to_top,
       // —— 日志 & 数据目录 ——
       logging::log_msg,

@@ -35,7 +35,7 @@ const cmds = computed(() => {
     createTag: `create_${p}_tag`,
     renameTag: `rename_${p}_tag`,
     deleteTag: `delete_${p}_tag`,
-    moveTag: props.domain === "image" ? "move_tag_to_group" : `move_${p}_tag_to_group`,
+    moveTag: `move_${p}_tag_to_group`,
     pinGroup: `pin_${p}_tag_group_to_top`,
   };
 });

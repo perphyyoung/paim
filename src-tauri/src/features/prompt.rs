@@ -369,7 +369,8 @@ pub fn add_prompt_tag_batch(
 #[tauri::command]
 pub fn remove_prompt_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    prompt_service::remove_tag(&conn, &id, tag_id).map_err(|e| AppError::Message(e.to_string()))
+    prompt_service::remove_prompt_tag(&conn, &id, tag_id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 取消提示词与其一张图像的关联。
