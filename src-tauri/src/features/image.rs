@@ -272,63 +272,81 @@ pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, AppE
     Ok(tags)
 }
 
-/// 为图像添加多个标签：标签不存在则创建，关联存在则忽略，并更新图像的 updated_at。
+/// 为单个图像添加一个标签：标签不存在则创建，关联存在则忽略，并更新图像的 updated_at。
 #[tauri::command]
-pub fn add_image_tags(
-    db: State<BkDb>,
-    id: String,
-    names: Vec<String>,
-) -> Result<Vec<ImageTag>, AppError> {
+pub fn add_image_tag(db: State<BkDb>, id: String, name: String) -> Result<Vec<ImageTag>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let tx = conn
         .unchecked_transaction()
         .map_err(|e| AppError::Message(e.to_string()))?;
 
-    let mut result = Vec::new();
-    for raw in names {
-        let name = raw.trim();
-        if name.is_empty() {
-            continue;
-        }
-        // 获取或创建标签
-        let tag_id: i64 = match tx
-            .query_row(
-                "SELECT id FROM image_tags WHERE name = ?1",
-                rusqlite::params![name],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(|e| AppError::Message(e.to_string()))?
-        {
-            Some(tid) => tid,
-            None => {
-                tx.execute(
-                    "INSERT INTO image_tags(name) VALUES (?1)",
-                    rusqlite::params![name],
-                )
-                .map_err(|e| AppError::Message(e.to_string()))?;
-                tx.last_insert_rowid()
-            }
-        };
-        // 建立关联（重复时因主键冲突报错，忽略）
-        let _ = tx.execute(
-            "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
-            rusqlite::params![id, tag_id],
-        );
-        result.push(ImageTag {
-            id: tag_id,
-            name: name.to_string(),
-            group_id: None,
-        });
-    }
-
+    let tag_id = get_or_create_image_tag(&tx, &name)?;
+    let _ = tx.execute(
+        "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
+        rusqlite::params![id, tag_id],
+    );
     tx.execute(
         "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
         rusqlite::params![id],
     )
     .map_err(|e| AppError::Message(e.to_string()))?;
     tx.commit().map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(result)
+    Ok(vec![ImageTag {
+        id: tag_id,
+        name: name.trim().to_string(),
+        group_id: None,
+    }])
+}
+
+/// 为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。
+#[tauri::command]
+pub fn add_image_tag_batch(
+    db: State<BkDb>,
+    ids: Vec<String>,
+    name: String,
+) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Message(e.to_string()))?;
+
+    let tag_id = get_or_create_image_tag(&tx, &name)?;
+    for id in &ids {
+        let _ = tx.execute(
+            "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
+            rusqlite::params![id, tag_id],
+        );
+        tx.execute(
+            "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            rusqlite::params![id],
+        )
+        .map_err(|e| AppError::Message(e.to_string()))?;
+    }
+    tx.commit().map_err(|e| AppError::Message(e.to_string()))?;
+    Ok(())
+}
+
+/// 获取图像标签 id，不存在则创建（供单标签与批量场景复用）。
+fn get_or_create_image_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i64, AppError> {
+    match tx
+        .query_row(
+            "SELECT id FROM image_tags WHERE name = ?1",
+            rusqlite::params![name],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| AppError::Message(e.to_string()))?
+    {
+        Some(tid) => Ok(tid),
+        None => {
+            tx.execute(
+                "INSERT INTO image_tags(name) VALUES (?1)",
+                rusqlite::params![name],
+            )
+            .map_err(|e| AppError::Message(e.to_string()))?;
+            Ok(tx.last_insert_rowid())
+        }
+    }
 }
 
 /// 移除图像的一个标签关联。

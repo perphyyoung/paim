@@ -268,40 +268,51 @@ pub fn list_related_images(
     Ok(out)
 }
 
-/// 为提示词添加标签（不存在则创建），返回新增关联的标签 (id, name)。
-pub fn add_tags(conn: &Connection, id: &str, names: &[String]) -> Result<Vec<(i64, String)>> {
+/// 为单个提示词添加一个标签（不存在则创建，关联存在则忽略），返回关联的标签。
+pub fn add_tag(conn: &Connection, id: &str, name: &str) -> Result<Vec<(i64, String)>> {
     let tx = conn.unchecked_transaction()?;
-    let mut result = Vec::new();
-    for raw in names {
-        let name = raw.trim();
-        if name.is_empty() {
-            continue;
-        }
-        let tag_id: i64 = match tx
-            .query_row(
-                "SELECT id FROM prompt_tags WHERE name = ?1",
-                rusqlite::params![name],
-                |r| r.get(0),
-            )
-            .optional()?
-        {
-            Some(tid) => tid,
-            None => {
-                tx.execute(
-                    "INSERT INTO prompt_tags(name) VALUES (?1)",
-                    rusqlite::params![name],
-                )?;
-                tx.last_insert_rowid()
-            }
-        };
+    let tag_id = get_or_create_tag(&tx, name)?;
+    let _ = tx.execute(
+        "INSERT OR IGNORE INTO prompt_tag_relations(prompt_id, tag_id) VALUES (?1, ?2)",
+        rusqlite::params![id, tag_id],
+    );
+    tx.commit()?;
+    Ok(vec![(tag_id, name.to_string())])
+}
+
+/// 为多个提示词批量添加同一个标签（单事务）：一次为多个项目打同一个标签。
+pub fn batch_add_tag(conn: &Connection, ids: &[&str], name: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    let tag_id = get_or_create_tag(&tx, name)?;
+    for id in ids {
         let _ = tx.execute(
             "INSERT OR IGNORE INTO prompt_tag_relations(prompt_id, tag_id) VALUES (?1, ?2)",
             rusqlite::params![id, tag_id],
         );
-        result.push((tag_id, name.to_string()));
     }
     tx.commit()?;
-    Ok(result)
+    Ok(())
+}
+
+/// 获取标签 id，不存在则创建（供单标签与批量场景复用）。
+fn get_or_create_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i64> {
+    match tx
+        .query_row(
+            "SELECT id FROM prompt_tags WHERE name = ?1",
+            rusqlite::params![name],
+            |r| r.get(0),
+        )
+        .optional()?
+    {
+        Some(tid) => Ok(tid),
+        None => {
+            tx.execute(
+                "INSERT INTO prompt_tags(name) VALUES (?1)",
+                rusqlite::params![name],
+            )?;
+            Ok(tx.last_insert_rowid())
+        }
+    }
 }
 
 /// 移除提示词的一个标签关联。

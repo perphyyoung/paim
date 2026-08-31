@@ -294,13 +294,11 @@ function exitBatch() {
   batchOpen.value = false;
 }
 
-async function batchAddTag(tags: string[]) {
+async function batchAddTag(tag: string) {
   const ids = Array.from(selectedIds.value);
   if (ids.length === 0) return;
   try {
-    for (const id of ids) {
-      await invoke("add_prompt_tags", { id, names: tags });
-    }
+    await invoke("add_prompt_tag_batch", { ids, name: tag });
     showToast(`已为 ${ids.length} 个提示词添加标签`);
     exitBatch();
     await loadTagFilter();

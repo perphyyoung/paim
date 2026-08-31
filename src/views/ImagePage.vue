@@ -561,13 +561,11 @@ async function batchFavorite() {
   }
 }
 
-async function batchAddTag(tags: string[]) {
+async function batchAddTag(tag: string) {
   const ids = Array.from(selectedIds.value);
   if (ids.length === 0) return;
   try {
-    for (const id of ids) {
-      await invoke("add_image_tags", { id, names: tags });
-    }
+    await invoke("add_image_tag_batch", { ids, name: tag });
     showToast(`已为 ${ids.length} 张图像添加标签`);
     exitBatch();
     await loadTagFilter();

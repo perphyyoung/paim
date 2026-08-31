@@ -13,7 +13,7 @@ export interface TagLite {
 }
 
 export interface UseTagAddOptions {
-  /** 后端命令，如 "add_image_tags" / "add_prompt_tags"，接收 { id, names } */
+  /** 后端命令，如 "add_image_tag" / "add_prompt_tag"，接收 { id, name } */
   command: string;
   /** 返回当前详情项的 id（详情关闭后可能为 undefined） */
   getItemId: () => string | number | undefined;
@@ -36,7 +36,7 @@ export function useTagAdd(options: UseTagAddOptions) {
     if (!id) return 0;
     if (!name) return 0;
     try {
-      const added = await invoke<TagLite[]>(command, { id, names: [name] });
+      const added = await invoke<TagLite[]>(command, { id, name });
       tagInput.value = "";
       for (const t of added) {
         if (!tags.value.some((x) => x.id === t.id)) tags.value.push(t);

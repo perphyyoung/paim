@@ -23,7 +23,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: "select-all"): void;
   (e: "invert"): void;
-  (e: "add-tag", tags: string[]): void;
+  (e: "add-tag", tag: string): void;
   (e: "favorite"): void;
   (e: "delete"): void;
   (e: "cancel"): void;
@@ -46,7 +46,7 @@ function submitAddTag() {
   const tag = tagInput.value.trim();
   tagDlgOpen.value = false;
   if (!tag) return;
-  emit("add-tag", [tag]);
+  emit("add-tag", tag);
 }
 </script>
 

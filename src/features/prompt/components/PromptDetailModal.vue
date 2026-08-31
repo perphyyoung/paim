@@ -181,7 +181,7 @@ async function saveFields() {
 
 // 添加标签：一次只添加一个标签
 const { tagInput, addTag } = useTagAdd({
-  command: "add_prompt_tags",
+  command: "add_prompt_tag",
   getItemId: () => current.value?.id,
   tags,
   showToast,

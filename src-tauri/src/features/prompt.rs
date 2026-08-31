@@ -331,16 +331,16 @@ pub fn get_prompt_related_images(
         .map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 为提示词添加标签（不存在则创建），返回新增关联的标签。
+/// 为单个提示词添加一个标签（不存在则创建），返回新增关联的标签。
 #[tauri::command]
-pub fn add_prompt_tags(
+pub fn add_prompt_tag(
     db: State<BkDb>,
     id: String,
-    names: Vec<String>,
+    name: String,
 ) -> Result<Vec<PromptTagItem>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let added = prompt_service::add_tags(&conn, &id, &names)
-        .map_err(|e| AppError::Message(e.to_string()))?;
+    let added =
+        prompt_service::add_tag(&conn, &id, &name).map_err(|e| AppError::Message(e.to_string()))?;
     Ok(added
         .into_iter()
         .map(|(id, name)| PromptTagItem {
@@ -350,6 +350,19 @@ pub fn add_prompt_tags(
             count: 0,
         })
         .collect())
+}
+
+/// 为多个提示词批量添加同一个标签（单事务）。
+#[tauri::command]
+pub fn add_prompt_tag_batch(
+    db: State<BkDb>,
+    ids: Vec<String>,
+    name: String,
+) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
+    prompt_service::batch_add_tag(&conn, &id_refs, &name)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 移除提示词的一个标签关联。
