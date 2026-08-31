@@ -4,7 +4,7 @@
  * 形态参考 pm 的批量工具栏：固定底部居中、深色半透明 + 模糊、上滑动画。
  * 仅负责 UI 展示与事件派发，业务逻辑由父组件处理；添加标签弹窗内置于此。
  */
-import { ref } from "vue";
+import { nextTick, ref, watch } from "vue";
 
 export type BatchAction = "selectAll" | "invert" | "addTag" | "favorite" | "delete" | "cancel";
 
@@ -36,6 +36,15 @@ function has(action: BatchAction): boolean {
 // ---- 添加标签弹窗 ----
 const tagDlgOpen = ref(false);
 const tagInput = ref("");
+const tagInputEl = ref<HTMLInputElement | null>(null);
+
+// 弹窗打开时自动聚焦输入框
+watch(tagDlgOpen, async (v) => {
+  if (v) {
+    await nextTick();
+    tagInputEl.value?.focus();
+  }
+});
 
 function openTagDialog() {
   tagInput.value = "";
@@ -123,6 +132,7 @@ function submitAddTag() {
           批量添加标签
         </h3>
         <input
+          ref="tagInputEl"
           v-model="tagInput"
           type="text"
           placeholder="标签名"
