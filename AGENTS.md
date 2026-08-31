@@ -7,3 +7,11 @@
 - 禁止 mod.rs 命名，直接功能命名
 - 测试写在独立的 `*.test.rs` 文件（与源文件平铺，如 `db.test.rs`），源文件末尾用 `#[cfg(test)] #[path = "..."] mod tests;` 声明；不内联测试块，也不用同名目录下的 `tests.rs`（同名文件在 grep/编辑器中无法区分）
 - UI 设计参考 desing.md
+
+## 参考项目
+
+- pm
+  - 全称：prompt-manager
+  - 说明：本应用的 electron 版本
+  - 项目路径: "D:\develop\comfy-common\prompt-manager"
+  - 查阅时可参考 "D:\develop\comfy-common\prompt-manager\代码目录结构说明.md"
