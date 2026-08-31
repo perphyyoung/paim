@@ -32,7 +32,9 @@ const emit = defineEmits<{
       class="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
       @click.self="emit('cancel')"
     >
-      <div class="w-80 max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div
+        class="w-80 max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+      >
         <h3 class="text-center text-base font-semibold text-gray-800 dark:text-gray-100">
           {{ title }}
         </h3>
@@ -50,9 +52,7 @@ const emit = defineEmits<{
           <button
             type="button"
             class="rounded-lg py-2 text-sm text-white transition-colors"
-            :class="danger
-              ? 'bg-red-600 hover:bg-red-500'
-              : 'bg-blue-600 hover:bg-blue-500'"
+            :class="danger ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'"
             @click="emit('confirm')"
           >
             {{ confirmText }}

@@ -71,26 +71,30 @@ const relatedPrompts = ref<LinkedPrompt[]>([]);
 const promptIndex = ref(0);
 // 详情页左侧展示的提示词：多引时可切换，单选恒为第一个
 const currentPrompt = computed<LinkedPrompt | undefined>(() =>
-  props.open ? relatedPrompts.value[promptIndex.value] : undefined
+  props.open ? relatedPrompts.value[promptIndex.value] : undefined,
 );
 
 // —— 编辑提示词（打开提示词详情弹窗，复用 PromptDetailModal）——
 const editPromptOpen = ref(false);
 // 供 PromptDetailModal 使用的标签数据（由本图像的提示词标签构造）
-const promptAllTags = ref<{ id: number; name: string; group_id: number | null; count: number }[]>([]);
+const promptAllTags = ref<{ id: number; name: string; group_id: number | null; count: number }[]>(
+  [],
+);
 const promptTagNames = ref<Record<string, string[]>>({});
 // 编辑目标：把当前选中的提示词转成 PromptDetailModal 需要的 Prompt 对象
-const editPrompt = computed<{
-  id: string;
-  title: string;
-  content: string;
-  content_translate: string;
-  note: string;
-  is_favorite: boolean;
-  is_safe: boolean;
-  created_at: string;
-  updated_at: string;
-}[ ]>(() => {
+const editPrompt = computed<
+  {
+    id: string;
+    title: string;
+    content: string;
+    content_translate: string;
+    note: string;
+    is_favorite: boolean;
+    is_safe: boolean;
+    created_at: string;
+    updated_at: string;
+  }[]
+>(() => {
   const p = currentPrompt.value;
   if (!p) return [];
   return [
@@ -234,10 +238,8 @@ const {
   confirmAction,
 } = useConfirm();
 function requestRemoveTag(t: { id: number; name: string }) {
-  ask(
-    `确定删除图像标签「${t.name}」？`,
-    { danger: true, confirmText: "删除" },
-    () => removeTag(t.id)
+  ask(`确定删除图像标签「${t.name}」？`, { danger: true, confirmText: "删除" }, () =>
+    removeTag(t.id),
   );
 }
 
@@ -260,7 +262,7 @@ function requestUnlink(p: LinkedPrompt) {
   ask(
     `确定解除与提示词「${p.title || "未命名"}」的关联？`,
     { danger: true, confirmText: "解除" },
-    () => unlinkPrompt(p)
+    () => unlinkPrompt(p),
   );
 }
 
@@ -269,10 +271,9 @@ async function loadRelatedPrompts() {
   const img = current.value;
   if (!img) return;
   try {
-    relatedPrompts.value = await invoke<LinkedPrompt[]>(
-      "get_image_related_prompts",
-      { id: img.id }
-    );
+    relatedPrompts.value = await invoke<LinkedPrompt[]>("get_image_related_prompts", {
+      id: img.id,
+    });
   } catch {
     relatedPrompts.value = [];
   }
@@ -294,16 +295,19 @@ watch(
       loadRelatedPrompts();
     }
   },
-  { immediate: true } // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
+  { immediate: true }, // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
 );
 // 导航切换时加载对应原图与标签、关联提示词；并复位编辑态
-watch(() => current.value?.id, () => {
-  edit.value = false;
-  syncFields();
-  loadOrig();
-  loadTags();
-  loadRelatedPrompts();
-});
+watch(
+  () => current.value?.id,
+  () => {
+    edit.value = false;
+    syncFields();
+    loadOrig();
+    loadTags();
+    loadRelatedPrompts();
+  },
+);
 
 function syncFields() {
   fileName.value = current.value?.file_name ?? "";
@@ -377,18 +381,35 @@ const fmtSize = (bytes: number) => {
         >
           <div>
             <div class="flex items-center justify-between">
-              <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标题</div>
+              <div
+                class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+              >
+                提示词标题
+              </div>
               <button
                 type="button"
                 class="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 :title="currentPrompt ? '编辑提示词' : '新建提示词'"
                 @click="currentPrompt ? openEditPrompt() : openCreatePrompt()"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>
-                {{ currentPrompt ? (relatedPrompts.length > 1 ? `编辑 (${promptIndex + 1})` : "编辑") : "新建" }}
+                {{
+                  currentPrompt
+                    ? relatedPrompts.length > 1
+                      ? `编辑 (${promptIndex + 1})`
+                      : "编辑"
+                    : "新建"
+                }}
               </button>
             </div>
             <!-- 多引：编号标题列表，可点选切换 -->
@@ -417,7 +438,10 @@ const fmtSize = (bytes: number) => {
               </div>
             </div>
             <!-- 单选：单行标题 -->
-            <div v-else class="group mt-1 flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200">
+            <div
+              v-else
+              class="group mt-1 flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200"
+            >
               <span class="min-w-0 flex-1">{{ currentPrompt?.title || "— 暂无关联提示词 —" }}</span>
               <button
                 v-if="currentPrompt"
@@ -431,25 +455,41 @@ const fmtSize = (bytes: number) => {
             </div>
           </div>
           <div>
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词内容</div>
+            <div
+              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
+              提示词内容
+            </div>
             <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
               {{ currentPrompt?.content || "—" }}
             </div>
           </div>
           <div>
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词翻译</div>
+            <div
+              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
+              提示词翻译
+            </div>
             <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
               {{ currentPrompt?.content_translate || "—" }}
             </div>
           </div>
           <div>
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词备注</div>
+            <div
+              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
+              提示词备注
+            </div>
             <div class="mt-1 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
               {{ currentPrompt?.note || "—" }}
             </div>
           </div>
           <div>
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标签</div>
+            <div
+              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
+              提示词标签
+            </div>
             <div v-if="currentPrompt?.tags?.length" class="mt-1 flex flex-wrap gap-1">
               <span
                 v-for="t in currentPrompt.tags"
@@ -464,13 +504,10 @@ const fmtSize = (bytes: number) => {
         </div>
 
         <!-- 中：图像显示 -->
-        <div class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-100 dark:bg-gray-900">
-          <img
-            v-if="origSrc"
-            :src="origSrc"
-            alt=""
-            class="max-h-full max-w-full object-contain"
-          />
+        <div
+          class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-100 dark:bg-gray-900"
+        >
+          <img v-if="origSrc" :src="origSrc" alt="" class="max-h-full max-w-full object-contain" />
           <img
             v-else-if="current && thumbs[current.id]"
             :src="thumbs[current.id]"
@@ -478,17 +515,17 @@ const fmtSize = (bytes: number) => {
             class="max-h-full max-w-full object-contain"
           />
           <p v-else class="text-sm text-gray-400 dark:text-gray-500">无图像</p>
-        <!-- 导航 + 索引：图像区底部居中，与提示词详情共用组件 -->
-        <div class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
-          <NavAndIndex
-            :current-index="currentIndex"
-            :order-length="order.length"
-            @first="goFirst"
-            @prev="nav(-1)"
-            @next="nav(1)"
-            @last="goLast"
-          />
-        </div>
+          <!-- 导航 + 索引：图像区底部居中，与提示词详情共用组件 -->
+          <div class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
+            <NavAndIndex
+              :current-index="currentIndex"
+              :order-length="order.length"
+              @first="goFirst"
+              @prev="nav(-1)"
+              @next="nav(1)"
+              @last="goLast"
+            />
+          </div>
         </div>
 
         <!-- 右：图像相关信息 -->
@@ -508,12 +545,7 @@ const fmtSize = (bytes: number) => {
                 :title="current?.is_favorite ? '取消收藏' : '收藏'"
                 @click="toggleFavorite"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  class="h-4 w-4"
-                  aria-hidden="true"
-                >
+                <svg viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4" aria-hidden="true">
                   <path
                     d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
                   />
@@ -533,11 +565,7 @@ const fmtSize = (bytes: number) => {
                 />
                 <span
                   class="absolute inset-0 cursor-pointer rounded-full transition-colors duration-300"
-                  :class="
-                    current?.is_safe
-                      ? 'bg-green-500'
-                      : 'bg-red-500'
-                  "
+                  :class="current?.is_safe ? 'bg-green-500' : 'bg-red-500'"
                 ></span>
                 <span
                   class="absolute bottom-[3px] left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-300"
@@ -562,24 +590,34 @@ const fmtSize = (bytes: number) => {
                 class="rounded px-2 py-1 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
                 title="关闭"
                 @click="close"
-            >
-              ✕
-            </button>
+              >
+                ✕
+              </button>
             </div>
           </div>
 
           <div>
-            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">文件名</div>
+            <div
+              class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
+              文件名
+            </div>
             <input
               v-if="edit"
               v-model="fileName"
               class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
             />
-            <div v-else class="mt-1 break-all text-sm text-gray-700 dark:text-gray-200">{{ fileName }}</div>
+            <div v-else class="mt-1 break-all text-sm text-gray-700 dark:text-gray-200">
+              {{ fileName }}
+            </div>
           </div>
 
           <div>
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">图像标签</div>
+            <div
+              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
+              图像标签
+            </div>
             <div v-if="tags.length" class="mt-1 flex flex-wrap gap-1">
               <span
                 v-for="t in tags"
@@ -616,7 +654,11 @@ const fmtSize = (bytes: number) => {
           </div>
 
           <div>
-            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">备注</div>
+            <div
+              class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
+              备注
+            </div>
             <textarea
               v-if="edit"
               v-model="note"
@@ -629,49 +671,64 @@ const fmtSize = (bytes: number) => {
           </div>
 
           <div>
-            <div class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">图像信息</div>
+            <div
+              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
+              图像信息
+            </div>
             <ul class="mt-1 space-y-1 text-sm">
               <li class="flex justify-between">
                 <span class="text-gray-400 dark:text-gray-500">更新时间</span>
-                <span class="text-gray-700 dark:text-gray-200">{{ fmtLocal(current?.updated_at ?? null) }}</span>
+                <span class="text-gray-700 dark:text-gray-200">{{
+                  fmtLocal(current?.updated_at ?? null)
+                }}</span>
               </li>
               <li class="flex justify-between">
                 <span class="text-gray-400 dark:text-gray-500">导入时间</span>
-                <span class="text-gray-700 dark:text-gray-200">{{ fmtLocal(current?.created_at ?? null) }}</span>
+                <span class="text-gray-700 dark:text-gray-200">{{
+                  fmtLocal(current?.created_at ?? null)
+                }}</span>
               </li>
               <li class="flex justify-between">
                 <span class="text-gray-400 dark:text-gray-500">尺寸</span>
                 <span class="text-gray-700 dark:text-gray-200">
-                  {{ current?.width && current.height ? `${current.width} × ${current.height}` : "—" }}
+                  {{
+                    current?.width && current.height ? `${current.width} × ${current.height}` : "—"
+                  }}
                 </span>
               </li>
               <li class="flex justify-between">
                 <span class="text-gray-400 dark:text-gray-500">大小</span>
-                <span class="text-gray-700 dark:text-gray-200">{{ current ? fmtSize(current.file_size) : "—" }}</span>
+                <span class="text-gray-700 dark:text-gray-200">{{
+                  current ? fmtSize(current.file_size) : "—"
+                }}</span>
               </li>
             </ul>
           </div>
 
-      <!-- 编辑态悬浮按钮组：脱离文档流，不占/不遮挡编辑区域，顺序与提示词详情一致（取消前、保存后） -->
-      <div
-        v-if="edit"
-        class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2"
-      >
-        <button
-          type="button"
-          class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-lg transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-          @click="edit = false; syncFields()"
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg transition-colors hover:bg-blue-500"
-          @click="saveFields"
-        >
-          保存
-        </button>
-      </div>
+          <!-- 编辑态悬浮按钮组：脱离文档流，不占/不遮挡编辑区域，顺序与提示词详情一致（取消前、保存后） -->
+          <div
+            v-if="edit"
+            class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2"
+          >
+            <button
+              type="button"
+              class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 shadow-lg transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              @click="
+                edit = false;
+                syncFields();
+              "
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg transition-colors hover:bg-blue-500"
+              @click="saveFields"
+            >
+              保存
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -695,8 +752,12 @@ const fmtSize = (bytes: number) => {
       class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40"
       @click.self="createPromptOpen = false"
     >
-      <div class="w-[520px] max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <h3 class="text-center text-base font-semibold text-gray-800 dark:text-gray-100">新建提示词</h3>
+      <div
+        class="w-[520px] max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+      >
+        <h3 class="text-center text-base font-semibold text-gray-800 dark:text-gray-100">
+          新建提示词
+        </h3>
         <textarea
           ref="createInput"
           v-model="createContent"
@@ -735,7 +796,10 @@ const fmtSize = (bytes: number) => {
     :initial-index="0"
     :tag-names="promptTagNames"
     :all-tags="promptAllTags"
-    @close="editPromptOpen = false; loadRelatedPrompts()"
+    @close="
+      editPromptOpen = false;
+      loadRelatedPrompts();
+    "
     @updated="loadRelatedPrompts()"
   />
 </template>

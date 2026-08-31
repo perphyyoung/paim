@@ -80,11 +80,8 @@ pub fn inspect(zip_path: &str) -> Result<PmBackupInfo, String> {
     let result = (|| {
         let pm_db = tmp.join("prompt-manager.db");
         extract_entry(&mut archive, &format!("{root}{DB_ENTRY}"), &pm_db)?;
-        let conn = Connection::open_with_flags(
-            &pm_db,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )
-        .map_err(|e| format!("打开备份数据库失败: {e}"))?;
+        let conn = Connection::open_with_flags(&pm_db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("打开备份数据库失败: {e}"))?;
         let count = |sql: &str| -> Result<i64, String> {
             conn.query_row(sql, [], |r| r.get(0))
                 .map_err(|e| format!("统计备份数据失败: {e}"))
@@ -114,7 +111,12 @@ fn open_app_db(path: &Path) -> Result<Connection, String> {
 /// 执行导入：整体替换当前数据。与 pm 一致——导入前整个数据目录改名让位
 /// （同级 `paim-data_{时间戳}`，含图像与缩略图，改回原名即可直接使用），
 /// 原路径重建后灌入备份数据；失败自动回滚（删半成品、备份目录归位、重开原库）。
-pub fn import<F>(app: &tauri::AppHandle, bk: &BkDb, zip_path: &str, emit: F) -> Result<PmImportSummary, String>
+pub fn import<F>(
+    app: &tauri::AppHandle,
+    bk: &BkDb,
+    zip_path: &str,
+    emit: F,
+) -> Result<PmImportSummary, String>
 where
     F: Fn(ImportProgress) + Sync,
 {
@@ -423,7 +425,10 @@ fn locate_root(archive: &mut ZipArchive<std::fs::File>) -> Result<String, String
 }
 
 /// 读取 manifest.json 并解析。
-fn read_manifest(archive: &mut ZipArchive<std::fs::File>, root: &str) -> Result<BackupManifest, String> {
+fn read_manifest(
+    archive: &mut ZipArchive<std::fs::File>,
+    root: &str,
+) -> Result<BackupManifest, String> {
     let content = read_entry_to_string(archive, &format!("{root}{MANIFEST_ENTRY}"))?;
     serde_json::from_str(&content).map_err(|_| "manifest.json 格式无效".to_string())
 }
@@ -447,8 +452,7 @@ fn read_entry_to_string(
     archive: &mut ZipArchive<std::fs::File>,
     normalized: &str,
 ) -> Result<String, String> {
-    let raw = raw_name_of(archive, normalized)
-        .ok_or_else(|| format!("备份缺少 {normalized}"))?;
+    let raw = raw_name_of(archive, normalized).ok_or_else(|| format!("备份缺少 {normalized}"))?;
     let mut entry = archive
         .by_name(&raw)
         .map_err(|e| format!("读取 {normalized} 失败: {e}"))?;
@@ -465,14 +469,12 @@ fn extract_entry(
     normalized: &str,
     dest: &Path,
 ) -> Result<(), String> {
-    let raw = raw_name_of(archive, normalized)
-        .ok_or_else(|| format!("备份缺少 {normalized}"))?;
+    let raw = raw_name_of(archive, normalized).ok_or_else(|| format!("备份缺少 {normalized}"))?;
     let mut entry = archive
         .by_name(&raw)
         .map_err(|e| format!("读取 {normalized} 失败: {e}"))?;
     let mut out = std::fs::File::create(dest).map_err(|e| format!("创建临时文件失败: {e}"))?;
-    std::io::copy(&mut entry, &mut out)
-        .map_err(|e| format!("解压 {normalized} 失败: {e}"))?;
+    std::io::copy(&mut entry, &mut out).map_err(|e| format!("解压 {normalized} 失败: {e}"))?;
     Ok(())
 }
 
@@ -507,7 +509,8 @@ fn count_image_entries(archive: &mut ZipArchive<std::fs::File>, image_prefix: &s
 
 /// 条目相对路径是否安全（拒绝空段/./.. /盘符），防 zip-slip。
 fn is_safe_rel_path(rel: &str) -> bool {
-    !rel.split('/').any(|seg| seg.is_empty() || seg == "." || seg == ".." || seg.ends_with(':'))
+    !rel.split('/')
+        .any(|seg| seg.is_empty() || seg == "." || seg == ".." || seg.ends_with(':'))
 }
 
 fn create_temp_dir() -> Result<PathBuf, String> {
@@ -523,7 +526,6 @@ fn create_temp_dir() -> Result<PathBuf, String> {
 fn io_err(e: std::io::Error) -> String {
     format!("写入文件失败: {e}")
 }
-
 
 #[cfg(test)]
 #[path = "pm_backup_service.test.rs"]

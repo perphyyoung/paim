@@ -113,7 +113,14 @@ onBeforeUnmount(() => {
       :disabled="!canScroll"
       @click="page(-1)"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3.5 w-3.5" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        class="h-3.5 w-3.5"
+        aria-hidden="true"
+      >
         <path stroke-linecap="round" stroke-linejoin="round" d="m18 15-6-6-6 6" />
       </svg>
     </button>
@@ -121,7 +128,9 @@ onBeforeUnmount(() => {
     <div
       ref="trackRef"
       class="relative w-2 flex-1 rounded-full"
-      :class="canScroll ? 'cursor-pointer bg-gray-200 dark:bg-gray-700' : 'bg-gray-100 dark:bg-gray-800'"
+      :class="
+        canScroll ? 'cursor-pointer bg-gray-200 dark:bg-gray-700' : 'bg-gray-100 dark:bg-gray-800'
+      "
       @click="onTrackClick"
     >
       <div
@@ -139,7 +148,14 @@ onBeforeUnmount(() => {
       :disabled="!canScroll"
       @click="page(1)"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3.5 w-3.5" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        class="h-3.5 w-3.5"
+        aria-hidden="true"
+      >
         <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
       </svg>
     </button>

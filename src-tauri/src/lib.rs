@@ -7,7 +7,7 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
+    tauri::Builder::default()
     .setup(|app| {
       app.handle().plugin(tauri_plugin_dialog::init())?;
 
@@ -83,7 +83,7 @@ pub fn run() {
       features::prompt::get_prompt_tag_data,
       features::prompt::add_prompt_tags,
       features::prompt::remove_prompt_tag,
-      features::prompt::remove_prompt_image,      
+      features::prompt::remove_prompt_image,
       // —— 图像通用 ——
       features::image::upload_image,
       features::image::upload_images,

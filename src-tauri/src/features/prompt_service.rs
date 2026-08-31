@@ -233,7 +233,11 @@ pub fn list_related_images(
          ORDER BY pir.sort_order, pir.rowid",
     )?;
     let rows = stmt.query_map(rusqlite::params![prompt_id], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?))
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, Option<String>>(2)?,
+        ))
     })?;
     let mut out = Vec::new();
     for row in rows {

@@ -2,8 +2,8 @@
 //! 数据源为 prompt_tags / prompt_tag_groups / prompt_tag_relations 表，
 //! 与图像侧 features::image_tag 结构对称。
 
-use crate::error::AppError;
 use crate::db::BkDb;
+use crate::error::AppError;
 use crate::features::tag_manager;
 use crate::features::tag_manager::TagDomain;
 use tauri::State;
@@ -12,7 +12,8 @@ use tauri::State;
 #[tauri::command]
 pub fn list_prompt_tag_groups(db: State<BkDb>) -> Result<tag_manager::TagManagerData, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::load_manager_data(&conn, TagDomain::Prompt).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::load_manager_data(&conn, TagDomain::Prompt)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 新建标签组，返回新组。
@@ -26,7 +27,8 @@ pub fn create_prompt_tag_group(
         return Err("组名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::create_group(&conn, TagDomain::Prompt, &name, sort_order).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::create_group(&conn, TagDomain::Prompt, &name, sort_order)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 编辑标签组：更新名称与排序数值。
@@ -41,14 +43,16 @@ pub fn update_prompt_tag_group(
         return Err("组名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::update_group(&conn, TagDomain::Prompt, id, &name, sort_order).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::update_group(&conn, TagDomain::Prompt, id, &name, sort_order)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 删除标签组（组内标签交由外键 ON DELETE SET NULL 变为未分组）。
 #[tauri::command]
 pub fn delete_prompt_tag_group(db: State<BkDb>, id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::delete_group(&conn, TagDomain::Prompt, id).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::delete_group(&conn, TagDomain::Prompt, id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 新建标签（可指定所属组），返回新标签。
@@ -62,7 +66,8 @@ pub fn create_prompt_tag(
         return Err("标签名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::create_tag(&conn, TagDomain::Prompt, &name, group_id).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::create_tag(&conn, TagDomain::Prompt, &name, group_id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 重命名标签。
@@ -72,26 +77,34 @@ pub fn rename_prompt_tag(db: State<BkDb>, id: i64, name: String) -> Result<(), A
         return Err("标签名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::rename_tag(&conn, TagDomain::Prompt, id, &name).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::rename_tag(&conn, TagDomain::Prompt, id, &name)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 删除标签（关联关系由外键 CASCADE 一并清除）。
 #[tauri::command]
 pub fn delete_prompt_tag(db: State<BkDb>, id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::delete_tag(&conn, TagDomain::Prompt, id).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::delete_tag(&conn, TagDomain::Prompt, id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 移动标签到指定组（group_id 为 null 表示未分组）。
 #[tauri::command]
-pub fn move_prompt_tag_to_group(db: State<BkDb>, id: i64, group_id: Option<i64>) -> Result<(), AppError> {
+pub fn move_prompt_tag_to_group(
+    db: State<BkDb>,
+    id: i64,
+    group_id: Option<i64>,
+) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::move_tag(&conn, TagDomain::Prompt, id, group_id).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::move_tag(&conn, TagDomain::Prompt, id, group_id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 将标签组固定到首位（sort_order 设为当前最小值 - 1）。
 #[tauri::command]
 pub fn pin_prompt_tag_group_to_top(db: State<BkDb>, id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::pin_group_to_top(&conn, TagDomain::Prompt, id).map_err(|e| AppError::Message(e.to_string()))
+    tag_manager::pin_group_to_top(&conn, TagDomain::Prompt, id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }

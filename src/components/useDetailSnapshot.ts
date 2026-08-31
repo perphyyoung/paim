@@ -10,10 +10,7 @@ interface IdItem {
  * 列表顺序的重新同步由父组件在关闭详情时触发。
  * 供提示词/图像等详情组件共用。
  */
-export function useDetailSnapshot<T extends IdItem>(
-  getItems: () => T[],
-  order: Ref<string[]>,
-) {
+export function useDetailSnapshot<T extends IdItem>(getItems: () => T[], order: Ref<string[]>) {
   const currentId = ref<string>("");
 
   const current = computed<T | null>(

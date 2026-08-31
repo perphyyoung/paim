@@ -55,12 +55,23 @@ const sortedImages = computed(() => {
   }
   let cmp: (a: Image, b: Image) => number;
   switch (sortBy.value) {
-    case "createdAt": cmp = (a, b) => a.created_at.localeCompare(b.created_at); break;
-    case "fileName": cmp = (a, b) => a.file_name.localeCompare(b.file_name); break;
-    case "fileSize": cmp = (a, b) => a.file_size - b.file_size; break;
-    case "width": cmp = (a, b) => (a.width ?? 0) - (b.width ?? 0); break;
-    case "height": cmp = (a, b) => (a.height ?? 0) - (b.height ?? 0); break;
-    default: cmp = (a, b) => a.updated_at.localeCompare(b.updated_at);
+    case "createdAt":
+      cmp = (a, b) => a.created_at.localeCompare(b.created_at);
+      break;
+    case "fileName":
+      cmp = (a, b) => a.file_name.localeCompare(b.file_name);
+      break;
+    case "fileSize":
+      cmp = (a, b) => a.file_size - b.file_size;
+      break;
+    case "width":
+      cmp = (a, b) => (a.width ?? 0) - (b.width ?? 0);
+      break;
+    case "height":
+      cmp = (a, b) => (a.height ?? 0) - (b.height ?? 0);
+      break;
+    default:
+      cmp = (a, b) => a.updated_at.localeCompare(b.updated_at);
   }
   arr.sort(cmp);
   return sortDesc.value ? arr.reverse() : arr;
@@ -98,9 +109,8 @@ async function loadImages() {
 
 async function loadTags() {
   try {
-    const tags = await invoke<{ id: number; name: string; group_id: number | null }[]>(
-      "list_all_image_tags"
-    );
+    const tags =
+      await invoke<{ id: number; name: string; group_id: number | null }[]>("list_all_image_tags");
     allTags.value = tags.map((t) => t.name);
   } catch {
     allTags.value = [];
@@ -147,9 +157,13 @@ function close() {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       @click.self="close()"
     >
-      <div class="flex h-[80vh] w-[760px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div
+        class="flex h-[80vh] w-[760px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+      >
         <!-- 顶部：标题 + 搜索 + 排序 -->
-        <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+        <div
+          class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700"
+        >
           <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">从图像列表导入</h3>
           <div class="flex items-center gap-2">
             <input
@@ -169,7 +183,9 @@ function close() {
               v-model="sortBy"
               class="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
             >
-              <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+              <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
+                {{ o.label }}
+              </option>
             </select>
             <button
               type="button"
@@ -192,8 +208,13 @@ function close() {
 
         <!-- 图像网格 -->
         <div class="flex-1 overflow-auto p-4">
-          <div v-if="loading" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">加载中...</div>
-          <div v-else-if="sortedImages.length === 0" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          <div v-if="loading" class="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            加载中...
+          </div>
+          <div
+            v-else-if="sortedImages.length === 0"
+            class="p-8 text-center text-sm text-gray-500 dark:text-gray-400"
+          >
             暂无图像
           </div>
           <ul v-else class="grid grid-cols-5 gap-2">
@@ -201,7 +222,11 @@ function close() {
               v-for="img in sortedImages"
               :key="img.id"
               class="group relative cursor-pointer overflow-hidden rounded-lg border"
-              :class="selectedIds.has(img.id) ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200 hover:border-blue-300 dark:border-gray-700'"
+              :class="
+                selectedIds.has(img.id)
+                  ? 'border-blue-500 ring-2 ring-blue-500'
+                  : 'border-gray-200 hover:border-blue-300 dark:border-gray-700'
+              "
               @click="toggleSelect(img.id)"
             >
               <img
@@ -211,13 +236,22 @@ function close() {
                 :title="img.file_name"
                 class="aspect-square w-full object-cover"
               />
-              <div v-else class="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900">
+              <div
+                v-else
+                class="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900"
+              >
                 无缩略图
               </div>
-              <div class="truncate bg-black/60 px-1 py-0.5 text-[10px] text-white">{{ img.file_name }}</div>
+              <div class="truncate bg-black/60 px-1 py-0.5 text-[10px] text-white">
+                {{ img.file_name }}
+              </div>
               <span
                 class="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full border text-xs"
-                :class="selectedIds.has(img.id) ? 'border-blue-500 bg-blue-500 text-white' : 'border-white/70 bg-black/30 text-white/90'"
+                :class="
+                  selectedIds.has(img.id)
+                    ? 'border-blue-500 bg-blue-500 text-white'
+                    : 'border-white/70 bg-black/30 text-white/90'
+                "
               >
                 {{ selectedIds.has(img.id) ? "✓" : "" }}
               </span>
@@ -226,8 +260,12 @@ function close() {
         </div>
 
         <!-- 底部：已选 + 取消/确认 -->
-        <div class="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-700">
-          <span class="text-sm text-gray-500 dark:text-gray-400">已选 {{ selectedIds.size }} 张</span>
+        <div
+          class="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-700"
+        >
+          <span class="text-sm text-gray-500 dark:text-gray-400"
+            >已选 {{ selectedIds.size }} 张</span
+          >
           <div class="grid grid-cols-2 gap-2">
             <button
               type="button"

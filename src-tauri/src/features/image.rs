@@ -1,15 +1,13 @@
 //! 图像命令层：薄适配，从 managed state 取连接，转调领域服务。
 //! 路径 `features::image::`，与提示词侧 `features::prompt::` 对称。
 
-use crate::error::AppError;
 use crate::db::BkDb;
+use crate::error::AppError;
 use crate::features::image_service::{
     self, Image, ImageTag, ImportBatchResult, ImportResult, LinkedPrompt,
 };
 use crate::features::prompt_service;
-use crate::features::thumbnail_service::{
-    self, EnsureResult, RebuildProgress, RebuildSummary,
-};
+use crate::features::thumbnail_service::{self, EnsureResult, RebuildProgress, RebuildSummary};
 
 use rusqlite::OptionalExtension;
 use tauri::{Emitter, Manager, State};
@@ -38,7 +36,10 @@ pub fn upload_images(
                         });
                     }
                 }
-                results.push(ImportResult { image, is_duplicate });
+                results.push(ImportResult {
+                    image,
+                    is_duplicate,
+                });
             }
             Err(e) => errors.push(image_service::ImportError {
                 path: path.clone(),
@@ -58,8 +59,8 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
         return Err("源文件不存在".into());
     }
     let img = image::open(&src).map_err(|e| AppError::Message(format!("无法读取图像: {e}")))?;
-    let thumb =
-        image_service::make_center_thumb(&img).map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
+    let thumb = image_service::make_center_thumb(&img)
+        .map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
 
     let prev_dir = crate::db::data_dir(&app).join("preview");
     std::fs::create_dir_all(&prev_dir).map_err(|e| AppError::Message(e.to_string()))?;
@@ -179,7 +180,10 @@ pub fn get_thumbnail(
     let Some(rel) = rel else {
         return Err("缩略图不存在".into());
     };
-    Ok(crate::db::data_dir(&app).join(&rel).to_string_lossy().into_owned())
+    Ok(crate::db::data_dir(&app)
+        .join(&rel)
+        .to_string_lossy()
+        .into_owned())
 }
 
 /// 返回单张图像详情。
@@ -210,7 +214,10 @@ pub fn get_image_src(
     let Some(rel) = rel else {
         return Err("原图不存在".into());
     };
-    Ok(crate::db::data_dir(&app).join(&rel).to_string_lossy().into_owned())
+    Ok(crate::db::data_dir(&app)
+        .join(&rel)
+        .to_string_lossy()
+        .into_owned())
 }
 
 /// 更新图像详情字段（文件名、备注、收藏、安全评级）。
@@ -273,7 +280,9 @@ pub fn add_image_tags(
     names: Vec<String>,
 ) -> Result<Vec<ImageTag>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let tx = conn.unchecked_transaction().map_err(|e| AppError::Message(e.to_string()))?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Message(e.to_string()))?;
 
     let mut result = Vec::new();
     for raw in names {
@@ -306,7 +315,11 @@ pub fn add_image_tags(
             "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
             rusqlite::params![id, tag_id],
         );
-        result.push(ImageTag { id: tag_id, name: name.to_string(), group_id: None });
+        result.push(ImageTag {
+            id: tag_id,
+            name: name.to_string(),
+            group_id: None,
+        });
     }
 
     tx.execute(
@@ -320,11 +333,7 @@ pub fn add_image_tags(
 
 /// 移除图像的一个标签关联。
 #[tauri::command]
-pub fn remove_image_tag(
-    db: State<BkDb>,
-    id: String,
-    tag_id: i64,
-) -> Result<(), AppError> {
+pub fn remove_image_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     conn.execute(
         "DELETE FROM image_tag_relations WHERE image_id = ?1 AND tag_id = ?2",
@@ -376,8 +385,7 @@ pub fn get_image_tags_map(
     let rows = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
         .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut map: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     for row in rows {
         let (img_id, tag_name) = row.map_err(|e| AppError::Message(e.to_string()))?;
         map.entry(img_id).or_default().push(tag_name);
@@ -404,8 +412,7 @@ pub fn get_image_prompts_map(
     let rows = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
         .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut map: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     for row in rows {
         let (img_id, content) = row.map_err(|e| AppError::Message(e.to_string()))?;
         map.entry(img_id).or_default().push(content);
@@ -441,7 +448,9 @@ pub fn get_image_related_prompts(
             })
         })
         .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut list: Vec<LinkedPrompt> = rows.collect::<Result<_, _>>().map_err(|e| AppError::Message(e.to_string()))?;
+    let mut list: Vec<LinkedPrompt> = rows
+        .collect::<Result<_, _>>()
+        .map_err(|e| AppError::Message(e.to_string()))?;
     // 补充分组查询每条提示词的标签
     for p in list.iter_mut() {
         let mut t = conn
@@ -456,7 +465,9 @@ pub fn get_image_related_prompts(
         let names = t
             .query_map(rusqlite::params![p.id], |r| r.get::<_, String>(0))
             .map_err(|e| AppError::Message(e.to_string()))?;
-        p.tags = names.collect::<Result<_, _>>().map_err(|e| AppError::Message(e.to_string()))?;
+        p.tags = names
+            .collect::<Result<_, _>>()
+            .map_err(|e| AppError::Message(e.to_string()))?;
     }
     Ok(list)
 }
@@ -469,7 +480,8 @@ pub fn create_prompt_for_image(
     image_id: String,
 ) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let prompt = prompt_service::create(&conn, &content, None).map_err(|e| AppError::Message(e.to_string()))?;
+    let prompt = prompt_service::create(&conn, &content, None)
+        .map_err(|e| AppError::Message(e.to_string()))?;
     image_service::relate_image_to_prompt(&conn, &prompt.id, &image_id)
         .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(())

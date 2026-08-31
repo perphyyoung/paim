@@ -113,14 +113,17 @@ watch(
       loadRelatedImages();
     }
   },
-  { immediate: true } // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
+  { immediate: true }, // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
 );
-watch(() => current.value?.id, () => {
-  edit.value = false;
-  syncFields();
-  loadTags();
-  loadRelatedImages();
-});
+watch(
+  () => current.value?.id,
+  () => {
+    edit.value = false;
+    syncFields();
+    loadTags();
+    loadRelatedImages();
+  },
+);
 
 function close() {
   emit("close");
@@ -227,17 +230,13 @@ const {
   confirmAction,
 } = useConfirm();
 function requestRemoveTag(t: { id: number; name: string }) {
-  ask(
-    `确定删除标签「${t.name}」？`,
-    { danger: true, confirmText: "删除" },
-    () => removeTag(t.id)
-  );
+  ask(`确定删除标签「${t.name}」？`, { danger: true, confirmText: "删除" }, () => removeTag(t.id));
 }
 function requestRemoveImage(img: RelatedImage) {
   ask(
     `确定移除图像「${img.file_name}」与该提示词的关联？`,
     { danger: true, confirmText: "移除" },
-    () => removeImage(img)
+    () => removeImage(img),
   );
 }
 
@@ -340,17 +339,28 @@ async function onPickerImported() {
       @keydown.down="nav(1)"
       tabindex="-1"
     >
-      <div class="relative grid h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div
+        class="relative grid h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] grid-cols-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+      >
         <!-- 左栏：关联图像 -->
-        <div class="flex min-w-0 flex-col overflow-hidden border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
-          <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-            <label class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+        <div
+          class="flex min-w-0 flex-col overflow-hidden border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40"
+        >
+          <div
+            class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700"
+          >
+            <label
+              class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+            >
               关联图像（{{ relatedImages.length }}）
             </label>
             <span v-if="imagesLoading" class="text-xs text-gray-400">加载中...</span>
           </div>
           <div class="flex-1 overflow-auto p-4">
-            <div v-if="relatedImages.length === 0 && !imagesLoading" class="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600">
+            <div
+              v-if="relatedImages.length === 0 && !imagesLoading"
+              class="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600"
+            >
               暂无关联图像
             </div>
             <ul
@@ -371,10 +381,19 @@ async function onPickerImported() {
                   :class="relatedImages.length === 1 ? 'h-full w-full' : 'aspect-square w-full'"
                   class="object-contain"
                 />
-                <div v-else :class="relatedImages.length === 1 ? 'flex h-full w-full' : 'flex aspect-square w-full'" class="items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900">
+                <div
+                  v-else
+                  :class="
+                    relatedImages.length === 1 ? 'flex h-full w-full' : 'flex aspect-square w-full'
+                  "
+                  class="items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900"
+                >
                   无图像
                 </div>
-                <div v-if="img.tags.length" class="absolute bottom-0.5 left-0.5 max-w-[calc(100%-0.75rem)] truncate rounded bg-black/60 px-1 py-0.5 text-[10px] text-white">
+                <div
+                  v-if="img.tags.length"
+                  class="absolute bottom-0.5 left-0.5 max-w-[calc(100%-0.75rem)] truncate rounded bg-black/60 px-1 py-0.5 text-[10px] text-white"
+                >
                   {{ img.tags.join("、") }}
                 </div>
                 <button
@@ -383,7 +402,15 @@ async function onPickerImported() {
                   title="查看图像详情"
                   @click.stop="viewImage(img)"
                 >
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
+                  >
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
@@ -401,7 +428,9 @@ async function onPickerImported() {
           </div>
 
           <!-- 导入区：从外界导入 / 从图像列表导入（左右布局，压缩高度以保留关联图像区域） -->
-          <div class="grid grid-cols-2 gap-2 border-t border-gray-200 px-4 py-2.5 dark:border-gray-700">
+          <div
+            class="grid grid-cols-2 gap-2 border-t border-gray-200 px-4 py-2.5 dark:border-gray-700"
+          >
             <button
               type="button"
               class="rounded-lg border border-blue-300 bg-blue-50 px-2 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
@@ -423,25 +452,47 @@ async function onPickerImported() {
         <!-- 右栏：提示词 -->
         <div class="relative flex min-w-0 flex-col overflow-hidden">
           <!-- 顶部操作栏：收藏 / 安全 / 编辑 / 关闭，两端对齐、间距均分 -->
-          <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+          <div
+            class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700"
+          >
             <div class="flex items-center">
               <button
                 type="button"
                 class="flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200"
-                :class="current?.is_favorite ? 'border-transparent bg-gradient-to-br from-amber-500 to-amber-400 text-white' : 'border-gray-300 bg-white text-gray-400 hover:border-amber-300 hover:text-amber-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'"
+                :class="
+                  current?.is_favorite
+                    ? 'border-transparent bg-gradient-to-br from-amber-500 to-amber-400 text-white'
+                    : 'border-gray-300 bg-white text-gray-400 hover:border-amber-300 hover:text-amber-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                "
                 :title="current?.is_favorite ? '取消收藏' : '收藏'"
                 @click="toggleFavorite"
               >
                 <svg viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4" aria-hidden="true">
-                  <path d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z" />
+                  <path
+                    d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
+                  />
                 </svg>
               </button>
             </div>
             <div class="flex items-center">
-              <label class="relative inline-block h-6 w-11" :title="current?.is_safe ? '安全' : '不安全'">
-                <input type="checkbox" class="h-0 w-0 opacity-0" :checked="current?.is_safe" @change="toggleSafe" />
-                <span class="absolute inset-0 cursor-pointer rounded-full transition-colors duration-300" :class="current?.is_safe ? 'bg-green-500' : 'bg-red-500'"></span>
-                <span class="absolute bottom-[3px] left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-300" :class="current?.is_safe ? 'translate-x-5' : ''"></span>
+              <label
+                class="relative inline-block h-6 w-11"
+                :title="current?.is_safe ? '安全' : '不安全'"
+              >
+                <input
+                  type="checkbox"
+                  class="h-0 w-0 opacity-0"
+                  :checked="current?.is_safe"
+                  @change="toggleSafe"
+                />
+                <span
+                  class="absolute inset-0 cursor-pointer rounded-full transition-colors duration-300"
+                  :class="current?.is_safe ? 'bg-green-500' : 'bg-red-500'"
+                ></span>
+                <span
+                  class="absolute bottom-[3px] left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-300"
+                  :class="current?.is_safe ? 'translate-x-5' : ''"
+                ></span>
               </label>
             </div>
             <div class="flex items-center">
@@ -471,42 +522,63 @@ async function onPickerImported() {
           <div class="flex-1 overflow-auto px-4 py-4">
             <!-- 标题 -->
             <div class="mb-4">
-              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">标题</label>
+              <label
+                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                >标题</label
+              >
               <input
                 v-if="edit"
                 v-model="title"
                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
               />
-              <div v-else class="break-all text-sm text-gray-700 dark:text-gray-200">{{ current?.title || "—" }}</div>
+              <div v-else class="break-all text-sm text-gray-700 dark:text-gray-200">
+                {{ current?.title || "—" }}
+              </div>
             </div>
 
             <!-- 内容 -->
             <div class="mb-4">
-              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词内容</label>
+              <label
+                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                >提示词内容</label
+              >
               <textarea
                 v-if="edit"
                 v-model="content"
                 rows="6"
                 class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
               ></textarea>
-              <div v-else class="whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-200">{{ current?.content || "—" }}</div>
+              <div
+                v-else
+                class="whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-200"
+              >
+                {{ current?.content || "—" }}
+              </div>
             </div>
 
             <!-- 翻译 -->
             <div class="mb-4">
-              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">翻译</label>
+              <label
+                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                >翻译</label
+              >
               <textarea
                 v-if="edit"
                 v-model="contentTranslate"
                 rows="4"
                 class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
               ></textarea>
-              <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{{ current?.content_translate || "—" }}</div>
+              <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+                {{ current?.content_translate || "—" }}
+              </div>
             </div>
 
             <!-- 备注 -->
             <div class="mb-4">
-              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">备注</label>
+              <label
+                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                >备注</label
+              >
               <textarea
                 v-if="edit"
                 v-model="note"
@@ -514,12 +586,17 @@ async function onPickerImported() {
                 class="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                 placeholder="输入备注..."
               ></textarea>
-              <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{{ current?.note || "—" }}</div>
+              <div v-else class="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+                {{ current?.note || "—" }}
+              </div>
             </div>
 
             <!-- 标签 -->
             <div class="mb-4">
-              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">提示词标签</label>
+              <label
+                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                >提示词标签</label
+              >
               <div v-if="tags.length" class="mb-1 flex flex-wrap gap-1">
                 <span
                   v-for="t in tags"
@@ -528,13 +605,13 @@ async function onPickerImported() {
                 >
                   {{ t.name }}
                   <button
-                  type="button"
-                  class="text-red-400 hover:text-red-600 dark:hover:text-red-300"
-                  :title="`删除标签 ${t.name}`"
-                  @click.stop="requestRemoveTag(t)"
-                >
-                  ✕
-                </button>
+                    type="button"
+                    class="text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                    :title="`删除标签 ${t.name}`"
+                    @click.stop="requestRemoveTag(t)"
+                  >
+                    ✕
+                  </button>
                 </span>
               </div>
               <div v-else class="mb-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
@@ -554,7 +631,6 @@ async function onPickerImported() {
                 </button>
               </div>
             </div>
-
           </div>
 
           <!-- 编辑态悬浮按钮组：脱离文档流，不占/不遮挡编辑区域，仅按钮本身 -->

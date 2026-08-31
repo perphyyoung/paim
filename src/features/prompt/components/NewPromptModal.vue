@@ -38,7 +38,7 @@ watch(
       error.value = "";
       nextTick(() => contentInput.value?.focus());
     }
-  }
+  },
 );
 
 async function pickFiles() {
@@ -95,14 +95,13 @@ async function doCreate() {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="props.open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-    >
+    <div v-if="props.open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div
         class="flex max-h-[85vh] w-[560px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
       >
-        <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+        <div
+          class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700"
+        >
           <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">新建提示词</h3>
           <button
             type="button"
@@ -148,8 +147,16 @@ async function doCreate() {
                 :key="f.path"
                 class="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
               >
-                <img v-if="f.thumb" :src="f.thumb" alt="" class="aspect-square w-full object-cover" />
-                <div v-else class="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900">
+                <img
+                  v-if="f.thumb"
+                  :src="f.thumb"
+                  alt=""
+                  class="aspect-square w-full object-cover"
+                />
+                <div
+                  v-else
+                  class="flex aspect-square w-full items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-900"
+                >
                   无预览
                 </div>
                 <p class="truncate bg-black/60 px-1 py-0.5 text-[10px] text-white" :title="f.name">
@@ -167,7 +174,10 @@ async function doCreate() {
             </ul>
           </div>
 
-          <div v-if="error" class="mt-3 whitespace-pre-line rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
+          <div
+            v-if="error"
+            class="mt-3 whitespace-pre-line rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400"
+          >
             {{ error }}
           </div>
         </div>

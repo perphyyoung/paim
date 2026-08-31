@@ -37,7 +37,11 @@ fn log_path() -> &'static std::path::PathBuf {
 /// 写一行日志：`本地时间 [级别] 消息`。
 pub fn write(level: Level, msg: impl AsRef<str>) {
     let line = format!("{} [{}] {}\n", now_local(), level.as_str(), msg.as_ref());
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(log_path()) {
+    if let Ok(mut f) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path())
+    {
         let _ = f.write_all(line.as_bytes());
     }
 }
@@ -74,5 +78,7 @@ pub fn log_msg(level: String, message: String) {
 
 /// 当前本地时间（毫秒精度，形如 2026-08-23 12:00:00.123）。
 fn now_local() -> String {
-    chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+    chrono::Local::now()
+        .format("%Y-%m-%d %H:%M:%S%.3f")
+        .to_string()
 }

@@ -81,7 +81,13 @@ const SPECIAL_TAGS = [
   { name: "收藏", check: (p: Prompt) => !!p.is_favorite },
   { name: "多图", check: (p: Prompt) => (imgCount.value[p.id] ?? 0) > 1 },
   { name: "无图", check: (p: Prompt) => (imgCount.value[p.id] ?? 0) === 0 },
-  { name: "无标", check: (p: Prompt) => { const t = tagNames.value[p.id]; return !t || t.length === 0; } },
+  {
+    name: "无标",
+    check: (p: Prompt) => {
+      const t = tagNames.value[p.id];
+      return !t || t.length === 0;
+    },
+  },
   { name: "安全", check: (p: Prompt) => !!p.is_safe },
   { name: "敏感", check: (p: Prompt) => !p.is_safe },
 ];
@@ -116,8 +122,10 @@ const visibleIds = computed(() => {
   const count = Math.max(1, gridPageSize.value);
   return list.slice(start, start + count).map((p) => p.id);
 });
-const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } =
-  useThumbnailSelfHeal(visibleIds, onThumbsFixed);
+const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } = useThumbnailSelfHeal(
+  visibleIds,
+  onThumbsFixed,
+);
 
 async function onThumbsFixed() {
   try {
@@ -143,8 +151,17 @@ function onModalUpdated() {
 }
 
 // 标签筛选区分组数据
-interface TagGroupData { id: number; name: string; sort_order: number }
-interface TagItem { id: number; name: string; group_id: number | null; count: number }
+interface TagGroupData {
+  id: number;
+  name: string;
+  sort_order: number;
+}
+interface TagItem {
+  id: number;
+  name: string;
+  group_id: number | null;
+  count: number;
+}
 const tagGroups = ref<TagGroupData[]>([]);
 const allTags = ref<TagItem[]>([]);
 
@@ -159,7 +176,9 @@ const tagCounts = computed(() => {
 
 const sortedPrompts = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
-  let arr = kw ? prompts.value.filter((p) => (p.content + p.title).toLowerCase().includes(kw)) : [...prompts.value];
+  let arr = kw
+    ? prompts.value.filter((p) => (p.content + p.title).toLowerCase().includes(kw))
+    : [...prompts.value];
   if (selectedTags.value.length > 0) {
     arr = arr.filter((p) =>
       selectedTags.value.every((t) => {
@@ -167,15 +186,20 @@ const sortedPrompts = computed(() => {
         if (s) return s.check(p);
         const tags = tagNames.value[p.id];
         return !!tags && tags.includes(t);
-      })
+      }),
     );
   }
   if (!arr.length) return arr;
   let cmp: (a: Prompt, b: Prompt) => number;
   switch (sortBy.value) {
-    case "createdAt": cmp = (a, b) => a.created_at.localeCompare(b.created_at); break;
-    case "title": cmp = (a, b) => a.title.localeCompare(b.title); break;
-    default: cmp = (a, b) => a.updated_at.localeCompare(b.updated_at);
+    case "createdAt":
+      cmp = (a, b) => a.created_at.localeCompare(b.created_at);
+      break;
+    case "title":
+      cmp = (a, b) => a.title.localeCompare(b.title);
+      break;
+    default:
+      cmp = (a, b) => a.updated_at.localeCompare(b.updated_at);
   }
   arr.sort(cmp);
   return sortDesc.value ? arr.reverse() : arr;
@@ -184,9 +208,12 @@ const sortedPrompts = computed(() => {
 // row4 随排序依据动态显示
 function rowInfo(p: Prompt): { label: string; value: string } {
   switch (sortBy.value) {
-    case "createdAt": return { label: "创建时间", value: formatLocalTime(p.created_at) };
-    case "title": return { label: "标题", value: p.title };
-    default: return { label: "更新时间", value: formatLocalTime(p.updated_at) };
+    case "createdAt":
+      return { label: "创建时间", value: formatLocalTime(p.created_at) };
+    case "title":
+      return { label: "标题", value: p.title };
+    default:
+      return { label: "更新时间", value: formatLocalTime(p.updated_at) };
   }
 }
 
@@ -582,7 +609,9 @@ onActivated(() => {
         v-if="prompts.length === 0"
         class="flex-1 rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600"
       >
-        <p class="text-sm text-gray-500 dark:text-gray-400">暂无提示词，点击左上角「新建提示词」开始添加。</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          暂无提示词，点击左上角「新建提示词」开始添加。
+        </p>
       </div>
       <template v-else>
         <VirtualGrid
@@ -597,62 +626,127 @@ onActivated(() => {
           <template #default="{ item: p, index }">
             <div
               class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-100 dark:bg-gray-800"
-              :class="selectedIds.has(p.id) ? 'border-indigo-500 ring-2 ring-indigo-400' : p.is_favorite ? 'border-amber-500' : 'border-gray-200 dark:border-gray-700'"
+              :class="
+                selectedIds.has(p.id)
+                  ? 'border-indigo-500 ring-2 ring-indigo-400'
+                  : p.is_favorite
+                    ? 'border-amber-500'
+                    : 'border-gray-200 dark:border-gray-700'
+              "
               @click="openDetail(index)"
               @contextmenu.prevent
             >
-          <!-- 背景图：第一张关联图像缩略图 -->
-          <img
-            v-if="thumbs[p.id]"
-            :src="thumbs[p.id]"
-            alt=""
-            class="absolute inset-0 h-full w-full object-cover"
-          />
-          <!-- 4 行覆盖层 -->
-          <div class="absolute inset-0 flex flex-col">
-            <!-- row1 按钮行（悬停显示；批量模式下常显） -->
-            <div class="grid grid-cols-4 items-center py-0.5 transition-opacity duration-150" :class="batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'">
-              <div class="flex items-center justify-center">
-                <input type="checkbox" class="h-4 w-4 cursor-pointer accent-indigo-500" :checked="selectedIds.has(p.id)" @click.stop="toggleSelect(p.id)" />
-              </div>
-              <div class="flex items-center justify-center">
-                <button type="button" class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60" :title="p.is_favorite ? '取消收藏' : '收藏'" @click.stop="toggleFavorite(p)">
-                  <svg viewBox="0 0 24 24" :fill="p.is_favorite ? 'currentColor' : 'none'" :stroke="p.is_favorite ? 'none' : 'currentColor'" stroke-width="1.5" class="h-4 w-4 text-amber-400" aria-hidden="true">
-                    <path d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z" />
-                  </svg>
-                </button>
-              </div>
-              <div class="flex items-center justify-center">
-                <button type="button" class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60" title="复制内容" @click.stop="copyPrompt(p)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
-                    <rect x="9" y="9" width="13" height="13" rx="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                </button>
-              </div>
-              <div class="flex items-center justify-center">
-                <button type="button" class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60" title="删除" @click.stop="requestDelete(p)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
-                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+              <!-- 背景图：第一张关联图像缩略图 -->
+              <img
+                v-if="thumbs[p.id]"
+                :src="thumbs[p.id]"
+                alt=""
+                class="absolute inset-0 h-full w-full object-cover"
+              />
+              <!-- 4 行覆盖层 -->
+              <div class="absolute inset-0 flex flex-col">
+                <!-- row1 按钮行（悬停显示；批量模式下常显） -->
+                <div
+                  class="grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"
+                  :class="batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+                >
+                  <div class="flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      class="h-4 w-4 cursor-pointer accent-indigo-500"
+                      :checked="selectedIds.has(p.id)"
+                      @click.stop="toggleSelect(p.id)"
+                    />
+                  </div>
+                  <div class="flex items-center justify-center">
+                    <button
+                      type="button"
+                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                      :title="p.is_favorite ? '取消收藏' : '收藏'"
+                      @click.stop="toggleFavorite(p)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        :fill="p.is_favorite ? 'currentColor' : 'none'"
+                        :stroke="p.is_favorite ? 'none' : 'currentColor'"
+                        stroke-width="1.5"
+                        class="h-4 w-4 text-amber-400"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-center">
+                    <button
+                      type="button"
+                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                      title="复制内容"
+                      @click.stop="copyPrompt(p)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        class="h-4 w-4"
+                        aria-hidden="true"
+                      >
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="flex items-center justify-center">
+                    <button
+                      type="button"
+                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                      title="删除"
+                      @click.stop="requestDelete(p)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        class="h-4 w-4"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
 
-            <!-- row2 提示词内容（占满 row2 才由底部渐变淡出，无固定行数截断） -->
-            <div class="relative flex-1 overflow-hidden px-2 pt-1">
-              <p class="text-[10px] leading-4 text-white/90 drop-shadow">{{ p.content }}</p>
-              <div class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"></div>
-            </div>
+                <!-- row2 提示词内容（占满 row2 才由底部渐变淡出，无固定行数截断） -->
+                <div class="relative flex-1 overflow-hidden px-2 pt-1">
+                  <p class="text-[10px] leading-4 text-white/90 drop-shadow">{{ p.content }}</p>
+                  <div
+                    class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"
+                  ></div>
+                </div>
 
-            <!-- row3 标签 -->
-            <CardTagRow v-if="(tagNames[p.id] || []).length" :tags="tagNames[p.id] || []" :card-size="cardSize" />
+                <!-- row3 标签 -->
+                <CardTagRow
+                  v-if="(tagNames[p.id] || []).length"
+                  :tags="tagNames[p.id] || []"
+                  :card-size="cardSize"
+                />
 
-            <!-- row4 排序字段 -->
-            <div class="bg-black/70 px-1.5 py-0.5 text-center">
-              <p class="truncate text-[11px] text-white" :title="`${rowInfo(p).label}：${rowInfo(p).value}`">{{ rowInfo(p).value }}</p>
-            </div>
-          </div>
+                <!-- row4 排序字段 -->
+                <div class="bg-black/70 px-1.5 py-0.5 text-center">
+                  <p
+                    class="truncate text-[11px] text-white"
+                    :title="`${rowInfo(p).label}：${rowInfo(p).value}`"
+                  >
+                    {{ rowInfo(p).value }}
+                  </p>
+                </div>
+              </div>
             </div>
           </template>
         </VirtualGrid>
@@ -690,7 +784,10 @@ onActivated(() => {
       confirm-text="删除"
       danger
       @confirm="doSingleDelete"
-      @cancel="singleDeleteOpen = false; singleDeleteTarget = null"
+      @cancel="
+        singleDeleteOpen = false;
+        singleDeleteTarget = null;
+      "
     />
 
     <!-- 标签管理（独立组件，提示词域） -->
@@ -749,7 +846,9 @@ onActivated(() => {
           />
           <div class="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-center">
             <p class="truncate text-[11px] text-white" :title="p.title">{{ p.title }}</p>
-            <p class="truncate text-[10px] text-gray-300">删除于 {{ formatLocalTime(p.deleted_at) }}</p>
+            <p class="truncate text-[10px] text-gray-300">
+              删除于 {{ formatLocalTime(p.deleted_at) }}
+            </p>
           </div>
           <div
             class="absolute inset-x-0 top-0 grid grid-cols-2 items-center py-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
@@ -761,8 +860,19 @@ onActivated(() => {
                 class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
                 @click.stop="restorePrompt(p)"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
               </button>
             </div>
@@ -773,8 +883,19 @@ onActivated(() => {
                 class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
                 @click.stop="requestPurgePrompt(p)"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"
+                  />
                 </svg>
               </button>
             </div>

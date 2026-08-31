@@ -110,14 +110,25 @@ fn rebuild_all_fills_missing_and_preserves_failed() {
         .unwrap();
     std::fs::create_dir_all(thumbs_root.join("202606")).unwrap();
     std::fs::write(thumbs_root.join("202606/thumb_img_b.jpg"), b"keep-me").unwrap();
-    insert("img_b", "images/202606/img_b.png", Some("thumbnails/202606/thumb_img_b.jpg"));
+    insert(
+        "img_b",
+        "images/202606/img_b.png",
+        Some("thumbnails/202606/thumb_img_b.jpg"),
+    );
     // 原图损坏：应计失败，且保留已有 thumbnail_path 不动
     std::fs::write(data_dir.join("images/202606/img_c.png"), b"broken").unwrap();
-    insert("img_c", "images/202606/img_c.png", Some("thumbnails/202606/old.jpg"));
+    insert(
+        "img_c",
+        "images/202606/img_c.png",
+        Some("thumbnails/202606/old.jpg"),
+    );
 
     let progress: Mutex<Vec<(usize, usize, String)>> = Mutex::new(Vec::new());
     let summary = rebuild_all(&data_dir, &thumbs_root, &conn, |done, total, name| {
-        progress.lock().unwrap().push((done, total, name.to_string()));
+        progress
+            .lock()
+            .unwrap()
+            .push((done, total, name.to_string()));
     })
     .expect("rebuild ok");
     assert_eq!(summary.total, 3);
@@ -153,11 +164,9 @@ fn rebuild_all_fills_missing_and_preserves_failed() {
     );
 
     // 用独立连接验证回写已真正提交（同连接能看到未提交数据，查不出来）
-    let verify = rusqlite::Connection::open_with_flags(
-        &db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .unwrap();
+    let verify =
+        rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .unwrap();
     assert_eq!(
         thumb_of(&verify, "img_a").as_deref(),
         Some("thumbnails/202606/thumb_img_a.jpg"),
@@ -172,12 +181,14 @@ fn rebuild_all_empty_db_returns_zero() {
     let root = unique_test_dir("rebuild-empty");
     let bk = db::init(root.join("paim.db")).expect("init db");
     let conn = bk.0.lock().unwrap();
-    let summary = rebuild_all(&root.join("data"), &root.join("thumbnails"), &conn, |_, _, _| {})
-        .expect("rebuild ok");
-    assert_eq!(
-        (summary.total, summary.success, summary.failed),
-        (0, 0, 0)
-    );
+    let summary = rebuild_all(
+        &root.join("data"),
+        &root.join("thumbnails"),
+        &conn,
+        |_, _, _| {},
+    )
+    .expect("rebuild ok");
+    assert_eq!((summary.total, summary.success, summary.failed), (0, 0, 0));
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -210,14 +221,22 @@ fn ensure_heals_missing_and_reports_unfixable() {
     image::DynamicImage::new_rgb8(300, 200)
         .save(data_dir.join("images/202606/img_b.png"))
         .unwrap();
-    insert("img_b", "images/202606/img_b.png", Some("thumbnails/202606/thumb_img_b.jpg"));
+    insert(
+        "img_b",
+        "images/202606/img_b.png",
+        Some("thumbnails/202606/thumb_img_b.jpg"),
+    );
     // 情形3：路径有效、文件存在 → 跳过（不应出现在 fixed/missing）
     image::DynamicImage::new_rgb8(300, 200)
         .save(data_dir.join("images/202606/img_c.png"))
         .unwrap();
     std::fs::create_dir_all(thumbs_root.join("202606")).unwrap();
     std::fs::write(thumbs_root.join("202606/thumb_img_c.jpg"), b"ok").unwrap();
-    insert("img_c", "images/202606/img_c.png", Some("thumbnails/202606/thumb_img_c.jpg"));
+    insert(
+        "img_c",
+        "images/202606/img_c.png",
+        Some("thumbnails/202606/thumb_img_c.jpg"),
+    );
     // 情形4：原图缺失 → missing
     insert("img_d", "images/202606/img_d.png", None);
     // 情形5：未知 id → missing
@@ -232,8 +251,14 @@ fn ensure_heals_missing_and_reports_unfixable() {
     let result = ensure(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
     let fixed_ids: Vec<&str> = result.fixed.iter().map(|f| f.id.as_str()).collect();
     assert_eq!(fixed_ids, vec!["img_a", "img_b"]);
-    assert_eq!(result.fixed[0].thumbnail_path, "thumbnails/202606/thumb_img_a.jpg");
-    assert_eq!(result.fixed[1].thumbnail_path, "thumbnails/202606/thumb_img_b.jpg");
+    assert_eq!(
+        result.fixed[0].thumbnail_path,
+        "thumbnails/202606/thumb_img_a.jpg"
+    );
+    assert_eq!(
+        result.fixed[1].thumbnail_path,
+        "thumbnails/202606/thumb_img_b.jpg"
+    );
     assert_eq!(result.missing, vec!["img_d", "img_unknown"]);
 
     // 回写已落库

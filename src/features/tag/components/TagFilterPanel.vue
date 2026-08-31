@@ -85,15 +85,10 @@ function clearTags() {
 }
 
 // 收起/展开（持久化）
-const tagFilterCollapsed = ref(
-  localStorage.getItem(`${props.domain}.tagFilterCollapsed`) === "1",
-);
+const tagFilterCollapsed = ref(localStorage.getItem(`${props.domain}.tagFilterCollapsed`) === "1");
 function toggleTagFilter() {
   tagFilterCollapsed.value = !tagFilterCollapsed.value;
-  localStorage.setItem(
-    `${props.domain}.tagFilterCollapsed`,
-    tagFilterCollapsed.value ? "1" : "0",
-  );
+  localStorage.setItem(`${props.domain}.tagFilterCollapsed`, tagFilterCollapsed.value ? "1" : "0");
 }
 
 // 标签排序状态（名称/数量 + 逆序，持久化）
@@ -127,7 +122,12 @@ const headerTags = computed(() => {
     for (const t of props.allTags) {
       if (t.group_id !== top.id) continue;
       if (!normal.some((o) => o.name === t.name)) {
-        normal.push({ name: t.name, count: props.tagCounts[t.name] ?? 0, isTopGroup: true, active: selected.has(t.name) });
+        normal.push({
+          name: t.name,
+          count: props.tagCounts[t.name] ?? 0,
+          isTopGroup: true,
+          active: selected.has(t.name),
+        });
       }
     }
   }
@@ -184,7 +184,9 @@ const tagSections = computed<TagSection[]>(() => {
 </script>
 
 <template>
-  <div class="mb-3 flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40">
+  <div
+    class="mb-3 flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40"
+  >
     <!-- 工具行 -->
     <div class="flex flex-wrap items-center gap-2">
       <button
@@ -227,8 +229,14 @@ const tagSections = computed<TagSection[]>(() => {
     </div>
 
     <!-- 收起时显示头部标签 -->
-    <div v-if="tagFilterCollapsed && (headerTags.special.length > 0 || headerTags.normal.length > 0)" class="flex flex-wrap items-start gap-3">
-      <div v-if="headerTags.special.length > 0" class="flex flex-wrap items-center gap-1.5 self-stretch border-r border-gray-200 pr-3 dark:border-gray-700">
+    <div
+      v-if="tagFilterCollapsed && (headerTags.special.length > 0 || headerTags.normal.length > 0)"
+      class="flex flex-wrap items-start gap-3"
+    >
+      <div
+        v-if="headerTags.special.length > 0"
+        class="flex flex-wrap items-center gap-1.5 self-stretch border-r border-gray-200 pr-3 dark:border-gray-700"
+      >
         <button
           v-for="h in headerTags.special"
           :key="h.name"
@@ -250,7 +258,10 @@ const tagSections = computed<TagSection[]>(() => {
           </span>
         </button>
       </div>
-      <div v-if="headerTags.normal.length > 0" class="flex min-w-0 flex-1 flex-wrap items-center gap-2 pl-1">
+      <div
+        v-if="headerTags.normal.length > 0"
+        class="flex min-w-0 flex-1 flex-wrap items-center gap-2 pl-1"
+      >
         <button
           v-for="h in headerTags.normal"
           :key="h.name"
@@ -277,7 +288,9 @@ const tagSections = computed<TagSection[]>(() => {
     <!-- 主体：左特殊标签列 + 右分组 -->
     <div v-if="!tagFilterCollapsed" class="flex self-stretch">
       <!-- 左：特殊标签 -->
-      <div class="flex shrink-0 flex-col items-center justify-center justify-items-center gap-1.5 self-stretch border-r border-gray-200 py-1 pr-3 dark:border-gray-700">
+      <div
+        class="flex shrink-0 flex-col items-center justify-center justify-items-center gap-1.5 self-stretch border-r border-gray-200 py-1 pr-3 dark:border-gray-700"
+      >
         <template v-for="s in specialTags" :key="s.name">
           <button
             v-if="(specialCounts[s.name] ?? 0) > 0"
@@ -307,7 +320,9 @@ const tagSections = computed<TagSection[]>(() => {
       <!-- 右：分组主体 -->
       <div class="flex min-w-0 flex-1 flex-col gap-2 pl-3">
         <template v-for="sec in tagSections" :key="sec.key">
-          <div class="self-start text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ sec.name }}</div>
+          <div class="self-start text-[11px] font-medium text-gray-500 dark:text-gray-400">
+            {{ sec.name }}
+          </div>
           <div class="flex flex-wrap items-center gap-2 pl-2">
             <button
               v-for="t in sec.tags"

@@ -6,13 +6,7 @@
  */
 import { ref } from "vue";
 
-export type BatchAction =
-  | "selectAll"
-  | "invert"
-  | "addTag"
-  | "favorite"
-  | "delete"
-  | "cancel";
+export type BatchAction = "selectAll" | "invert" | "addTag" | "favorite" | "delete" | "cancel";
 
 const props = withDefaults(
   defineProps<{
@@ -22,14 +16,7 @@ const props = withDefaults(
     buttons?: BatchAction[];
   }>(),
   {
-    buttons: () => [
-      "selectAll",
-      "invert",
-      "addTag",
-      "favorite",
-      "delete",
-      "cancel",
-    ],
+    buttons: () => ["selectAll", "invert", "addTag", "favorite", "delete", "cancel"],
   },
 );
 
@@ -73,9 +60,7 @@ function submitAddTag() {
       v-if="open"
       class="fixed bottom-5 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-4 rounded-xl bg-[rgba(30,30,40,0.95)] px-4 py-2.5 shadow-2xl backdrop-blur-md"
     >
-      <span class="whitespace-nowrap text-[13px] text-white/80">
-        已选择 {{ count }} 项
-      </span>
+      <span class="whitespace-nowrap text-[13px] text-white/80"> 已选择 {{ count }} 项 </span>
       <div class="flex items-center gap-1.5">
         <button
           v-if="has('selectAll')"
@@ -134,7 +119,9 @@ function submitAddTag() {
       class="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
       @click.self="tagDlgOpen = false"
     >
-      <div class="w-80 max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div
+        class="w-80 max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+      >
         <h3 class="text-center text-base font-semibold text-gray-800 dark:text-gray-100">
           批量添加标签
         </h3>

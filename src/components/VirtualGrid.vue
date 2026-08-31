@@ -39,9 +39,7 @@ const columns = computed(() =>
 );
 const rowCount = computed(() => Math.ceil(props.items.length / columns.value));
 const totalHeight = computed(() => rowCount.value * rowStride.value);
-const visibleRows = computed(() =>
-  Math.max(1, Math.ceil(viewportHeight.value / rowStride.value)),
-);
+const visibleRows = computed(() => Math.max(1, Math.ceil(viewportHeight.value / rowStride.value)));
 const pageSize = computed(() => columns.value * visibleRows.value);
 
 // 可视窗口（含上下缓冲行）
@@ -49,7 +47,10 @@ const range = computed(() => {
   const firstRow = Math.floor(scrollTop.value / rowStride.value);
   const startRow = Math.max(0, firstRow - props.buffer);
   const endRow = Math.min(rowCount.value, firstRow + visibleRows.value + props.buffer);
-  return { start: startRow * columns.value, end: Math.min(props.items.length, endRow * columns.value) };
+  return {
+    start: startRow * columns.value,
+    end: Math.min(props.items.length, endRow * columns.value),
+  };
 });
 
 const visibleItems = computed(() =>

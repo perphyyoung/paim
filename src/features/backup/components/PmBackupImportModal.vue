@@ -45,7 +45,7 @@ watch(
       unlisten = null;
     }
   },
-  { immediate: true } // 父级可能在挂载前就置 open，需要立即触发首次导入
+  { immediate: true }, // 父级可能在挂载前就置 open，需要立即触发首次导入
 );
 
 function close() {
@@ -76,10 +76,7 @@ function close() {
             ></div>
           </div>
           <p class="mt-3 text-sm text-gray-700 dark:text-gray-200">{{ progress.status }}</p>
-          <p
-            v-if="progress.detail"
-            class="mt-1 break-all text-xs text-gray-400 dark:text-gray-500"
-          >
+          <p v-if="progress.detail" class="mt-1 break-all text-xs text-gray-400 dark:text-gray-500">
             {{ progress.detail }}
           </p>
         </div>
@@ -88,10 +85,7 @@ function close() {
           <p class="text-gray-700 dark:text-gray-200">
             已导入 {{ summary.prompts }} 条提示词、{{ summary.images }} 张图像。
           </p>
-          <p
-            v-if="summary.thumbnail_failures > 0"
-            class="mt-1 text-red-600 dark:text-red-400"
-          >
+          <p v-if="summary.thumbnail_failures > 0" class="mt-1 text-red-600 dark:text-red-400">
             {{ summary.thumbnail_failures }} 张图像缩略图生成失败（不影响数据，可重新导入修复）。
           </p>
           <p

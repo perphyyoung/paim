@@ -1,8 +1,8 @@
 //! 提示词命令层：薄适配，从 managed state 取连接，转调领域服务。
 //! 路径 `features::prompt::`，与图像侧 `features::image::` 对称。
 
-use crate::error::AppError;
 use crate::db::BkDb;
+use crate::error::AppError;
 use crate::features::image_service;
 use crate::features::prompt_service;
 
@@ -34,8 +34,7 @@ pub fn get_prompt_tags_map(
     let rows = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
         .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut map: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     for row in rows {
         let (pid, tag_name) = row.map_err(|e| AppError::Message(e.to_string()))?;
         map.entry(pid).or_default().push(tag_name);
@@ -157,23 +156,25 @@ pub fn create_prompt_with_images(
     image_paths: Vec<String>,
 ) -> Result<CreatePromptWithImagesResult, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let prompt = prompt_service::create(&conn, &content, title).map_err(|e| AppError::Message(e.to_string()))?;
+    let prompt = prompt_service::create(&conn, &content, title)
+        .map_err(|e| AppError::Message(e.to_string()))?;
     let mut results = Vec::new();
     let mut errors = Vec::new();
     for path in &image_paths {
         match crate::features::image_service::import(&conn, &app, path) {
             Ok((image, is_duplicate)) => {
                 if let Err(e) = crate::features::image_service::relate_image_to_prompt(
-                    &conn,
-                    &prompt.id,
-                    &image.id,
+                    &conn, &prompt.id, &image.id,
                 ) {
                     errors.push(crate::features::image_service::ImportError {
                         path: path.clone(),
                         message: format!("关联图像失败: {e}"),
                     });
                 }
-                results.push(crate::features::image_service::ImportResult { image, is_duplicate });
+                results.push(crate::features::image_service::ImportResult {
+                    image,
+                    is_duplicate,
+                });
             }
             Err(e) => errors.push(crate::features::image_service::ImportError {
                 path: path.clone(),
@@ -249,7 +250,10 @@ pub fn restore_all_prompts(db: State<BkDb>) -> Result<usize, AppError> {
 pub fn empty_prompt_trash(db: State<BkDb>) -> Result<image_service::TrashBatchResult, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::empty_trash(&conn)
-        .map(|count| image_service::TrashBatchResult { count: count as usize, failures: 0 })
+        .map(|count| image_service::TrashBatchResult {
+            count: count as usize,
+            failures: 0,
+        })
         .map_err(|e| AppError::Message(e.to_string()))
 }
 
@@ -280,7 +284,10 @@ pub fn get_prompt_thumbs_map(
     let mut map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for row in rows {
         let (pid, thumb_rel) = row.map_err(|e| AppError::Message(e.to_string()))?;
-        map.insert(pid, data_dir.join(&thumb_rel).to_string_lossy().into_owned());
+        map.insert(
+            pid,
+            data_dir.join(&thumb_rel).to_string_lossy().into_owned(),
+        );
     }
     Ok(map)
 }
@@ -320,7 +327,8 @@ pub fn get_prompt_related_images(
     id: String,
 ) -> Result<Vec<prompt_service::RelatedImage>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    prompt_service::list_related_images(&conn, &app, &id).map_err(|e| AppError::Message(e.to_string()))
+    prompt_service::list_related_images(&conn, &app, &id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 为提示词添加标签（不存在则创建），返回新增关联的标签。
@@ -331,7 +339,8 @@ pub fn add_prompt_tags(
     names: Vec<String>,
 ) -> Result<Vec<PromptTagItem>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let added = prompt_service::add_tags(&conn, &id, &names).map_err(|e| AppError::Message(e.to_string()))?;
+    let added = prompt_service::add_tags(&conn, &id, &names)
+        .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(added
         .into_iter()
         .map(|(id, name)| PromptTagItem {
@@ -358,7 +367,8 @@ pub fn remove_prompt_image(
     image_id: String,
 ) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    prompt_service::remove_image(&conn, &prompt_id, &image_id).map_err(|e| AppError::Message(e.to_string()))
+    prompt_service::remove_image(&conn, &prompt_id, &image_id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 为已存在的提示词导入外部图像并关联（复用导入 + 幂等关联），供详情页「从外界导入」。
@@ -376,15 +386,18 @@ pub fn add_images_to_prompt(
     for path in &image_paths {
         match crate::features::image_service::import(&conn, &app, path) {
             Ok((image, is_duplicate)) => {
-                if let Err(e) =
-                    crate::features::image_service::relate_image_to_prompt(&conn, &prompt_id, &image.id)
-                {
+                if let Err(e) = crate::features::image_service::relate_image_to_prompt(
+                    &conn, &prompt_id, &image.id,
+                ) {
                     errors.push(ImportError {
                         path: path.clone(),
                         message: format!("关联图像失败: {e}"),
                     });
                 } else {
-                    results.push(ImportResult { image, is_duplicate });
+                    results.push(ImportResult {
+                        image,
+                        is_duplicate,
+                    });
                 }
             }
             Err(e) => errors.push(ImportError {

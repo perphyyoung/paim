@@ -127,13 +127,18 @@ where
     };
     let total = rows.len();
     if total == 0 {
-        return Ok(RebuildSummary { total: 0, success: 0, failed: 0 });
+        return Ok(RebuildSummary {
+            total: 0,
+            success: 0,
+            failed: 0,
+        });
     }
 
     // 并发生成：游标领任务，结果集中收集；进度计数共享，由完成线程直接推送
     let next = AtomicUsize::new(0);
     let completed = AtomicUsize::new(0);
-    let results: Mutex<Vec<(String, Result<String, String>)>> = Mutex::new(Vec::with_capacity(total));
+    let results: Mutex<Vec<(String, Result<String, String>)>> =
+        Mutex::new(Vec::with_capacity(total));
     let workers = total.min(
         std::thread::available_parallelism()
             .map(|n| n.get())
@@ -183,7 +188,11 @@ where
     }
     conn.execute_batch("COMMIT;")
         .map_err(|e| format!("提交缩略图回写事务失败: {e}"))?;
-    Ok(RebuildSummary { total, success, failed })
+    Ok(RebuildSummary {
+        total,
+        success,
+        failed,
+    })
 }
 
 fn io_err(e: std::io::Error) -> String {
@@ -200,7 +209,10 @@ pub fn ensure(
     conn: &Connection,
     ids: &[String],
 ) -> Result<EnsureResult, String> {
-    let mut result = EnsureResult { fixed: Vec::new(), missing: Vec::new() };
+    let mut result = EnsureResult {
+        fixed: Vec::new(),
+        missing: Vec::new(),
+    };
     for id in ids {
         let row: Option<(String, String, Option<String>)> = conn
             .query_row(
@@ -227,7 +239,10 @@ pub fn ensure(
                     rusqlite::params![thumb_rel, id],
                 )
                 .map_err(|e| format!("更新缩略图路径失败: {e}"))?;
-                result.fixed.push(EnsureFixed { id: id.clone(), thumbnail_path: thumb_rel });
+                result.fixed.push(EnsureFixed {
+                    id: id.clone(),
+                    thumbnail_path: thumb_rel,
+                });
             }
             Err(msg) => {
                 log::warn!("缩略图懒自愈失败 id={id}: {msg}");

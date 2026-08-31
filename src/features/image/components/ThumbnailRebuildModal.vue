@@ -34,12 +34,9 @@ watch(
     summary.value = null;
     error.value = "";
     unlisten?.();
-    unlisten = await listen<ThumbnailRebuildProgress>(
-      "thumbnail-rebuild-progress",
-      (e) => {
-        progress.value = e.payload;
-      },
-    );
+    unlisten = await listen<ThumbnailRebuildProgress>("thumbnail-rebuild-progress", (e) => {
+      progress.value = e.payload;
+    });
     try {
       summary.value = await rebuildThumbnails();
       phase.value = "done";
@@ -52,7 +49,7 @@ watch(
       unlisten = null;
     }
   },
-  { immediate: true } // 父级可能在挂载前就置 open，需要立即触发
+  { immediate: true }, // 父级可能在挂载前就置 open，需要立即触发
 );
 
 const percent = () => {
@@ -88,7 +85,11 @@ function close() {
             ></div>
           </div>
           <p class="mt-3 text-sm text-gray-700 dark:text-gray-200">
-            {{ progress.total > 0 ? `正在重建缩略图... (${progress.current}/${progress.total})` : "准备中..." }}
+            {{
+              progress.total > 0
+                ? `正在重建缩略图... (${progress.current}/${progress.total})`
+                : "准备中..."
+            }}
           </p>
           <p
             v-if="progress.file_name"

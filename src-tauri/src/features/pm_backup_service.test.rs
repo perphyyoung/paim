@@ -19,7 +19,10 @@ fn manifest_validation() {
     };
     assert!(validate_manifest(&ok).is_ok());
     // dataVersion 缺失按 1 处理（与 pm 导入一致）
-    let legacy = BackupManifest { data_version: None, ..ok };
+    let legacy = BackupManifest {
+        data_version: None,
+        ..ok
+    };
     assert!(validate_manifest(&legacy).is_ok());
     let wrong_app = BackupManifest {
         app_name: "other".into(),
@@ -114,7 +117,11 @@ fn inspect_parses_wrapped_backup() {
     // Unix `zip -r` 打包会多一层目录包裹，导入器应兼容
     let dir = unique_test_dir("inspect-wrapped");
     let db_bytes = build_pm_db_bytes(&dir);
-    write_backup_zip(&dir.join("backup.zip"), "prompt-manager-backup-1/", &db_bytes);
+    write_backup_zip(
+        &dir.join("backup.zip"),
+        "prompt-manager-backup-1/",
+        &db_bytes,
+    );
     let info = inspect(dir.join("backup.zip").to_str().unwrap()).expect("inspect ok");
     assert_eq!(info.prompt_count, 2);
     let _ = std::fs::remove_dir_all(&dir);
@@ -128,7 +135,7 @@ fn replace_tables_copies_all_rows_and_wipes_old() {
 
     // 主库先放一条旧数据，导入后应被整体替换
     let main_path = dir.join("paim.db");
-        let bk = db::init(main_path.clone()).expect("init main db");
+    let bk = db::init(main_path.clone()).expect("init main db");
     let conn = bk.0.lock().unwrap();
     conn.execute(
         "INSERT INTO prompts (id, title, content) VALUES ('pmt_old', 'old', 'old')",
@@ -141,7 +148,10 @@ fn replace_tables_copies_all_rows_and_wipes_old() {
     assert_eq!(images, 1);
 
     let count = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
-    assert_eq!(count("SELECT COUNT(*) FROM prompts WHERE id = 'pmt_old'"), 0);
+    assert_eq!(
+        count("SELECT COUNT(*) FROM prompts WHERE id = 'pmt_old'"),
+        0
+    );
     assert_eq!(
         count("SELECT COUNT(*) FROM prompts WHERE id = 'pmt_20260607003952_2cj6k' AND is_favorite = 1"),
         1
@@ -174,8 +184,10 @@ fn replace_tables_copies_all_rows_and_wipes_old() {
     let committed: i64 = verify
         .query_row("SELECT COUNT(*) FROM prompts", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(committed, 2, "replace_tables 必须提交事务，而非留在打开的事务里");
+    assert_eq!(
+        committed, 2,
+        "replace_tables 必须提交事务，而非留在打开的事务里"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
-

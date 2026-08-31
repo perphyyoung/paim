@@ -101,7 +101,7 @@ const sortedImages = computed(() => {
         if (s) return s.check(img);
         const tags = tagNames.value[img.id];
         return !!tags && tags.includes(t);
-      })
+      }),
     );
   }
   if (!arr.length) return arr;
@@ -142,8 +142,10 @@ const visibleIds = computed(() => {
   const count = Math.max(1, gridPageSize.value);
   return list.slice(start, start + count).map((i) => i.id);
 });
-const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } =
-  useThumbnailSelfHeal(visibleIds, onThumbsFixed);
+const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } = useThumbnailSelfHeal(
+  visibleIds,
+  onThumbsFixed,
+);
 
 function onThumbsFixed(fixed: ThumbnailEnsureFixed[]) {
   const dir = dataDir.value;
@@ -197,7 +199,13 @@ const SPECIAL_TAGS = [
   { name: "收藏", check: (img: Image) => !!img.is_favorite },
   { name: "未引", check: (img: Image) => refLen(img) === 0 },
   { name: "多引", check: (img: Image) => refLen(img) > 1 },
-  { name: "无标", check: (img: Image) => { const t = tagNames.value[img.id]; return !t || t.length === 0; } },
+  {
+    name: "无标",
+    check: (img: Image) => {
+      const t = tagNames.value[img.id];
+      return !t || t.length === 0;
+    },
+  },
   { name: "安全", check: (img: Image) => !!img.is_safe },
   { name: "敏感", check: (img: Image) => !img.is_safe },
 ];
@@ -419,7 +427,10 @@ const detailOrder = ref<string[]>([]);
 
 function openDetail(img: Image) {
   detailOrder.value = sortedImages.value.map((i) => i.id);
-  detailIndex.value = Math.max(0, sortedImages.value.findIndex((i) => i.id === img.id));
+  detailIndex.value = Math.max(
+    0,
+    sortedImages.value.findIndex((i) => i.id === img.id),
+  );
   detailOpen.value = true;
 }
 function closeDetail() {
@@ -594,86 +605,82 @@ function onUploadDone() {
   <section class="relative flex h-full flex-col overflow-hidden px-6">
     <!-- 顶部固定区：工具栏 + 标签筛选区 + 错误提示（不参与滚动） -->
     <div class="shrink-0 pt-3">
-    <div class="mb-4 grid grid-cols-6 items-center gap-3">
-      <button
-        type="button"
-        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
-        @click="uploadOpen = true"
-      >
-        上传图像
-      </button>
-      <input
-        v-model="keyword"
-        type="search"
-        placeholder="搜索文件名…"
-        class="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
-      />
-      <button
-        type="button"
-        class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-        title="回收站"
-        @click="openTrash"
-      >
-        🗑回收站
-      </button>
-      <select
-        v-model="sortBy"
-        class="min-w-0 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-        @change="onSortChange"
-      >
-        <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
-          {{ o.label }}
-        </option>
-      </select>
-      <button
-        type="button"
-        class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-        :title="sortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
-        @click="toggleSortDesc"
-      >
-        {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
-      </button>
-      <label class="flex items-center text-gray-600 dark:text-gray-400">
-        <input
-          v-model.number="cardSize"
-          type="range"
-          :min="CARD_MIN"
-          :max="CARD_MAX"
-          :step="CARD_STEP"
-          class="w-full accent-blue-600"
-          @input="onSizeInput"
-        />
-      </label>      
-    </div>
-
-    <!-- 标签筛选区（通用组件，按标签组分段） -->
-    <TagFilterPanel
-      :domain="'image'"
-      v-model="selectedTags"
-      :special-tags="SPECIAL_TAGS"
-      :special-counts="specialCounts"
-      :tag-groups="tagGroups"
-      :all-tags="allTags"
-      :tag-counts="tagCounts"
-    >
-      <template #toolbar-extra>
+      <div class="mb-4 grid grid-cols-6 items-center gap-3">
         <button
           type="button"
-          class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          title="管理标签"
-          @click="openTagManager"
+          class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+          @click="uploadOpen = true"
         >
-          管理
+          上传图像
         </button>
-      </template>
-    </TagFilterPanel>
+        <input
+          v-model="keyword"
+          type="search"
+          placeholder="搜索文件名…"
+          class="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+        />
+        <button
+          type="button"
+          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          title="回收站"
+          @click="openTrash"
+        >
+          🗑回收站
+        </button>
+        <select
+          v-model="sortBy"
+          class="min-w-0 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          @change="onSortChange"
+        >
+          <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          :title="sortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
+          @click="toggleSortDesc"
+        >
+          {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
+        </button>
+        <label class="flex items-center text-gray-600 dark:text-gray-400">
+          <input
+            v-model.number="cardSize"
+            type="range"
+            :min="CARD_MIN"
+            :max="CARD_MAX"
+            :step="CARD_STEP"
+            class="w-full accent-blue-600"
+            @input="onSizeInput"
+          />
+        </label>
+      </div>
 
-    <!-- 上传图像弹窗 -->
-    <ImageUploadModal
-      :open="uploadOpen"
-      @close="uploadOpen = false"
-      @uploaded="onUploadDone"
-    />
+      <!-- 标签筛选区（通用组件，按标签组分段） -->
+      <TagFilterPanel
+        :domain="'image'"
+        v-model="selectedTags"
+        :special-tags="SPECIAL_TAGS"
+        :special-counts="specialCounts"
+        :tag-groups="tagGroups"
+        :all-tags="allTags"
+        :tag-counts="tagCounts"
+      >
+        <template #toolbar-extra>
+          <button
+            type="button"
+            class="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            title="管理标签"
+            @click="openTagManager"
+          >
+            管理
+          </button>
+        </template>
+      </TagFilterPanel>
+
+      <!-- 上传图像弹窗 -->
+      <ImageUploadModal :open="uploadOpen" @close="uploadOpen = false" @uploaded="onUploadDone" />
     </div>
 
     <!-- 卡片滚动区：虚拟网格 + 自定义滚动条 -->
@@ -709,147 +716,153 @@ function onUploadDone() {
               @click="openDetail(img)"
               @contextmenu.prevent="openCtxMenu($event, img)"
             >
-        <!-- 背景图 -->
-        <img
-          v-if="thumbs[img.id]"
-          :src="thumbs[img.id]"
-          alt=""
-          class="absolute inset-0 h-full w-full object-cover"
-        />
-        <svg
-          v-else
-          xmlns="http://www.w3.org/2000/svg"
-          class="absolute inset-0 m-auto h-10 w-10 text-gray-400 dark:text-gray-500"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm8.5 3.5 a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-6 9l4-5 3 3 3-4 4 6"
-          />
-        </svg>
-
-        <!-- 4 行覆盖层 -->
-        <div class="absolute inset-0 flex flex-col">
-          <!-- row1 按钮行：4 元素水平均分，左右顶格，悬停显示；批量模式下常显 -->
-          <div
-            class="grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"
-            :class="batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
-          >
-            <!-- 复选框 -->
-            <div class="flex items-center justify-center">
-              <input
-                type="checkbox"
-                class="h-4 w-4 cursor-pointer accent-indigo-500"
-                :checked="selectedIds.has(img.id)"
-                @click.stop="toggleSelect(img.id)"
+              <!-- 背景图 -->
+              <img
+                v-if="thumbs[img.id]"
+                :src="thumbs[img.id]"
+                alt=""
+                class="absolute inset-0 h-full w-full object-cover"
               />
-            </div>
-            <!-- 收藏 -->
-            <div class="flex items-center justify-center">
-              <button
-                type="button"
-                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-                :title="img.is_favorite ? '取消收藏' : '收藏'"
-                @click.stop="toggleFavorite(img)"
+              <svg
+                v-else
+                xmlns="http://www.w3.org/2000/svg"
+                class="absolute inset-0 m-auto h-10 w-10 text-gray-400 dark:text-gray-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  :fill="img.is_favorite ? 'currentColor' : 'none'"
-                  :stroke="img.is_favorite ? 'none' : 'currentColor'"
-                  stroke-width="1.5"
-                  class="h-4 w-4 text-amber-400"
-                  aria-hidden="true"
-                >
-                  <path d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z" />
-                </svg>
-              </button>
-            </div>
-            <!-- 复制提示词 -->
-            <div class="flex items-center justify-center">
-              <button
-                type="button"
-                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-                title="复制提示词"
-                @click.stop="copyPrompt(img)"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  class="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              </button>
-            </div>
-            <!-- 删除 -->
-            <div class="flex items-center justify-center">
-              <button
-                type="button"
-                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-                title="删除"
-                @click.stop="requestDelete(img)"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  class="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" />
-                </svg>
-              </button>
-            </div>
-          </div>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm8.5 3.5 a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-6 9l4-5 3 3 3-4 4 6"
+                />
+              </svg>
 
-          <!-- row2 关联提示词（若有则显示，占满勾出超额渐变淡出） -->
-          <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
-            <p
-              v-if="(imagePrompts[img.id] || []).length"
-              class="text-[10px] leading-4 text-white drop-shadow"
-              :title="imagePrompts[img.id].join('\n')"
-            >
-              {{ imagePrompts[img.id][0] }}
-            </p>
-            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"></div>
-          </div>
+              <!-- 4 行覆盖层 -->
+              <div class="absolute inset-0 flex flex-col">
+                <!-- row1 按钮行：4 元素水平均分，左右顶格，悬停显示；批量模式下常显 -->
+                <div
+                  class="grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"
+                  :class="batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+                >
+                  <!-- 复选框 -->
+                  <div class="flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      class="h-4 w-4 cursor-pointer accent-indigo-500"
+                      :checked="selectedIds.has(img.id)"
+                      @click.stop="toggleSelect(img.id)"
+                    />
+                  </div>
+                  <!-- 收藏 -->
+                  <div class="flex items-center justify-center">
+                    <button
+                      type="button"
+                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                      :title="img.is_favorite ? '取消收藏' : '收藏'"
+                      @click.stop="toggleFavorite(img)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        :fill="img.is_favorite ? 'currentColor' : 'none'"
+                        :stroke="img.is_favorite ? 'none' : 'currentColor'"
+                        stroke-width="1.5"
+                        class="h-4 w-4 text-amber-400"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- 复制提示词 -->
+                  <div class="flex items-center justify-center">
+                    <button
+                      type="button"
+                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                      title="复制提示词"
+                      @click.stop="copyPrompt(img)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        class="h-4 w-4"
+                        aria-hidden="true"
+                      >
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- 删除 -->
+                  <div class="flex items-center justify-center">
+                    <button
+                      type="button"
+                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+                      title="删除"
+                      @click.stop="requestDelete(img)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        class="h-4 w-4"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
 
-          <!-- row3 标签（组件内截断，剩余显示 +n） -->
-          <CardTagRow
-            v-if="(tagNames[img.id] || []).length"
-            :tags="tagNames[img.id] || []"
-            :card-size="cardSize"
-          />
+                <!-- row2 关联提示词（若有则显示，占满勾出超额渐变淡出） -->
+                <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
+                  <p
+                    v-if="(imagePrompts[img.id] || []).length"
+                    class="text-[10px] leading-4 text-white drop-shadow"
+                    :title="imagePrompts[img.id].join('\n')"
+                  >
+                    {{ imagePrompts[img.id][0] }}
+                  </p>
+                  <div
+                    class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"
+                  ></div>
+                </div>
 
-          <!-- row4 随排序依据动态显示对应字段值 -->
-          <div class="bg-black/70 px-1.5 py-0.5 text-center">
-            <p
-              class="truncate text-[11px] text-white"
-              :title="`${rowInfo(img).label}：${rowInfo(img).value}`"
-            >
-              {{ rowInfo(img).value }}
-            </p>
-          </div>
-          </div>
-        </div>
-        </template>
-      </VirtualGrid>
-      <CustomScrollBar
-        class="w-4 shrink-0"
-        :total="sortedImages.length"
-        :page-size="gridPageSize"
-        :model-value="scrollIndex"
-        @update:model-value="onScrollbarSeek"
-      />
+                <!-- row3 标签（组件内截断，剩余显示 +n） -->
+                <CardTagRow
+                  v-if="(tagNames[img.id] || []).length"
+                  :tags="tagNames[img.id] || []"
+                  :card-size="cardSize"
+                />
+
+                <!-- row4 随排序依据动态显示对应字段值 -->
+                <div class="bg-black/70 px-1.5 py-0.5 text-center">
+                  <p
+                    class="truncate text-[11px] text-white"
+                    :title="`${rowInfo(img).label}：${rowInfo(img).value}`"
+                  >
+                    {{ rowInfo(img).value }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </template>
+        </VirtualGrid>
+        <CustomScrollBar
+          class="w-4 shrink-0"
+          :total="sortedImages.length"
+          :page-size="gridPageSize"
+          :model-value="scrollIndex"
+          @update:model-value="onScrollbarSeek"
+        />
       </template>
     </div>
 
@@ -884,7 +897,10 @@ function onUploadDone() {
       confirm-text="删除"
       danger
       @confirm="doSingleDelete"
-      @cancel="singleDeleteOpen = false; singleDeleteTarget = null"
+      @cancel="
+        singleDeleteOpen = false;
+        singleDeleteTarget = null;
+      "
     />
 
     <!-- 右键菜单 -->
@@ -950,7 +966,9 @@ function onUploadDone() {
             />
           </svg>
           <div class="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-center">
-            <p class="truncate text-[11px] text-white" :title="img.stored_name">{{ img.stored_name }}</p>
+            <p class="truncate text-[11px] text-white" :title="img.stored_name">
+              {{ img.stored_name }}
+            </p>
             <p class="truncate text-[10px] text-gray-300">删除于 {{ fmtLocal(img.deleted_at) }}</p>
           </div>
           <div
@@ -963,8 +981,19 @@ function onUploadDone() {
                 class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
                 @click.stop="restoreImage(img)"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
               </button>
             </div>
@@ -975,8 +1004,19 @@ function onUploadDone() {
                 class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
                 @click.stop="requestPurgeImage(img)"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"
+                  />
                 </svg>
               </button>
             </div>

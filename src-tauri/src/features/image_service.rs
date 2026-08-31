@@ -121,10 +121,12 @@ pub fn import(
     let file_size = md.len() as i64;
 
     // 6 位年月子目录：images/YYYYMM/
-    let yyyymm = unix_to_yyyymm(std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64);
+    let yyyymm = unix_to_yyyymm(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64,
+    );
     let month_dir = images_dir.join(&yyyymm);
     std::fs::create_dir_all(&month_dir).map_err(io_to_sql)?;
 
@@ -150,12 +152,10 @@ pub fn import(
                     std::fs::create_dir_all(&thumb_month_dir).map_err(io_to_sql)?;
                     let thumb_abs = thumb_month_dir.join(&thumb_name);
                     thumb.save(&thumb_abs).map_err(|e| {
-                        rusqlite::Error::ToSqlConversionFailure(Box::new(
-                            std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("生成缩略图失败: {e}"),
-                            ),
-                        ))
+                        rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("生成缩略图失败: {e}"),
+                        )))
                     })?;
                     (
                         Some(w as i64),
@@ -261,9 +261,17 @@ pub fn restore_all(conn: &Connection) -> rusqlite::Result<usize> {
 pub fn empty_trash(conn: &Connection, app: &tauri::AppHandle) -> TrashBatchResult {
     let ids: Vec<String> = match list_trashed(conn) {
         Ok(items) => items.into_iter().map(|i| i.id).collect(),
-        Err(_) => return TrashBatchResult { count: 0, failures: 0 },
+        Err(_) => {
+            return TrashBatchResult {
+                count: 0,
+                failures: 0,
+            }
+        }
     };
-    let mut result = TrashBatchResult { count: 0, failures: 0 };
+    let mut result = TrashBatchResult {
+        count: 0,
+        failures: 0,
+    };
     for id in ids {
         match purge(conn, app, &id) {
             Ok(_) => result.count += 1,
@@ -282,7 +290,8 @@ pub fn update_detail(
     is_favorite: Option<bool>,
     is_safe: Option<bool>,
 ) -> rusqlite::Result<Option<Image>> {
-    let mut sql = String::from("UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')");
+    let mut sql =
+        String::from("UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')");
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     if let Some(v) = file_name {
         if !v.trim().is_empty() {
@@ -306,8 +315,7 @@ pub fn update_detail(
     params.push(Box::new(id.to_string()));
 
     let mut stmt = conn.prepare(&sql)?;
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-        params.iter().map(|b| b.as_ref()).collect();
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|b| b.as_ref()).collect();
     stmt.execute(param_refs.as_slice())?;
     get_by_id(conn, id)
 }
@@ -406,7 +414,11 @@ fn unix_to_yyyymm(secs: i64) -> String {
 }
 
 /// 直接新建一条提示词并与该图片建立关联（幂等）。
-pub(crate) fn relate_prompt(conn: &Connection, image_id: &str, content: &str) -> rusqlite::Result<()> {
+pub(crate) fn relate_prompt(
+    conn: &Connection,
+    image_id: &str,
+    content: &str,
+) -> rusqlite::Result<()> {
     let prompt_id = prompt_service::create(conn, content, None)?.id;
     conn.execute(
         "INSERT OR IGNORE INTO prompt_image_relations(prompt_id, image_id) VALUES (?1, ?2)",

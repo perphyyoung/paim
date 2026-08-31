@@ -121,7 +121,10 @@ pub fn create_group(
     let sort_order = match sort_order {
         Some(v) => v,
         None => {
-            let sql = format!("SELECT COALESCE(MAX(sort_order) + 1, 0) FROM {}", domain.groups_table());
+            let sql = format!(
+                "SELECT COALESCE(MAX(sort_order) + 1, 0) FROM {}",
+                domain.groups_table()
+            );
             conn.query_row(&sql, [], |r| r.get(0))?
         }
     };
@@ -185,7 +188,12 @@ pub fn create_tag(
 }
 
 /// 重命名标签。
-pub fn rename_tag(conn: &Connection, domain: TagDomain, id: i64, name: &str) -> rusqlite::Result<()> {
+pub fn rename_tag(
+    conn: &Connection,
+    domain: TagDomain,
+    id: i64,
+    name: &str,
+) -> rusqlite::Result<()> {
     let name = name.trim();
     let sql = format!(
         "UPDATE {} SET name = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?2",
@@ -219,7 +227,10 @@ pub fn move_tag(
 
 /// 将标签组固定到首位（sort_order 设为当前最小值 - 1）。
 pub fn pin_group_to_top(conn: &Connection, domain: TagDomain, id: i64) -> rusqlite::Result<()> {
-    let first_sql = format!("SELECT COALESCE(MIN(sort_order), 0) FROM {}", domain.groups_table());
+    let first_sql = format!(
+        "SELECT COALESCE(MIN(sort_order), 0) FROM {}",
+        domain.groups_table()
+    );
     let first: i64 = conn.query_row(&first_sql, [], |r| r.get(0))?;
     let sql = format!(
         "UPDATE {} SET sort_order = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?2",

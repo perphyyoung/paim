@@ -58,16 +58,13 @@ function measure() {
 
 watch(
   () => [props.tags, props.cardSize] as const,
-  () => nextTick(() => requestAnimationFrame(measure))
+  () => nextTick(() => requestAnimationFrame(measure)),
 );
 onMounted(() => requestAnimationFrame(measure));
 </script>
 
 <template>
-  <div
-    ref="rowRef"
-    class="flex items-center overflow-hidden px-1.5 pb-0.5"
-  >
+  <div ref="rowRef" class="flex items-center overflow-hidden px-1.5 pb-0.5">
     <span
       v-for="t in tags"
       :key="t"

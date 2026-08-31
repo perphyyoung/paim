@@ -23,8 +23,9 @@ const emit = defineEmits<{
   purge: [item: T];
 }>();
 
-const { gridRef, scrollIndex, pageSize, onGridScroll, onScrollbarSeek } =
-  useGridScrollSync(() => props.items.length);
+const { gridRef, scrollIndex, pageSize, onGridScroll, onScrollbarSeek } = useGridScrollSync(
+  () => props.items.length,
+);
 
 const canOperate = computed(() => props.items.length > 0);
 </script>
@@ -70,7 +71,14 @@ const canOperate = computed(() => props.items.length > 0);
             class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700"
             @click="emit('close')"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="h-4 w-4"
+              aria-hidden="true"
+            >
               <path stroke-linecap="round" stroke-linejoin="round" d="M18 6 6 18M6 6l12 12" />
             </svg>
           </button>
