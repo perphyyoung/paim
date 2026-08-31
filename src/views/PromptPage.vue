@@ -643,7 +643,6 @@ onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
                     : 'border-gray-200 dark:border-gray-700'
               "
               @click="openDetail(index)"
-              @contextmenu.prevent
             >
               <!-- 背景图：第一张关联图像缩略图 -->
               <img
