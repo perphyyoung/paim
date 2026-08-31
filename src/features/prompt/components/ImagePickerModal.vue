@@ -26,6 +26,7 @@ const emit = defineEmits<{
 }>();
 
 const images = ref<Image[]>([]);
+const total = ref(0);
 const thumbs = ref<Record<string, string>>({});
 const loading = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
@@ -91,7 +92,10 @@ function toggleSelect(id: string) {
 async function loadImages() {
   loading.value = true;
   try {
-    images.value = await invoke<Image[]>("list_images");
+    // 与 pm 一致：最多加载 100 张（查询层 limit）
+    const page = await invoke<{ items: Image[]; total: number }>("list_images", { limit: 100 });
+    images.value = page.items;
+    total.value = page.total;
     for (const img of images.value) {
       try {
         const p = await invoke<string>("get_thumbnail", { id: img.id });
@@ -264,7 +268,7 @@ function close() {
           class="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-700"
         >
           <span class="text-sm text-gray-500 dark:text-gray-400"
-            >已选 {{ selectedIds.size }} 张</span
+            >已显示 {{ images.length }} / {{ total }} 张 · 已选 {{ selectedIds.size }} 张</span
           >
           <div class="grid grid-cols-2 gap-2">
             <button

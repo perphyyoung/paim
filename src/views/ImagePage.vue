@@ -373,11 +373,12 @@ async function purgeImage(img: Image) {
 
 async function loadImages() {
   // 并行拉取;缩略图 URL 直接由行内 thumbnail_path 构建,不再逐图 IPC
-  const [imgs, promptsMap, dir] = await Promise.all([
-    invoke<Image[]>("list_images"),
+  const [page, promptsMap, dir] = await Promise.all([
+    invoke<{ items: Image[]; total: number }>("list_images"),
     invoke<Record<string, string[]>>("get_image_prompts_map").catch(() => ({})),
     invoke<string>("get_data_dir"),
   ]);
+  const imgs = page.items;
   images.value = imgs;
   imagePrompts.value = promptsMap;
   dataDir.value = dir;

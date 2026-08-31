@@ -4,7 +4,7 @@
 use crate::db::BkDb;
 use crate::error::AppError;
 use crate::features::image_service::{
-    self, Image, ImageTag, ImportBatchResult, ImportResult, LinkedPrompt,
+    self, Image, ImageTag, ImportBatchResult, ImportResult, LinkedPrompt, PaginatedImages,
 };
 use crate::features::prompt_service;
 use crate::features::thumbnail_service::{self, EnsureResult, RebuildProgress, RebuildSummary};
@@ -94,9 +94,11 @@ pub fn upload_image(
 }
 
 #[tauri::command]
-pub fn list_images(db: State<BkDb>) -> Result<Vec<Image>, AppError> {
+pub fn list_images(db: State<BkDb>, limit: Option<i64>) -> Result<PaginatedImages, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    image_service::list(&conn).map_err(|e| AppError::Message(e.to_string()))
+    let items = image_service::list(&conn, limit).map_err(|e| AppError::Message(e.to_string()))?;
+    let total = image_service::count(&conn).map_err(|e| AppError::Message(e.to_string()))?;
+    Ok(PaginatedImages { items, total })
 }
 
 /// 将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。

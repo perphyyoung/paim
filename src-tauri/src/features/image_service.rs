@@ -47,6 +47,13 @@ pub struct ImportBatchResult {
     pub errors: Vec<ImportError>,
 }
 
+/// 分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。
+#[derive(Debug, Serialize, Clone)]
+pub struct PaginatedImages {
+    pub items: Vec<Image>,
+    pub total: i64,
+}
+
 /// 图像标签（关联表 join image_tags 的返回对象）。
 #[derive(Debug, Serialize, Clone)]
 pub struct ImageTag {
@@ -205,13 +212,29 @@ pub(crate) fn make_center_thumb(
     ))
 }
 
-pub fn list(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
-         FROM images WHERE is_deleted = 0 ORDER BY created_at DESC",
-    )?;
-    let rows = stmt.query_map([], row_to_image)?;
+/// 非软删除图像列表；limit 为 Some(n) 时只取前 n 张（按创建时间倒序，与 pm 选择器一致）。
+pub fn list(conn: &Connection, limit: Option<i64>) -> rusqlite::Result<Vec<Image>> {
+    let base_sql = "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
+         FROM images WHERE is_deleted = 0 ORDER BY created_at DESC";
+    let mut stmt = if limit.is_some() {
+        conn.prepare(&format!("{base_sql} LIMIT ?"))?
+    } else {
+        conn.prepare(base_sql)?
+    };
+    let rows = match limit {
+        Some(n) => stmt.query_map(rusqlite::params![n], row_to_image)?,
+        None => stmt.query_map([], row_to_image)?,
+    };
     rows.collect()
+}
+
+/// 非软删除图像总数（分页信息栏用）。
+pub fn count(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM images WHERE is_deleted = 0",
+        [],
+        |r| r.get(0),
+    )
 }
 
 /// 回收站列表（软删除的图像）。
