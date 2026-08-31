@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
+import TagChip from "./TagChip.vue";
 
 const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
@@ -616,22 +617,14 @@ function refresh() {
                     </button>
                   </div>
                 </header>
-                <div class="flex flex-wrap gap-2.5 p-3">
+                <div class="flex flex-wrap gap-2 p-3">
                   <div
                     v-for="item in sec.items"
                     :key="item.id"
-                    class="group relative flex min-h-7 cursor-grab select-none items-center rounded-full bg-blue-600 px-3.5 py-1 text-xs text-white transition-colors hover:bg-blue-700 active:cursor-grabbing"
+                    class="group relative flex min-h-7 cursor-grab select-none items-center active:cursor-grabbing"
                     @pointerdown="onTagPointerDown($event, item)"
                   >
-                    <!-- 计数徽章：左上角悬浮，白底蓝字与胶囊反色 -->
-                    <span
-                      class="absolute -left-2 -top-2 z-[2] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-blue-600 shadow"
-                      >{{ item.count }}</span
-                    >
-                    <!-- 标签名：hover 时变淡让位给角标 -->
-                    <span class="transition-opacity duration-150 group-hover:opacity-30">{{
-                      item.name
-                    }}</span>
+                    <TagChip :count="item.count" dim-on-hover>{{ item.name }}</TagChip>
                     <!-- 编辑：顶部中央悬浮，hover 显示 -->
                     <button
                       type="button"

@@ -2,6 +2,7 @@
 // 单行标签显示：一行放不下的标签汇聚成末尾的 "+n"（不同颜色区分）。
 // 通过测量容器宽度与各标签实际宽度决定保留多少个。
 import { nextTick, onMounted, ref, watch } from "vue";
+import TagChip from "@/features/tag/components/TagChip.vue";
 
 const props = defineProps<{ tags: string[]; cardSize: number }>();
 
@@ -65,13 +66,9 @@ onMounted(() => requestAnimationFrame(measure));
 
 <template>
   <div ref="rowRef" class="flex items-center overflow-hidden px-1.5 pb-0.5">
-    <span
-      v-for="t in tags"
-      :key="t"
-      class="card-tag mr-0.5 flex-none rounded bg-black/50 px-1 text-[length:var(--fs-10)] leading-4 text-white"
-    >
+    <TagChip v-for="t in tags" :key="t" size="sm" class="card-tag mr-0.5 flex-none">
       {{ t }}
-    </span>
+    </TagChip>
     <span
       class="card-plus flex-none rounded bg-black/60 px-1 text-[length:var(--fs-10)] leading-4 font-semibold text-amber-400"
     ></span>

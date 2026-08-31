@@ -8,6 +8,7 @@ import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
+import TagChip from "@/features/tag/components/TagChip.vue";
 import ImageFullscreenViewer, {
   type FullscreenItem,
 } from "@/features/image/components/ImageFullscreenViewer.vue";
@@ -653,21 +654,9 @@ async function onPickerImported() {
                 >提示词标签</label
               >
               <div v-if="tags.length" class="mb-1 flex flex-wrap gap-1">
-                <span
-                  v-for="t in tags"
-                  :key="t.id"
-                  class="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                >
+                <TagChip v-for="t in tags" :key="t.id" removable @remove="requestRemoveTag(t)">
                   {{ t.name }}
-                  <button
-                    type="button"
-                    class="text-red-400 hover:text-red-600 dark:hover:text-red-300"
-                    :title="`删除标签 ${t.name}`"
-                    @click.stop="requestRemoveTag(t)"
-                  >
-                    ✕
-                  </button>
-                </span>
+                </TagChip>
               </div>
               <div v-else class="mb-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
               <div class="flex gap-1">

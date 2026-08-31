@@ -19,6 +19,7 @@ export interface FullscreenItem {
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import NavAndIndex from "@/components/NavAndIndex.vue";
+import TagChip from "@/features/tag/components/TagChip.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -240,13 +241,9 @@ onUnmounted(() => {
       <div
         class="absolute bottom-3 left-3 z-10 flex items-center gap-2 rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm"
       >
-        <span
-          v-for="t in currentTags"
-          :key="t"
-          class="rounded bg-white/20 px-1.5 py-0.5 text-xs text-white"
-        >
+        <TagChip v-for="t in currentTags" :key="t" size="sm">
           {{ t }}
-        </span>
+        </TagChip>
         <span v-if="!currentTags.length" class="text-xs text-white/50">无标签</span>
       </div>
 

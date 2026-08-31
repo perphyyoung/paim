@@ -6,6 +6,7 @@ import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
+import TagChip from "@/features/tag/components/TagChip.vue";
 import ImageFullscreenViewer, { type FullscreenItem } from "./ImageFullscreenViewer.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
@@ -536,13 +537,9 @@ const fmtSize = (bytes: number) => {
               提示词标签
             </div>
             <div v-if="currentPrompt?.tags?.length" class="mt-1 flex flex-wrap gap-1">
-              <span
-                v-for="t in currentPrompt.tags"
-                :key="t"
-                class="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-              >
+              <TagChip v-for="t in currentPrompt.tags" :key="t">
                 {{ t }}
-              </span>
+              </TagChip>
             </div>
             <div v-else class="mt-1 text-sm text-gray-700 dark:text-gray-200">—</div>
           </div>
@@ -674,21 +671,9 @@ const fmtSize = (bytes: number) => {
               图像标签
             </div>
             <div v-if="tags.length" class="mt-1 flex flex-wrap gap-1">
-              <span
-                v-for="t in tags"
-                :key="t.id"
-                class="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-              >
+              <TagChip v-for="t in tags" :key="t.id" removable @remove="requestRemoveTag(t)">
                 {{ t.name }}
-                <button
-                  type="button"
-                  class="text-red-400 hover:text-red-600 dark:hover:text-red-300"
-                  :title="`删除标签 ${t.name}`"
-                  @click="requestRemoveTag(t)"
-                >
-                  ✕
-                </button>
-              </span>
+              </TagChip>
             </div>
             <div v-else class="mt-1 text-sm text-gray-400 dark:text-gray-500">暂无标签</div>
             <div class="mt-2 flex gap-1">

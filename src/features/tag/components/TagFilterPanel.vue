@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import TagChip from "./TagChip.vue";
 
 /**
  * TagFilterPanel - 通用标签筛选区（供图像/提示词主页复用）。
@@ -237,51 +238,31 @@ const tagSections = computed<TagSection[]>(() => {
         v-if="headerTags.special.length > 0"
         class="flex flex-wrap items-center gap-1.5 self-stretch border-r border-gray-200 pr-3 dark:border-gray-700"
       >
-        <button
+        <TagChip
           v-for="h in headerTags.special"
           :key="h.name"
-          type="button"
-          class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
-          :class="
-            h.active
-              ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
-              : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-          "
-          @click="(e) => toggleTag(h.name, e)"
+          :variant="h.active ? 'solid' : 'checked'"
+          :count="h.count"
+          interactive
+          @click="(e: MouseEvent) => toggleTag(h.name, e)"
         >
           {{ h.name }}
-          <span
-            class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
-            :class="h.active ? 'bg-white text-indigo-500' : 'bg-indigo-500 text-white'"
-          >
-            {{ h.count }}
-          </span>
-        </button>
+        </TagChip>
       </div>
       <div
         v-if="headerTags.normal.length > 0"
         class="flex min-w-0 flex-1 flex-wrap items-center gap-2 pl-1"
       >
-        <button
+        <TagChip
           v-for="h in headerTags.normal"
           :key="h.name"
-          type="button"
-          class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
-          :class="
-            h.active
-              ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
-              : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-          "
-          @click="(e) => toggleTag(h.name, e)"
+          :variant="h.active ? 'solid' : 'checked'"
+          :count="h.count"
+          interactive
+          @click="(e: MouseEvent) => toggleTag(h.name, e)"
         >
           {{ h.name }}
-          <span
-            class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
-            :class="h.active ? 'bg-white text-indigo-500' : 'bg-indigo-500 text-white'"
-          >
-            {{ h.count }}
-          </span>
-        </button>
+        </TagChip>
       </div>
     </div>
 
@@ -292,29 +273,15 @@ const tagSections = computed<TagSection[]>(() => {
         class="flex shrink-0 flex-col items-center justify-center justify-items-center gap-1.5 self-stretch border-r border-gray-200 py-1 pr-3 dark:border-gray-700"
       >
         <template v-for="s in specialTags" :key="s.name">
-          <button
+          <TagChip
             v-if="(specialCounts[s.name] ?? 0) > 0"
-            type="button"
-            class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
-            :class="
-              selectedTags.includes(s.name)
-                ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
-                : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-            "
-            @click="(e) => toggleTag(s.name, e)"
+            :variant="selectedTags.includes(s.name) ? 'solid' : 'checked'"
+            :count="specialCounts[s.name] ?? 0"
+            interactive
+            @click="(e: MouseEvent) => toggleTag(s.name, e)"
           >
             {{ s.name }}
-            <span
-              class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
-              :class="
-                selectedTags.includes(s.name)
-                  ? 'bg-white text-indigo-500'
-                  : 'bg-indigo-500 text-white'
-              "
-            >
-              {{ specialCounts[s.name] ?? 0 }}
-            </span>
-          </button>
+          </TagChip>
         </template>
       </div>
       <!-- 右：分组主体 -->
@@ -324,30 +291,16 @@ const tagSections = computed<TagSection[]>(() => {
             {{ sec.name }}
           </div>
           <div class="flex flex-wrap items-center gap-2 pl-2">
-            <button
+            <TagChip
               v-for="t in sec.tags"
               :key="t.id"
-              type="button"
-              class="relative rounded-full border px-2.5 py-0.5 text-xs transition-colors"
-              :class="
-                selectedTags.includes(t.name)
-                  ? 'border-transparent bg-gradient-to-br from-indigo-500 to-purple-500 text-white'
-                  : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
-              "
-              @click="(e) => toggleTag(t.name, e)"
+              :variant="selectedTags.includes(t.name) ? 'solid' : 'checked'"
+              :count="t.count"
+              interactive
+              @click="(e: MouseEvent) => toggleTag(t.name, e)"
             >
               {{ t.name }}
-              <span
-                class="absolute -left-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow transition-colors"
-                :class="
-                  selectedTags.includes(t.name)
-                    ? 'bg-white text-indigo-500'
-                    : 'bg-indigo-500 text-white'
-                "
-              >
-                {{ t.count }}
-              </span>
-            </button>
+            </TagChip>
           </div>
         </template>
       </div>
