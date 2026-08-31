@@ -87,6 +87,12 @@ function onModalClose() {
 // —— 重建缩略图 ——
 const rebuildOpen = ref(false);
 
+// 提示词主页的卡片背景图同样读 thumbnail_path，两个主页都要刷新
+function markStaleBothPages() {
+  markPageStale("images");
+  markPageStale("prompts");
+}
+
 onMounted(loadDataDir);
 </script>
 
@@ -179,11 +185,11 @@ onMounted(loadDataDir);
       @imported="onImported"
     />
 
-    <!-- 重建回写 thumbnail_path 后，图像主页下次激活时刷新 -->
+    <!-- 重建回写 thumbnail_path 后，图像主页与提示词主页（卡片背景图）下次激活时刷新 -->
     <ThumbnailRebuildModal
       :open="rebuildOpen"
       @close="rebuildOpen = false"
-      @rebuilt="markPageStale('images')"
+      @rebuilt="markStaleBothPages"
     />
   </section>
 </template>
