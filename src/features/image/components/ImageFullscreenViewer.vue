@@ -76,6 +76,8 @@ onMounted(() => {
   // 拖拽监听挂 document 一次：任意位置松开即停止
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);
+  // 全屏期间接管键盘：capture 阶段拦截详情弹窗的 ←/→/↑/↓/Esc，防止全屏列表漂移
+  window.addEventListener("keydown", onCaptureKeydown, true);
 });
 onUnmounted(() => {
   getCurrentWindow()
@@ -83,7 +85,13 @@ onUnmounted(() => {
     .catch(() => {});
   document.removeEventListener("mousemove", onMouseMove);
   document.removeEventListener("mouseup", onMouseUp);
+  window.removeEventListener("keydown", onCaptureKeydown, true);
 });
+
+function onCaptureKeydown(e: KeyboardEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+}
 
 // 打开时以父级传入索引为起点
 watch(
