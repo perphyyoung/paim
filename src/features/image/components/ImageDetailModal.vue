@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
+import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
@@ -56,7 +57,6 @@ const fileName = ref("");
 const note = ref("");
 const origSrc = ref("");
 const tags = ref<{ id: number; name: string }[]>([]);
-const tagInput = ref("");
 interface LinkedPrompt {
   id: string;
   title: string;
@@ -195,29 +195,13 @@ async function loadTags() {
     tags.value = [];
   }
 }
-// 添加标签：逗号或空格分隔可批量
-async function addTags() {
-  const img = current.value;
-  if (!img) return;
-  const names = tagInput.value
-    .split(/[,，\s]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  if (names.length === 0) return;
-  try {
-    const newTags = await invoke<{ id: number; name: string }[]>("add_image_tags", {
-      id: img.id,
-      names,
-    });
-    tagInput.value = "";
-    for (const t of newTags) {
-      if (!tags.value.some((x) => x.id === t.id)) tags.value.push(t);
-    }
-    showToast(`已添加 ${newTags.length} 个标签`);
-  } catch {
-    showToast("添加标签失败");
-  }
-}
+// 添加标签：一次只添加一个标签
+const { tagInput, addTag } = useTagAdd({
+  command: "add_image_tags",
+  getItemId: () => current.value?.id,
+  tags,
+  showToast,
+});
 async function removeTag(tagId: number) {
   const img = current.value;
   if (!img) return;
@@ -640,13 +624,13 @@ const fmtSize = (bytes: number) => {
               <input
                 v-model="tagInput"
                 class="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-                placeholder="回车添加，逗号或空格分隔可批量"
-                @keydown.enter.prevent="addTags"
+                placeholder="回车添加单个标签"
+                @keydown.enter.prevent="addTag"
               />
               <button
                 type="button"
                 class="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                @click="addTags"
+                @click="addTag"
               >
                 添加
               </button>

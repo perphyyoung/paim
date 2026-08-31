@@ -4,6 +4,7 @@ import { computed, ref, toRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
+import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
@@ -67,7 +68,6 @@ const contentTranslate = ref("");
 const note = ref("");
 // 标签与关联图像
 const tags = ref<{ id: number; name: string }[]>([]);
-const tagInput = ref("");
 const relatedImages = ref<RelatedImage[]>([]);
 const imagesLoading = ref(false);
 
@@ -179,26 +179,14 @@ async function saveFields() {
   }
 }
 
-async function addTags() {
-  const p = current.value;
-  if (!p) return;
-  const names = tagInput.value
-    .split(/[,，\s]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  if (names.length === 0) return;
-  try {
-    const added = await invoke<TagItem[]>("add_prompt_tags", { id: p.id, names });
-    tagInput.value = "";
-    for (const t of added) {
-      if (!tags.value.some((x) => x.id === t.id)) tags.value.push({ id: t.id, name: t.name });
-    }
-    emit("updated");
-    showToast(`已添加 ${added.length} 个标签`);
-  } catch {
-    showToast("添加标签失败");
-  }
-}
+// 添加标签：一次只添加一个标签
+const { tagInput, addTag } = useTagAdd({
+  command: "add_prompt_tags",
+  getItemId: () => current.value?.id,
+  tags,
+  showToast,
+  onAdded: () => emit("updated"),
+});
 async function removeTag(tagId: number) {
   const p = current.value;
   if (!p) return;
@@ -619,13 +607,13 @@ async function onPickerImported() {
                 <input
                   v-model="tagInput"
                   class="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-                  placeholder="回车添加，逗号或空格分隔可批量"
-                  @keydown.enter.prevent="addTags"
+                  placeholder="回车添加单个标签"
+                  @keydown.enter.prevent="addTag"
                 />
                 <button
                   type="button"
                   class="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                  @click="addTags"
+                  @click="addTag"
                 >
                   添加
                 </button>

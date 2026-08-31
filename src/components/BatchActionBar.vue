@@ -43,13 +43,10 @@ function openTagDialog() {
 }
 
 function submitAddTag() {
-  const tags = tagInput.value
-    .split(/[,，\s]+/)
-    .map((t) => t.trim())
-    .filter(Boolean);
+  const tag = tagInput.value.trim();
   tagDlgOpen.value = false;
-  if (tags.length === 0) return;
-  emit("add-tag", tags);
+  if (!tag) return;
+  emit("add-tag", [tag]);
 }
 </script>
 
@@ -128,7 +125,7 @@ function submitAddTag() {
         <input
           v-model="tagInput"
           type="text"
-          placeholder="标签名，用逗号或空格分隔"
+          placeholder="标签名"
           class="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
           @keydown.enter="submitAddTag"
         />
