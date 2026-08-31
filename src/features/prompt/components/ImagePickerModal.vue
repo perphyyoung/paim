@@ -161,7 +161,7 @@ function close() {
       @click.self="close()"
     >
       <div
-        class="flex h-[80vh] w-[760px] max-w-[90vw] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+        class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
       >
         <!-- 顶部：标题 + 搜索 + 排序 -->
         <div
@@ -172,7 +172,7 @@ function close() {
             <input
               v-model="keyword"
               class="w-48 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-              placeholder="按文件名搜索..."
+              placeholder="搜索文件名、备注、标签..."
             />
             <select
               v-model="selectedTag"
@@ -220,7 +220,7 @@ function close() {
           >
             暂无图像
           </div>
-          <ul v-else class="grid grid-cols-5 gap-2">
+          <ul v-else class="grid grid-cols-6 gap-2 xl:grid-cols-8">
             <li
               v-for="img in sortedImages"
               :key="img.id"

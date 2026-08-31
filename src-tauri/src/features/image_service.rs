@@ -212,14 +212,19 @@ pub(crate) fn make_center_thumb(
     ))
 }
 
-/// 拼接搜索/标签的 WHERE 条件子句与参数（search 匹配文件名，tag 需存在同名标签关联）。
+/// 拼接搜索/标签的 WHERE 条件子句与参数（search 匹配文件名/备注/标签名，tag 需存在同名标签关联）。
 fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) {
     let mut clauses = String::new();
     let mut params = Vec::new();
     let search = search.unwrap_or("").trim();
     if !search.is_empty() {
-        clauses.push_str(" AND file_name LIKE ?");
-        params.push(format!("%{search}%"));
+        clauses.push_str(
+            " AND (file_name LIKE ? OR note LIKE ? OR EXISTS (SELECT 1 FROM image_tag_relations r2 JOIN image_tags t2 ON t2.id = r2.tag_id WHERE r2.image_id = images.id AND t2.name LIKE ?))",
+        );
+        let like = format!("%{search}%");
+        params.push(like.clone());
+        params.push(like.clone());
+        params.push(like);
     }
     let tag = tag.unwrap_or("").trim();
     if !tag.is_empty() {
