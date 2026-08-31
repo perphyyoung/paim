@@ -8,7 +8,7 @@
 **颜色 = 动作语义**，而非装饰。决定一个控件颜色前，先回答：这是「正向确认」「退出/取消」「破坏性」「状态展示」中的哪一类？
 
 | 语义 | 视觉 | 典型文案 |
-|---|---|---|
+| --- | --- | --- |
 | 正向确认（Primary） | 蓝色实心 | 保存、新建、导入、确定、提交 |
 | 退出/取消（Neutral） | 中性描边 | 取消、关闭、退出、返回 |
 | 破坏性（Danger） | 红色 | 删除、移除、清空、彻底删除 |
@@ -17,36 +17,46 @@
 ## 二、动作色阶
 
 ### 1. Primary — 蓝实心（只用于正向确认动作）
+
 ```html
 <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50" />
 ```
+
 - 深色模式无需改（蓝色通用）。
 - **铁律：取消/关闭/退出绝不用蓝实心。**
 
 ### 2. Neutral — 中性描边（取消/关闭/退出/返回）
+
 ```html
 <button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700" />
 ```
+
 - 小尺寸图标/文字钮同理：`px-2 py-1 text-xs`，边框与底色一致走 gray 系。
 
 ### 3. Danger — 红色（破坏性）
+
 确认弹窗的确认键，使用红实心：
+
 ```html
 <button class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700" />
 ```
+
 图标入口（删除/移除按钮）用红文字：
+
 ```html
 <button class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" />
 ```
+
 - **铁律：破坏性动作必前置确认弹窗（ConfirmDialog danger）**，禁止直接红键即删。
 
 ### 4. Disabled — 禁用
+
 统一 `disabled:cursor-not-allowed disabled:opacity-50`。
 
 ## 三、状态色（表达状态，非操作按钮）
 
 | 状态 | 色 | 示例 |
-|---|---|---|
+| --- | --- | --- |
 | 安全 | 绿 `bg-green-500` | 安全 toggle 开启态 |
 | 敏感/不安全 | 红 `bg-red-500` | 安全 toggle 关闭态 |
 | 收藏 | 琥珀渐变 `from-amber-500 to-amber-400` | 收藏按钮激活态 |
@@ -54,7 +64,38 @@
 
 ## 四、展示性元素（允许浅蓝，不算动作色）
 
-- **标签 chip（展示/筛选）**：`bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300` —— 属信息展示，非「确认动作」，允许蓝。仅**实心蓝**保留给动作。
+### 标签 —— 统一使用 `TagChip` 组件（新增/手写标签一律引用它）
+
+> 深色主题专属，不再写亮色/暗色分支，也不手写标签类。交互/形状差异由 props 控制。
+> 颜色语义：**未选中 = 浅紫底，选中 = 深紫底，前景恒白**；计数徽章恒蓝底白字。
+
+**变体（variant）**：
+
+| 变体 | 视觉（Tailwind class） | 用途 |
+| --- | --- | --- |
+| `checked`（默认） | `bg-purple-600/25 border border-purple-400/50 text-white`，hover `hover:border-purple-300/60` | 未选中/基础色（详情页、管理页、卡片、全屏） |
+| `solid` | `bg-purple-500 text-white hover:bg-purple-400` | 标签筛选**选中态** |
+
+**计数徽章（count）**：左上角绝对定位，`bg-blue-600` 蓝底白字（18px 圆角），**选中/未选中都不变色**。
+
+**删除按钮（removable = true，与管理页一致）**：右上角 `-right-2 -top-2` 深灰圆钮（`bg-gray-800 border border-gray-600`）红色 ✕，`opacity-0 group-hover:opacity-90` **hover 才显示**，点击派发 `remove`。
+
+**尺寸（size）**：
+
+| size | class | 场景 |
+| --- | --- | --- |
+| `md`（默认） | `px-2.5 py-0.5 text-xs` | 筛选区、详情页、管理页 |
+| `sm` | `px-1 text-[10px] leading-4` | 卡片行（CardTagRow）、图上左下覆盖、全屏查看器 |
+
+**场景映射**：
+
+| 场景 | 用法 |
+| --- | --- |
+| 标签筛选区 | `interactive` + `count`，未选中 `checked` / 选中 `solid` |
+| 标签管理页 | `count` + `dimOnHover`，编辑（铅笔）/删除（✕）角按钮由外层容器提供 |
+| 提示词/图像详情标签 | `removable`（✕ 右上角 hover 显示），其余只读 |
+| 卡片行 | `size="sm"`，由 CardTagRow 接管测量与「+n」汇聚 |
+| 全屏查看器 / 图像左下角覆盖 | `size="sm"` 只读 |
 
 ## 五、3 条铁律
 
