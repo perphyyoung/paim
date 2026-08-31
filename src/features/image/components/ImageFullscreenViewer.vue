@@ -145,7 +145,7 @@ async function ensureMeta(id: string) {
 }
 
 function nav(delta: number) {
-  index.value = (index.value + delta + total.value) % total.value;
+  index.value = Math.min(total.value - 1, Math.max(0, index.value + delta));
 }
 function goFirst() {
   index.value = 0;

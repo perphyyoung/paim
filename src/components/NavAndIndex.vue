@@ -4,7 +4,7 @@
  * 仅负责展示当前索引与派发导航事件，不含业务逻辑、不含定位；
  * 由父容器负责放置（如 absolute bottom 居中）。
  */
-defineProps<{
+const props = defineProps<{
   currentIndex: number;
   orderLength: number;
 }>();
@@ -14,6 +14,10 @@ const emit = defineEmits<{
   (e: "next"): void;
   (e: "last"): void;
 }>();
+
+// 非循环导航：到头/到尾禁用对应方向箭头
+const atStart = () => props.currentIndex <= 0;
+const atEnd = () => props.currentIndex >= props.orderLength - 1;
 </script>
 
 <template>
@@ -23,7 +27,7 @@ const emit = defineEmits<{
     <button
       type="button"
       class="shrink-0 px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-      :disabled="orderLength <= 1"
+      :disabled="orderLength <= 1 || atStart()"
       title="跳到开头"
       @click="emit('first')"
     >
@@ -32,7 +36,7 @@ const emit = defineEmits<{
     <button
       type="button"
       class="shrink-0 px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-      :disabled="orderLength <= 1"
+      :disabled="orderLength <= 1 || atStart()"
       title="上一个"
       @click="emit('prev')"
     >
@@ -42,7 +46,7 @@ const emit = defineEmits<{
     <button
       type="button"
       class="shrink-0 px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-      :disabled="orderLength <= 1"
+      :disabled="orderLength <= 1 || atEnd()"
       title="下一个"
       @click="emit('next')"
     >
@@ -51,7 +55,7 @@ const emit = defineEmits<{
     <button
       type="button"
       class="shrink-0 px-1.5 hover:text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-      :disabled="orderLength <= 1"
+      :disabled="orderLength <= 1 || atEnd()"
       title="跳到最后"
       @click="emit('last')"
     >

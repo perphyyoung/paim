@@ -22,7 +22,11 @@ export function useDetailSnapshot<T extends IdItem>(getItems: () => T[], order: 
     const n = order.value.length;
     if (n === 0) return;
     const curIdx = order.value.indexOf(currentId.value);
-    const next = curIdx < 0 ? 0 : (curIdx + step + n) % n;
+    if (curIdx < 0) {
+      currentId.value = order.value[0];
+      return;
+    }
+    const next = Math.min(n - 1, Math.max(0, curIdx + step));
     currentId.value = order.value[next];
   }
 
