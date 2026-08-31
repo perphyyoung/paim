@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "paim",
-  "version": "0.2.0",
+  "version": "../package.json",
   "identifier": "com.paim.perphyyoung",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm version:sync && pnpm build"
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "windows": [
