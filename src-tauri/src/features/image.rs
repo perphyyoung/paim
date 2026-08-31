@@ -295,12 +295,8 @@ pub fn add_image_tag_batch(
 #[tauri::command]
 pub fn remove_image_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    conn.execute(
-        "DELETE FROM image_tag_relations WHERE image_id = ?1 AND tag_id = ?2",
-        rusqlite::params![id, tag_id],
-    )
-    .map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(())
+    image_service::remove_image_tag(&conn, &id, tag_id)
+        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 返回全部图像标签（供标签筛选区渲染），按名称排序。

@@ -340,6 +340,15 @@ fn get_or_create_image_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i64
     }
 }
 
+/// 移除图像的一个标签关联。
+pub fn remove_image_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> {
+    conn.execute(
+        "DELETE FROM image_tag_relations WHERE image_id = ?1 AND tag_id = ?2",
+        rusqlite::params![id, tag_id],
+    )?;
+    Ok(())
+}
+
 /// 更新图像详情字段（文件名、备注、收藏、安全评级）。仅更新传入非默认值的字段。
 pub fn update_detail(
     conn: &Connection,
