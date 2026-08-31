@@ -11,6 +11,28 @@ pub fn run() {
     .setup(|app| {
       app.handle().plugin(tauri_plugin_dialog::init())?;
 
+      // 全局快捷键：Ctrl+Shift+, 切换设置面板（系统级钩子，不受输入法/WebView 焦点影响）
+      // 注：原 Ctrl+, 已被系统其它程序注册为全局热键，插件无法抢占，故加 Shift
+      #[cfg(desktop)]
+      {
+        use tauri::Emitter;
+        use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+        let toggle_settings = Shortcut::new(
+          Some(Modifiers::CONTROL | Modifiers::SHIFT),
+          Code::Comma,
+        );
+        app.handle().plugin(
+          tauri_plugin_global_shortcut::Builder::new()
+            .with_shortcuts([toggle_settings])?
+            .with_handler(move |app, shortcut, event| {
+              if shortcut == &toggle_settings && event.state() == ShortcutState::Pressed {
+                let _ = app.emit("global-shortcut", "toggle-settings");
+              }
+            })
+            .build(),
+        )?;
+      }
+
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()

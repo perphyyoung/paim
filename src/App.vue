@@ -1,12 +1,25 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute } from "vue-router";
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { listen } from "@tauri-apps/api/event";
 import { initFontScale } from "@/utils/font";
 import SettingsView from "@/views/SettingsView.vue";
 import ToastHost from "@/components/ToastHost.vue";
 
 // 应用启动即应用持久化的全局字体缩放
 initFontScale();
+
+// 全局快捷键（系统级，Rust 侧 tauri-plugin-global-shortcut 注册 Ctrl+,）：
+// 收到事件即切换设置面板开关
+let unlistenGlobalShortcut: (() => void) | undefined;
+onMounted(async () => {
+  unlistenGlobalShortcut = await listen("global-shortcut", () => {
+    settingsOpen.value = !settingsOpen.value;
+  });
+});
+onUnmounted(() => {
+  unlistenGlobalShortcut?.();
+});
 
 const tabs = [
   {
@@ -86,7 +99,7 @@ function reloadAll() {
       </button>
       <button
         type="button"
-        title="设置"
+        title="设置 (Ctrl+Shift+,)"
         class="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
         @click="settingsOpen = true"
       >
@@ -129,7 +142,7 @@ function reloadAll() {
     <Teleport to="body">
       <div
         v-if="settingsOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
         @click.self="settingsOpen = false"
       >
         <div class="relative w-[50vw] max-w-[50vw]">
