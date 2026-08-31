@@ -100,16 +100,18 @@ onMounted(loadDataDir);
   <section
     class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
   >
-    <h2 class="mb-4 text-lg font-semibold text-gray-800 dark:text-gray-100">
-      设置
-    </h2>
+    <div class="relative mb-4 flex h-6 items-center justify-center">
+      <h2
+        class="absolute left-0 text-lg font-semibold text-gray-800 dark:text-gray-100"
+      >
+        设置
+      </h2>
+      <span class="text-xs font-normal text-gray-500 dark:text-gray-400">
+        paim v{{ appVersion }}
+      </span>
+    </div>
 
     <dl class="divide-y divide-gray-100 dark:divide-gray-700">
-      <div class="flex justify-between py-3">
-        <dt class="text-gray-600 dark:text-gray-400">版本</dt>
-        <dd class="text-gray-800 dark:text-gray-100">v{{ appVersion }}</dd>
-      </div>
-
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
           <dt class="text-gray-600 dark:text-gray-400">数据目录</dt>
