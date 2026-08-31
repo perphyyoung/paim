@@ -415,9 +415,11 @@ async function onPickerImported() {
                 </div>
                 <div
                   v-if="img.tags.length"
-                  class="absolute bottom-0.5 left-0.5 max-w-[calc(100%-0.75rem)] truncate rounded bg-black/60 px-1 py-0.5 text-[10px] text-white"
+                  class="absolute bottom-0.5 left-0.5 flex max-w-[calc(100%-0.75rem)] flex-wrap gap-1"
                 >
-                  {{ img.tags.join("、") }}
+                  <TagChip v-for="t in img.tags" :key="t" size="sm">
+                    {{ t }}
+                  </TagChip>
                 </div>
                 <button
                   type="button"
