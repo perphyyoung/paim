@@ -226,8 +226,8 @@ onUnmounted(() => {
         <span v-if="!currentTags.length" class="text-xs text-white/50">无标签</span>
       </div>
 
-      <!-- paim 风格导航 + 索引 -->
-      <div v-if="total > 1" class="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
+      <!-- paim 风格导航 + 索引（单条时也显示，箭头由组件禁用） -->
+      <div class="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
         <NavAndIndex
           :current-index="index"
           :order-length="total"
