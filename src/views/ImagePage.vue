@@ -578,6 +578,20 @@ onActivated(() => {
 });
 onDeactivated(() => window.removeEventListener("click", closeCtxMenu));
 
+// Ctrl/Cmd+F 聚焦搜索框
+// 官方推荐：应用内快捷键使用标准 Web API document.addEventListener('keydown')
+// KeepAlive 页面用 Vue 官方 onActivated/onDeactivated 控制注册：
+// 仅当前激活页面响应，切换页面后 Ctrl+F 无响应
+const searchInput = ref<HTMLInputElement | null>(null);
+function onSearchKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.code === "KeyF") {
+    e.preventDefault();
+    searchInput.value?.focus();
+  }
+}
+onActivated(() => document.addEventListener("keydown", onSearchKeydown));
+onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
+
 // ---- 上传图像弹窗 ----
 const uploadOpen = ref(false);
 function onUploadDone() {
@@ -601,6 +615,7 @@ function onUploadDone() {
           上传图像
         </button>
         <input
+          ref="searchInput"
           v-model="keyword"
           type="search"
           placeholder="搜索文件名…"

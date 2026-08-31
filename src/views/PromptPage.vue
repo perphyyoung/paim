@@ -513,6 +513,21 @@ onActivated(() => {
   }
   restoreSaved();
 });
+
+// Ctrl/Cmd+F 聚焦搜索框
+// 官方推荐：应用内快捷键使用标准 Web API document.addEventListener('keydown')
+// （Tauri 文档明确区分：应用内监听用 DOM 事件，系统级才用 global-shortcut 插件）
+// KeepAlive 页面用 Vue 官方 onActivated/onDeactivated 控制注册：
+// 仅当前激活页面响应，切换页面后 Ctrl+F 无响应
+const searchInput = ref<HTMLInputElement | null>(null);
+function onSearchKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.code === "KeyF") {
+    e.preventDefault();
+    searchInput.value?.focus();
+  }
+}
+onActivated(() => document.addEventListener("keydown", onSearchKeydown));
+onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
 </script>
 
 <template>
@@ -528,6 +543,7 @@ onActivated(() => {
           新建提示词
         </button>
         <input
+          ref="searchInput"
           v-model="keyword"
           type="search"
           placeholder="搜索内容/标题…"
