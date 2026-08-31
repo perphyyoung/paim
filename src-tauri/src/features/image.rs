@@ -7,9 +7,10 @@ use crate::features::image_service::{
     self, Image, ImageTag, ImportBatchResult, ImportResult, LinkedPrompt,
 };
 use crate::features::prompt_service;
+use crate::features::thumbnail_service::{self, RebuildProgress, RebuildSummary};
 
 use rusqlite::OptionalExtension;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 
 #[tauri::command]
 pub fn upload_images(
@@ -470,4 +471,29 @@ pub fn create_prompt_for_image(
     image_service::relate_image_to_prompt(&conn, &prompt.id, &image_id)
         .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(())
+}
+
+/// 设置页「重建缩略图」：扫描全部图像，补齐丢失的缩略图文件并回写路径，
+/// 进度经 thumbnail-rebuild-progress 事件推送。重 IO 长任务，async + spawn_blocking。
+#[tauri::command]
+pub async fn rebuild_thumbnails(app: tauri::AppHandle) -> Result<RebuildSummary, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let data_dir = crate::db::data_dir(&app);
+        let thumbs_root = crate::db::thumbnails_dir(&app);
+        let bk = app.state::<BkDb>();
+        let conn = bk.0.lock().map_err(|e| e.to_string())?;
+        thumbnail_service::rebuild_all(&data_dir, &thumbs_root, &conn, |done, total, file_name| {
+            let _ = app.emit(
+                thumbnail_service::PROGRESS_EVENT,
+                RebuildProgress {
+                    current: done,
+                    total,
+                    file_name: file_name.to_string(),
+                },
+            );
+        })
+    })
+    .await
+    .map_err(|e| AppError::Message(format!("重建缩略图任务执行失败: {e}")))?
+    .map_err(AppError::from)
 }

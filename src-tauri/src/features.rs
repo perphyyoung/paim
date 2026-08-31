@@ -7,3 +7,4 @@ pub mod prompt;
 pub mod prompt_service;
 pub mod prompt_tag;
 pub mod tag_manager;
+pub mod thumbnail_service;

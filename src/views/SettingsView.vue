@@ -5,8 +5,10 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { appVersion } from "@/version";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { useToast } from "@/components/useToast";
+import { markPageStale } from "@/utils/crossPageCache";
 import { inspectPmBackup, type PmBackupInfo } from "@/features/backup/api/pmBackup";
 import PmBackupImportModal from "@/features/backup/components/PmBackupImportModal.vue";
+import ThumbnailRebuildModal from "@/features/image/components/ThumbnailRebuildModal.vue";
 
 const { showToast } = useToast();
 
@@ -82,6 +84,9 @@ function onModalClose() {
   }
 }
 
+// —— 重建缩略图 ——
+const rebuildOpen = ref(false);
+
 onMounted(loadDataDir);
 </script>
 
@@ -115,6 +120,22 @@ onMounted(loadDataDir);
           @click="openDir"
         >
           打开目录
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <dt class="text-gray-600 dark:text-gray-400">重建缩略图</dt>
+          <dd class="text-sm text-gray-400 dark:text-gray-500">
+            扫描所有图像，重新生成丢失的缩略图文件
+          </dd>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+          @click="rebuildOpen = true"
+        >
+          重建
         </button>
       </div>
 
@@ -156,6 +177,13 @@ onMounted(loadDataDir);
       :zip-path="importZipPath"
       @close="onModalClose"
       @imported="onImported"
+    />
+
+    <!-- 重建回写 thumbnail_path 后，图像主页下次激活时刷新 -->
+    <ThumbnailRebuildModal
+      :open="rebuildOpen"
+      @close="rebuildOpen = false"
+      @rebuilt="markPageStale('images')"
     />
   </section>
 </template>
