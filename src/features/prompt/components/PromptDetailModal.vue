@@ -187,6 +187,24 @@ const { tagInput, addTag } = useTagAdd({
   showToast,
   onAdded: () => emit("updated"),
 });
+
+// 复制字段内容（编辑态取输入框值，展示态取 current 值）
+function copyField(text: string, label: string) {
+  if (!text) {
+    showToast(`${label}为空`);
+    return;
+  }
+  navigator.clipboard
+    .writeText(text)
+    .then(() => showToast(`已复制${label}`))
+    .catch(() => showToast("复制失败"));
+}
+function copyContent() {
+  copyField(edit.value ? content.value : (current.value?.content ?? ""), "提示词内容");
+}
+function copyTranslate() {
+  copyField(edit.value ? contentTranslate.value : (current.value?.content_translate ?? ""), "翻译");
+}
 async function removeTag(tagId: number) {
   const p = current.value;
   if (!p) return;
@@ -529,10 +547,19 @@ async function onPickerImported() {
 
             <!-- 内容 -->
             <div class="mb-4">
-              <label
-                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-                >提示词内容</label
-              >
+              <div class="mb-1 flex items-center justify-between">
+                <label
+                  class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                  >提示词内容</label
+                >
+                <button
+                  type="button"
+                  class="rounded px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                  @click="copyContent"
+                >
+                  复制
+                </button>
+              </div>
               <textarea
                 v-if="edit"
                 v-model="content"
@@ -549,10 +576,19 @@ async function onPickerImported() {
 
             <!-- 翻译 -->
             <div class="mb-4">
-              <label
-                class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
-                >翻译</label
-              >
+              <div class="mb-1 flex items-center justify-between">
+                <label
+                  class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                  >翻译</label
+                >
+                <button
+                  type="button"
+                  class="rounded px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                  @click="copyTranslate"
+                >
+                  复制
+                </button>
+              </div>
               <textarea
                 v-if="edit"
                 v-model="contentTranslate"
