@@ -4,11 +4,12 @@
  * 层级 z-[60]：盖过 z-50 业务弹窗，低于右键菜单本体 z-[70]。
  * 内容由 slot 提供，底部固定「取消 / 确定」。
  */
-defineProps<{
+const props = defineProps<{
   open: boolean;
   title: string;
   confirmText?: string;
   confirmDisabled?: boolean;
+  danger?: boolean;
 }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "confirm"): void }>();
 </script>
@@ -33,7 +34,11 @@ const emit = defineEmits<{ (e: "close"): void; (e: "confirm"): void }>();
           </button>
           <button
             type="button"
-            class="rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            :class="
+              danger
+                ? 'rounded-lg bg-red-600 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500'
+                : 'rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50'
+            "
             :disabled="confirmDisabled"
             @click="emit('confirm')"
           >

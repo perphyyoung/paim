@@ -236,6 +236,7 @@ const dlg = ref<{
   showSort: boolean;
   sortOrder: string | number;
   message: string;
+  danger: boolean;
   onOk: (() => void) | null;
 }>({
   visible: false,
@@ -248,6 +249,7 @@ const dlg = ref<{
   showSort: false,
   sortOrder: "",
   message: "",
+  danger: false,
   onOk: null,
 });
 
@@ -272,6 +274,7 @@ function openInput(
     showSort: !!opts.showSort,
     sortOrder: opts.initialSort != null ? String(opts.initialSort) : "",
     message: "",
+    danger: false,
     onOk: null,
   };
   // 聚焦名称输入框（新建/编辑均走此入口）
@@ -289,6 +292,8 @@ function openConfirm(title: string, message: string, onOk: () => void) {
     showSort: false,
     sortOrder: "",
     message,
+    // 确认类是删除/清空等破坏性操作，确认键用红
+    danger: true,
     onOk,
   };
 }
@@ -648,7 +653,13 @@ function refresh() {
       </div>
 
       <!-- 内嵌输入/确认对话框（复用公共 InlineDialog，z-[60]） -->
-      <InlineDialog :open="dlg.visible" :title="dlg.title" @close="closeDlg" @confirm="submitInput">
+      <InlineDialog
+        :open="dlg.visible"
+        :title="dlg.title"
+        :danger="dlg.danger"
+        @close="closeDlg"
+        @confirm="submitInput"
+      >
         <template v-if="dlg.mode === 'input'">
           <input
             ref="nameInput"

@@ -1,7 +1,7 @@
 # 设计方案
 
 > 目的：统一「动作 → 颜色」映射，消除「保存/取消」等按钮因配色相似造成的误导。
-> 适用：全部 Vue 组件，Tailwind 类。深浅色模式均需覆盖（`dark:` 前缀）。
+> 适用：全部 Vue 组件，Tailwind 类。深色主题专属，无亮暗分支。
 
 ## 一、总原则
 
@@ -28,7 +28,7 @@
 ### 2. Neutral — 中性描边（取消/关闭/退出/返回）
 
 ```html
-<button class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700" />
+<button class="rounded-lg border border-gray-600 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-700" />
 ```
 
 - 小尺寸图标/文字钮同理：`px-2 py-1 text-xs`，边框与底色一致走 gray 系。
@@ -44,7 +44,7 @@
 图标入口（删除/移除按钮）用红文字：
 
 ```html
-<button class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" />
+<button class="text-red-400 hover:text-red-300" />
 ```
 
 - **铁律：破坏性动作必前置确认弹窗（ConfirmDialog danger）**，禁止直接红键即删。
@@ -104,12 +104,6 @@
 3. **绿=安全、琥珀=收藏**，只表达状态，不做按钮主色。
 
 ## 六、现状核查清单
-
-- [x] 提示词详情右上角「编辑/取消」：取消态已由蓝实心改回中性描边（与底部「取消」一致）。
-- [ ] 复查各页「新建/导入/保存/确认」是否统一 `bg-blue-600`。
-- [ ] 复查各页「取消/关闭」是否统一中性描边、无蓝实心。
-- [ ] 复查删除/移除是否均走 `ConfirmDialog` 且确认键为红。
-- [ ] 复查安全 toggle、收藏按钮状态色是否按上表。
 
 > 新增界面请直接引用上述 class，不另创颜色。
 
