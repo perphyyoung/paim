@@ -6,8 +6,9 @@ const { toasts } = useToast();
 
 <template>
   <Teleport to="body">
+    <!-- z-[130]：永驻最高层，不被确认弹窗（110）/顶层模态（120）遮挡 -->
     <div
-      class="pointer-events-none fixed inset-x-0 bottom-6 z-[100] flex flex-col items-center gap-2"
+      class="pointer-events-none fixed inset-x-0 bottom-6 z-[130] flex flex-col items-center gap-2"
     >
       <TransitionGroup
         enter-active-class="transition duration-200 ease-out"
