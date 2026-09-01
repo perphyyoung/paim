@@ -567,7 +567,10 @@ onActivated(() => {
   }
   restoreSaved();
 });
-onDeactivated(() => window.removeEventListener("click", closeCtxMenu));
+onDeactivated(() => {
+  window.removeEventListener("click", closeCtxMenu);
+  exitBatch(); // 切走主页时退出批量模式，避免误操作
+});
 
 // ---- 主页快捷键（统一注册：Ctrl+F 搜索、Ctrl+P/I 切页、F5 刷新、Ctrl+T 标签折叠、Ctrl+A 全选）----
 const searchInput = ref<HTMLInputElement | null>(null);
