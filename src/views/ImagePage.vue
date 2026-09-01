@@ -707,7 +707,7 @@ function onUploadDone() {
               <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
                 <p
                   v-if="(imagePrompts[img.id] || []).length"
-                  class="text-[length:var(--fs-10)] leading-4 text-white drop-shadow"
+                  class="text-[length:var(--fs-10)] leading-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.9)]"
                   :title="imagePrompts[img.id].join('\n')"
                 >
                   {{ imagePrompts[img.id][0] }}
@@ -724,7 +724,7 @@ function onUploadDone() {
               <!-- row4 随排序依据动态显示对应字段值 -->
               <div class="px-1.5 py-0.5 text-center">
                 <p
-                  class="truncate text-[length:var(--fs-11)] text-white"
+                  class="truncate text-[length:var(--fs-11)] text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.9)]"
                   :title="`${rowInfo(img).label}：${rowInfo(img).value}`"
                 >
                   {{ rowInfo(img).value }}
