@@ -92,6 +92,9 @@ function toggleTagFilter() {
   localStorage.setItem(`${props.domain}.tagFilterCollapsed`, tagFilterCollapsed.value ? "1" : "0");
 }
 
+// 供父页 Ctrl+T 快捷键调用
+defineExpose({ toggleFilter: toggleTagFilter });
+
 // 标签排序状态（名称/数量 + 逆序，持久化）
 const TAG_SORT_KEY = `${props.domain}.tagSortBy`;
 const TAG_SORT_DESC_KEY = `${props.domain}.tagSortDesc`;

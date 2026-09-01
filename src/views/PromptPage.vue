@@ -2,6 +2,7 @@
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
+import { useRouter } from "vue-router";
 import { formatLocalTime } from "@/utils/date";
 import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
@@ -532,6 +533,29 @@ function onSearchKeydown(e: KeyboardEvent) {
 }
 onActivated(() => document.addEventListener("keydown", onSearchKeydown));
 onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
+
+// 主页快捷键：Ctrl+P/Ctrl+I 切到提示词/图像主页，F5 刷新（与左下「刷新缓存」同逻辑），Ctrl+T 折叠/展开标签筛选区
+const router = useRouter();
+const tagFilterRef = ref<InstanceType<typeof TagFilterPanel> | null>(null);
+function onHomeShortcutKeydown(e: KeyboardEvent) {
+  if (e.key === "F5") {
+    e.preventDefault();
+    window.location.reload();
+  } else if (e.ctrlKey || e.metaKey) {
+    if (e.code === "KeyP") {
+      e.preventDefault();
+      router.push("/prompts");
+    } else if (e.code === "KeyI") {
+      e.preventDefault();
+      router.push("/images");
+    } else if (e.code === "KeyT") {
+      e.preventDefault();
+      tagFilterRef.value?.toggleFilter();
+    }
+  }
+}
+onActivated(() => document.addEventListener("keydown", onHomeShortcutKeydown));
+onDeactivated(() => document.removeEventListener("keydown", onHomeShortcutKeydown));
 </script>
 
 <template>
@@ -591,6 +615,7 @@ onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
 
       <!-- 标签筛选区（通用组件，按标签组分段） -->
       <TagFilterPanel
+        ref="tagFilterRef"
         :domain="'prompt'"
         v-model="selectedTags"
         :special-tags="SPECIAL_TAGS"
