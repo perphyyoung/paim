@@ -468,6 +468,44 @@ function exitBatch() {
   batchOpen.value = false;
 }
 
+// 范围选择锚点：Ctrl 点击 / checkbox 单选时更新；Shift 点击从锚点扩选到当前项（对齐 pm rangeSelect）
+const anchorIndex = ref(-1);
+
+function onCheckSelect(index: number, id: string) {
+  toggleSelect(id);
+  anchorIndex.value = index;
+}
+
+function rangeSelect(index: number, id: string) {
+  const s = new Set(selectedIds.value);
+  const from = anchorIndex.value;
+  if (from < 0) {
+    anchorIndex.value = index;
+    s.add(id);
+  } else {
+    for (let i = Math.min(from, index); i <= Math.max(from, index); i++) {
+      const item = sortedImages.value[i];
+      if (item) s.add(item.id);
+    }
+  }
+  selectedIds.value = s;
+  batchOpen.value = s.size > 0;
+}
+
+function onCardClick(e: MouseEvent, index: number, img: Image) {
+  if (e.ctrlKey || e.metaKey) {
+    // Ctrl/Cmd + 点击：切换选中（并作为新锚点）
+    e.preventDefault();
+    onCheckSelect(index, img.id);
+  } else if (e.shiftKey) {
+    // Shift + 点击：范围选中
+    e.preventDefault();
+    rangeSelect(index, img.id);
+  } else {
+    openDetail(img);
+  }
+}
+
 // ---- 卡片按钮动作 ---- //
 // 复制关联的第一条提示词内容；未关联时提示
 async function copyPrompt(img: Image) {
@@ -617,6 +655,11 @@ function onHomeShortcutKeydown(e: KeyboardEvent) {
     } else if (e.code === "KeyT") {
       e.preventDefault();
       tagFilterRef.value?.toggleFilter();
+    } else if (e.code === "KeyA") {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return; // 输入框放行（文本全选）
+      e.preventDefault();
+      batchSelectAll();
     }
   }
 }
@@ -736,7 +779,7 @@ function onUploadDone() {
           :gap="12"
           @scroll="handleGridScroll"
         >
-          <template #default="{ item: img }">
+          <template #default="{ item: img, index }">
             <div
               class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-800"
               :class="[
@@ -746,7 +789,7 @@ function onUploadDone() {
                     ? 'border-amber-500'
                     : 'border-gray-700',
               ]"
-              @click="openDetail(img)"
+              @click="onCardClick($event, index, img)"
               @contextmenu.prevent="openCtxMenu($event, img)"
             >
               <!-- 背景图 -->
@@ -785,7 +828,7 @@ function onUploadDone() {
                       type="checkbox"
                       class="h-4 w-4 cursor-pointer accent-indigo-500"
                       :checked="selectedIds.has(img.id)"
-                      @click.stop="toggleSelect(img.id)"
+                      @click.stop="onCheckSelect(index, img.id)"
                     />
                   </div>
                   <!-- 收藏 -->

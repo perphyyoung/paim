@@ -287,6 +287,44 @@ function exitBatch() {
   batchOpen.value = false;
 }
 
+// 范围选择锚点：Ctrl 点击 / checkbox 单选时更新；Shift 点击从锚点扩选到当前项（对齐 pm rangeSelect）
+const anchorIndex = ref(-1);
+
+function onCheckSelect(index: number, id: string) {
+  toggleSelect(id);
+  anchorIndex.value = index;
+}
+
+function rangeSelect(index: number, id: string) {
+  const s = new Set(selectedIds.value);
+  const from = anchorIndex.value;
+  if (from < 0) {
+    anchorIndex.value = index;
+    s.add(id);
+  } else {
+    for (let i = Math.min(from, index); i <= Math.max(from, index); i++) {
+      const item = sortedPrompts.value[i];
+      if (item) s.add(item.id);
+    }
+  }
+  selectedIds.value = s;
+  batchOpen.value = s.size > 0;
+}
+
+function onCardClick(e: MouseEvent, index: number, id: string) {
+  if (e.ctrlKey || e.metaKey) {
+    // Ctrl/Cmd + 点击：切换选中（并作为新锚点）
+    e.preventDefault();
+    onCheckSelect(index, id);
+  } else if (e.shiftKey) {
+    // Shift + 点击：范围选中
+    e.preventDefault();
+    rangeSelect(index, id);
+  } else {
+    openDetail(index);
+  }
+}
+
 // 批量添加标签（与图像主页共用逻辑）
 const { batchAddTag } = useBatchTagAdd({
   domain: "prompt",
@@ -551,6 +589,11 @@ function onHomeShortcutKeydown(e: KeyboardEvent) {
     } else if (e.code === "KeyT") {
       e.preventDefault();
       tagFilterRef.value?.toggleFilter();
+    } else if (e.code === "KeyA") {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return; // 输入框放行（文本全选）
+      e.preventDefault();
+      batchSelectAll();
     }
   }
 }
@@ -666,7 +709,7 @@ onDeactivated(() => document.removeEventListener("keydown", onHomeShortcutKeydow
                     ? 'border-amber-500'
                     : 'border-gray-700'
               "
-              @click="openDetail(index)"
+              @click="onCardClick($event, index, p.id)"
             >
               <!-- 背景图：第一张关联图像缩略图 -->
               <img
@@ -687,7 +730,7 @@ onDeactivated(() => document.removeEventListener("keydown", onHomeShortcutKeydow
                       type="checkbox"
                       class="h-4 w-4 cursor-pointer accent-indigo-500"
                       :checked="selectedIds.has(p.id)"
-                      @click.stop="toggleSelect(p.id)"
+                      @click.stop="onCheckSelect(index, p.id)"
                     />
                   </div>
                   <div class="flex items-center justify-center">
