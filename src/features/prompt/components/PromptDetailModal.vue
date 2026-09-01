@@ -59,6 +59,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "close"): void;
   (e: "updated"): void;
+  /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
+  (e: "safe-synced", isSafe: boolean): void;
 }>();
 
 const { showToast } = useToast();
@@ -154,9 +156,16 @@ async function toggleSafe() {
   // 安全评级联动一层：同步到该提示词关联的图像
   try {
     await invoke("sync_prompt_safe_to_images", { promptId: p.id, isSafe: v });
+    emit("safe-synced", v);
   } catch (e) {
     showToast(`同步关联图像安全评级失败：${e}`);
   }
+}
+
+// 嵌套图像详情内修改安全评级后，同步当前提示词 UI（联动写库已完成）
+function onNestedImageSafeSynced(isSafe: boolean) {
+  const p = current.value;
+  if (p) p.is_safe = isSafe;
 }
 
 async function saveFields() {
@@ -723,6 +732,7 @@ async function onPickerImported() {
     :thumbs="imgDetailThumbs"
     is-nested
     @close="imgDetailOpen = false"
+    @safe-synced="onNestedImageSafeSynced"
   />
 
   <!-- 从图像列表导入选择器 -->

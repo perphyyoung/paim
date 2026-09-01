@@ -51,6 +51,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "close"): void;
   (e: "update", img: Image): void;
+  /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
+  (e: "safe-synced", isSafe: boolean): void;
 }>();
 
 const { showToast } = useToast();
@@ -136,6 +138,12 @@ const editPrompt = computed<
     },
   ];
 });
+
+// 嵌套提示词详情内修改安全评级后，同步当前图像 UI（联动写库已完成）
+function onNestedPromptSafeSynced(isSafe: boolean) {
+  const img = current.value;
+  if (img) img.is_safe = isSafe;
+}
 
 async function loadPromptTagData() {
   try {
@@ -388,6 +396,7 @@ async function toggleSafe() {
     await invoke("sync_image_safe_to_prompts", { imageId: img.id, isSafe: v });
     // 刷新关联提示词缓存，保证「编辑」弹窗立即读到同步后的安全评级
     await loadRelatedPrompts();
+    emit("safe-synced", v);
   } catch (e) {
     showToast(`同步关联提示词安全评级失败：${e}`);
   }
@@ -820,6 +829,7 @@ const fmtSize = (bytes: number) => {
       loadRelatedPrompts();
     "
     @updated="loadRelatedPrompts()"
+    @safe-synced="onNestedPromptSafeSynced"
   />
 
   <!-- 全屏查看（双击中区大图进入，列表为详情快照 props.images） -->
