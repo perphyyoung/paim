@@ -42,34 +42,16 @@ function onMouseDown(e: MouseEvent) {
 <template>
   <div
     class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-800"
-    :class="[
-      selected
-        ? 'border-indigo-500 shadow-[0_0_0_1px_rgba(99,102,241,.6),0_0_18px_rgba(99,102,241,.35)]'
-        : item.is_favorite
-          ? 'border-amber-500'
-          : 'border-gray-700',
-    ]"
+    :class="[item.is_favorite ? 'border-amber-500' : 'border-gray-700']"
     @click="emit('cardClick', $event, index, item.id)"
     @mousedown="onMouseDown"
   >
-    <!-- 选中遮罩 + 右上 ✓ 徽章（不拦截交互） -->
+    <!-- 选中遮罩（不拦截交互） -->
     <div
       v-if="selected"
       class="pointer-events-none absolute inset-0 z-[1] rounded-lg bg-indigo-500/15"
       aria-hidden="true"
     ></div>
-    <div
-      v-if="selected"
-      class="absolute right-1.5 top-1.5 z-[2] flex h-[18px] w-[18px] items-center justify-center rounded-full bg-indigo-500 text-white shadow"
-    >
-      <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
-        <path
-          fill-rule="evenodd"
-          d="M16.704 5.29a1 1 0 010 1.414l-7.5 7.5a1 1 0 01-1.414 0l-3.5-3.5a1 1 0 111.414-1.414L8.7 11.88l6.594-6.59a1 1 0 011.414 0z"
-          clip-rule="evenodd"
-        />
-      </svg>
-    </div>
 
     <!-- 背景图 / 占位 -->
     <img v-if="thumb" :src="thumb" alt="" class="absolute inset-0 h-full w-full object-cover" />
