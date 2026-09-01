@@ -5,6 +5,7 @@ use crate::db::BkDb;
 use crate::error::AppError;
 use crate::features::tag_manager;
 use crate::features::tag_manager::TagDomain;
+use crate::features::tag_manager::TagNameKind;
 use tauri::State;
 
 /// 返回图像标签管理页所需数据（标签组 + 带计数的标签）。
@@ -26,6 +27,8 @@ pub fn create_image_tag_group(
         return Err("组名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_name_not_dup(&conn, TagDomain::Image, TagNameKind::Group, &name, None)
+        .map_err(AppError::Message)?;
     tag_manager::create_group(&conn, TagDomain::Image, &name, sort_order)
         .map_err(|e| AppError::Message(e.to_string()))
 }
@@ -42,6 +45,8 @@ pub fn update_image_tag_group(
         return Err("组名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_name_not_dup(&conn, TagDomain::Image, TagNameKind::Group, &name, Some(id))
+        .map_err(AppError::Message)?;
     tag_manager::update_group(&conn, TagDomain::Image, id, &name, sort_order)
         .map_err(|e| AppError::Message(e.to_string()))
 }
@@ -65,6 +70,8 @@ pub fn create_image_tag(
         return Err("标签名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_name_not_dup(&conn, TagDomain::Image, TagNameKind::Tag, &name, None)
+        .map_err(AppError::Message)?;
     tag_manager::create_tag(&conn, TagDomain::Image, &name, group_id)
         .map_err(|e| AppError::Message(e.to_string()))
 }
@@ -76,6 +83,8 @@ pub fn rename_image_tag(db: State<BkDb>, id: i64, name: String) -> Result<(), Ap
         return Err("标签名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_name_not_dup(&conn, TagDomain::Image, TagNameKind::Tag, &name, Some(id))
+        .map_err(AppError::Message)?;
     tag_manager::rename_tag(&conn, TagDomain::Image, id, &name)
         .map_err(|e| AppError::Message(e.to_string()))
 }

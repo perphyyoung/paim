@@ -2,7 +2,7 @@
 //! 表名前缀由 TagDomain 决定（白名单映射，非外部输入，无注入风险），
 //! 供图像标签管理与提示词标签管理共用。
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
 /// 标签所属域：决定表名前缀（image_/prompt_）与文案。
@@ -10,6 +10,54 @@ use serde::Serialize;
 pub enum TagDomain {
     Image,
     Prompt,
+}
+
+/// 名称重名校验的目标对象类型（决定查标签表还是组表）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TagNameKind {
+    Tag,
+    Group,
+}
+
+/// 校验域内标签/组名唯一（exclude_id 用于更新时排除自身）；已存在返回中文错误文本。
+pub fn ensure_name_not_dup(
+    conn: &Connection,
+    domain: TagDomain,
+    kind: TagNameKind,
+    name: &str,
+    exclude_id: Option<i64>,
+) -> Result<(), String> {
+    let table = match kind {
+        TagNameKind::Tag => domain.tags_table(),
+        TagNameKind::Group => domain.groups_table(),
+    };
+    let dup = match exclude_id {
+        Some(id) => conn
+            .query_row(
+                &format!("SELECT 1 FROM {table} WHERE name = ?1 AND id != ?2 LIMIT 1"),
+                rusqlite::params![name.trim(), id],
+                |_| Ok(()),
+            )
+            .optional(),
+        None => conn
+            .query_row(
+                &format!("SELECT 1 FROM {table} WHERE name = ?1 LIMIT 1"),
+                rusqlite::params![name.trim()],
+                |_| Ok(()),
+            )
+            .optional(),
+    }
+    .map_err(|e| e.to_string())?
+    .is_some();
+    if dup {
+        let what = match kind {
+            TagNameKind::Tag => "标签",
+            TagNameKind::Group => "标签组",
+        };
+        Err(format!("同名{what}已存在"))
+    } else {
+        Ok(())
+    }
 }
 
 impl TagDomain {

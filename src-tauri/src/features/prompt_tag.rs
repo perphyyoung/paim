@@ -6,6 +6,7 @@ use crate::db::BkDb;
 use crate::error::AppError;
 use crate::features::tag_manager;
 use crate::features::tag_manager::TagDomain;
+use crate::features::tag_manager::TagNameKind;
 use tauri::State;
 
 /// 返回提示词标签管理页所需数据（标签组 + 带计数的标签）。
@@ -27,6 +28,8 @@ pub fn create_prompt_tag_group(
         return Err("组名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_name_not_dup(&conn, TagDomain::Prompt, TagNameKind::Group, &name, None)
+        .map_err(AppError::Message)?;
     tag_manager::create_group(&conn, TagDomain::Prompt, &name, sort_order)
         .map_err(|e| AppError::Message(e.to_string()))
 }
@@ -43,6 +46,14 @@ pub fn update_prompt_tag_group(
         return Err("组名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_name_not_dup(
+        &conn,
+        TagDomain::Prompt,
+        TagNameKind::Group,
+        &name,
+        Some(id),
+    )
+    .map_err(AppError::Message)?;
     tag_manager::update_group(&conn, TagDomain::Prompt, id, &name, sort_order)
         .map_err(|e| AppError::Message(e.to_string()))
 }
@@ -66,6 +77,8 @@ pub fn create_prompt_tag(
         return Err("标签名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_name_not_dup(&conn, TagDomain::Prompt, TagNameKind::Tag, &name, None)
+        .map_err(AppError::Message)?;
     tag_manager::create_tag(&conn, TagDomain::Prompt, &name, group_id)
         .map_err(|e| AppError::Message(e.to_string()))
 }
@@ -77,6 +90,8 @@ pub fn rename_prompt_tag(db: State<BkDb>, id: i64, name: String) -> Result<(), A
         return Err("标签名不能为空".into());
     }
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_name_not_dup(&conn, TagDomain::Prompt, TagNameKind::Tag, &name, Some(id))
+        .map_err(AppError::Message)?;
     tag_manager::rename_tag(&conn, TagDomain::Prompt, id, &name)
         .map_err(|e| AppError::Message(e.to_string()))
 }
