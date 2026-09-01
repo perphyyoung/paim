@@ -7,6 +7,7 @@ import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/features/tag/components/TagChip.vue";
+import ContextMenu from "@/components/ContextMenu.vue";
 import ImageFullscreenViewer, { type FullscreenItem } from "./ImageFullscreenViewer.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
@@ -53,6 +54,25 @@ const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<
   () => props.images,
   toRef(props, "order"),
 );
+
+// 右键图像区：弹出「打开本地保存位置」菜单（按 id 查库定位真实文件）
+const ctxMenu = ref<{ x: number; y: number } | null>(null);
+function openCtxMenu(e: MouseEvent) {
+  ctxMenu.value = { x: e.clientX, y: e.clientY };
+}
+function closeCtxMenu() {
+  ctxMenu.value = null;
+}
+async function openSavedLocation() {
+  const img = current.value;
+  closeCtxMenu();
+  if (!img) return;
+  try {
+    await invoke("open_image_location", { id: img.id });
+  } catch (e) {
+    showToast(`打开保存位置失败：${e}`);
+  }
+}
 
 const edit = ref(false);
 const fileName = ref("");
@@ -522,8 +542,11 @@ const fmtSize = (bytes: number) => {
           </div>
         </div>
 
-        <!-- 中：图像显示 -->
-        <div class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-900">
+        <!-- 中：图像显示（右键弹出「打开本地保存位置」菜单） -->
+        <div
+          class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-900"
+          @contextmenu.prevent="openCtxMenu"
+        >
           <img
             v-if="origSrc"
             :src="origSrc"
@@ -726,6 +749,17 @@ const fmtSize = (bytes: number) => {
       </div>
     </div>
   </Teleport>
+
+  <!-- 右键菜单：打开本地保存位置 -->
+  <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
+    <button
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+      @click="openSavedLocation"
+    >
+      打开本地保存位置
+    </button>
+  </ContextMenu>
 
   <!-- 标签删除确认 -->
   <ConfirmDialog

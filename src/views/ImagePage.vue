@@ -12,6 +12,7 @@ import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
+import ContextMenu from "@/components/ContextMenu.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
@@ -333,16 +334,15 @@ async function doPurgeImage() {
   if (img) await purgeImage(img);
 }
 
-async function deleteToTrash() {
+async function openSavedLocation() {
   if (!ctxMenu.value) return;
   const img = ctxMenu.value.image;
   closeCtxMenu();
-  await invoke("delete_image", { id: img.id });
-  images.value = images.value.filter((i) => i.id !== img.id);
-  delete thumbs.value[img.id];
-  // 提示词主页的背景图与关联计数按 is_deleted 过滤，需重载
-  markPageStale("prompts");
-  showToast(`已删除「${img.stored_name}」到回收站`);
+  try {
+    await invoke("open_image_location", { id: img.id });
+  } catch (e) {
+    showToast(`打开保存位置失败：${e}`);
+  }
 }
 
 async function restoreImage(img: Image) {
@@ -758,29 +758,16 @@ function onUploadDone() {
       "
     />
 
-    <!-- 右键菜单 -->
-    <Teleport to="body">
-      <div
-        v-if="ctxMenu"
-        class="fixed inset-0 z-40"
-        @click="closeCtxMenu"
-        @contextmenu.prevent="closeCtxMenu"
-      />
-      <div
-        v-if="ctxMenu"
-        class="fixed z-50 w-44 rounded-lg border py-1 shadow-lg border-gray-700 bg-gray-800"
-        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
-        @click.stop
+    <!-- 右键菜单：打开本地保存位置 -->
+    <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+        @click="openSavedLocation"
       >
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-400 hover:bg-gray-700"
-          @click="deleteToTrash"
-        >
-          删除到回收站
-        </button>
-      </div>
-    </Teleport>
+        打开本地保存位置
+      </button>
+    </ContextMenu>
 
     <!-- 回收站（整页，参考 pm） -->
     <TrashOverlay

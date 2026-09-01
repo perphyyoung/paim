@@ -30,3 +30,7 @@
   - 项目路径: "D:\develop\comfy-common\prompt-manager"
   - 查阅时可参考 "D:\develop\comfy-common\prompt-manager\代码目录结构说明.md"
   - 也可使用 gitnexus mcp, 指定`repo: "prompt-manager"`
+- lap
+  - 全称：lap
+  - 说明：tauri 2 框架的图像管理工具，tauri 相关实现可参考
+  - 项目路径： "D:\code\git\lap"

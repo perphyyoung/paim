@@ -9,6 +9,7 @@ import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/features/tag/components/TagChip.vue";
+import ContextMenu from "@/components/ContextMenu.vue";
 import ImageFullscreenViewer, {
   type FullscreenItem,
 } from "@/features/image/components/ImageFullscreenViewer.vue";
@@ -234,6 +235,25 @@ function openFullscreen(index: number) {
   fullscreenOpen.value = true;
 }
 
+// 右键关联图像：弹出「打开本地保存位置」菜单（按 id 查库定位真实文件）
+const ctxMenu = ref<{ x: number; y: number; image: RelatedImage } | null>(null);
+function openCtxMenu(e: MouseEvent, img: RelatedImage) {
+  ctxMenu.value = { x: e.clientX, y: e.clientY, image: img };
+}
+function closeCtxMenu() {
+  ctxMenu.value = null;
+}
+async function openSavedLocation() {
+  const img = ctxMenu.value?.image;
+  closeCtxMenu();
+  if (!img) return;
+  try {
+    await invoke("open_image_location", { id: img.id });
+  } catch (e) {
+    showToast(`打开保存位置失败：${e}`);
+  }
+}
+
 async function resolveFullscreenSrc(id: string) {
   const p = await invoke<string>("get_image_src", { id });
   return convertFileSrc(p);
@@ -395,6 +415,7 @@ async function onPickerImported() {
                 class="group relative flex items-center justify-center overflow-hidden rounded-lg border border-gray-700"
                 :class="relatedImages.length === 1 ? 'flex-1' : ''"
                 @dblclick.stop="openFullscreen(index)"
+                @contextmenu.prevent="openCtxMenu($event, img)"
               >
                 <img
                   v-if="imgUrl(img)"
@@ -731,4 +752,15 @@ async function onPickerImported() {
     :resolve-src="resolveFullscreenSrc"
     @close="fullscreenOpen = false"
   />
+
+  <!-- 右键菜单：打开本地保存位置 -->
+  <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
+    <button
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+      @click="openSavedLocation"
+    >
+      打开本地保存位置
+    </button>
+  </ContextMenu>
 </template>

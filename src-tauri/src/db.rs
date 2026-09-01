@@ -2,8 +2,9 @@
 //! 持久化细节集中在基础设施层，业务层通过 repository 接口访问。
 
 use crate::error::AppError;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
+use tauri::State;
 
 /// 应用持有的数据库连接（单连接 + Mutex），通过 Tauri managed state 注入。
 pub struct BkDb(pub std::sync::Mutex<Connection>);
@@ -274,6 +275,39 @@ pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), AppError> {
         .arg(&dir)
         .spawn()
         .map_err(|e| AppError::Message(format!("打开目录失败: {e}")))?;
+    Ok(())
+}
+
+/// 在资源管理器中定位并选中指定图像的本地保存文件（「打开本地保存位置」）。
+/// 按图像 id 查库取得真实 relative_path（与前端拼接解耦，杜绝路径拼错）。
+#[tauri::command]
+pub fn open_image_location(
+    app: tauri::AppHandle,
+    db: State<'_, BkDb>,
+    id: String,
+) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    let rel: Option<String> = conn
+        .query_row(
+            "SELECT relative_path FROM images WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| AppError::Message(e.to_string()))?;
+    drop(conn);
+    let Some(rel) = rel.filter(|s| !s.is_empty()) else {
+        return Err(AppError::Message("图像不存在或缺少保存路径".into()));
+    };
+    let full = data_dir(&app).join(rel);
+    // 对齐 lap 的做法：explorer 参数拆分（/select, 与路径分开），
+    // 且路径统一反斜杠（relative_path 含 /，混用分隔符会让 explorer 回退默认位置）
+    let norm = full.to_string_lossy().replace('/', "\\");
+    std::process::Command::new("explorer")
+        .arg("/select,")
+        .arg(norm)
+        .spawn()
+        .map_err(|e| AppError::Message(format!("打开保存位置失败: {e}")))?;
     Ok(())
 }
 
