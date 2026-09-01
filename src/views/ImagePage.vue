@@ -8,7 +8,7 @@ import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
-import { useFavoriteToggle } from "@/composables/useFavoriteToggle";
+import { useItemToggle } from "@/composables/useItemToggle";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
@@ -467,11 +467,14 @@ async function copyPrompt(img: Image) {
 }
 
 // 切换收藏（单张/批量，逻辑与提示词页共用）
-const { toggleOne: toggleFavorite, toggleBatch } = useFavoriteToggle({
+const { toggleOne, toggleBatch } = useItemToggle({
   domain: "image",
   list: images,
   showToast,
 });
+function toggleFavorite(img: Image) {
+  toggleOne(img, "is_favorite");
+}
 async function onBatchFavorite() {
   if (await toggleBatch(Array.from(selectedIds.value))) exitBatch();
 }

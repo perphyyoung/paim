@@ -5,7 +5,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
-import { useFavoriteToggle } from "@/composables/useFavoriteToggle";
+import { useItemToggle } from "@/composables/useItemToggle";
 import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
@@ -137,24 +137,17 @@ function close() {
   emit("close");
 }
 
-// 切换收藏（与图像详情共用逻辑，原地更新 current 并通知父级）
-const { toggleCurrent } = useFavoriteToggle<Prompt>({ domain: "prompt", showToast });
+// 切换收藏/安全（与图像详情共用逻辑，原地更新 current 并通知父级）
+const { toggleCurrent } = useItemToggle<Prompt>({ domain: "prompt", showToast });
 function toggleFavorite() {
   const p = current.value;
   if (!p) return;
-  toggleCurrent(current, () => emit("updated"));
+  toggleCurrent(current, "is_favorite", () => emit("updated"));
 }
-async function toggleSafe() {
+function toggleSafe() {
   const p = current.value;
   if (!p) return;
-  const v = !p.is_safe;
-  try {
-    const upd = await invoke<Prompt>("update_prompt_detail", { id: p.id, isSafe: v });
-    p.is_safe = upd.is_safe;
-    emit("updated");
-  } catch {
-    showToast("更新失败");
-  }
+  toggleCurrent(current, "is_safe", () => emit("updated"));
 }
 
 async function saveFields() {

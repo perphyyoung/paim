@@ -3,7 +3,7 @@ import { computed, nextTick, ref, toRef, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
-import { useFavoriteToggle } from "@/composables/useFavoriteToggle";
+import { useItemToggle } from "@/composables/useItemToggle";
 import InlineDialog from "@/components/InlineDialog.vue";
 import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
@@ -367,20 +367,17 @@ function close() {
   emit("close");
 }
 
-// 切换收藏（与提示词详情共用逻辑，原地更新 current 并通知父级）
-const { toggleCurrent } = useFavoriteToggle<Image>({ domain: "image", showToast });
+// 切换收藏/安全（与提示词详情共用逻辑，原地更新 current 并通知父级）
+const { toggleCurrent } = useItemToggle<Image>({ domain: "image", showToast });
 function toggleFavorite() {
   const img = current.value;
   if (!img) return;
-  toggleCurrent(current, () => emit("update", img));
+  toggleCurrent(current, "is_favorite", () => emit("update", img));
 }
-async function toggleSafe() {
+function toggleSafe() {
   const img = current.value;
   if (!img) return;
-  const v = !img.is_safe;
-  await invoke("update_image_detail", { id: img.id, isSafe: v });
-  img.is_safe = v;
-  emit("update", img);
+  toggleCurrent(current, "is_safe", () => emit("update", img));
 }
 async function saveFields() {
   const img = current.value;
