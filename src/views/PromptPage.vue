@@ -283,14 +283,15 @@ async function batchFavorite() {
   const ids = Array.from(selectedIds.value);
   if (ids.length === 0) return;
   try {
-    for (const id of ids) {
-      const p = await invoke<Prompt>("update_prompt_detail", { id, isFavorite: true });
-      prompts.value = prompts.value.map((x) => (x.id === p.id ? p : x));
-    }
-    showToast(`已收藏 ${ids.length} 个提示词`);
+    const n = await invoke<number>("batch_toggle_prompt_favorite", { ids });
+    // 切换语义：逐张翻转本地收藏状态
+    prompts.value = prompts.value.map((p) =>
+      selectedIds.value.has(p.id) ? { ...p, is_favorite: !p.is_favorite } : p,
+    );
+    showToast(`已切换 ${n} 个提示词的收藏状态`);
     exitBatch();
   } catch (e) {
-    showToast(`批量收藏失败：${e}`);
+    showToast(`批量切换收藏失败：${e}`);
   }
 }
 

@@ -529,17 +529,15 @@ async function batchFavorite() {
   const ids = Array.from(selectedIds.value);
   if (ids.length === 0) return;
   try {
-    for (const id of ids) {
-      const img = await invoke<Image>("update_image_detail", {
-        id,
-        isFavorite: true,
-      });
-      images.value = images.value.map((i) => (i.id === img.id ? img : i));
-    }
-    showToast(`已收藏 ${ids.length} 张图像`);
+    const n = await invoke<number>("batch_toggle_image_favorite", { ids });
+    // 切换语义：逐张翻转本地收藏状态
+    images.value = images.value.map((i) =>
+      selectedIds.value.has(i.id) ? { ...i, is_favorite: !i.is_favorite } : i,
+    );
+    showToast(`已切换 ${n} 张图像的收藏状态`);
     exitBatch();
   } catch (e) {
-    showToast(`批量收藏失败：${e}`);
+    showToast(`批量切换收藏失败：${e}`);
   }
 }
 

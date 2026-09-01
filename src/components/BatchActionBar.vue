@@ -98,7 +98,7 @@ function submitAddTag() {
           class="rounded bg-blue-600 px-3 py-1.5 text-[13px] text-white transition-colors hover:bg-blue-500"
           @click="emit('favorite')"
         >
-          收藏
+          切换收藏
         </button>
         <button
           v-if="has('delete')"

@@ -311,6 +311,40 @@ pub fn open_image_location(
     Ok(())
 }
 
+/// 批量切换收藏（对齐 pm：集合级 `1 - is_favorite` 一次 SQL，收藏↔取消收藏）
+fn toggle_favorite(db: &State<'_, BkDb>, table: &str, ids: Vec<String>) -> Result<usize, AppError> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let n = conn
+        .execute(
+            &format!(
+                "UPDATE {table} SET is_favorite = 1 - is_favorite WHERE id IN ({placeholders})"
+            ),
+            rusqlite::params_from_iter(ids.iter()),
+        )
+        .map_err(|e| AppError::Message(e.to_string()))?;
+    Ok(n)
+}
+
+#[tauri::command]
+pub fn batch_toggle_image_favorite(
+    db: State<'_, BkDb>,
+    ids: Vec<String>,
+) -> Result<usize, AppError> {
+    toggle_favorite(&db, "images", ids)
+}
+
+#[tauri::command]
+pub fn batch_toggle_prompt_favorite(
+    db: State<'_, BkDb>,
+    ids: Vec<String>,
+) -> Result<usize, AppError> {
+    toggle_favorite(&db, "prompts", ids)
+}
+
 #[cfg(test)]
 #[path = "db.test.rs"]
 mod tests;

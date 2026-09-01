@@ -159,6 +159,8 @@ pub fn run() {
       db::get_data_dir,
       db::open_data_dir,
       db::open_image_location,
+      db::batch_toggle_image_favorite,
+      db::batch_toggle_prompt_favorite,
       // —— pm 备份导入 ——
       features::pm_backup::inspect_pm_backup,
       features::pm_backup::import_pm_backup,
