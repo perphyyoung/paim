@@ -6,6 +6,7 @@
  */
 import { ref, type Ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { isSpecialTag } from "./specialTags";
 
 export interface TagLite {
   id: number;
@@ -35,6 +36,10 @@ export function useTagAdd(options: UseTagAddOptions) {
     const name = tagInput.value.trim();
     if (!id) return 0;
     if (!name) return 0;
+    if (isSpecialTag(name)) {
+      showToast(`「${name}」是系统特殊标签，不能手动添加`);
+      return 0;
+    }
     try {
       const added = await invoke<TagLite[]>(command, { id, name });
       tagInput.value = "";
@@ -44,8 +49,8 @@ export function useTagAdd(options: UseTagAddOptions) {
       showToast(`已添加 ${added.length} 个标签`);
       onAdded?.(added.length);
       return added.length;
-    } catch {
-      showToast("添加标签失败");
+    } catch (e) {
+      showToast(`添加标签失败：${e}`);
       return 0;
     }
   }

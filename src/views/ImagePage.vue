@@ -6,6 +6,7 @@ import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime } from "@/utils/date";
 import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
+import { SPECIAL_TAG_NAMES, defineSpecialTags } from "@/features/tag/specialTags";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
 import { useItemToggle } from "@/composables/useItemToggle";
@@ -190,20 +191,21 @@ const tagGroups = ref<TagGroupData[]>([]);
 function refLen(img: Image): number {
   return imagePrompts.value[img.id]?.length ?? 0;
 }
-const SPECIAL_TAGS = [
-  { name: "收藏", check: (img: Image) => !!img.is_favorite },
-  { name: "未引", check: (img: Image) => refLen(img) === 0 },
-  { name: "多引", check: (img: Image) => refLen(img) > 1 },
+// 特殊标签（虚拟筛选）：名称来自统一定义 specialTags.ts（唯一名单）
+const SPECIAL_TAGS = defineSpecialTags<Image>([
+  { name: SPECIAL_TAG_NAMES.favorite, check: (img) => !!img.is_favorite },
+  { name: SPECIAL_TAG_NAMES.unreferenced, check: (img) => refLen(img) === 0 },
+  { name: SPECIAL_TAG_NAMES.multiRef, check: (img) => refLen(img) > 1 },
   {
-    name: "无标",
-    check: (img: Image) => {
+    name: SPECIAL_TAG_NAMES.noTag,
+    check: (img) => {
       const t = tagNames.value[img.id];
       return !t || t.length === 0;
     },
   },
-  { name: "安全", check: (img: Image) => !!img.is_safe },
-  { name: "敏感", check: (img: Image) => !img.is_safe },
-];
+  { name: SPECIAL_TAG_NAMES.safe, check: (img) => !!img.is_safe },
+  { name: SPECIAL_TAG_NAMES.unsafe, check: (img) => !img.is_safe },
+]);
 
 // 特殊标签命中数（基于全部图像）
 const specialCounts = computed<Record<string, number>>(() => {

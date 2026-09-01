@@ -5,6 +5,7 @@ import { useToast } from "@/components/useToast";
 import ContextMenu from "@/components/ContextMenu.vue";
 import InlineDialog from "@/components/InlineDialog.vue";
 import TagChip from "./TagChip.vue";
+import { isSpecialTag } from "../specialTags";
 
 const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
@@ -332,6 +333,10 @@ function openNewTag() {
 async function submitNewTag() {
   const name = dlg.value.value.trim();
   if (!name) return;
+  if (isSpecialTag(name)) {
+    showToast(`「${name}」是系统特殊标签，不能手动添加`);
+    return;
+  }
   await invoke(cmds.value.createTag, {
     name,
     groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
@@ -348,6 +353,10 @@ function openRenameTag(item: TagItem) {
   dlg.value.onOk = async () => {
     const name = dlg.value.value.trim();
     if (!name) return;
+    if (isSpecialTag(name)) {
+      showToast(`「${name}」是系统特殊标签，不能手动添加`);
+      return;
+    }
     await invoke(cmds.value.renameTag, {
       id: item.id,
       name,

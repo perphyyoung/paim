@@ -6,6 +6,7 @@
  */
 import type { Ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { isSpecialTag } from "./specialTags";
 
 export interface UseBatchTagAddOptions {
   /** "image" | "prompt"，决定命令名与提示文案 */
@@ -26,8 +27,13 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
   async function batchAddTag(tag: string) {
     const ids = Array.from(selectedIds.value);
     if (ids.length === 0) return;
+    const name = tag.trim();
+    if (isSpecialTag(name)) {
+      showToast(`「${name}」是系统特殊标签，不能手动添加`);
+      return;
+    }
     try {
-      await invoke(command, { ids, name: tag });
+      await invoke(command, { ids, name });
       showToast(`已为 ${ids.length} ${noun}添加标签`);
       exitBatch();
       await loadTagFilter();

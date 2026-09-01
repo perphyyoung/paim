@@ -8,6 +8,7 @@ import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
 import { useItemToggle } from "@/composables/useItemToggle";
+import { SPECIAL_TAG_NAMES, defineSpecialTags } from "@/features/tag/specialTags";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
@@ -71,21 +72,21 @@ const tagNames = shallowRef<Record<string, string[]>>({});
 const imgCount = shallowRef<Record<string, number>>({});
 const thumbs = shallowRef<Record<string, string>>({});
 
-// —— 特殊标签（虚拟筛选）——
-const SPECIAL_TAGS = [
-  { name: "收藏", check: (p: Prompt) => !!p.is_favorite },
-  { name: "多图", check: (p: Prompt) => (imgCount.value[p.id] ?? 0) > 1 },
-  { name: "无图", check: (p: Prompt) => (imgCount.value[p.id] ?? 0) === 0 },
+// —— 特殊标签（虚拟筛选）——名称来自统一定义 specialTags.ts（唯一名单）
+const SPECIAL_TAGS = defineSpecialTags<Prompt>([
+  { name: SPECIAL_TAG_NAMES.favorite, check: (p) => !!p.is_favorite },
+  { name: SPECIAL_TAG_NAMES.multiImage, check: (p) => (imgCount.value[p.id] ?? 0) > 1 },
+  { name: SPECIAL_TAG_NAMES.noImage, check: (p) => (imgCount.value[p.id] ?? 0) === 0 },
   {
-    name: "无标",
-    check: (p: Prompt) => {
+    name: SPECIAL_TAG_NAMES.noTag,
+    check: (p) => {
       const t = tagNames.value[p.id];
       return !t || t.length === 0;
     },
   },
-  { name: "安全", check: (p: Prompt) => !!p.is_safe },
-  { name: "敏感", check: (p: Prompt) => !p.is_safe },
-];
+  { name: SPECIAL_TAG_NAMES.safe, check: (p) => !!p.is_safe },
+  { name: SPECIAL_TAG_NAMES.unsafe, check: (p) => !p.is_safe },
+]);
 const specialCounts = computed<Record<string, number>>(() => {
   const m: Record<string, number> = {};
   for (const s of SPECIAL_TAGS) m[s.name] = prompts.value.filter((p) => s.check(p)).length;
