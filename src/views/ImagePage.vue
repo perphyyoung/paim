@@ -704,7 +704,7 @@ function onUploadDone() {
               @contextmenu.prevent="openCtxMenu($event, img)"
             >
               <!-- row2 关联提示词（无行间边界，与标签/排序行共享渐变压暗底） -->
-              <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
+              <div class="relative flex flex-1 items-center overflow-hidden px-1.5 pt-1">
                 <p
                   v-if="(imagePrompts[img.id] || []).length"
                   class="text-[length:var(--fs-10)] leading-4 text-white"
