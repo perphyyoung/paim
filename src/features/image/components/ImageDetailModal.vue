@@ -44,6 +44,8 @@ const props = defineProps<{
   order: string[];
   initialIndex: number;
   thumbs: Record<string, string>;
+  /** 被提示词详情嵌套打开时为 true，禁用「编辑/新建」入口，禁止二级跳转 */
+  isNested?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -425,8 +427,14 @@ const fmtSize = (bytes: number) => {
               </div>
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs border-gray-600 text-gray-300 hover:bg-gray-700"
-                :title="currentPrompt ? '编辑提示词' : '新建提示词'"
+                :class="[
+                  'inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs',
+                  isNested
+                    ? 'cursor-not-allowed border-gray-700 bg-gray-800 text-gray-600'
+                    : 'border-gray-600 text-gray-300 hover:bg-gray-700',
+                ]"
+                :title="isNested ? '禁止二级跳转' : currentPrompt ? '编辑提示词' : '新建提示词'"
+                :disabled="isNested"
                 @click="currentPrompt ? openEditPrompt() : openCreatePrompt()"
               >
                 <svg
@@ -797,6 +805,7 @@ const fmtSize = (bytes: number) => {
     :initial-index="0"
     :tag-names="promptTagNames"
     :all-tags="promptAllTags"
+    is-nested
     @close="
       editPromptOpen = false;
       loadRelatedPrompts();

@@ -52,6 +52,8 @@ const props = defineProps<{
   initialIndex: number;
   tagNames: Record<string, string[]>;
   allTags: TagItem[];
+  /** 被图像详情嵌套打开时为 true，禁用「查看图像详情」入口，禁止二级跳转 */
+  isNested?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -430,8 +432,14 @@ async function onPickerImported() {
                 </div>
                 <button
                   type="button"
-                  class="absolute left-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 group-hover:flex"
-                  title="查看图像详情"
+                  class="absolute left-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full group-hover:flex"
+                  :class="
+                    isNested
+                      ? 'cursor-not-allowed bg-black/30 text-gray-500'
+                      : 'bg-black/50 text-white hover:bg-black/70'
+                  "
+                  :title="isNested ? '禁止二级跳转' : '查看图像详情'"
+                  :disabled="isNested"
                   @click.stop="viewImage(img)"
                 >
                   <svg
@@ -699,13 +707,14 @@ async function onPickerImported() {
     </div>
   </Teleport>
 
-  <!-- 叠加的图像详情 -->
+  <!-- 叠加的图像详情（嵌套：禁用其二级跳转入口） -->
   <ImageDetailModal
     :open="imgDetailOpen"
     :images="imgDetailImages"
     :order="[imgDetailImages[0]?.id ?? '']"
     :initial-index="0"
     :thumbs="imgDetailThumbs"
+    is-nested
     @close="imgDetailOpen = false"
   />
 
