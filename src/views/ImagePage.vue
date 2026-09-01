@@ -506,6 +506,11 @@ function onCardClick(e: MouseEvent, index: number, img: Image) {
   }
 }
 
+// Shift/Ctrl+点击时在 mousedown 阶段拦截，阻止浏览器文本选择（否则卡片内容会被选中变蓝）
+function onCardMouseDown(e: MouseEvent) {
+  if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault();
+}
+
 // ---- 卡片按钮动作 ---- //
 // 复制关联的第一条提示词内容；未关联时提示
 async function copyPrompt(img: Image) {
@@ -790,6 +795,7 @@ function onUploadDone() {
                     : 'border-gray-700',
               ]"
               @click="onCardClick($event, index, img)"
+              @mousedown="onCardMouseDown"
               @contextmenu.prevent="openCtxMenu($event, img)"
             >
               <!-- 背景图 -->

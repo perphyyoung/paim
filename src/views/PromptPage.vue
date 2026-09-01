@@ -325,6 +325,11 @@ function onCardClick(e: MouseEvent, index: number, id: string) {
   }
 }
 
+// Shift/Ctrl+点击时在 mousedown 阶段拦截，阻止浏览器文本选择（否则卡片内容会被选中变蓝）
+function onCardMouseDown(e: MouseEvent) {
+  if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault();
+}
+
 // 批量添加标签（与图像主页共用逻辑）
 const { batchAddTag } = useBatchTagAdd({
   domain: "prompt",
@@ -710,6 +715,7 @@ onDeactivated(() => document.removeEventListener("keydown", onHomeShortcutKeydow
                     : 'border-gray-700'
               "
               @click="onCardClick($event, index, p.id)"
+              @mousedown="onCardMouseDown"
             >
               <!-- 背景图：第一张关联图像缩略图 -->
               <img
