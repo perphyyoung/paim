@@ -1,25 +1,29 @@
 <script setup lang="ts">
 /**
- * MediaCard - 提示词/图像主页共用的卡片骨架。
- * 选中反馈、按钮行、背景图统一在此渲染；数据差异（row2~row4 覆盖层内容）由父通过默认 slot 注入。
- *
- * 事件（父在 v-for 闭包中绑定具体对象，故 fav/copy/delete 无参数）：
- * - fav / copy / delete：对应按钮点击
- * - check(index)：复选框
- * - cardClick(e, index, id)：卡片点击（含 Ctrl/Shift 修饰，由父决定切换/范围/打开详情）
+ * MediaCard - 提示词/图像主页共用的卡片（含 3 行文字区：内容/标签/排序字段）。
+ * 所有卡片 UI 在此统一渲染，父页只传数据与事件：
+ * - item/index/selected/batchOpen/thumb/copyTitle：卡片骨架与按钮行
+ * - content/tags/sortInfo/cardSize：三行文字区数据
+ * - fav/copy/delete/check/cardClick：交互事件（父在 v-for 闭包绑定对象）
  */
+import CardTagRow from "@/features/image/components/CardTagRow.vue";
+
 interface MediaItem {
   id: string;
   is_favorite: boolean;
 }
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     item: MediaItem;
     index: number;
     selected: boolean;
     batchOpen: boolean;
     thumb: string;
+    content: string;
+    tags: string[];
+    sortInfo: { label: string; value: string };
+    cardSize: number;
     copyTitle?: string;
   }>(),
   { copyTitle: "复制内容" },
@@ -160,8 +164,25 @@ function onMouseDown(e: MouseEvent) {
         </div>
       </div>
 
-      <!-- row2~row4 覆盖层内容（数据差异由父注入） -->
-      <slot />
+      <!-- row2 内容行（上下居中；content 为空时保留占位高度，布局稳定） -->
+      <div class="relative flex flex-1 items-center overflow-hidden px-1.5 pt-1">
+        <p v-if="content" class="text-[length:var(--fs-10)] leading-4 text-white">
+          {{ content }}
+        </p>
+      </div>
+
+      <!-- row3 标签（组件内截断，剩余显示 +n） -->
+      <CardTagRow v-if="tags.length" :tags="tags" :card-size="cardSize" />
+
+      <!-- row4 排序字段 -->
+      <div class="px-1.5 py-0.5 text-center">
+        <p
+          class="truncate text-[length:var(--fs-11)] text-white"
+          :title="`${sortInfo.label}：${sortInfo.value}`"
+        >
+          {{ sortInfo.value }}
+        </p>
+      </div>
     </div>
   </div>
 </template>

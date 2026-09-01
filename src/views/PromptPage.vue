@@ -10,7 +10,6 @@ import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
-import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
@@ -615,36 +614,16 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
               :batch-open="batchOpen"
               :thumb="thumbs[p.id] ?? ''"
               copy-title="复制内容"
+              :content="p.content"
+              :tags="tagNames[p.id] || []"
+              :sort-info="rowInfo(p)"
+              :card-size="cardSize"
               @fav="toggleFavorite(p)"
               @copy="copyPrompt(p)"
               @delete="requestDelete(p)"
               @check="onCheckSelect($event, p.id)"
               @card-click="onCardClick"
-            >
-              <!-- row2 提示词内容（无行间边界，与标签/排序行共享渐变压暗底） -->
-              <div class="relative flex flex-1 items-center overflow-hidden px-2 pt-1">
-                <p class="text-[length:var(--fs-10)] leading-4 text-white">
-                  {{ p.content }}
-                </p>
-              </div>
-
-              <!-- row3 标签 -->
-              <CardTagRow
-                v-if="(tagNames[p.id] || []).length"
-                :tags="tagNames[p.id] || []"
-                :card-size="cardSize"
-              />
-
-              <!-- row4 排序字段 -->
-              <div class="px-1.5 py-0.5 text-center">
-                <p
-                  class="truncate text-[length:var(--fs-11)] text-white"
-                  :title="`${rowInfo(p).label}：${rowInfo(p).value}`"
-                >
-                  {{ rowInfo(p).value }}
-                </p>
-              </div>
-            </MediaCard>
+            />
           </template>
         </VirtualGrid>
         <CustomScrollBar

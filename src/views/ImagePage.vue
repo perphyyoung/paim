@@ -12,7 +12,6 @@ import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
-import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
@@ -696,41 +695,17 @@ function onUploadDone() {
               :batch-open="batchOpen"
               :thumb="thumbs[img.id] ?? ''"
               copy-title="复制提示词"
+              :content="imagePrompts[img.id]?.[0] ?? ''"
+              :tags="tagNames[img.id] || []"
+              :sort-info="rowInfo(img)"
+              :card-size="cardSize"
               @fav="toggleFavorite(img)"
               @copy="copyPrompt(img)"
               @delete="requestDelete(img)"
               @check="onCheckSelect($event, img.id)"
               @card-click="onCardClick"
               @contextmenu.prevent="openCtxMenu($event, img)"
-            >
-              <!-- row2 关联提示词（无行间边界，与标签/排序行共享渐变压暗底） -->
-              <div class="relative flex flex-1 items-center overflow-hidden px-1.5 pt-1">
-                <p
-                  v-if="(imagePrompts[img.id] || []).length"
-                  class="text-[length:var(--fs-10)] leading-4 text-white"
-                  :title="imagePrompts[img.id].join('\n')"
-                >
-                  {{ imagePrompts[img.id][0] }}
-                </p>
-              </div>
-
-              <!-- row3 标签（组件内截断，剩余显示 +n） -->
-              <CardTagRow
-                v-if="(tagNames[img.id] || []).length"
-                :tags="tagNames[img.id] || []"
-                :card-size="cardSize"
-              />
-
-              <!-- row4 随排序依据动态显示对应字段值 -->
-              <div class="px-1.5 py-0.5 text-center">
-                <p
-                  class="truncate text-[length:var(--fs-11)] text-white"
-                  :title="`${rowInfo(img).label}：${rowInfo(img).value}`"
-                >
-                  {{ rowInfo(img).value }}
-                </p>
-              </div>
-            </MediaCard>
+            />
           </template>
         </VirtualGrid>
         <CustomScrollBar
