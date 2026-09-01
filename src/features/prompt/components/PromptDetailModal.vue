@@ -5,6 +5,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
+import { useFavoriteToggle } from "@/composables/useFavoriteToggle";
 import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
@@ -136,17 +137,12 @@ function close() {
   emit("close");
 }
 
-async function toggleFavorite() {
+// 切换收藏（与图像详情共用逻辑，原地更新 current 并通知父级）
+const { toggleCurrent } = useFavoriteToggle<Prompt>({ domain: "prompt", showToast });
+function toggleFavorite() {
   const p = current.value;
   if (!p) return;
-  const v = !p.is_favorite;
-  try {
-    const upd = await invoke<Prompt>("update_prompt_detail", { id: p.id, isFavorite: v });
-    p.is_favorite = upd.is_favorite;
-    emit("updated");
-  } catch {
-    showToast("更新失败");
-  }
+  toggleCurrent(current, () => emit("updated"));
 }
 async function toggleSafe() {
   const p = current.value;
