@@ -25,11 +25,13 @@ const tabs = [
   {
     path: "/prompts",
     label: "提示词",
+    shortcut: "Ctrl+P",
     icon: "M12 3v6h6M10 17h4M10 13h4M7 21h10a2 2 0 002-2V9l-6-6H7a2 2 0 00-2 2v14a2 2 0 002 2z" as const,
   },
   {
     path: "/images",
     label: "图像",
+    shortcut: "Ctrl+I",
     icon: "M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm8.5 3.5 a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-6 9l4-5 3 3 3-4 4 6" as const,
   },
 ];
@@ -55,7 +57,7 @@ function reloadAll() {
         v-for="t in tabs"
         :key="t.path"
         :to="t.path"
-        :title="t.label"
+        :title="`${t.label}${t.shortcut ? ` (${t.shortcut})` : ''}`"
         class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
         :class="
           isActive(t.path).value ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'
@@ -76,7 +78,7 @@ function reloadAll() {
       <!-- 底部固定：刷新缓存 / 设置 -->
       <button
         type="button"
-        title="刷新缓存"
+        title="刷新缓存 (F5)"
         class="mt-auto flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
         @click="reloadAll"
       >

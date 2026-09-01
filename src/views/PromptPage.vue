@@ -575,6 +575,7 @@ onDeactivated(() => document.removeEventListener("keydown", onHomeShortcutKeydow
           v-model="keyword"
           type="search"
           placeholder="搜索内容/标题…"
+          title="聚焦搜索 (Ctrl+F)"
           class="min-w-0 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
         />
         <button

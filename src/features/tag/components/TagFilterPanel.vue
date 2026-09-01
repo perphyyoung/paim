@@ -194,7 +194,7 @@ const tagSections = computed<TagSection[]>(() => {
       <button
         type="button"
         class="text-xs transition-colors text-gray-400 hover:text-gray-200"
-        :title="tagFilterCollapsed ? '展开标签筛选' : '收起标签筛选'"
+        :title="`${tagFilterCollapsed ? '展开标签筛选' : '收起标签筛选'} (Ctrl+T)`"
         @click="toggleTagFilter"
       >
         {{ tagFilterCollapsed ? "▶" : "▼" }}
