@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
+import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
@@ -49,6 +50,7 @@ const emit = defineEmits<{
 }>();
 
 const { showToast } = useToast();
+const { openImageLocation } = useOpenImageLocation();
 
 const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<Image>(
   () => props.images,
@@ -66,12 +68,7 @@ function closeCtxMenu() {
 async function openSavedLocation() {
   const img = current.value;
   closeCtxMenu();
-  if (!img) return;
-  try {
-    await invoke("open_image_location", { id: img.id });
-  } catch (e) {
-    showToast(`打开保存位置失败：${e}`);
-  }
+  if (img) await openImageLocation(img.id);
 }
 
 const edit = ref(false);

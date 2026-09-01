@@ -2,6 +2,7 @@
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
+import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime } from "@/utils/date";
 import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
@@ -24,6 +25,7 @@ import type { ThumbnailEnsureFixed } from "@/features/image/api/thumbnails";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
+const { openImageLocation } = useOpenImageLocation();
 
 interface Image {
   id: string;
@@ -338,11 +340,7 @@ async function openSavedLocation() {
   if (!ctxMenu.value) return;
   const img = ctxMenu.value.image;
   closeCtxMenu();
-  try {
-    await invoke("open_image_location", { id: img.id });
-  } catch (e) {
-    showToast(`打开保存位置失败：${e}`);
-  }
+  if (img) await openImageLocation(img.id);
 }
 
 async function restoreImage(img: Image) {

@@ -4,6 +4,7 @@ import { computed, ref, toRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
+import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
@@ -58,6 +59,7 @@ const emit = defineEmits<{
 }>();
 
 const { showToast } = useToast();
+const { openImageLocation } = useOpenImageLocation();
 
 // 以「顺序快照」定位当前提示词，避免列表重载/重排后数据或位置漂移
 const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<Prompt>(
@@ -246,12 +248,7 @@ function closeCtxMenu() {
 async function openSavedLocation() {
   const img = ctxMenu.value?.image;
   closeCtxMenu();
-  if (!img) return;
-  try {
-    await invoke("open_image_location", { id: img.id });
-  } catch (e) {
-    showToast(`打开保存位置失败：${e}`);
-  }
+  if (img) await openImageLocation(img.id);
 }
 
 async function resolveFullscreenSrc(id: string) {
