@@ -330,19 +330,26 @@ watch(
 function openNewTag() {
   openInput("新建标签", { groupEnabled: true });
 }
-async function submitNewTag() {
+// 新建/重命名等提交：失败时提示并保持对话框打开，便于修改；成功才由调用方关闭
+async function submitNewTag(): Promise<boolean> {
   const name = dlg.value.value.trim();
-  if (!name) return;
+  if (!name) return false;
   if (isSpecialTag(name)) {
     showToast(`「${name}」是系统特殊标签，不能手动添加`);
-    return;
+    return false;
   }
-  await invoke(cmds.value.createTag, {
-    name,
-    groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
-  });
+  try {
+    await invoke(cmds.value.createTag, {
+      name,
+      groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
+    });
+  } catch (e) {
+    showToast(`新建标签失败：${e}`);
+    return false;
+  }
   showToast(`已新建标签「${name}」`);
   refresh();
+  return true;
 }
 function openRenameTag(item: TagItem) {
   openInput("更新标签", {
@@ -357,14 +364,19 @@ function openRenameTag(item: TagItem) {
       showToast(`「${name}」是系统特殊标签，不能手动添加`);
       return;
     }
-    await invoke(cmds.value.renameTag, {
-      id: item.id,
-      name,
-    });
-    await invoke(cmds.value.moveTag, {
-      id: item.id,
-      groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
-    });
+    try {
+      await invoke(cmds.value.renameTag, {
+        id: item.id,
+        name,
+      });
+      await invoke(cmds.value.moveTag, {
+        id: item.id,
+        groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
+      });
+    } catch (e) {
+      showToast(`重命名标签失败：${e}`);
+      return;
+    }
     showToast("标签已更新");
     refresh();
     closeDlg();
@@ -393,13 +405,19 @@ function parseSortOrder(v: string | number | null | undefined): number | null {
 function openNewGroup() {
   openInput("新建组", { showSort: true });
 }
-async function submitNewGroup() {
+async function submitNewGroup(): Promise<boolean> {
   const name = dlg.value.value.trim();
-  if (!name) return;
+  if (!name) return false;
   const sortOrder = parseSortOrder(dlg.value.sortOrder);
-  await invoke(cmds.value.createGroup, { name, sortOrder });
+  try {
+    await invoke(cmds.value.createGroup, { name, sortOrder });
+  } catch (e) {
+    showToast(`新建组失败：${e}`);
+    return false;
+  }
   showToast(`已新建组「${name}」`);
   refresh();
+  return true;
 }
 function openRenameGroup(g: TagGroup) {
   openInput("更新标签组", { initial: g.name, showSort: true, initialSort: g.sort_order });
@@ -407,7 +425,12 @@ function openRenameGroup(g: TagGroup) {
     const name = dlg.value.value.trim();
     if (!name) return;
     const sortOrder = parseSortOrder(dlg.value.sortOrder);
-    await invoke(cmds.value.updateGroup, { id: g.id, name, sortOrder });
+    try {
+      await invoke(cmds.value.updateGroup, { id: g.id, name, sortOrder });
+    } catch (e) {
+      showToast(`更新组失败：${e}`);
+      return;
+    }
     showToast("组已更新");
     refresh();
     closeDlg();
@@ -426,13 +449,9 @@ async function submitInput() {
   if (dlg.value.onOk) {
     dlg.value.onOk();
   } else if (dlg.value.title === "新建标签") {
-    await submitNewTag();
-    refresh();
-    closeDlg();
+    if (await submitNewTag()) closeDlg();
   } else if (dlg.value.title === "新建组") {
-    await submitNewGroup();
-    refresh();
-    closeDlg();
+    if (await submitNewGroup()) closeDlg();
   }
 }
 
