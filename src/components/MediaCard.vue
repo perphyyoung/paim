@@ -7,6 +7,7 @@
  * - fav/copy/delete/check/cardClick：交互事件（父在 v-for 闭包绑定对象）
  */
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
+import { nextTick, onMounted, onUpdated, ref, watch } from "vue";
 
 interface MediaItem {
   id: string;
@@ -41,6 +42,31 @@ const emit = defineEmits<{
 function onMouseDown(e: MouseEvent) {
   if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault();
 }
+
+// 内容行对齐：容得下时上下居中，放不下时开头对齐（保证开头可读）
+// 用 p 渲染后实际高度与行容器高度比较；每次组件更新后 rAF 重测（防字体/裁剪变化后判断过期）
+const contentRowRef = ref<HTMLDivElement | null>(null);
+const isContentFit = ref(true);
+
+function measureContentFit() {
+  const row = contentRowRef.value;
+  if (!row) return;
+  const p = row.querySelector("p");
+  isContentFit.value = !p || p.getBoundingClientRect().height <= row.clientHeight;
+}
+
+let rafId = 0;
+function scheduleMeasure() {
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(measureContentFit);
+}
+
+watch(
+  () => [props.content, props.cardSize] as const,
+  () => nextTick(scheduleMeasure),
+);
+onMounted(scheduleMeasure);
+onUpdated(scheduleMeasure);
 </script>
 
 <template>
@@ -164,8 +190,12 @@ function onMouseDown(e: MouseEvent) {
         </div>
       </div>
 
-      <!-- row2 内容行（上下居中；content 为空时保留占位高度，布局稳定） -->
-      <div class="relative flex flex-1 items-center overflow-hidden px-1.5 pt-1">
+      <!-- row2 内容行（容得下居中 / 溢出时开头对齐保证可读；content 为空时保留占位高度） -->
+      <div
+        ref="contentRowRef"
+        class="relative flex flex-1 overflow-hidden px-1.5 pt-1"
+        :class="isContentFit ? 'items-center' : 'items-start'"
+      >
         <p v-if="content" class="text-[length:var(--fs-10)] leading-4 text-white">
           {{ content }}
         </p>
