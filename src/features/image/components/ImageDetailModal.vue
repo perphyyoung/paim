@@ -84,6 +84,8 @@ interface LinkedPrompt {
   content: string;
   content_translate: string;
   note: string;
+  is_favorite: boolean;
+  is_safe: boolean;
   tags: string[];
 }
 
@@ -125,8 +127,8 @@ const editPrompt = computed<
       content: p.content,
       content_translate: p.content_translate,
       note: p.note,
-      is_favorite: false,
-      is_safe: true,
+      is_favorite: p.is_favorite,
+      is_safe: p.is_safe,
       created_at: "",
       updated_at: "",
     },

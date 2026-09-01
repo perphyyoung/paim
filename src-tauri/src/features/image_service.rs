@@ -71,6 +71,8 @@ pub struct LinkedPrompt {
     pub content: String,
     pub content_translate: String,
     pub note: String,
+    pub is_favorite: bool,
+    pub is_safe: bool,
     pub tags: Vec<String>,
 }
 

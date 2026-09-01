@@ -394,7 +394,7 @@ pub fn get_image_related_prompts(
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut stmt = conn
         .prepare(
-            "SELECT pr.id, pr.title, pr.content, pr.content_translate, pr.note
+            "SELECT pr.id, pr.title, pr.content, pr.content_translate, pr.note, pr.is_favorite, pr.is_safe
              FROM prompt_image_relations pir
              JOIN prompts pr ON pr.id = pir.prompt_id
              WHERE pir.image_id = ?1 AND pr.is_deleted = 0
@@ -409,6 +409,8 @@ pub fn get_image_related_prompts(
                 content: r.get(2)?,
                 content_translate: r.get(3)?,
                 note: r.get(4)?,
+                is_favorite: r.get(5)?,
+                is_safe: r.get(6)?,
                 tags: Vec::new(),
             })
         })
