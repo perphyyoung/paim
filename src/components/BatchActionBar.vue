@@ -51,12 +51,23 @@ function openTagDialog() {
   tagDlgOpen.value = true;
 }
 
+// 提交后不立刻关闭：由父组件根据添加结果调用 closeTagDialog()，失败时保持打开便于修改
 function submitAddTag() {
   const tag = tagInput.value.trim();
-  tagDlgOpen.value = false;
-  if (!tag) return;
+  if (!tag) {
+    tagDlgOpen.value = false;
+    return;
+  }
   emit("add-tag", tag);
 }
+
+// 供父组件成功后关闭弹窗并清空输入
+function closeTagDialog() {
+  tagInput.value = "";
+  tagDlgOpen.value = false;
+}
+
+defineExpose({ closeTagDialog });
 </script>
 
 <template>

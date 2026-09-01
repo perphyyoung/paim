@@ -330,26 +330,45 @@ watch(
 function openNewTag() {
   openInput("新建标签", { groupEnabled: true });
 }
-// 新建/重命名等提交：失败时提示并保持对话框打开，便于修改；成功才由调用方关闭
-async function submitNewTag(): Promise<boolean> {
-  const name = dlg.value.value.trim();
-  if (!name) return false;
-  if (isSpecialTag(name)) {
-    showToast(`「${name}」是系统特殊标签，不能手动添加`);
+
+// 提交一次建/改操作（标签或组）：校验非空与特殊标签，失败 toast 并返回 false（保持输入框/对话框打开）
+async function runSave(opts: {
+  name: string;
+  checkReserved?: boolean;
+  run: () => Promise<void>;
+  failMsg: string;
+  successMsg: string;
+}): Promise<boolean> {
+  const n = opts.name.trim();
+  if (!n) return false;
+  if (opts.checkReserved && isSpecialTag(n)) {
+    showToast(`「${n}」是系统特殊标签，不能手动添加`);
     return false;
   }
   try {
-    await invoke(cmds.value.createTag, {
-      name,
-      groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
-    });
+    await opts.run();
   } catch (e) {
-    showToast(`新建标签失败：${e}`);
+    showToast(`${opts.failMsg}：${e}`);
     return false;
   }
-  showToast(`已新建标签「${name}」`);
+  showToast(opts.successMsg);
   refresh();
   return true;
+}
+
+async function submitNewTag(): Promise<boolean> {
+  const name = dlg.value.value;
+  return runSave({
+    name,
+    checkReserved: true,
+    run: () =>
+      invoke(cmds.value.createTag, {
+        name: name.trim(),
+        groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
+      }),
+    failMsg: "新建标签失败",
+    successMsg: `已新建标签「${name.trim()}」`,
+  });
 }
 function openRenameTag(item: TagItem) {
   openInput("更新标签", {
@@ -358,28 +377,21 @@ function openRenameTag(item: TagItem) {
     initialGroupId: item.group_id,
   });
   dlg.value.onOk = async () => {
-    const name = dlg.value.value.trim();
-    if (!name) return;
-    if (isSpecialTag(name)) {
-      showToast(`「${name}」是系统特殊标签，不能手动添加`);
-      return;
-    }
-    try {
-      await invoke(cmds.value.renameTag, {
-        id: item.id,
-        name,
-      });
-      await invoke(cmds.value.moveTag, {
-        id: item.id,
-        groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
-      });
-    } catch (e) {
-      showToast(`重命名标签失败：${e}`);
-      return;
-    }
-    showToast("标签已更新");
-    refresh();
-    closeDlg();
+    const name = dlg.value.value;
+    const ok = await runSave({
+      name,
+      checkReserved: true,
+      run: async () => {
+        await invoke(cmds.value.renameTag, { id: item.id, name: name.trim() });
+        await invoke(cmds.value.moveTag, {
+          id: item.id,
+          groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
+        });
+      },
+      failMsg: "重命名标签失败",
+      successMsg: "标签已更新",
+    });
+    if (ok) closeDlg();
   };
 }
 function openDeleteTag(item: TagItem) {
@@ -406,34 +418,34 @@ function openNewGroup() {
   openInput("新建组", { showSort: true });
 }
 async function submitNewGroup(): Promise<boolean> {
-  const name = dlg.value.value.trim();
-  if (!name) return false;
-  const sortOrder = parseSortOrder(dlg.value.sortOrder);
-  try {
-    await invoke(cmds.value.createGroup, { name, sortOrder });
-  } catch (e) {
-    showToast(`新建组失败：${e}`);
-    return false;
-  }
-  showToast(`已新建组「${name}」`);
-  refresh();
-  return true;
+  const name = dlg.value.value;
+  return runSave({
+    name,
+    run: () =>
+      invoke(cmds.value.createGroup, {
+        name: name.trim(),
+        sortOrder: parseSortOrder(dlg.value.sortOrder),
+      }),
+    failMsg: "新建组失败",
+    successMsg: `已新建组「${name.trim()}」`,
+  });
 }
 function openRenameGroup(g: TagGroup) {
   openInput("更新标签组", { initial: g.name, showSort: true, initialSort: g.sort_order });
   dlg.value.onOk = async () => {
-    const name = dlg.value.value.trim();
-    if (!name) return;
-    const sortOrder = parseSortOrder(dlg.value.sortOrder);
-    try {
-      await invoke(cmds.value.updateGroup, { id: g.id, name, sortOrder });
-    } catch (e) {
-      showToast(`更新组失败：${e}`);
-      return;
-    }
-    showToast("组已更新");
-    refresh();
-    closeDlg();
+    const name = dlg.value.value;
+    const ok = await runSave({
+      name,
+      run: () =>
+        invoke(cmds.value.updateGroup, {
+          id: g.id,
+          name: name.trim(),
+          sortOrder: parseSortOrder(dlg.value.sortOrder),
+        }),
+      failMsg: "更新组失败",
+      successMsg: "组已更新",
+    });
+    if (ok) closeDlg();
   };
 }
 function openDeleteGroup(g: TagGroup) {

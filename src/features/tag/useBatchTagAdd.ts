@@ -24,21 +24,24 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
   const command = `add_${domain}_tag_batch`;
   const noun = domain === "image" ? "张图像" : "个提示词";
 
-  async function batchAddTag(tag: string) {
+  /** 返回是否成功（成功后调用方再关闭批量添加标签弹窗） */
+  async function batchAddTag(tag: string): Promise<boolean> {
     const ids = Array.from(selectedIds.value);
-    if (ids.length === 0) return;
+    if (ids.length === 0) return false;
     const name = tag.trim();
     if (isSpecialTag(name)) {
       showToast(`「${name}」是系统特殊标签，不能手动添加`);
-      return;
+      return false;
     }
     try {
       await invoke(command, { ids, name });
       showToast(`已为 ${ids.length} ${noun}添加标签`);
       exitBatch();
       await loadTagFilter();
+      return true;
     } catch (e) {
       showToast(`批量添加标签失败：${e}`);
+      return false;
     }
   }
 

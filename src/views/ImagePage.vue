@@ -536,6 +536,11 @@ const { batchAddTag } = useBatchTagAdd({
   loadTagFilter,
   showToast,
 });
+// 批量添加标签：成功才关闭批量添加弹窗，失败保持打开便于修改
+const batchBarRef = ref<InstanceType<typeof BatchActionBar> | null>(null);
+async function onBatchAddTag(tag: string) {
+  if (await batchAddTag(tag)) batchBarRef.value?.closeTagDialog();
+}
 
 // KeepAlive:数据仅在首次进入加载;激活时恢复滚动位置并接管外点关闭,失活时释放监听
 onMounted(() => {
@@ -706,11 +711,12 @@ function onUploadDone() {
 
     <!-- 底部批量操作工具栏（独立组件，供提示词端复用） -->
     <BatchActionBar
+      ref="batchBarRef"
       :open="batchOpen"
       :count="selectedIds.size"
       @select-all="batchSelectAll"
       @invert="batchInvert"
-      @add-tag="batchAddTag"
+      @add-tag="onBatchAddTag"
       @favorite="onBatchFavorite"
       @delete="batchDelete"
       @cancel="exitBatch"

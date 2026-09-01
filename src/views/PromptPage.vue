@@ -280,6 +280,11 @@ const { batchAddTag } = useBatchTagAdd({
   loadTagFilter,
   showToast,
 });
+// 批量添加标签：成功才关闭批量添加弹窗，失败保持打开便于修改
+const batchBarRef = ref<InstanceType<typeof BatchActionBar> | null>(null);
+async function onBatchAddTag(tag: string) {
+  if (await batchAddTag(tag)) batchBarRef.value?.closeTagDialog();
+}
 
 const batchDeleteOpen = ref(false);
 
@@ -665,11 +670,12 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
 
     <!-- 底部批量操作工具栏（通用组件，与图像页复用） -->
     <BatchActionBar
+      ref="batchBarRef"
       :open="batchOpen"
       :count="selectedIds.size"
       @select-all="batchSelectAll"
       @invert="batchInvert"
-      @add-tag="batchAddTag"
+      @add-tag="onBatchAddTag"
       @favorite="onBatchFavorite"
       @delete="batchDelete"
       @cancel="exitBatch"
