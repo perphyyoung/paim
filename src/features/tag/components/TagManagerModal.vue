@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
+import ContextMenu from "@/components/ContextMenu.vue";
 import TagChip from "./TagChip.vue";
 
 const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();
@@ -702,7 +703,6 @@ function refresh() {
           </div>
         </div>
       </div>
-      <!-- 右键菜单：固定到首位 -->
       <!-- 拖拽跟随浮层 -->
       <div
         v-if="drag"
@@ -711,25 +711,16 @@ function refresh() {
       >
         {{ drag.name }}
       </div>
-      <div
-        v-if="ctxMenu.visible"
-        class="fixed inset-0 z-[80]"
-        @click="closeCtxMenu"
-        @contextmenu.prevent="closeCtxMenu"
-      ></div>
-      <div
-        v-if="ctxMenu.visible"
-        class="fixed z-[81] min-w-32 overflow-hidden rounded-md border py-1 text-sm shadow-lg border-gray-700 bg-gray-800"
-        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
-      >
+      <!-- 右键菜单：复用公共 ContextMenu（遮罩 z-[60] / 本体 z-[70]） -->
+      <ContextMenu :open="ctxMenu.visible" :x="ctxMenu.x" :y="ctxMenu.y" @close="closeCtxMenu">
         <button
           type="button"
-          class="block w-full px-3 py-1.5 text-left text-gray-200 hover:bg-gray-700"
+          class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
           @click="pinToTop"
         >
           固定到首位
         </button>
-      </div>
+      </ContextMenu>
     </div>
   </Teleport>
 </template>

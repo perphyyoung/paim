@@ -151,6 +151,5 @@
 
 - **同一层内场景互斥**时可共用 z 值（如 z-60 设置弹窗与右键遮罩、z-50 各业务弹窗），互不叠加出现，DOM 顺序即决定谁在上。
 - **同类语义取值已不一致**，后续新增请对齐：
-  - 右键菜单：公共 ContextMenu 为 60/70，TagManagerModal 手写为 80/81 → 建议统一为公共组件。
   - 弹窗内嵌子对话框：TagManagerModal 为 60，ImageDetailModal 内嵌新建提示词为 70 → 建议统一为 60（低于右键菜单本体 70）。
 - Toast 在 z-100，确认弹窗 z-110 时 Toast 会被盖住；Toast 仅展示且 pointer-events-none，可接受，无须改动。
