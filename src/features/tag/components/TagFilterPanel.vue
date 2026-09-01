@@ -206,7 +206,8 @@ const tagSections = computed<TagSection[]>(() => {
       <button
         v-if="selectedTags.length > 0"
         type="button"
-        class="text-xs text-gray-400 hover:text-gray-200"
+        class="rounded px-1.5 py-0.5 text-xs transition-colors text-red-400 hover:bg-red-900/30 hover:text-red-300"
+        title="清除已选标签"
         @click="clearTags"
       >
         清除
