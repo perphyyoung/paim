@@ -77,8 +77,8 @@ function onMouseDown(e: MouseEvent) {
       />
     </svg>
 
-    <!-- 覆盖层 -->
-    <div class="absolute inset-0 flex flex-col">
+    <!-- 覆盖层（白字统一加重阴影，亮色图上也清晰；文字区渐变压暗在其下） -->
+    <div class="absolute inset-0 flex flex-col [&_p]:drop-shadow-[0_1px_2px_rgba(0,0,0,.9)]">
       <!-- row1 按钮行：绝对悬浮于顶部，不占布局空间；悬停/批量模式显示 -->
       <div
         class="absolute inset-x-0 top-0 z-[3] grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"

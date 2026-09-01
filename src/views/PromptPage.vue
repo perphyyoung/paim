@@ -623,9 +623,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
             >
               <!-- row2 提示词内容（无行间边界，与标签/排序行共享渐变压暗底） -->
               <div class="relative flex-1 overflow-hidden px-2 pt-1">
-                <p
-                  class="text-[length:var(--fs-10)] leading-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.9)]"
-                >
+                <p class="text-[length:var(--fs-10)] leading-4 text-white">
                   {{ p.content }}
                 </p>
               </div>
@@ -640,7 +638,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
               <!-- row4 排序字段 -->
               <div class="px-1.5 py-0.5 text-center">
                 <p
-                  class="truncate text-[length:var(--fs-11)] text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.9)]"
+                  class="truncate text-[length:var(--fs-11)] text-white"
                   :title="`${rowInfo(p).label}：${rowInfo(p).value}`"
                 >
                   {{ rowInfo(p).value }}
