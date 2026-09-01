@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import ContextMenu from "@/components/ContextMenu.vue";
+import InlineDialog from "@/components/InlineDialog.vue";
 import TagChip from "./TagChip.vue";
 
 const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();
@@ -646,63 +647,39 @@ function refresh() {
         </div>
       </div>
 
-      <!-- 内嵌输入/确认对话框 -->
-      <div
-        v-if="dlg.visible"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
-      >
-        <div class="w-80 rounded-lg border p-4 shadow-lg border-gray-700 bg-gray-800">
-          <h3 class="mb-3 text-center text-sm font-semibold text-gray-100">
-            {{ dlg.title }}
-          </h3>
-          <template v-if="dlg.mode === 'input'">
-            <input
-              ref="nameInput"
-              v-model="dlg.value"
-              type="text"
-              :placeholder="dlg.placeholder"
-              class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200"
-              @keyup.enter="submitInput"
-            />
-            <select
-              v-if="dlg.groupEnabled"
-              v-model="dlg.groupId"
-              class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
-            >
-              <option value="">未分组</option>
-              <option v-for="g in data.groups" :key="g.id" :value="String(g.id)">
-                {{ g.name }}
-              </option>
-            </select>
-            <input
-              v-if="dlg.showSort"
-              v-model="dlg.sortOrder"
-              type="number"
-              step="1"
-              placeholder="留空则追加到末尾"
-              class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200"
-              @keyup.enter="submitInput"
-            />
-          </template>
-          <p v-else class="mb-3 text-sm text-gray-300">{{ dlg.message }}</p>
-          <div class="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              class="rounded border px-3 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
-              @click="closeDlg"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              class="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
-              @click="submitInput"
-            >
-              确定
-            </button>
-          </div>
-        </div>
-      </div>
+      <!-- 内嵌输入/确认对话框（复用公共 InlineDialog，z-[60]） -->
+      <InlineDialog :open="dlg.visible" :title="dlg.title" @close="closeDlg" @confirm="submitInput">
+        <template v-if="dlg.mode === 'input'">
+          <input
+            ref="nameInput"
+            v-model="dlg.value"
+            type="text"
+            :placeholder="dlg.placeholder"
+            class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200"
+            @keyup.enter="submitInput"
+          />
+          <select
+            v-if="dlg.groupEnabled"
+            v-model="dlg.groupId"
+            class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
+          >
+            <option value="">未分组</option>
+            <option v-for="g in data.groups" :key="g.id" :value="String(g.id)">
+              {{ g.name }}
+            </option>
+          </select>
+          <input
+            v-if="dlg.showSort"
+            v-model="dlg.sortOrder"
+            type="number"
+            step="1"
+            placeholder="留空则追加到末尾"
+            class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200"
+            @keyup.enter="submitInput"
+          />
+        </template>
+        <p v-else class="mb-3 text-sm text-gray-300">{{ dlg.message }}</p>
+      </InlineDialog>
       <!-- 拖拽跟随浮层 -->
       <div
         v-if="drag"

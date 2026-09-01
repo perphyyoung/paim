@@ -120,21 +120,19 @@
 
 ### 1. 全局弹层（fixed / Teleport to body，从低到高）
 
-| z       | 元素                          | 来源                                                                                                                         | 说明                              |
-| ------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| 50      | 业务弹窗本体                  | ImageDetailModal / PromptDetailModal / TrashOverlay / TagManagerModal / ImagePickerModal / NewPromptModal / ImageUploadModal | 普通弹窗/整页覆盖，最低一层全屏层 |
-| 60      | 右键菜单遮罩                  | ContextMenu                                                                                                                  | 须盖过全部 z-50 弹窗，点击即关    |
-| 60      | 设置弹窗                      | App.vue                                                                                                                      | 与右键遮罩同层（场景互斥）        |
-| 60      | 标签管理内嵌输入/确认         | TagManagerModal 内嵌 dlg                                                                                                     | 弹窗内的子对话框                  |
-| 70      | 右键菜单本体                  | ContextMenu                                                                                                                  | 高于自身遮罩 1 挡                 |
-| 70      | 全屏查看器                    | ImageFullscreenViewer                                                                                                        | 详情页之上的查看层                |
-| 70      | 图像详情内嵌「新建提示词」    | ImageDetailModal 内嵌 createPrompt                                                                                           | 弹窗内的子对话框                  |
-| 80 / 81 | 标签管理右键菜单（遮罩/本体） | TagManagerModal 手写菜单                                                                                                     | 未复用 ContextMenu                |
-| 90      | 标签拖拽跟随浮层              | TagManagerModal                                                                                                              | 纯展示，pointer-events-none       |
-| 100     | Toast                         | ToastHost                                                                                                                    | pointer-events-none，仅展示       |
-| 100     | 批量操作工具条                | BatchActionBar                                                                                                               | 悬浮工具条，不挡操作              |
-| 110     | 确认弹窗                      | ConfirmDialog / BatchActionBar 内确认                                                                                        | 最高确认层                        |
-| 120     | 备份导入 / 缩略图重建         | PmBackupImportModal / ThumbnailRebuildModal                                                                                  | 顶层模态                          |
+| z   | 元素                  | 来源                                                                                                                         | 说明                               |
+| --- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 50  | 业务弹窗本体          | ImageDetailModal / PromptDetailModal / TrashOverlay / TagManagerModal / ImagePickerModal / NewPromptModal / ImageUploadModal | 普通弹窗/整页覆盖，最低一层全屏层  |
+| 60  | 右键菜单遮罩          | ContextMenu                                                                                                                  | 须盖过全部 z-50 弹窗，点击即关     |
+| 60  | 设置弹窗              | App.vue                                                                                                                      | 与右键遮罩同层（场景互斥）         |
+| 60  | 内嵌子对话框          | InlineDialog（TagManagerModal 内嵌 dlg / ImageDetailModal 新建提示词）                                                       | 弹窗内的子对话框，低于右键菜单本体 |
+| 70  | 右键菜单本体          | ContextMenu                                                                                                                  | 高于自身遮罩 1 挡                  |
+| 70  | 全屏查看器            | ImageFullscreenViewer                                                                                                        | 详情页之上的查看层                 |
+| 90  | 标签拖拽跟随浮层      | TagManagerModal                                                                                                              | 纯展示，pointer-events-none        |
+| 100 | Toast                 | ToastHost                                                                                                                    | pointer-events-none，仅展示        |
+| 100 | 批量操作工具条        | BatchActionBar                                                                                                               | 悬浮工具条，不挡操作               |
+| 110 | 确认弹窗              | ConfirmDialog / BatchActionBar 内确认                                                                                        | 最高确认层                         |
+| 120 | 备份导入 / 缩略图重建 | PmBackupImportModal / ThumbnailRebuildModal                                                                                  | 顶层模态                           |
 
 ### 2. 组件内局部层级（非全屏，仅作用于自身 stacking context）
 
@@ -150,6 +148,4 @@
 ### 3. 关联关系与注意
 
 - **同一层内场景互斥**时可共用 z 值（如 z-60 设置弹窗与右键遮罩、z-50 各业务弹窗），互不叠加出现，DOM 顺序即决定谁在上。
-- **同类语义取值已不一致**，后续新增请对齐：
-  - 弹窗内嵌子对话框：TagManagerModal 为 60，ImageDetailModal 内嵌新建提示词为 70 → 建议统一为 60（低于右键菜单本体 70）。
 - Toast 在 z-100，确认弹窗 z-110 时 Toast 会被盖住；Toast 仅展示且 pointer-events-none，可接受，无须改动。

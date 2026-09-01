@@ -3,6 +3,7 @@ import { computed, nextTick, ref, toRef, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
+import InlineDialog from "@/components/InlineDialog.vue";
 import { useTagAdd } from "@/features/tag/useTagAdd";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
@@ -769,45 +770,24 @@ const fmtSize = (bytes: number) => {
     @cancel="cancelConfirm"
   />
 
-  <!-- 新建提示词（无关联时，纯内容输入，创建后关联当前图像） -->
-  <Teleport to="body">
-    <div
-      v-if="createPromptOpen"
-      class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40"
-      @click.self="createPromptOpen = false"
-    >
-      <div
-        class="w-[520px] max-w-[90vw] rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800"
-      >
-        <h3 class="text-center text-base font-semibold text-gray-100">新建提示词</h3>
-        <textarea
-          ref="createInput"
-          v-model="createContent"
-          rows="6"
-          class="mt-3 w-full resize-none rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
-          placeholder="输入提示词内容..."
-          @keydown.enter.exact.prevent="doCreatePrompt"
-        ></textarea>
-        <div class="mt-3 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            class="rounded-lg border py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-            @click="createPromptOpen = false"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            class="rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
-            :disabled="createSaving"
-            @click="doCreatePrompt"
-          >
-            {{ createSaving ? "创建中…" : "确定" }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <!-- 新建提示词（无关联时，纯内容输入，创建后关联当前图像；复用公共 InlineDialog，z-[60]） -->
+  <InlineDialog
+    :open="createPromptOpen"
+    title="新建提示词"
+    :confirm-text="createSaving ? '创建中…' : '确定'"
+    :confirm-disabled="createSaving"
+    @close="createPromptOpen = false"
+    @confirm="doCreatePrompt"
+  >
+    <textarea
+      ref="createInput"
+      v-model="createContent"
+      rows="6"
+      class="mt-3 w-full resize-none rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+      placeholder="输入提示词内容..."
+      @keydown.enter.exact.prevent="doCreatePrompt"
+    ></textarea>
+  </InlineDialog>
 
   <!-- 编辑提示词（复用提示词详情弹窗，父级 v-if 强制整体卸载） -->
   <PromptDetailModal
