@@ -73,9 +73,9 @@ function onMouseDown(e: MouseEvent) {
 
     <!-- 覆盖层 -->
     <div class="absolute inset-0 flex flex-col">
-      <!-- row1 按钮行：4 元素水平均分，左右顶格，悬停显示；批量模式下常显 -->
+      <!-- row1 按钮行：绝对悬浮于顶部，不占布局空间；悬停/批量模式显示 -->
       <div
-        class="grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"
+        class="absolute inset-x-0 top-0 z-[3] grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"
         :class="batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
       >
         <!-- 复选框 -->
