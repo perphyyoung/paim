@@ -703,7 +703,7 @@ function onUploadDone() {
               @card-click="onCardClick"
               @contextmenu.prevent="openCtxMenu($event, img)"
             >
-              <!-- row2 关联提示词（若有则显示，占满时由底部渐变淡出） -->
+              <!-- row2 关联提示词（无行间边界，与标签/排序行共享渐变压暗底） -->
               <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
                 <p
                   v-if="(imagePrompts[img.id] || []).length"
@@ -712,9 +712,6 @@ function onUploadDone() {
                 >
                   {{ imagePrompts[img.id][0] }}
                 </p>
-                <div
-                  class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"
-                ></div>
               </div>
 
               <!-- row3 标签（组件内截断，剩余显示 +n） -->
@@ -725,7 +722,7 @@ function onUploadDone() {
               />
 
               <!-- row4 随排序依据动态显示对应字段值 -->
-              <div class="bg-black/70 px-1.5 py-0.5 text-center">
+              <div class="px-1.5 py-0.5 text-center">
                 <p
                   class="truncate text-[length:var(--fs-11)] text-white"
                   :title="`${rowInfo(img).label}：${rowInfo(img).value}`"

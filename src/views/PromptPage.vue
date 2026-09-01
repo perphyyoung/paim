@@ -621,14 +621,11 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
               @check="onCheckSelect($event, p.id)"
               @card-click="onCardClick"
             >
-              <!-- row2 提示词内容（占满时由底部渐变淡出，无固定行数截断） -->
+              <!-- row2 提示词内容（无行间边界，与标签/排序行共享渐变压暗底） -->
               <div class="relative flex-1 overflow-hidden px-2 pt-1">
                 <p class="text-[length:var(--fs-10)] leading-4 text-white/90 drop-shadow">
                   {{ p.content }}
                 </p>
-                <div
-                  class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"
-                ></div>
               </div>
 
               <!-- row3 标签 -->
@@ -639,7 +636,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
               />
 
               <!-- row4 排序字段 -->
-              <div class="bg-black/70 px-1.5 py-0.5 text-center">
+              <div class="px-1.5 py-0.5 text-center">
                 <p
                   class="truncate text-[length:var(--fs-11)] text-white"
                   :title="`${rowInfo(p).label}：${rowInfo(p).value}`"

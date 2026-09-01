@@ -46,6 +46,12 @@ function onMouseDown(e: MouseEvent) {
     @click="emit('cardClick', $event, index, item.id)"
     @mousedown="onMouseDown"
   >
+    <!-- 底部文字区渐变压暗：3 行文字同底可读，与背景图自然区分（无行间边界） -->
+    <div
+      class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-gray-900 via-gray-900/85 to-transparent"
+      aria-hidden="true"
+    ></div>
+
     <!-- 选中遮罩（不拦截交互） -->
     <div
       v-if="selected"
