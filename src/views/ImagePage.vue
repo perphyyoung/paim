@@ -2,14 +2,16 @@
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
-import { useRouter } from "vue-router";
 import { formatLocalTime } from "@/utils/date";
 import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
+import { useBatchSelection } from "@/composables/useBatchSelection";
+import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
+import MediaCard from "@/components/MediaCard.vue";
 import CardTagRow from "@/features/image/components/CardTagRow.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -435,81 +437,20 @@ function onDetailUpdate(updated: Image) {
   images.value = images.value.map((i) => (i.id === updated.id ? updated : i));
 }
 
-// ---- 批量选择（卡片 checkbox + 底部悬浮工具栏）----
-const batchOpen = ref(false);
-const selectedIds = ref<Set<string>>(new Set());
-
-function toggleSelect(id: string) {
-  const s = new Set(selectedIds.value);
-  if (s.has(id)) s.delete(id);
-  else s.add(id);
-  selectedIds.value = s;
-  batchOpen.value = s.size > 0;
-}
-
-function batchSelectAll() {
-  selectedIds.value = new Set(sortedImages.value.map((i) => i.id));
-  batchOpen.value = true;
-}
-
-function batchInvert() {
-  const all = new Set(sortedImages.value.map((i) => i.id));
-  const s = new Set(selectedIds.value);
-  for (const id of all) {
-    if (s.has(id)) s.delete(id);
-    else s.add(id);
-  }
-  selectedIds.value = s;
-  batchOpen.value = s.size > 0;
-}
-
-function exitBatch() {
-  selectedIds.value = new Set();
-  batchOpen.value = false;
-}
-
-// 范围选择锚点：Ctrl 点击 / checkbox 单选时更新；Shift 点击从锚点扩选到当前项（对齐 pm rangeSelect）
-const anchorIndex = ref(-1);
-
-function onCheckSelect(index: number, id: string) {
-  toggleSelect(id);
-  anchorIndex.value = index;
-}
-
-function rangeSelect(index: number, id: string) {
-  const s = new Set(selectedIds.value);
-  const from = anchorIndex.value;
-  if (from < 0) {
-    anchorIndex.value = index;
-    s.add(id);
-  } else {
-    for (let i = Math.min(from, index); i <= Math.max(from, index); i++) {
-      const item = sortedImages.value[i];
-      if (item) s.add(item.id);
-    }
-  }
-  selectedIds.value = s;
-  batchOpen.value = s.size > 0;
-}
-
-function onCardClick(e: MouseEvent, index: number, img: Image) {
-  if (e.ctrlKey || e.metaKey) {
-    // Ctrl/Cmd + 点击：切换选中（并作为新锚点）
-    e.preventDefault();
-    onCheckSelect(index, img.id);
-  } else if (e.shiftKey) {
-    // Shift + 点击：范围选中
-    e.preventDefault();
-    rangeSelect(index, img.id);
-  } else {
-    openDetail(img);
-  }
-}
-
-// Shift/Ctrl+点击时在 mousedown 阶段拦截，阻止浏览器文本选择（否则卡片内容会被选中变蓝）
-function onCardMouseDown(e: MouseEvent) {
-  if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault();
-}
+// ---- 批量选择（与提示词主页共用状态机：普通点击详情 / Ctrl 切换 / Shift 范围 / Ctrl+A 全选）----
+const {
+  selectedIds,
+  batchOpen,
+  isSelected,
+  batchSelectAll,
+  batchInvert,
+  exitBatch,
+  onCheckSelect,
+  onCardClick,
+} = useBatchSelection<Image>(
+  () => sortedImages.value,
+  (i) => openDetail(sortedImages.value[i]),
+);
 
 // ---- 卡片按钮动作 ---- //
 // 复制关联的第一条提示词内容；未关联时提示
@@ -629,47 +570,10 @@ onActivated(() => {
 });
 onDeactivated(() => window.removeEventListener("click", closeCtxMenu));
 
-// Ctrl/Cmd+F 聚焦搜索框
-// 官方推荐：应用内快捷键使用标准 Web API document.addEventListener('keydown')
-// KeepAlive 页面用 Vue 官方 onActivated/onDeactivated 控制注册：
-// 仅当前激活页面响应，切换页面后 Ctrl+F 无响应
+// ---- 主页快捷键（统一注册：Ctrl+F 搜索、Ctrl+P/I 切页、F5 刷新、Ctrl+T 标签折叠、Ctrl+A 全选）----
 const searchInput = ref<HTMLInputElement | null>(null);
-function onSearchKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.code === "KeyF") {
-    e.preventDefault();
-    searchInput.value?.focus();
-  }
-}
-onActivated(() => document.addEventListener("keydown", onSearchKeydown));
-onDeactivated(() => document.removeEventListener("keydown", onSearchKeydown));
-
-// 主页快捷键：Ctrl+P/Ctrl+I 切到提示词/图像主页，F5 刷新（与左下「刷新缓存」同逻辑），Ctrl+T 折叠/展开标签筛选区
-const router = useRouter();
 const tagFilterRef = ref<InstanceType<typeof TagFilterPanel> | null>(null);
-function onHomeShortcutKeydown(e: KeyboardEvent) {
-  if (e.key === "F5") {
-    e.preventDefault();
-    window.location.reload();
-  } else if (e.ctrlKey || e.metaKey) {
-    if (e.code === "KeyP") {
-      e.preventDefault();
-      router.push("/prompts");
-    } else if (e.code === "KeyI") {
-      e.preventDefault();
-      router.push("/images");
-    } else if (e.code === "KeyT") {
-      e.preventDefault();
-      tagFilterRef.value?.toggleFilter();
-    } else if (e.code === "KeyA") {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return; // 输入框放行（文本全选）
-      e.preventDefault();
-      batchSelectAll();
-    }
-  }
-}
-onActivated(() => document.addEventListener("keydown", onHomeShortcutKeydown));
-onDeactivated(() => document.removeEventListener("keydown", onHomeShortcutKeydown));
+useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelectAll });
 
 // ---- 上传图像弹窗 ----
 const uploadOpen = ref(false);
@@ -785,175 +689,51 @@ function onUploadDone() {
           @scroll="handleGridScroll"
         >
           <template #default="{ item: img, index }">
-            <div
-              class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-800"
-              :class="[
-                selectedIds.has(img.id)
-                  ? 'border-indigo-500 shadow-[0_0_0_1px_rgba(99,102,241,.6),0_0_18px_rgba(99,102,241,.35)]'
-                  : img.is_favorite
-                    ? 'border-amber-500'
-                    : 'border-gray-700',
-              ]"
-              @click="onCardClick($event, index, img)"
-              @mousedown="onCardMouseDown"
+            <MediaCard
+              :item="img"
+              :index="index"
+              :selected="isSelected(img.id)"
+              :batch-open="batchOpen"
+              :thumb="thumbs[img.id] ?? ''"
+              copy-title="复制提示词"
+              @fav="toggleFavorite(img)"
+              @copy="copyPrompt(img)"
+              @delete="requestDelete(img)"
+              @check="onCheckSelect($event, img.id)"
+              @card-click="onCardClick"
               @contextmenu.prevent="openCtxMenu($event, img)"
             >
-              <!-- 选中遮罩 + 右上 ✓ 徽章（不拦截交互） -->
-              <div
-                v-if="selectedIds.has(img.id)"
-                class="pointer-events-none absolute inset-0 z-[1] rounded-lg bg-indigo-500/15"
-                aria-hidden="true"
-              ></div>
-              <div
-                v-if="selectedIds.has(img.id)"
-                class="absolute right-1.5 top-1.5 z-[2] flex h-[18px] w-[18px] items-center justify-center rounded-full bg-indigo-500 text-white shadow"
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
-                  <path
-                    fill-rule="evenodd"
-                    d="M16.704 5.29a1 1 0 010 1.414l-7.5 7.5a1 1 0 01-1.414 0l-3.5-3.5a1 1 0 111.414-1.414L8.7 11.88l6.594-6.59a1 1 0 011.414 0z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-              </div>
-              <!-- 背景图 -->
-              <img
-                v-if="thumbs[img.id]"
-                :src="thumbs[img.id]"
-                alt=""
-                class="absolute inset-0 h-full w-full object-cover"
-              />
-              <svg
-                v-else
-                xmlns="http://www.w3.org/2000/svg"
-                class="absolute inset-0 m-auto h-10 w-10 text-gray-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm8.5 3.5 a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-6 9l4-5 3 3 3-4 4 6"
-                />
-              </svg>
-
-              <!-- 4 行覆盖层 -->
-              <div class="absolute inset-0 flex flex-col">
-                <!-- row1 按钮行：4 元素水平均分，左右顶格，悬停显示；批量模式下常显 -->
-                <div
-                  class="grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"
-                  :class="batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+              <!-- row2 关联提示词（若有则显示，占满时由底部渐变淡出） -->
+              <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
+                <p
+                  v-if="(imagePrompts[img.id] || []).length"
+                  class="text-[length:var(--fs-10)] leading-4 text-white drop-shadow"
+                  :title="imagePrompts[img.id].join('\n')"
                 >
-                  <!-- 复选框 -->
-                  <div class="flex items-center justify-center">
-                    <input
-                      type="checkbox"
-                      class="h-4 w-4 cursor-pointer accent-indigo-500"
-                      :checked="selectedIds.has(img.id)"
-                      @click.stop="onCheckSelect(index, img.id)"
-                    />
-                  </div>
-                  <!-- 收藏 -->
-                  <div class="flex items-center justify-center">
-                    <button
-                      type="button"
-                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-                      :title="img.is_favorite ? '取消收藏' : '收藏'"
-                      @click.stop="toggleFavorite(img)"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        :fill="img.is_favorite ? 'currentColor' : 'none'"
-                        :stroke="img.is_favorite ? 'none' : 'currentColor'"
-                        stroke-width="1.5"
-                        class="h-4 w-4 text-amber-400"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M12 2l2.9 6.26 6.86.78-5.1 4.66 1.36 6.77L12 17.27l-6.02 3.2 1.36-6.77-5.1-4.66 6.86-.78L12 2z"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <!-- 复制提示词 -->
-                  <div class="flex items-center justify-center">
-                    <button
-                      type="button"
-                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-                      title="复制提示词"
-                      @click.stop="copyPrompt(img)"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                        class="h-4 w-4"
-                        aria-hidden="true"
-                      >
-                        <rect x="9" y="9" width="13" height="13" rx="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </svg>
-                    </button>
-                  </div>
-                  <!-- 删除 -->
-                  <div class="flex items-center justify-center">
-                    <button
-                      type="button"
-                      class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-                      title="删除"
-                      @click.stop="requestDelete(img)"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                        class="h-4 w-4"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- row2 关联提示词（若有则显示，占满勾出超额渐变淡出） -->
-                <div class="relative flex-1 overflow-hidden px-1.5 pt-1">
-                  <p
-                    v-if="(imagePrompts[img.id] || []).length"
-                    class="text-[length:var(--fs-10)] leading-4 text-white drop-shadow"
-                    :title="imagePrompts[img.id].join('\n')"
-                  >
-                    {{ imagePrompts[img.id][0] }}
-                  </p>
-                  <div
-                    class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"
-                  ></div>
-                </div>
-
-                <!-- row3 标签（组件内截断，剩余显示 +n） -->
-                <CardTagRow
-                  v-if="(tagNames[img.id] || []).length"
-                  :tags="tagNames[img.id] || []"
-                  :card-size="cardSize"
-                />
-
-                <!-- row4 随排序依据动态显示对应字段值 -->
-                <div class="bg-black/70 px-1.5 py-0.5 text-center">
-                  <p
-                    class="truncate text-[length:var(--fs-11)] text-white"
-                    :title="`${rowInfo(img).label}：${rowInfo(img).value}`"
-                  >
-                    {{ rowInfo(img).value }}
-                  </p>
-                </div>
+                  {{ imagePrompts[img.id][0] }}
+                </p>
+                <div
+                  class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/70 to-transparent"
+                ></div>
               </div>
-            </div>
+
+              <!-- row3 标签（组件内截断，剩余显示 +n） -->
+              <CardTagRow
+                v-if="(tagNames[img.id] || []).length"
+                :tags="tagNames[img.id] || []"
+                :card-size="cardSize"
+              />
+
+              <!-- row4 随排序依据动态显示对应字段值 -->
+              <div class="bg-black/70 px-1.5 py-0.5 text-center">
+                <p
+                  class="truncate text-[length:var(--fs-11)] text-white"
+                  :title="`${rowInfo(img).label}：${rowInfo(img).value}`"
+                >
+                  {{ rowInfo(img).value }}
+                </p>
+              </div>
+            </MediaCard>
           </template>
         </VirtualGrid>
         <CustomScrollBar
