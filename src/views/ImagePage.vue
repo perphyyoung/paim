@@ -8,6 +8,7 @@ import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
+import { useFavoriteToggle } from "@/composables/useFavoriteToggle";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
@@ -465,17 +466,14 @@ async function copyPrompt(img: Image) {
   }
 }
 
-// 切换收藏
-async function toggleFavorite(img: Image) {
-  try {
-    const updated = await invoke<Image>("update_image_detail", {
-      id: img.id,
-      isFavorite: !img.is_favorite,
-    });
-    images.value = images.value.map((i) => (i.id === img.id ? updated : i));
-  } catch (e) {
-    showToast(`操作失败：${e}`);
-  }
+// 切换收藏（单张/批量，逻辑与提示词页共用）
+const { toggleOne: toggleFavorite, toggleBatch } = useFavoriteToggle({
+  domain: "image",
+  list: images,
+  showToast,
+});
+async function onBatchFavorite() {
+  if (await toggleBatch(Array.from(selectedIds.value))) exitBatch();
 }
 
 // 单张删除（移入回收站，需确认）
@@ -522,22 +520,6 @@ async function doBatchDelete() {
     await loadImages();
   } catch (e) {
     showToast(`批量删除失败：${e}`);
-  }
-}
-
-async function batchFavorite() {
-  const ids = Array.from(selectedIds.value);
-  if (ids.length === 0) return;
-  try {
-    const n = await invoke<number>("batch_toggle_image_favorite", { ids });
-    // 切换语义：逐张翻转本地收藏状态
-    images.value = images.value.map((i) =>
-      selectedIds.value.has(i.id) ? { ...i, is_favorite: !i.is_favorite } : i,
-    );
-    showToast(`已切换 ${n} 张图像的收藏状态`);
-    exitBatch();
-  } catch (e) {
-    showToast(`批量切换收藏失败：${e}`);
   }
 }
 
@@ -724,7 +706,7 @@ function onUploadDone() {
       @select-all="batchSelectAll"
       @invert="batchInvert"
       @add-tag="batchAddTag"
-      @favorite="batchFavorite"
+      @favorite="onBatchFavorite"
       @delete="batchDelete"
       @cancel="exitBatch"
     />

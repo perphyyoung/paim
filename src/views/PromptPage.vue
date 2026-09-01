@@ -7,6 +7,7 @@ import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
+import { useFavoriteToggle } from "@/composables/useFavoriteToggle";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
@@ -211,17 +212,14 @@ function rowInfo(p: Prompt): { label: string; value: string } {
   }
 }
 
-// 切换收藏
-async function toggleFavorite(p: Prompt) {
-  try {
-    const updated = await invoke<Prompt>("update_prompt_detail", {
-      id: p.id,
-      isFavorite: !p.is_favorite,
-    });
-    prompts.value = prompts.value.map((x) => (x.id === p.id ? updated : x));
-  } catch (e) {
-    showToast(`收藏失败：${e}`);
-  }
+// 切换收藏（单张/批量，逻辑与图像页共用）
+const { toggleOne: toggleFavorite, toggleBatch } = useFavoriteToggle({
+  domain: "prompt",
+  list: prompts,
+  showToast,
+});
+async function onBatchFavorite() {
+  if (await toggleBatch(Array.from(selectedIds.value))) exitBatch();
 }
 
 async function copyPrompt(p: Prompt) {
@@ -278,22 +276,6 @@ const { batchAddTag } = useBatchTagAdd({
   loadTagFilter,
   showToast,
 });
-
-async function batchFavorite() {
-  const ids = Array.from(selectedIds.value);
-  if (ids.length === 0) return;
-  try {
-    const n = await invoke<number>("batch_toggle_prompt_favorite", { ids });
-    // 切换语义：逐张翻转本地收藏状态
-    prompts.value = prompts.value.map((p) =>
-      selectedIds.value.has(p.id) ? { ...p, is_favorite: !p.is_favorite } : p,
-    );
-    showToast(`已切换 ${n} 个提示词的收藏状态`);
-    exitBatch();
-  } catch (e) {
-    showToast(`批量切换收藏失败：${e}`);
-  }
-}
 
 const batchDeleteOpen = ref(false);
 
@@ -684,7 +666,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       @select-all="batchSelectAll"
       @invert="batchInvert"
       @add-tag="batchAddTag"
-      @favorite="batchFavorite"
+      @favorite="onBatchFavorite"
       @delete="batchDelete"
       @cancel="exitBatch"
     />
