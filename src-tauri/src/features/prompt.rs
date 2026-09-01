@@ -319,6 +319,24 @@ pub fn update_prompt_detail(
     .ok_or_else(|| "提示词不存在".into())
 }
 
+/// 同步提示词的安全评级到其关联图像（修改提示词安全评级时联动一层，参考 pm 的双向联动）。
+#[tauri::command]
+pub fn sync_prompt_safe_to_images(
+    db: State<BkDb>,
+    prompt_id: String,
+    is_safe: bool,
+) -> Result<usize, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    conn.execute(
+        "UPDATE images SET is_safe = ?1
+         WHERE is_deleted = 0 AND id IN (
+           SELECT image_id FROM prompt_image_relations WHERE prompt_id = ?2
+         )",
+        rusqlite::params![is_safe, prompt_id],
+    )
+    .map_err(|e| AppError::Message(e.to_string()))
+}
+
 /// 返回一个提示词关联的（未删除）图像列表（含缩略图与标签），供详情页网格展示。
 #[tauri::command]
 pub fn get_prompt_related_images(

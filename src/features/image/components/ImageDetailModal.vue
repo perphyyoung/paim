@@ -378,10 +378,17 @@ function toggleFavorite() {
   if (!img) return;
   toggleCurrent(current, "is_favorite", () => emit("update", img));
 }
-function toggleSafe() {
+async function toggleSafe() {
   const img = current.value;
   if (!img) return;
-  toggleCurrent(current, "is_safe", () => emit("update", img));
+  const v = !img.is_safe;
+  await toggleCurrent(current, "is_safe", () => emit("update", img));
+  // 安全评级联动一层：同步到该图像关联的提示词
+  try {
+    await invoke("sync_image_safe_to_prompts", { imageId: img.id, isSafe: v });
+  } catch (e) {
+    showToast(`同步关联提示词安全评级失败：${e}`);
+  }
 }
 async function saveFields() {
   const img = current.value;

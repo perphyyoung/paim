@@ -161,6 +161,8 @@ pub fn run() {
       db::open_image_location,
       db::batch_toggle_image_favorite,
       db::batch_toggle_prompt_favorite,
+      features::prompt::sync_prompt_safe_to_images,
+      features::image::sync_image_safe_to_prompts,
       // —— pm 备份导入 ——
       features::pm_backup::inspect_pm_backup,
       features::pm_backup::import_pm_backup,

@@ -251,6 +251,24 @@ pub fn update_image_detail(
     .ok_or_else(|| "图像不存在".into())
 }
 
+/// 同步图像的安全评级到其关联提示词（修改图像安全评级时联动一层，参考 pm 的双向联动）。
+#[tauri::command]
+pub fn sync_image_safe_to_prompts(
+    db: State<BkDb>,
+    image_id: String,
+    is_safe: bool,
+) -> Result<usize, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    conn.execute(
+        "UPDATE prompts SET is_safe = ?1
+         WHERE is_deleted = 0 AND id IN (
+           SELECT prompt_id FROM prompt_image_relations WHERE image_id = ?2
+         )",
+        rusqlite::params![is_safe, image_id],
+    )
+    .map_err(|e| AppError::Message(e.to_string()))
+}
+
 /// 返回图像的标签列表。
 #[tauri::command]
 pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, AppError> {
