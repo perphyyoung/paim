@@ -1,6 +1,9 @@
 # custom
 paim-data*/
 
+# 内置浏览器验证产物（docs/内置浏览器使用经验.md）
+verify/
+
 # Node
 node_modules/
 dist/
