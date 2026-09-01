@@ -101,7 +101,7 @@ pub fn build_thumbnail(data_dir: &Path, thumbs_root: &Path, rel: &str) -> Result
 /// 失败的记录保留原有 thumbnail_path 并计数。进度回调参数：(已完成, 总数, 文件名)。
 /// 参照 pm 的并发模型：多工作线程并发生成，结束后单事务批量回写。
 /// 线程数取系统可用并行度（满核跑，不做写死上限），代价是峰值内存
-/// （每线程持有一张解码位图，详见 导入优化.md）。
+/// （每线程持有一张解码位图，详见 docs/导入优化.md）。
 pub fn rebuild_all<F>(
     data_dir: &Path,
     thumbs_root: &Path,
