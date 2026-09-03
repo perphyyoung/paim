@@ -28,8 +28,8 @@
 - pm
   - 全称：prompt-manager
   - 说明：本应用的 electron 版本
-  - 项目路径: "D:\develop\comfy-common\prompt-manager"
-  - 查阅时可参考 "D:\develop\comfy-common\prompt-manager\代码目录结构说明.md"
+  - 项目路径: "../prompt-manager"
+  - 查阅时可参考 "../prompt-manager/代码目录结构说明.md"
   - 也可使用 gitnexus mcp, 指定`repo: "prompt-manager"`
 - lap
   - 全称：lap
