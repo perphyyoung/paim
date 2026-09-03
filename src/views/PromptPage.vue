@@ -4,7 +4,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import { matchesKeyword } from "@/utils/keywordMatch";
-import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
+import { GRID_COLUMNS_LIMITS, useGridColumns } from "@/utils/gridColumns";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
@@ -49,8 +49,8 @@ const SORT_OPTIONS = [
   { value: "title", label: "标题" },
 ];
 
-// 卡片边长，localStorage 持久化（范围/持久化逻辑见 utils/cardSize）
-const { cardSize, onSizeInput } = useCardSize("prompt", 200);
+// 显示列数，localStorage 持久化（范围/持久化逻辑见 utils/gridColumns）
+const { columns, setColumns } = useGridColumns("prompt", 5);
 
 const keyword = ref("");
 
@@ -567,17 +567,28 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         >
           {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
         </button>
-        <label class="flex items-center text-gray-400">
-          <input
-            v-model.number="cardSize"
-            type="range"
-            :min="CARD_SIZE_LIMITS.min"
-            :max="CARD_SIZE_LIMITS.max"
-            :step="CARD_SIZE_LIMITS.step"
-            class="w-full accent-blue-600"
-            @input="onSizeInput"
-          />
-        </label>
+        <!-- 调节显示列数 -->
+        <div class="flex shrink-0 items-center gap-1" title="调节显示列数">
+          <button
+            type="button"
+            class="h-8 w-8 rounded-lg border text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
+            :disabled="columns <= GRID_COLUMNS_LIMITS.min"
+            aria-label="减少列数"
+            @click="setColumns(columns - 1)"
+          >
+            −
+          </button>
+          <span class="w-6 text-center text-sm text-gray-200">{{ columns }}</span>
+          <button
+            type="button"
+            class="h-8 w-8 rounded-lg border text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
+            :disabled="columns >= GRID_COLUMNS_LIMITS.max"
+            aria-label="增加列数"
+            @click="setColumns(columns + 1)"
+          >
+            +
+          </button>
+        </div>
       </div>
 
       <!-- 标签筛选区（通用组件，按标签组分段） -->
@@ -618,12 +629,11 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
           ref="gridRef"
           class="min-w-0 flex-1"
           :items="sortedPrompts"
-          :item-width="cardSize"
-          :item-height="cardSize"
+          :columns="columns"
           :gap="12"
           @scroll="handleGridScroll"
         >
-          <template #default="{ item: p, index }">
+          <template #default="{ item: p, index, width }">
             <MediaCard
               :item="p"
               :index="index"
@@ -634,7 +644,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
               :content="p.content"
               :tags="tagNames[p.id] || []"
               :sort-info="rowInfo(p)"
-              :card-size="cardSize"
+              :card-size="width"
               @fav="toggleFavorite(p)"
               @copy="copyPrompt(p)"
               @delete="requestDelete(p)"
@@ -720,8 +730,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       :open="trashOpen"
       title="提示词回收站"
       :items="trashPrompts"
-      :item-width="cardSize"
-      :item-height="cardSize"
+      :columns="columns"
       @close="closeTrash"
       @restore-all="restoreAllTrash"
       @empty="requestEmptyTrash"

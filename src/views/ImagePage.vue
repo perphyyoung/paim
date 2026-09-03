@@ -5,7 +5,7 @@ import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime } from "@/utils/date";
 import { matchesKeyword } from "@/utils/keywordMatch";
-import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
+import { GRID_COLUMNS_LIMITS, useGridColumns } from "@/utils/gridColumns";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { SPECIAL_TAG_NAMES, defineSpecialTags } from "@/features/tag/specialTags";
 import { useBatchSelection } from "@/composables/useBatchSelection";
@@ -62,8 +62,8 @@ const SORT_OPTIONS = [
   { value: "height", label: "高度" },
 ];
 
-// 卡片边长，localStorage 持久化（范围/持久化逻辑见 utils/cardSize）
-const { cardSize, onSizeInput } = useCardSize("image", 200);
+// 显示列数，localStorage 持久化（范围/持久化逻辑见 utils/gridColumns）
+const { columns, setColumns } = useGridColumns("image", 5);
 
 // 前端搜索关键字（文件名/备注/标签名，与 pm 对齐）
 const keyword = ref("");
@@ -640,17 +640,28 @@ function onUploadDone() {
         >
           {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
         </button>
-        <label class="flex items-center text-gray-400">
-          <input
-            v-model.number="cardSize"
-            type="range"
-            :min="CARD_SIZE_LIMITS.min"
-            :max="CARD_SIZE_LIMITS.max"
-            :step="CARD_SIZE_LIMITS.step"
-            class="w-full accent-blue-600"
-            @input="onSizeInput"
-          />
-        </label>
+        <!-- 调节显示列数 -->
+        <div class="flex shrink-0 items-center gap-1" title="调节显示列数">
+          <button
+            type="button"
+            class="h-8 w-8 rounded-lg border text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
+            :disabled="columns <= GRID_COLUMNS_LIMITS.min"
+            aria-label="减少列数"
+            @click="setColumns(columns - 1)"
+          >
+            −
+          </button>
+          <span class="w-6 text-center text-sm text-gray-200">{{ columns }}</span>
+          <button
+            type="button"
+            class="h-8 w-8 rounded-lg border text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
+            :disabled="columns >= GRID_COLUMNS_LIMITS.max"
+            aria-label="增加列数"
+            @click="setColumns(columns + 1)"
+          >
+            +
+          </button>
+        </div>
       </div>
 
       <!-- 标签筛选区（通用组件，按标签组分段） -->
@@ -694,12 +705,11 @@ function onUploadDone() {
           ref="gridRef"
           class="min-w-0 flex-1"
           :items="sortedImages"
-          :item-width="cardSize"
-          :item-height="cardSize"
+          :columns="columns"
           :gap="12"
           @scroll="handleGridScroll"
         >
-          <template #default="{ item: img, index }">
+          <template #default="{ item: img, index, width }">
             <MediaCard
               :item="img"
               :index="index"
@@ -710,7 +720,7 @@ function onUploadDone() {
               :content="imagePrompts[img.id]?.[0] ?? ''"
               :tags="tagNames[img.id] || []"
               :sort-info="rowInfo(img)"
-              :card-size="cardSize"
+              :card-size="width"
               @fav="toggleFavorite(img)"
               @copy="copyPrompt(img)"
               @delete="requestDelete(img)"
@@ -784,8 +794,7 @@ function onUploadDone() {
       :open="trashOpen"
       title="图像回收站"
       :items="trashImages"
-      :item-width="cardSize"
-      :item-height="cardSize"
+      :columns="columns"
       @close="closeTrash"
       @restore-all="restoreAllTrash"
       @empty="requestEmptyTrash"

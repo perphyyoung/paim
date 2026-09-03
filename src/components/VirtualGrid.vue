@@ -1,16 +1,16 @@
 <script setup lang="ts" generic="T">
 // 虚拟网格：定高均匀卡片网格的窗口化渲染（参考 lap VirtualScroll / pm VirtualScroller）。
 // 结构：滚动容器(.no-scrollbar) → phantom wrapper(总高撑起 scrollHeight) → 可见项 absolute 定位。
+// 布局由「显示列数」驱动：卡片边长 = (容器宽 − gap×(列数−1)) / 列数（正方形），
+// 容器过窄放不下目标列数时自动收缩兜底。
 // 仅做窗口计算与定位，卡片本体由默认插槽渲染；滚动条交互见 CustomScrollBar。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 const props = withDefaults(
   defineProps<{
     items: T[];
-    /** 卡片宽度 px */
-    itemWidth: number;
-    /** 卡片高度 px（行距 = itemHeight + gap） */
-    itemHeight: number;
+    /** 显示列数（用户输入；容器过窄时自动收缩兜底） */
+    columns: number;
     /** 网格间距 px，横纵一致（对应原 gap-3 = 12） */
     gap?: number;
     /** 上下缓冲行数 */
@@ -31,16 +31,37 @@ const scrollTop = ref(0);
 const containerWidth = ref(0);
 const viewportHeight = ref(0);
 
-const columnStride = computed(() => props.itemWidth + props.gap);
-const rowStride = computed(() => props.itemHeight + props.gap);
+/** 单卡最小可读宽度：容器放不下目标列数时按此收缩列数 */
+const MIN_CARD_SIZE = 80;
 
-const columns = computed(() =>
-  Math.max(1, Math.floor((containerWidth.value + props.gap) / columnStride.value)),
+const effColumns = computed(() => {
+  const requested = Math.max(1, Math.floor(props.columns));
+  if (containerWidth.value <= 0) return requested;
+  const maxFit = Math.max(
+    1,
+    Math.floor((containerWidth.value + props.gap) / (MIN_CARD_SIZE + props.gap)),
+  );
+  return Math.min(requested, maxFit);
+});
+
+/** 卡片边长：由容器宽与列数推导（正方形） */
+const itemWidth = computed(() =>
+  containerWidth.value > 0
+    ? Math.max(
+        1,
+        Math.floor((containerWidth.value - props.gap * (effColumns.value - 1)) / effColumns.value),
+      )
+    : 0,
 );
-const rowCount = computed(() => Math.ceil(props.items.length / columns.value));
+const itemHeight = computed(() => itemWidth.value);
+
+const columnStride = computed(() => itemWidth.value + props.gap);
+const rowStride = computed(() => itemHeight.value + props.gap);
+
+const rowCount = computed(() => Math.ceil(props.items.length / effColumns.value));
 const totalHeight = computed(() => rowCount.value * rowStride.value);
 const visibleRows = computed(() => Math.max(1, Math.ceil(viewportHeight.value / rowStride.value)));
-const pageSize = computed(() => columns.value * visibleRows.value);
+const pageSize = computed(() => effColumns.value * visibleRows.value);
 
 // 可视窗口（含上下缓冲行）
 const range = computed(() => {
@@ -48,8 +69,8 @@ const range = computed(() => {
   const startRow = Math.max(0, firstRow - props.buffer);
   const endRow = Math.min(rowCount.value, firstRow + visibleRows.value + props.buffer);
   return {
-    start: startRow * columns.value,
-    end: Math.min(props.items.length, endRow * columns.value),
+    start: startRow * effColumns.value,
+    end: Math.min(props.items.length, endRow * effColumns.value),
   };
 });
 
@@ -57,17 +78,18 @@ const visibleItems = computed(() =>
   props.items.slice(range.value.start, range.value.end).map((item, i) => ({
     item,
     index: range.value.start + i,
+    width: itemWidth.value,
   })),
 );
 
 function styleFor(index: number) {
-  const row = Math.floor(index / columns.value);
-  const col = index % columns.value;
+  const row = Math.floor(index / effColumns.value);
+  const col = index % effColumns.value;
   return {
     top: `${row * rowStride.value}px`,
     left: `${col * columnStride.value}px`,
-    width: `${props.itemWidth}px`,
-    height: `${props.itemHeight}px`,
+    width: `${itemWidth.value}px`,
+    height: `${itemHeight.value}px`,
   };
 }
 
@@ -126,7 +148,7 @@ onBeforeUnmount(() => {
   observer = null;
 });
 
-// 数据量/布局变化（筛选、排序、滑杆、窗口缩放）时同步滚动条
+// 数据量/布局变化（筛选、排序、列数、窗口缩放）时同步滚动条
 watch([rowCount, viewportHeight], emitMetrics);
 
 defineExpose({ scrollToPosition, pageSize });
@@ -145,7 +167,7 @@ defineExpose({ scrollToPosition, pageSize });
         class="absolute"
         :style="styleFor(it.index)"
       >
-        <slot :item="it.item" :index="it.index" />
+        <slot :item="it.item" :index="it.index" :width="it.width" />
       </div>
     </div>
   </div>

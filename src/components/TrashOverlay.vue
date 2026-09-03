@@ -11,8 +11,8 @@ const props = defineProps<{
   open: boolean;
   title: string;
   items: T[];
-  itemWidth: number;
-  itemHeight: number;
+  /** 显示列数（与主页共用同一状态） */
+  columns: number;
 }>();
 
 const emit = defineEmits<{
@@ -112,8 +112,7 @@ const canOperate = computed(() => props.items.length > 0);
             ref="gridRef"
             class="min-w-0 flex-1"
             :items="items"
-            :item-width="itemWidth"
-            :item-height="itemHeight"
+            :columns="columns"
             :gap="12"
             @scroll="onGridScroll"
           >
