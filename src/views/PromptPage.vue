@@ -3,6 +3,7 @@ import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
+import { matchesKeyword } from "@/utils/keywordMatch";
 import { CARD_SIZE_LIMITS, useCardSize } from "@/utils/cardSize";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { useBatchSelection } from "@/composables/useBatchSelection";
@@ -172,8 +173,11 @@ const tagCounts = computed(() => {
 
 const sortedPrompts = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
+  // 搜索范围与 pm 对齐：标题/内容/翻译/备注/标签名（特殊标签为计算条件，不参与）
   let arr = kw
-    ? prompts.value.filter((p) => (p.content + p.title).toLowerCase().includes(kw))
+    ? prompts.value.filter((p) =>
+        matchesKeyword(kw, [p.title, p.content, p.content_translate, p.note], tagNames.value[p.id]),
+      )
     : [...prompts.value];
   if (selectedTags.value.length > 0) {
     arr = arr.filter((p) =>
@@ -518,7 +522,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
           ref="searchInput"
           v-model="keyword"
           type="search"
-          placeholder="搜索内容/标题…"
+          placeholder="搜索标题/内容/翻译/备注/标签"
           title="聚焦搜索 (Ctrl+F)"
           class="min-w-0 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
         />

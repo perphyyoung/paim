@@ -9,16 +9,6 @@ use tauri::State;
 /// 应用持有的数据库连接（单连接 + Mutex），通过 Tauri managed state 注入。
 pub struct BkDb(pub std::sync::Mutex<Connection>);
 
-/// 转义 SQLite LIKE 通配符：\ % _ 视作字面量，转义符为反斜杠。
-/// 必须与 SQL 中的 `LIKE ? ESCAPE '\'` 配对使用，
-/// 否则用户输入单个 % 会匹配全部、_ 匹配任意单字符。
-/// 图像/提示词（如有）搜索统一复用，避免各仓库各自实现。
-pub fn escape_like(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
-}
-
 /// 打开（必要时创建）数据库并执行 DDL。
 /// 表名与字段名与 prompt-manager 完全一致，便于后续数据导入；
 /// 时间列沿用本项目的 ISO 8601 UTC 约定（详见项目 memory）。

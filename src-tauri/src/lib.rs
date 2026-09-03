@@ -2,6 +2,7 @@ pub mod db;
 pub mod error;
 pub mod features;
 pub mod logging;
+pub mod text_utils;
 
 use tauri::Manager;
 

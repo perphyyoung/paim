@@ -224,7 +224,7 @@ fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) 
         clauses.push_str(
             " AND (file_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM image_tag_relations r2 JOIN image_tags t2 ON t2.id = r2.tag_id WHERE r2.image_id = images.id AND t2.name LIKE ? ESCAPE '\\'))",
         );
-        let like = format!("%{}%", crate::db::escape_like(search));
+        let like = format!("%{}%", crate::text_utils::escape_like(search));
         params.push(like.clone());
         params.push(like.clone());
         params.push(like);
