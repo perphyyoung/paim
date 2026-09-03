@@ -173,19 +173,19 @@ function close() {
       <div
         class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
-        <!-- 顶部：标题 + 搜索 + 排序 -->
-        <div class="flex items-center justify-between border-b px-4 py-3 border-gray-700">
-          <h3 class="text-base font-semibold text-gray-100">从图像列表导入</h3>
-          <div class="flex items-center gap-2">
+        <!-- 顶部：标题 + 4 控件（均分中间全部区域）+ 关闭 -->
+        <div class="flex items-center gap-3 border-b px-4 py-3 border-gray-700">
+          <h3 class="shrink-0 text-base font-semibold text-gray-100">从图像列表导入</h3>
+          <div class="flex min-w-0 flex-1 items-center gap-2">
             <input
               v-model="keyword"
-              class="w-48 rounded-lg border px-3 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
+              class="min-w-0 flex-1 rounded-lg border px-3 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
               placeholder="搜索文件名/备注/标签"
               title="搜索范围：文件名、备注、标签（模糊匹配，不区分大小写）"
             />
             <select
               v-model="selectedTag"
-              class="w-40 rounded-lg border px-2 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
+              class="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
               title="按标签筛选"
             >
               <option value="">所有标签</option>
@@ -193,7 +193,7 @@ function close() {
             </select>
             <select
               v-model="sortBy"
-              class="rounded-lg border px-2 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
+              class="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
             >
               <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
                 {{ o.label }}
@@ -201,21 +201,21 @@ function close() {
             </select>
             <button
               type="button"
-              class="flex h-8 w-8 items-center justify-center rounded-lg border text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
+              class="flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg border text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               :title="sortDesc ? '降序' : '升序'"
               @click="sortDesc = !sortDesc"
             >
               {{ sortDesc ? "↓" : "↑" }}
             </button>
-            <button
-              type="button"
-              class="rounded px-2 py-1 text-gray-400 hover:bg-gray-700"
-              title="关闭"
-              @click="close()"
-            >
-              ✕
-            </button>
           </div>
+          <button
+            type="button"
+            class="shrink-0 rounded px-2 py-1 text-gray-400 hover:bg-gray-700"
+            title="关闭"
+            @click="close()"
+          >
+            ✕
+          </button>
         </div>
 
         <!-- 图像网格 -->
