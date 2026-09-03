@@ -111,26 +111,60 @@
 | 卡片行                      | `size="sm"`，由 CardTagRow 接管测量与「+n」汇聚                    |
 | 全屏查看器 / 图像左下角覆盖 | `size="sm"` 只读                                                   |
 
-## 四、z-index 层级
+## 四、Toast（全局提示）
+
+> 视觉参考 chat-manager `ToastModal.vue`（深底 + 霓虹描边辉光），配色为 toast 专属引入色。
+> 组件：`components/ToastHost.vue`（渲染）+ `components/useToast.ts`（状态与 API）。
+> 原则：**所有 toast 一律画面正中心显示**——底部提示易被忽略；错误/警告停留更久。
+
+### 类型与配色（三色）
+
+| 类型      | 视觉（描边/文字/辉光同色）              | 语义                                              | 默认停留 |
+| --------- | --------------------------------------- | ------------------------------------------------- | -------- |
+| `success` | 绿 `#00ff88`                            | 操作成功（已保存、已删除、已恢复、已复制）        | 2.5s     |
+| `info`    | 绿 `#00ff88`（与 success 同色，纯告知） | 中性提示（暂未关联提示词、没有新上传的图像）      | 2.5s     |
+| `warning` | 琥珀 `#ffb020`                          | 校验拦截/部分失败（不能为空、请先选择、部分失败） | 4s       |
+| `error`   | 红 `#ff5c5c`                            | 操作失败（异常、请求报错）                        | 4s       |
+
+- 红 = 错误反馈（状态色），非操作按钮，不与「红只用于破坏性动作」的铁律冲突（同「错误提示」状态色）。
+- 辉光语法：`shadow-[0_0_20px_rgba(R,G,B,0.4),inset_0_0_10px_rgba(R,G,B,0.1)]`，三色各自成套，见 `ToastHost.vue` 的 `TYPE_CLASSES`。
+
+### 布局与交互
+
+- 位置：`fixed inset-0 z-[130] flex flex-col items-center justify-center`，画面正中心，可多条堆叠（gap-2）。
+- 容器 `pointer-events-none` 不拦截点击；toast 本体 `pointer-events-auto cursor-pointer`，**点击即提前关闭**。
+- 动效：入场 0.4s 弹性上滑（`cubic-bezier(0.34,1.56,0.64,1)` + scale-95），出场 0.3s 下滑淡出。
+
+### 调用约定
+
+```ts
+const { showToast } = useToast();
+showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按上表
+```
+
+- 类型选择：操作成功 → `success`；校验拦截/部分失败 → `warning`；异常失败 → `error`；中性告知 → 省略。
+- 错误 toast 建议带原因：`` showToast(`保存失败：${e}`, "error") ``。
+
+## 五、z-index 层级
 
 > 目的：统一全屏弹层的堆叠关系，避免「高 z 弹窗盖住低 z 遮罩」导致点不中、关不掉（如右键菜单）。
 > 约定：**遮罩与本体成对出现，遮罩略低于本体；新弹层只能占用「空档」或比当前最高层更高，不得插队同层。**
 
 ### 全局弹层（fixed / Teleport to body，从低到高）
 
-| z   | 元素                  | 来源                                                                                                                         | 说明                                    |
-| --- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| 50  | 业务弹窗本体          | ImageDetailModal / PromptDetailModal / TrashOverlay / TagManagerModal / ImagePickerModal / NewPromptModal / ImageUploadModal | 普通弹窗/整页覆盖，最低一层全屏层       |
-| 60  | 右键菜单遮罩          | ContextMenu                                                                                                                  | 须盖过全部 z-50 弹窗，点击即关          |
-| 60  | 设置弹窗              | App.vue                                                                                                                      | 与右键遮罩同层（场景互斥）              |
-| 60  | 内嵌子对话框          | InlineDialog（TagManagerModal 内嵌 dlg / ImageDetailModal 新建提示词）                                                       | 弹窗内的子对话框，低于右键菜单本体      |
-| 70  | 右键菜单本体          | ContextMenu                                                                                                                  | 高于自身遮罩 1 挡                       |
-| 70  | 全屏查看器            | ImageFullscreenViewer                                                                                                        | 详情页之上的查看层                      |
-| 90  | 标签拖拽跟随浮层      | TagManagerModal                                                                                                              | 纯展示，pointer-events-none             |
-| 100 | 批量操作工具条        | BatchActionBar                                                                                                               | 悬浮工具条，不挡操作                    |
-| 110 | 确认弹窗              | ConfirmDialog / BatchActionBar 内确认                                                                                        | 最高确认层                              |
-| 120 | 备份导入 / 缩略图重建 | PmBackupImportModal / ThumbnailRebuildModal                                                                                  | 顶层模态                                |
-| 130 | Toast                 | ToastHost                                                                                                                    | 永驻最高层，pointer-events-none，仅展示 |
+| z   | 元素                  | 来源                                                                                                                         | 说明                                                         |
+| --- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 50  | 业务弹窗本体          | ImageDetailModal / PromptDetailModal / TrashOverlay / TagManagerModal / ImagePickerModal / NewPromptModal / ImageUploadModal | 普通弹窗/整页覆盖，最低一层全屏层                            |
+| 60  | 右键菜单遮罩          | ContextMenu                                                                                                                  | 须盖过全部 z-50 弹窗，点击即关                               |
+| 60  | 设置弹窗              | App.vue                                                                                                                      | 与右键遮罩同层（场景互斥）                                   |
+| 60  | 内嵌子对话框          | InlineDialog（TagManagerModal 内嵌 dlg / ImageDetailModal 新建提示词）                                                       | 弹窗内的子对话框，低于右键菜单本体                           |
+| 70  | 右键菜单本体          | ContextMenu                                                                                                                  | 高于自身遮罩 1 挡                                            |
+| 70  | 全屏查看器            | ImageFullscreenViewer                                                                                                        | 详情页之上的查看层                                           |
+| 90  | 标签拖拽跟随浮层      | TagManagerModal                                                                                                              | 纯展示，pointer-events-none                                  |
+| 100 | 批量操作工具条        | BatchActionBar                                                                                                               | 悬浮工具条，不挡操作                                         |
+| 110 | 确认弹窗              | ConfirmDialog / BatchActionBar 内确认                                                                                        | 最高确认层                                                   |
+| 120 | 备份导入 / 缩略图重建 | PmBackupImportModal / ThumbnailRebuildModal                                                                                  | 顶层模态                                                     |
+| 130 | Toast                 | ToastHost                                                                                                                    | 永驻最高层；画面正中心；容器不拦截点击，toast 本体可点击关闭 |
 
 ### 组件内局部层级（非全屏，仅作用于自身 stacking context）
 
