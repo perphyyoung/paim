@@ -135,13 +135,7 @@ async function doUpload() {
               </button>
             </div>
 
-            <div
-              v-if="files.length === 0"
-              class="rounded-lg border border-dashed p-6 text-center border-gray-600"
-            >
-              <p class="text-sm text-gray-400">点击「选择图像」添加文件（可多选）</p>
-            </div>
-            <ul v-else class="grid grid-cols-4 gap-2">
+            <ul v-if="files.length > 0" class="grid grid-cols-4 gap-2">
               <li
                 v-for="(f, i) in files"
                 :key="f.path"
