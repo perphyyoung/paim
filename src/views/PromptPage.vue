@@ -711,7 +711,6 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       :open="trashOpen"
       title="提示词回收站"
       :items="trashPrompts"
-      :columns="columns"
       @close="closeTrash"
       @restore-all="restoreAllTrash"
       @empty="requestEmptyTrash"

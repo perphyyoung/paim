@@ -775,7 +775,6 @@ function onUploadDone() {
       :open="trashOpen"
       title="图像回收站"
       :items="trashImages"
-      :columns="columns"
       @close="closeTrash"
       @restore-all="restoreAllTrash"
       @empty="requestEmptyTrash"

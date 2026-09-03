@@ -6,13 +6,13 @@ import { computed } from "vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import { useGridScrollSync } from "@/components/useGridScrollSync";
+import { FIXED_CARD_SIZE } from "@/utils/gridColumns";
 
+// 卡片尺寸固定为缩略图尺寸，不随容器缩放、不与主页列数联动
 const props = defineProps<{
   open: boolean;
   title: string;
   items: T[];
-  /** 显示列数（与主页共用同一状态） */
-  columns: number;
 }>();
 
 const emit = defineEmits<{
@@ -112,7 +112,7 @@ const canOperate = computed(() => props.items.length > 0);
             ref="gridRef"
             class="min-w-0 flex-1"
             :items="items"
-            :columns="columns"
+            :card-size="FIXED_CARD_SIZE"
             :gap="12"
             @scroll="onGridScroll"
           >

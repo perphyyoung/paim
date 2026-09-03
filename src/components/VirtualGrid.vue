@@ -1,16 +1,19 @@
 <script setup lang="ts" generic="T">
 // 虚拟网格：定高均匀卡片网格的窗口化渲染（参考 lap VirtualScroll / pm VirtualScroller）。
 // 结构：滚动容器(.no-scrollbar) → phantom wrapper(总高撑起 scrollHeight) → 可见项 absolute 定位。
-// 布局由「显示列数」驱动：卡片边长 = (容器宽 − gap×(列数−1)) / 列数（正方形），
-// 容器过窄放不下目标列数时自动收缩兜底。
+// 布局双模式（互斥，二选一传入）：
+// - columns 列数模式：卡片边长 = (容器宽 − gap×(列数−1)) / 列数（正方形），容器过窄自动收缩兜底；
+// - cardSize 固定尺寸模式：卡片恒定 px（不缩放），列数由容器能放下几张推导。
 // 仅做窗口计算与定位，卡片本体由默认插槽渲染；滚动条交互见 CustomScrollBar。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 const props = withDefaults(
   defineProps<{
     items: T[];
-    /** 显示列数（用户输入；容器过窄时自动收缩兜底） */
-    columns: number;
+    /** 列数模式的显示列数（与 cardSize 互斥） */
+    columns?: number;
+    /** 固定尺寸模式的卡片边长 px（与 columns 互斥） */
+    cardSize?: number;
     /** 网格间距 px，横纵一致（对应原 gap-3 = 12） */
     gap?: number;
     /** 上下缓冲行数 */
@@ -20,6 +23,11 @@ const props = withDefaults(
   }>(),
   { gap: 12, buffer: 2, keyField: "id" },
 );
+
+// 开发期防呆：两模式必须二选一
+if (import.meta.env.DEV && (props.cardSize === undefined) === (props.columns === undefined)) {
+  console.warn("VirtualGrid：columns 与 cardSize 必须二选一传入");
+}
 
 const emit = defineEmits<{
   /** 滚动/布局变化时推送指标，供 CustomScrollBar 同步 */
@@ -31,11 +39,19 @@ const scrollTop = ref(0);
 const containerWidth = ref(0);
 const viewportHeight = ref(0);
 
-/** 单卡最小可读宽度：容器放不下目标列数时按此收缩列数 */
+/** 单卡最小可读宽度：列数模式下容器放不下目标列数时按此收缩列数 */
 const MIN_CARD_SIZE = 80;
 
+/** 实际列数：cardSize 模式由容器能放下几张推导；columns 模式取目标列数与可容纳列数的小者 */
 const effColumns = computed(() => {
-  const requested = Math.max(1, Math.floor(props.columns));
+  if (props.cardSize !== undefined) {
+    if (containerWidth.value <= 0) return 1;
+    return Math.max(
+      1,
+      Math.floor((containerWidth.value + props.gap) / (props.cardSize + props.gap)),
+    );
+  }
+  const requested = Math.max(1, Math.floor(props.columns ?? 1));
   if (containerWidth.value <= 0) return requested;
   const maxFit = Math.max(
     1,
@@ -44,15 +60,16 @@ const effColumns = computed(() => {
   return Math.min(requested, maxFit);
 });
 
-/** 卡片边长：由容器宽与列数推导（正方形） */
-const itemWidth = computed(() =>
-  containerWidth.value > 0
+/** 卡片边长：cardSize 模式恒定不缩放；columns 模式由容器宽与列数推导（正方形） */
+const itemWidth = computed(() => {
+  if (props.cardSize !== undefined) return props.cardSize;
+  return containerWidth.value > 0
     ? Math.max(
         1,
         Math.floor((containerWidth.value - props.gap * (effColumns.value - 1)) / effColumns.value),
       )
-    : 0,
-);
+    : 0;
+});
 const itemHeight = computed(() => itemWidth.value);
 
 const columnStride = computed(() => itemWidth.value + props.gap);

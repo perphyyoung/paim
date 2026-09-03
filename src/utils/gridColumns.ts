@@ -9,6 +9,9 @@ import { ref } from "vue";
 /** 显示列数范围限制，两页共用 */
 export const GRID_COLUMNS_LIMITS = { min: 2, max: 12, step: 1 } as const;
 
+/** 固定尺寸网格的卡片边长（= 缩略图尺寸，如回收站），不随容器缩放 */
+export const FIXED_CARD_SIZE = 200;
+
 /** 显示列数状态：localStorage 持久化，按域隔离（key 形如 image.columns / prompt.columns）。 */
 export function useGridColumns(domain: string, initial: number) {
   const key = `${domain}.columns`;
