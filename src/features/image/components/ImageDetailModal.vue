@@ -404,16 +404,25 @@ async function toggleSafe() {
 async function saveFields() {
   const img = current.value;
   if (!img) return;
-  const upd = await invoke<Image>("update_image_detail", {
-    id: img.id,
-    fileName: fileName.value,
-    note: note.value,
-  });
-  img.file_name = upd.file_name;
-  img.note = upd.note;
-  emit("update", img);
-  edit.value = false;
-  showToast("已保存");
+  // 编辑校验与后端对齐：文件名必填，失败保持编辑态、输入保留
+  if (!fileName.value.trim()) {
+    showToast("文件名不能为空");
+    return;
+  }
+  try {
+    const upd = await invoke<Image>("update_image_detail", {
+      id: img.id,
+      fileName: fileName.value,
+      note: note.value,
+    });
+    img.file_name = upd.file_name;
+    img.note = upd.note;
+    emit("update", img);
+    edit.value = false;
+    showToast("已保存");
+  } catch (e) {
+    showToast(`保存失败：${e}`);
+  }
 }
 
 const fmtLocal = formatLocalTime;

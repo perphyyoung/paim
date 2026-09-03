@@ -2,6 +2,7 @@
 //! 领域层感知 app（用于定位数据目录）与连接访问数据，但不直接面向 IPC。
 //! 命令层见 `features::image`。
 
+use crate::error::AppError;
 use crate::features::prompt_service;
 use image::GenericImageView;
 use rusqlite::{Connection, OptionalExtension, Result};
@@ -403,6 +404,7 @@ pub fn remove_image_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> 
 }
 
 /// 更新图像详情字段（文件名、备注、收藏、安全评级）。仅更新传入非默认值的字段。
+/// 文件名必填（修改不能为空，与提示词标题/内容规则一致），备注允许清空；校验失败返回明确错误，不再静默跳过。
 pub fn update_detail(
     conn: &Connection,
     id: &str,
@@ -410,15 +412,18 @@ pub fn update_detail(
     note: Option<&str>,
     is_favorite: Option<bool>,
     is_safe: Option<bool>,
-) -> rusqlite::Result<Option<Image>> {
+) -> std::result::Result<Option<Image>, AppError> {
+    if let Some(v) = file_name {
+        if v.trim().is_empty() {
+            return Err(AppError::Message("文件名不能为空".into()));
+        }
+    }
     let mut sql =
         String::from("UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')");
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     if let Some(v) = file_name {
-        if !v.trim().is_empty() {
-            sql.push_str(", file_name = ?");
-            params.push(Box::new(v.trim().to_string()));
-        }
+        sql.push_str(", file_name = ?");
+        params.push(Box::new(v.trim().to_string()));
     }
     if let Some(v) = note {
         sql.push_str(", note = ?");
@@ -438,7 +443,7 @@ pub fn update_detail(
     let mut stmt = conn.prepare(&sql)?;
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|b| b.as_ref()).collect();
     stmt.execute(param_refs.as_slice())?;
-    get_by_id(conn, id)
+    Ok(get_by_id(conn, id)?)
 }
 
 /// 彻底删除：删除磁盘原图与缩略图并移除记录，不可恢复。

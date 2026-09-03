@@ -200,16 +200,6 @@ pub fn create_prompt(
 }
 
 #[tauri::command]
-pub fn update_prompt_title(
-    db: State<BkDb>,
-    id: String,
-    title: Option<String>,
-) -> Result<prompt_service::Prompt, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    prompt_service::update_title(&conn, &id, title).map_err(|e| AppError::Message(e.to_string()))
-}
-
-#[tauri::command]
 pub fn delete_prompt(db: State<BkDb>, id: String) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::remove(&conn, &id).map_err(|e| AppError::Message(e.to_string()))

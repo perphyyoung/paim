@@ -2,6 +2,7 @@
 //! 领域层不感知 Tauri，通过注入的事务获取连接访问数据。
 //! 表结构与字段名与 prompt-manager 一致。
 
+use crate::error::AppError;
 use rusqlite::{Connection, OptionalExtension, Result};
 
 use serde::Serialize;
@@ -25,7 +26,7 @@ fn validate_content(content: &str) -> Result<String> {
     let trimmed = content.trim();
     if trimmed.is_empty() {
         return Err(rusqlite::Error::InvalidParameterName(
-            "prompt content must not be empty".to_string(),
+            "提示词内容不能为空".to_string(),
         ));
     }
     Ok(trimmed.to_string())
@@ -69,24 +70,6 @@ pub fn list(conn: &Connection) -> Result<Vec<Prompt>> {
     )?;
     let rows = stmt.query_map([], row_to_prompt)?;
     rows.collect()
-}
-
-pub fn update_title(conn: &Connection, id: &str, title: Option<String>) -> Result<Prompt> {
-    let title = title
-        .map(|t| t.trim().to_string())
-        .filter(|t| !t.is_empty())
-        .unwrap_or_default();
-    let tx = conn.unchecked_transaction()?;
-    let changed = tx.execute(
-        "UPDATE prompts SET title = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?2",
-        rusqlite::params![title, id],
-    )?;
-    if changed == 0 {
-        return Err(rusqlite::Error::QueryReturnedNoRows);
-    }
-    let prompt = get_by_id(&tx, id)?.expect("updated prompt must exist");
-    tx.commit()?;
-    Ok(prompt)
 }
 
 /// 软删除：标记为已删除（与图像回收站机制一致）。
@@ -137,7 +120,8 @@ pub fn empty_trash(conn: &Connection) -> Result<usize> {
 }
 
 /// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。仅更新传入 Some 的值；
-/// 标题与内容非空才更新；翻译与备注允许清空；收藏/安全按布尔更新。
+/// 更新提示词详情字段。标题/内容必填（修改不能为空；新建时标题隐式取 id，见 create），
+/// 翻译/备注允许清空；校验失败返回明确错误，不再静默跳过。
 pub fn update_detail(
     conn: &Connection,
     id: &str,
@@ -147,28 +131,34 @@ pub fn update_detail(
     note: Option<String>,
     is_favorite: Option<bool>,
     is_safe: Option<bool>,
-) -> Result<Option<Prompt>> {
+) -> std::result::Result<Option<Prompt>, AppError> {
+    if let Some(v) = &title {
+        if v.trim().is_empty() {
+            return Err(AppError::Message("标题不能为空".into()));
+        }
+    }
+    if let Some(v) = &content {
+        if v.trim().is_empty() {
+            return Err(AppError::Message("内容不能为空".into()));
+        }
+    }
     let tx = conn.unchecked_transaction()?;
     let mut changed = false;
     if let Some(v) = title {
         let v = v.trim().to_string();
-        if !v.is_empty() {
-            tx.execute(
-                "UPDATE prompts SET title = ?1 WHERE id = ?2",
-                rusqlite::params![v, id],
-            )?;
-            changed = true;
-        }
+        tx.execute(
+            "UPDATE prompts SET title = ?1 WHERE id = ?2",
+            rusqlite::params![v, id],
+        )?;
+        changed = true;
     }
     if let Some(v) = content {
         let v = v.trim().to_string();
-        if !v.is_empty() {
-            tx.execute(
-                "UPDATE prompts SET content = ?1 WHERE id = ?2",
-                rusqlite::params![v, id],
-            )?;
-            changed = true;
-        }
+        tx.execute(
+            "UPDATE prompts SET content = ?1 WHERE id = ?2",
+            rusqlite::params![v, id],
+        )?;
+        changed = true;
     }
     if let Some(v) = content_translate {
         tx.execute(
@@ -205,7 +195,7 @@ pub fn update_detail(
         )?;
     }
     tx.commit()?;
-    get_by_id(conn, id)
+    Ok(get_by_id(conn, id)?)
 }
 
 /// 提示词关联的（未删除）图像及其标签，供详情页图像网格展示。
@@ -348,3 +338,7 @@ fn row_to_prompt(row: &rusqlite::Row) -> Result<Prompt> {
         note: row.get(10)?,
     })
 }
+
+#[cfg(test)]
+#[path = "prompt_service.test.rs"]
+mod tests;

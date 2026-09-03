@@ -90,7 +90,6 @@ pub fn run() {
       features::prompt::list_prompts,
       features::prompt::create_prompt,
       features::prompt::delete_prompt,
-      features::prompt::update_prompt_title,
       features::prompt::update_prompt_detail,
       features::prompt::create_prompt_with_images,
       features::prompt::add_images_to_prompt,

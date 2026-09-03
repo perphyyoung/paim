@@ -171,25 +171,35 @@ function onNestedImageSafeSynced(isSafe: boolean) {
 async function saveFields() {
   const p = current.value;
   if (!p) return;
+  // 编辑校验与后端对齐：标题/内容必填，失败保持编辑态、输入保留
+  if (!title.value.trim()) {
+    showToast("标题不能为空");
+    return;
+  }
+  if (!content.value.trim()) {
+    showToast("内容不能为空");
+    return;
+  }
   try {
-    await invoke<Prompt>("update_prompt_detail", {
+    const upd = await invoke<Prompt>("update_prompt_detail", {
       id: p.id,
       title: title.value,
       content: content.value,
       contentTranslate: contentTranslate.value,
       note: note.value,
     });
-    p.title = title.value;
-    p.content = content.value;
-    p.content_translate = contentTranslate.value;
-    p.note = note.value;
+    // 用后端返回值更新本地模型，避免未落库的输入值污染 UI
+    p.title = upd.title;
+    p.content = upd.content;
+    p.content_translate = upd.content_translate;
+    p.note = upd.note;
     edit.value = false;
     // 内容会显示在图像主页卡片的关联提示词文案里
     markPageStale("images");
     emit("updated");
     showToast("已保存");
-  } catch {
-    showToast("保存失败");
+  } catch (e) {
+    showToast(`保存失败：${e}`);
   }
 }
 
