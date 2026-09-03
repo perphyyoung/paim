@@ -14,10 +14,15 @@ export function useToast() {
     const id = ++seq;
     state.items.push({ id, message });
     setTimeout(() => {
-      const idx = state.items.findIndex((t) => t.id === id);
-      if (idx >= 0) state.items.splice(idx, 1);
+      dismissToast(id);
     }, duration);
   }
 
-  return { toasts: state.items, showToast };
+  /** 手动移除一条 toast（点击 toast 提前关闭时使用） */
+  function dismissToast(id: number) {
+    const idx = state.items.findIndex((t) => t.id === id);
+    if (idx >= 0) state.items.splice(idx, 1);
+  }
+
+  return { toasts: state.items, showToast, dismissToast };
 }
