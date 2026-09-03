@@ -220,8 +220,17 @@ function close() {
 
         <!-- 图像网格 -->
         <div class="flex-1 overflow-auto p-4">
-          <div v-if="loading" class="p-8 text-center text-sm text-gray-400">加载中...</div>
-          <div v-else-if="sortedImages.length === 0" class="p-8 text-center text-sm text-gray-400">
+          <!-- 空态/加载态独占整块区域（无网格），高度即容器高，可安全居中 -->
+          <div
+            v-if="loading"
+            class="flex h-full flex-col items-center justify-center p-8 text-center text-sm text-gray-400"
+          >
+            加载中...
+          </div>
+          <div
+            v-else-if="sortedImages.length === 0"
+            class="flex h-full flex-col items-center justify-center p-8 text-center text-sm text-gray-400"
+          >
             没有找到图像
           </div>
           <ul v-else class="grid grid-cols-6 gap-2 xl:grid-cols-8">
