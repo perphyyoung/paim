@@ -220,10 +220,11 @@ fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) 
     let mut params = Vec::new();
     let search = search.unwrap_or("").trim();
     if !search.is_empty() {
+        // ESCAPE '\' 配合 escape_like：否则用户输入单个 % 会匹配全部、_ 匹配任意单字符
         clauses.push_str(
-            " AND (file_name LIKE ? OR note LIKE ? OR EXISTS (SELECT 1 FROM image_tag_relations r2 JOIN image_tags t2 ON t2.id = r2.tag_id WHERE r2.image_id = images.id AND t2.name LIKE ?))",
+            " AND (file_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM image_tag_relations r2 JOIN image_tags t2 ON t2.id = r2.tag_id WHERE r2.image_id = images.id AND t2.name LIKE ? ESCAPE '\\'))",
         );
-        let like = format!("%{search}%");
+        let like = format!("%{}%", escape_like(search));
         params.push(like.clone());
         params.push(like.clone());
         params.push(like);
@@ -236,6 +237,14 @@ fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) 
         params.push(tag.to_string());
     }
     (clauses, params)
+}
+
+/// 转义 SQLite LIKE 通配符：\ % _ 视作字面量，转义符为反斜杠。
+/// 必须与 SQL 中的 `LIKE ? ESCAPE '\'` 配对使用。
+fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 /// 非软删除图像列表；search/tag 参与 SQL 过滤，limit 为 Some(n) 时只取前 n 张（按创建时间倒序）。
