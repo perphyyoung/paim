@@ -71,6 +71,16 @@ const sortedImages = computed(() => {
   return sortDesc.value ? arr.reverse() : arr;
 });
 
+// 信息栏文案与 pm 图像选择器对齐（有筛选/无筛选两态）；「已选」为 paim 多选导入特有，保留在后
+const infoText = computed(() => {
+  const shown = images.value.length;
+  const hasFilter = !!keyword.value.trim() || !!selectedTag.value;
+  const base = hasFilter
+    ? `找到 ${total.value} 张匹配图像，显示前 ${shown} 张`
+    : `共 ${total.value} 张图像，显示符合要求的 ${shown} 张`;
+  return `${base} · 已选 ${selectedIds.value.size} 张`;
+});
+
 function thumbUrl(img: Image): string {
   return thumbs.value[img.id] ?? "";
 }
@@ -170,7 +180,8 @@ function close() {
             <input
               v-model="keyword"
               class="w-48 rounded-lg border px-3 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
-              placeholder="搜索文件名、备注、标签..."
+              placeholder="搜索文件名/备注/标签"
+              title="搜索范围：文件名、备注、标签（模糊匹配，不区分大小写）"
             />
             <select
               v-model="selectedTag"
@@ -211,7 +222,7 @@ function close() {
         <div class="flex-1 overflow-auto p-4">
           <div v-if="loading" class="p-8 text-center text-sm text-gray-400">加载中...</div>
           <div v-else-if="sortedImages.length === 0" class="p-8 text-center text-sm text-gray-400">
-            暂无图像
+            没有找到图像
           </div>
           <ul v-else class="grid grid-cols-6 gap-2 xl:grid-cols-8">
             <li
@@ -257,9 +268,7 @@ function close() {
 
         <!-- 底部：已选 + 取消/确认 -->
         <div class="flex items-center justify-between border-t px-4 py-3 border-gray-700">
-          <span class="text-sm text-gray-400"
-            >已显示 {{ images.length }} / {{ total }} 张 · 已选 {{ selectedIds.size }} 张</span
-          >
+          <span class="text-sm text-gray-400">{{ infoText }}</span>
           <div class="grid grid-cols-2 gap-2">
             <button
               type="button"
