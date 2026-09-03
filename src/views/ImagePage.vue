@@ -5,7 +5,7 @@ import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime } from "@/utils/date";
 import { matchesKeyword } from "@/utils/keywordMatch";
-import { GRID_COLUMNS_LIMITS, useGridColumns } from "@/utils/gridColumns";
+import { useGridColumns } from "@/utils/gridColumns";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { SPECIAL_TAG_NAMES, defineSpecialTags } from "@/features/tag/specialTags";
 import { useBatchSelection } from "@/composables/useBatchSelection";
@@ -16,6 +16,7 @@ import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
+import GridColumnsControl from "@/components/GridColumnsControl.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -640,28 +641,8 @@ function onUploadDone() {
         >
           {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
         </button>
-        <!-- 调节显示列数 -->
-        <div class="flex shrink-0 items-center gap-1" title="调节显示列数">
-          <button
-            type="button"
-            class="h-8 w-8 rounded-lg border text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
-            :disabled="columns <= GRID_COLUMNS_LIMITS.min"
-            aria-label="减少列数"
-            @click="setColumns(columns - 1)"
-          >
-            −
-          </button>
-          <span class="w-6 text-center text-sm text-gray-200">{{ columns }}</span>
-          <button
-            type="button"
-            class="h-8 w-8 rounded-lg border text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
-            :disabled="columns >= GRID_COLUMNS_LIMITS.max"
-            aria-label="增加列数"
-            @click="setColumns(columns + 1)"
-          >
-            +
-          </button>
-        </div>
+        <!-- 调节显示列数（共用控件，见 components/GridColumnsControl.vue） -->
+        <GridColumnsControl :model-value="columns" @update:model-value="setColumns" />
       </div>
 
       <!-- 标签筛选区（通用组件，按标签组分段） -->
