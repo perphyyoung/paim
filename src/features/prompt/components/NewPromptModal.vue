@@ -69,7 +69,7 @@ function removeFile(idx: number) {
 
 async function doCreate() {
   if (!content.value.trim()) {
-    showToast("请填写提示词内容");
+    showToast("请填写提示词内容", "warning");
     return;
   }
   saving.value = true;
@@ -82,7 +82,7 @@ async function doCreate() {
     if (res.errors.length > 0) {
       error.value = res.errors.map((e) => e.message).join("\n");
     }
-    showToast("提示词已创建");
+    showToast("提示词已创建", "success");
     emit("uploaded");
     emit("close");
   } catch (e) {

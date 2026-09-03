@@ -146,7 +146,7 @@ async function pinToTop() {
   if (id === null) return;
   try {
     await invoke(cmds.value.pinGroup, { id });
-    showToast("标签组已固定到首位");
+    showToast("标签组已固定到首位", "success");
     await load();
     emit("saved");
   } catch (e) {
@@ -213,7 +213,7 @@ function cancelDrag() {
 async function doMoveTag(id: number, groupId: number | null) {
   try {
     await invoke(cmds.value.moveTag, { id, groupId });
-    showToast("标签已移动");
+    showToast("标签已移动", "success");
     await load();
     emit("saved");
   } catch (e) {
@@ -342,16 +342,16 @@ async function runSave(opts: {
   const n = opts.name.trim();
   if (!n) return false;
   if (opts.checkReserved && isSpecialTag(n)) {
-    showToast(`「${n}」是系统特殊标签，不能手动添加`);
+    showToast(`「${n}」是系统特殊标签，不能手动添加`, "warning");
     return false;
   }
   try {
     await opts.run();
   } catch (e) {
-    showToast(`${opts.failMsg}：${e}`);
+    showToast(`${opts.failMsg}：${e}`, "error");
     return false;
   }
-  showToast(opts.successMsg);
+  showToast(opts.successMsg, "success");
   refresh();
   return true;
 }
@@ -400,7 +400,7 @@ function openDeleteTag(item: TagItem) {
     `确定删除标签「${item.name}」？其与${domainLabel.value}的关联将一并清除。`,
     async () => {
       await invoke(cmds.value.deleteTag, { id: item.id });
-      showToast("标签已删除");
+      showToast("标签已删除", "success");
       refresh();
       closeDlg();
     },
@@ -451,7 +451,7 @@ function openRenameGroup(g: TagGroup) {
 function openDeleteGroup(g: TagGroup) {
   openConfirm("删除组", `确定删除组「${g.name}」？组内标签将变为未分组。`, async () => {
     await invoke(cmds.value.deleteGroup, { id: g.id });
-    showToast("组已删除");
+    showToast("组已删除", "success");
     refresh();
     closeDlg();
   });

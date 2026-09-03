@@ -77,7 +77,7 @@ function removeFile(idx: number) {
 
 async function doUpload() {
   if (files.value.length === 0) {
-    showToast("请先选择图像");
+    showToast("请先选择图像", "warning");
     return;
   }
   uploading.value = true;
@@ -90,7 +90,10 @@ async function doUpload() {
     if (res.errors.length > 0) {
       error.value = res.errors.map((e) => e.message).join("\n");
     }
-    showToast(res.results.length > 0 ? `已上传 ${res.results.length} 张图像` : "没有新上传的图像");
+    showToast(
+      res.results.length > 0 ? `已上传 ${res.results.length} 张图像` : "没有新上传的图像",
+      res.results.length > 0 ? "success" : "info",
+    );
     emit("uploaded");
     emit("close");
   } catch (e) {

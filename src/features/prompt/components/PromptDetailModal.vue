@@ -158,7 +158,7 @@ async function toggleSafe() {
     await invoke("sync_prompt_safe_to_images", { promptId: p.id, isSafe: v });
     emit("safe-synced", v);
   } catch (e) {
-    showToast(`同步关联图像安全评级失败：${e}`);
+    showToast(`同步关联图像安全评级失败：${e}`, "error");
   }
 }
 
@@ -173,11 +173,11 @@ async function saveFields() {
   if (!p) return;
   // 编辑校验与后端对齐：标题/内容必填，失败保持编辑态、输入保留
   if (!title.value.trim()) {
-    showToast("标题不能为空");
+    showToast("标题不能为空", "warning");
     return;
   }
   if (!content.value.trim()) {
-    showToast("内容不能为空");
+    showToast("内容不能为空", "warning");
     return;
   }
   try {
@@ -197,9 +197,9 @@ async function saveFields() {
     // 内容会显示在图像主页卡片的关联提示词文案里
     markPageStale("images");
     emit("updated");
-    showToast("已保存");
+    showToast("已保存", "success");
   } catch (e) {
-    showToast(`保存失败：${e}`);
+    showToast(`保存失败：${e}`, "error");
   }
 }
 
@@ -215,13 +215,13 @@ const { tagInput, addTag } = useTagAdd({
 // 复制字段内容（编辑态取输入框值，展示态取 current 值）
 function copyField(text: string, label: string) {
   if (!text) {
-    showToast(`${label}为空`);
+    showToast(`${label}为空`, "warning");
     return;
   }
   navigator.clipboard
     .writeText(text)
-    .then(() => showToast(`已复制${label}`))
-    .catch(() => showToast("复制失败"));
+    .then(() => showToast(`已复制${label}`, "success"))
+    .catch(() => showToast("复制失败", "error"));
 }
 function copyContent() {
   copyField(edit.value ? content.value : (current.value?.content ?? ""), "提示词内容");
@@ -281,7 +281,7 @@ async function removeImage(img: RelatedImage) {
   // 关联关系变化影响图像主页卡片的关联提示词文案
   markPageStale("images");
   emit("updated");
-  showToast("已移除关联图像");
+  showToast("已移除关联图像", "success");
 }
 
 // 通用删除确认：标签/图像移除均需确认
@@ -340,7 +340,7 @@ async function viewImage(img: RelatedImage) {
     imgDetailThumbs.value = {};
     imgDetailOpen.value = true;
   } catch {
-    showToast("打开图像详情失败");
+    showToast("打开图像详情失败", "error");
   }
 }
 
@@ -369,12 +369,12 @@ async function importFromExternal() {
     await loadRelatedImages();
     emit("updated");
     if (res.errors.length > 0) {
-      showToast(`导入 ${res.results.length} 张，失败 ${res.errors.length} 张`);
+      showToast(`导入 ${res.results.length} 张，失败 ${res.errors.length} 张`, "warning");
     } else {
-      showToast(`已导入并关联 ${res.results.length} 张图像`);
+      showToast(`已导入并关联 ${res.results.length} 张图像`, "success");
     }
   } catch {
-    showToast("导入失败");
+    showToast("导入失败", "error");
   } finally {
     importLoading.value = false;
   }
@@ -390,7 +390,7 @@ async function onPickerImported() {
   pickerOpen.value = false;
   await loadRelatedImages();
   emit("updated");
-  showToast("已关联所选图像");
+  showToast("已关联所选图像", "success");
 }
 </script>
 

@@ -7,6 +7,7 @@
 import type { Ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { isSpecialTag } from "./specialTags";
+import type { ToastType } from "@/components/useToast";
 
 export interface UseBatchTagAddOptions {
   /** "image" | "prompt"，决定命令名与提示文案 */
@@ -16,7 +17,7 @@ export interface UseBatchTagAddOptions {
   exitBatch: () => void;
   /** 成功后刷新标签筛选区（图像侧负责刷新卡片标签源） */
   loadTagFilter: () => Promise<void> | void;
-  showToast: (message: string) => void;
+  showToast: (message: string, type?: ToastType) => void;
 }
 
 export function useBatchTagAdd(options: UseBatchTagAddOptions) {
@@ -30,17 +31,17 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
     if (ids.length === 0) return false;
     const name = tag.trim();
     if (isSpecialTag(name)) {
-      showToast(`「${name}」是系统特殊标签，不能手动添加`);
+      showToast(`「${name}」是系统特殊标签，不能手动添加`, "warning");
       return false;
     }
     try {
       await invoke(command, { ids, name });
-      showToast(`已为 ${ids.length} ${noun}添加标签`);
+      showToast(`已为 ${ids.length} ${noun}添加标签`, "success");
       exitBatch();
       await loadTagFilter();
       return true;
     } catch (e) {
-      showToast(`批量添加标签失败：${e}`);
+      showToast(`批量添加标签失败：${e}`, "error");
       return false;
     }
   }

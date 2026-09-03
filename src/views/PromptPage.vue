@@ -252,9 +252,9 @@ async function onBatchFavorite() {
 async function copyPrompt(p: Prompt) {
   try {
     await navigator.clipboard.writeText(p.content);
-    showToast("提示词已复制到剪贴板");
+    showToast("提示词已复制到剪贴板", "success");
   } catch (e) {
-    showToast(`复制失败：${e}`);
+    showToast(`复制失败：${e}`, "error");
   }
 }
 
@@ -274,9 +274,9 @@ async function doSingleDelete() {
     prompts.value = prompts.value.filter((x) => x.id !== p.id);
     // 图像主页卡片的关联提示词文案过滤已删除提示词，需重载
     markPageStale("images");
-    showToast(`已删除「${p.title}」`);
+    showToast(`已删除「${p.title}」`, "success");
   } catch (e) {
-    showToast(`删除失败：${e}`);
+    showToast(`删除失败：${e}`, "error");
   }
 }
 
@@ -325,11 +325,11 @@ async function doBatchDelete() {
       await invoke("delete_prompt", { id });
     }
     markPageStale("images");
-    showToast(`已删除 ${ids.length} 个提示词`);
+    showToast(`已删除 ${ids.length} 个提示词`, "success");
     exitBatch();
     await loadPrompts();
   } catch (e) {
-    showToast(`批量删除失败：${e}`);
+    showToast(`批量删除失败：${e}`, "error");
   }
 }
 
@@ -432,22 +432,22 @@ function closeTrash() {
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
 async function restoreAllTrash() {
   if (trashPrompts.value.length === 0) {
-    showToast("回收站已为空");
+    showToast("回收站已为空", "warning");
     return;
   }
   try {
     const restored = await invoke<number>("restore_all_prompts");
     await Promise.all([loadTrash(), loadPrompts()]);
     markPageStale("images");
-    showToast(`已恢复 ${restored} 个提示词`);
+    showToast(`已恢复 ${restored} 个提示词`, "success");
   } catch (e) {
-    showToast(`恢复失败：${e}`);
+    showToast(`恢复失败：${e}`, "error");
   }
 }
 
 function requestEmptyTrash() {
   if (trashPrompts.value.length === 0) {
-    showToast("回收站已为空");
+    showToast("回收站已为空", "warning");
     return;
   }
   emptyTrashOpen.value = true;
@@ -460,9 +460,12 @@ async function doEmptyTrash() {
     trashPrompts.value = [];
     await loadPrompts();
     markPageStale("images");
-    showToast(r.failures > 0 ? `已清空 ${r.count} 个（${r.failures} 个失败）` : "回收站已清空");
+    showToast(
+      r.failures > 0 ? `已清空 ${r.count} 个（${r.failures} 个失败）` : "回收站已清空",
+      "warning",
+    );
   } catch (e) {
-    showToast(`清空失败：${e}`);
+    showToast(`清空失败：${e}`, "error");
   }
 }
 
@@ -485,9 +488,9 @@ async function restorePrompt(p: Prompt) {
     await loadPrompts();
     // 恢复的提示词重新出现在图像主页的关联文案里
     markPageStale("images");
-    showToast(`已恢复「${p.title}」`);
+    showToast(`已恢复「${p.title}」`, "success");
   } catch (e) {
-    showToast(`恢复失败：${e}`);
+    showToast(`恢复失败：${e}`, "error");
   }
 }
 
@@ -497,9 +500,9 @@ async function purgePrompt(p: Prompt) {
     // 关联关系级联删除，图像主页的关联提示词文案已变化
     markPageStale("images");
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);
-    showToast(`已彻底删除「${p.title}」`);
+    showToast(`已彻底删除「${p.title}」`, "success");
   } catch (e) {
-    showToast(`删除失败：${e}`);
+    showToast(`删除失败：${e}`, "error");
   }
 }
 

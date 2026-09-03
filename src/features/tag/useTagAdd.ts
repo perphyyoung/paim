@@ -7,6 +7,7 @@
 import { ref, type Ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { isSpecialTag } from "./specialTags";
+import type { ToastType } from "@/components/useToast";
 
 export interface TagLite {
   id: number;
@@ -21,7 +22,7 @@ export interface UseTagAddOptions {
   /** 本地标签快照，添加成功后合并 */
   tags: Ref<TagLite[]>;
   /** 用户提示（透传 app 的 showToast） */
-  showToast: (message: string) => void;
+  showToast: (message: string, type?: ToastType) => void;
   /** 添加成功后的额外回调（如广播数据变更事件） */
   onAdded?: (count: number) => void;
 }
@@ -37,7 +38,7 @@ export function useTagAdd(options: UseTagAddOptions) {
     if (!id) return 0;
     if (!name) return 0;
     if (isSpecialTag(name)) {
-      showToast(`「${name}」是系统特殊标签，不能手动添加`);
+      showToast(`「${name}」是系统特殊标签，不能手动添加`, "warning");
       return 0;
     }
     try {
@@ -46,11 +47,11 @@ export function useTagAdd(options: UseTagAddOptions) {
       for (const t of added) {
         if (!tags.value.some((x) => x.id === t.id)) tags.value.push(t);
       }
-      showToast(`已添加 ${added.length} 个标签`);
+      showToast(`已添加 ${added.length} 个标签`, "success");
       onAdded?.(added.length);
       return added.length;
     } catch (e) {
-      showToast(`添加标签失败：${e}`);
+      showToast(`添加标签失败：${e}`, "error");
       return 0;
     }
   }

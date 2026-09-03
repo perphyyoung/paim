@@ -181,7 +181,7 @@ async function doCreatePrompt() {
   const img = current.value;
   if (!img) return;
   if (!createContent.value.trim()) {
-    showToast("请填写提示词内容");
+    showToast("请填写提示词内容", "warning");
     return;
   }
   createSaving.value = true;
@@ -192,12 +192,12 @@ async function doCreatePrompt() {
     });
     // 新提示词卡片需要出现在提示词主页
     markPageStale("prompts");
-    showToast("提示词已创建并关联");
+    showToast("提示词已创建并关联", "success");
     createPromptOpen.value = false;
     emit("update", img);
     await loadRelatedPrompts();
   } catch (e) {
-    showToast(`新建失败：${e}`);
+    showToast(`新建失败：${e}`, "error");
   } finally {
     createSaving.value = false;
   }
@@ -260,13 +260,13 @@ const { tagInput, addTag } = useTagAdd({
 // 复制提示词字段内容（图像详情为纯展示，无编辑态）
 function copyPromptField(text: string, label: string) {
   if (!text) {
-    showToast(`${label}为空`);
+    showToast(`${label}为空`, "warning");
     return;
   }
   navigator.clipboard
     .writeText(text)
-    .then(() => showToast(`已复制${label}`))
-    .catch(() => showToast("复制失败"));
+    .then(() => showToast(`已复制${label}`, "success"))
+    .catch(() => showToast("复制失败", "error"));
 }
 function copyPromptContent() {
   copyPromptField(currentPrompt.value?.content ?? "", "提示词内容");
@@ -308,11 +308,11 @@ async function unlinkPrompt(p: LinkedPrompt) {
     await invoke("remove_prompt_image", { promptId: p.id, imageId: img.id });
     // 关联关系变化影响提示词主页的关联图像计数
     markPageStale("prompts");
-    showToast("已解除与提示词的关联");
+    showToast("已解除与提示词的关联", "success");
     emit("update", img);
     await loadRelatedPrompts();
   } catch (e) {
-    showToast(`解除关联失败：${e}`);
+    showToast(`解除关联失败：${e}`, "error");
   }
 }
 function requestUnlink(p: LinkedPrompt) {
@@ -398,7 +398,7 @@ async function toggleSafe() {
     await loadRelatedPrompts();
     emit("safe-synced", v);
   } catch (e) {
-    showToast(`同步关联提示词安全评级失败：${e}`);
+    showToast(`同步关联提示词安全评级失败：${e}`, "error");
   }
 }
 async function saveFields() {
@@ -406,7 +406,7 @@ async function saveFields() {
   if (!img) return;
   // 编辑校验与后端对齐：文件名必填，失败保持编辑态、输入保留
   if (!fileName.value.trim()) {
-    showToast("文件名不能为空");
+    showToast("文件名不能为空", "warning");
     return;
   }
   try {
@@ -419,9 +419,9 @@ async function saveFields() {
     img.note = upd.note;
     emit("update", img);
     edit.value = false;
-    showToast("已保存");
+    showToast("已保存", "success");
   } catch (e) {
-    showToast(`保存失败：${e}`);
+    showToast(`保存失败：${e}`, "error");
   }
 }
 

@@ -9,7 +9,7 @@ export function useOpenImageLocation() {
     try {
       await invoke("open_image_location", { id });
     } catch (e) {
-      showToast(`打开保存位置失败：${e}`);
+      showToast(`打开保存位置失败：${e}`, "error");
     }
   }
 

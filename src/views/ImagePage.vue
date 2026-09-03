@@ -313,22 +313,22 @@ function closeTrash() {
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
 async function restoreAllTrash() {
   if (trashImages.value.length === 0) {
-    showToast("回收站已为空");
+    showToast("回收站已为空", "warning");
     return;
   }
   try {
     const restored = await invoke<number>("restore_all_images");
     await Promise.all([loadTrash(), loadImages()]);
     markPageStale("prompts");
-    showToast(`已恢复 ${restored} 张图像`);
+    showToast(`已恢复 ${restored} 张图像`, "success");
   } catch (e) {
-    showToast(`恢复失败：${e}`);
+    showToast(`恢复失败：${e}`, "error");
   }
 }
 
 function requestEmptyTrash() {
   if (trashImages.value.length === 0) {
-    showToast("回收站已为空");
+    showToast("回收站已为空", "warning");
     return;
   }
   emptyTrashOpen.value = true;
@@ -342,9 +342,12 @@ async function doEmptyTrash() {
     trashThumbs.value = {};
     await loadImages();
     markPageStale("prompts");
-    showToast(r.failures > 0 ? `已清空 ${r.count} 张（${r.failures} 张失败）` : "回收站已清空");
+    showToast(
+      r.failures > 0 ? `已清空 ${r.count} 张（${r.failures} 张失败）` : "回收站已清空",
+      "warning",
+    );
   } catch (e) {
-    showToast(`清空失败：${e}`);
+    showToast(`清空失败：${e}`, "error");
   }
 }
 
@@ -373,7 +376,7 @@ async function restoreImage(img: Image) {
   await loadImages(); // 刷新主列表，使恢复的图回到图像页
   // 恢复的图像重新成为提示词卡片的候选背景图
   markPageStale("prompts");
-  showToast(`已恢复「${img.stored_name}」`);
+  showToast(`已恢复「${img.stored_name}」`, "success");
 }
 
 async function purgeImage(img: Image) {
@@ -381,7 +384,7 @@ async function purgeImage(img: Image) {
   // 关联关系级联删除，提示词主页的关联图像计数已变化
   markPageStale("prompts");
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
-  showToast(`已彻底删除「${img.stored_name}」`);
+  showToast(`已彻底删除「${img.stored_name}」`, "success");
 }
 
 async function loadImages() {
@@ -483,9 +486,9 @@ async function copyPrompt(img: Image) {
   }
   try {
     await navigator.clipboard.writeText(first);
-    showToast("已复制提示词内容");
+    showToast("已复制提示词内容", "success");
   } catch {
-    showToast("复制失败");
+    showToast("复制失败", "error");
   }
 }
 
@@ -519,9 +522,9 @@ async function doSingleDelete() {
     images.value = images.value.filter((i) => i.id !== img.id);
     delete thumbs.value[img.id];
     markPageStale("prompts");
-    showToast(`已删除「${img.stored_name}」到回收站`);
+    showToast(`已删除「${img.stored_name}」到回收站`, "success");
   } catch (e) {
-    showToast(`删除失败：${e}`);
+    showToast(`删除失败：${e}`, "error");
   }
 }
 
@@ -541,11 +544,11 @@ async function doBatchDelete() {
       await invoke("delete_image", { id });
     }
     markPageStale("prompts");
-    showToast(`已将 ${ids.length} 张图像移入回收站`);
+    showToast(`已将 ${ids.length} 张图像移入回收站`, "success");
     exitBatch();
     await loadImages();
   } catch (e) {
-    showToast(`批量删除失败：${e}`);
+    showToast(`批量删除失败：${e}`, "error");
   }
 }
 

@@ -8,6 +8,7 @@
  */
 import type { Ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import type { ToastType } from "@/components/useToast";
 
 export type BoolField = "is_favorite" | "is_safe";
 
@@ -28,7 +29,7 @@ interface UseItemToggleOptions<T extends BoolItem> {
   domain: "image" | "prompt";
   /** 主页单张/批量切换后写回的当前列表（详情弹窗可省略） */
   list?: Ref<T[]>;
-  showToast: (message: string) => void;
+  showToast: (message: string, type?: ToastType) => void;
 }
 
 export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<T>) {
@@ -50,7 +51,7 @@ export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<
       item[field] = upd[field];
       emitChange();
     } catch {
-      showToast("更新失败");
+      showToast("更新失败", "error");
     }
   }
 
@@ -65,7 +66,7 @@ export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<
       const updated = await invoke<T>(singleCmd, payload);
       list.value = list.value.map((x) => (x.id === updated.id ? updated : x));
     } catch (e) {
-      showToast(`更新失败：${e}`);
+      showToast(`更新失败：${e}`, "error");
     }
   }
 
@@ -80,10 +81,10 @@ export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<
           sel.has(x.id) ? { ...x, is_favorite: !x.is_favorite } : x,
         );
       }
-      showToast(`已切换 ${n} ${noun}的收藏状态`);
+      showToast(`已切换 ${n} ${noun}的收藏状态`, "success");
       return true;
     } catch (e) {
-      showToast(`批量切换收藏失败：${e}`);
+      showToast(`批量切换收藏失败：${e}`, "error");
       return false;
     }
   }
