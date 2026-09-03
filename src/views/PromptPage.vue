@@ -205,6 +205,24 @@ const sortedPrompts = computed(() => {
   return sortDesc.value ? arr.reverse() : arr;
 });
 
+// 空态与 pm 对齐：搜索无结果 / 标签筛选无结果 / 暂无数据（附上手引导）三态
+const emptyState = computed(() => {
+  const kw = keyword.value.trim();
+  if (kw) {
+    return {
+      main: `未找到匹配"${kw}"的提示词（已搜索：标题、内容、翻译、备注、标签）`,
+      sub: "搜索无结果",
+    };
+  }
+  if (selectedTags.value.length > 0) {
+    return {
+      main: `没有符合标签"${selectedTags.value.join(", ")}"的提示词`,
+      sub: "筛选无结果",
+    };
+  }
+  return { main: "暂无提示词，点击左上角「新建提示词」开始添加。", sub: "" };
+});
+
 // row4 随排序依据动态显示
 function rowInfo(p: Prompt): { label: string; value: string } {
   switch (sortBy.value) {
@@ -589,10 +607,11 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
     <!-- 卡片滚动区：虚拟网格 + 自定义滚动条 -->
     <div class="flex min-h-0 flex-1 gap-1">
       <div
-        v-if="prompts.length === 0"
-        class="flex-1 rounded-lg border border-dashed p-8 text-center border-gray-600"
+        v-if="sortedPrompts.length === 0"
+        class="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center border-gray-600"
       >
-        <p class="text-sm text-gray-400">暂无提示词，点击左上角「新建提示词」开始添加。</p>
+        <p class="text-sm text-gray-400">{{ emptyState.main }}</p>
+        <p v-if="emptyState.sub" class="mt-1 text-xs text-gray-500">{{ emptyState.sub }}</p>
       </div>
       <template v-else>
         <VirtualGrid
