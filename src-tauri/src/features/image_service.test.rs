@@ -1,7 +1,16 @@
 //! 图像领域服务单元测试：搜索/标签 WHERE 子句拼接（filter_sql）。
 
-use super::{add_image_tag, batch_add_image_tag, filter_sql, update_detail};
+use super::{
+    add_image_tag, batch_add_image_tag, filter_sql, import_with, replace_image_with, update_detail,
+    ReplaceOutcome,
+};
 use crate::db;
+
+/// 生成一张指定颜色的 2×2 png 源图（不同颜色 ⇒ 不同 MD5）。
+fn make_png(path: &std::path::Path, r: u8, g: u8, b: u8) {
+    let img = image::ImageBuffer::from_fn(2, 2, |_, _| image::Rgb([r, g, b]));
+    image::DynamicImage::ImageRgb8(img).save(path).unwrap();
+}
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
 fn setup_image_db() -> (std::path::PathBuf, db::BkDb) {
@@ -140,4 +149,149 @@ fn batch_add_image_tag_rejects_any_missing_id() {
 
     // 全部存在时正常
     batch_add_image_tag(&conn, &["i1"], "tag1").unwrap();
+}
+
+#[test]
+fn replace_image_migrates_relations_and_meta() {
+    let (dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    let src_a = dir.join("src-a.png");
+    let src_b = dir.join("src-b.png");
+    make_png(&src_a, 10, 20, 30);
+    make_png(&src_b, 200, 100, 50);
+    let images_dir = dir.join("images");
+    let thumbs_dir = dir.join("thumbnails");
+
+    // 旧图走真实入库管线（保证 md5、磁盘文件存在）
+    let (old, _) = import_with(&conn, &images_dir, &thumbs_dir, src_a.to_str().unwrap()).unwrap();
+    // 预置旧图元数据、关联提示词与标签
+    conn.execute(
+        "UPDATE images SET note = '备注', is_favorite = 1, is_safe = 0 WHERE id = ?1",
+        rusqlite::params![old.id],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', ?1)",
+        rusqlite::params![old.id],
+    )
+    .unwrap();
+    conn.execute("INSERT INTO image_tags(name) VALUES ('tag1')", [])
+        .unwrap();
+    conn.execute(
+        "INSERT INTO image_tag_relations(image_id, tag_id)
+         SELECT ?1, id FROM image_tags WHERE name = 'tag1'",
+        rusqlite::params![old.id],
+    )
+    .unwrap();
+
+    let outcome = replace_image_with(
+        &conn,
+        &images_dir,
+        &thumbs_dir,
+        &old.id,
+        src_b.to_str().unwrap(),
+    )
+    .unwrap();
+    let ReplaceOutcome::Replaced {
+        image: new_img,
+        related_prompt_ids,
+    } = outcome
+    else {
+        panic!("应为 Replaced");
+    };
+    assert_ne!(new_img.id, old.id);
+    assert_eq!(related_prompt_ids, vec!["p1".to_string()]);
+
+    // 旧图进回收站
+    let deleted: bool = conn
+        .query_row(
+            "SELECT is_deleted FROM images WHERE id = ?1",
+            rusqlite::params![old.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(deleted);
+
+    // 提示词/标签关联迁移到新图
+    let rel_prompt: String = conn
+        .query_row(
+            "SELECT prompt_id FROM prompt_image_relations WHERE image_id = ?1",
+            rusqlite::params![new_img.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rel_prompt, "p1");
+    let tag_cnt: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM image_tag_relations WHERE image_id = ?1",
+            rusqlite::params![new_img.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tag_cnt, 1);
+
+    // 元数据（备注/收藏/安全）迁移到新图
+    let (note, fav, safe): (String, bool, bool) = conn
+        .query_row(
+            "SELECT note, is_favorite, is_safe FROM images WHERE id = ?1",
+            rusqlite::params![new_img.id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(note, "备注");
+    assert!(fav);
+    assert!(!safe);
+}
+
+#[test]
+fn replace_image_rejects_same_content() {
+    let (dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    let src_a = dir.join("src-a.png");
+    make_png(&src_a, 10, 20, 30);
+    let images_dir = dir.join("images");
+    let thumbs_dir = dir.join("thumbnails");
+
+    let (old, _) = import_with(&conn, &images_dir, &thumbs_dir, src_a.to_str().unwrap()).unwrap();
+    // 同内容文件（md5 相同）→ SameImage，不做任何替换
+    let outcome = replace_image_with(
+        &conn,
+        &images_dir,
+        &thumbs_dir,
+        &old.id,
+        src_a.to_str().unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(outcome, ReplaceOutcome::SameImage));
+    let deleted: bool = conn
+        .query_row(
+            "SELECT is_deleted FROM images WHERE id = ?1",
+            rusqlite::params![old.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(!deleted);
+}
+
+#[test]
+fn replace_image_rejects_missing_old() {
+    let (dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    let src = dir.join("src.png");
+    make_png(&src, 1, 2, 3);
+
+    let err = replace_image_with(
+        &conn,
+        &dir.join("images"),
+        &dir.join("thumbnails"),
+        "missing",
+        src.to_str().unwrap(),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("不存在"), "实际：{err}");
 }

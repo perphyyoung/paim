@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useItemToggle } from "@/composables/useItemToggle";
@@ -51,6 +52,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "close"): void;
   (e: "update", img: Image): void;
+  /** 替换图像成功：主列表移除旧图、插入新图 */
+  (e: "replaced", payload: { oldId: string; image: Image }): void;
   /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
   (e: "safe-synced", isSafe: boolean): void;
 }>();
@@ -58,12 +61,12 @@ const emit = defineEmits<{
 const { showToast } = useToast();
 const { openImageLocation } = useOpenImageLocation();
 
-const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<Image>(
+const { current, currentId, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<Image>(
   () => props.images,
   toRef(props, "order"),
 );
 
-// 右键图像区：弹出「打开本地保存位置」菜单（按 id 查库定位真实文件）
+// 右键图像区：弹出「打开本地保存位置」「替换图像」菜单
 const ctxMenu = ref<{ x: number; y: number } | null>(null);
 function openCtxMenu(e: MouseEvent) {
   ctxMenu.value = { x: e.clientX, y: e.clientY };
@@ -75,6 +78,39 @@ async function openSavedLocation() {
   const img = current.value;
   closeCtxMenu();
   if (img) await openImageLocation(img.id);
+}
+
+// 替换图像（对齐 pm）：选文件 → 走标准入库管线 → 旧图软删并迁移关联。
+// 与上传弹窗同一扩展名白名单（Rust 端 ext_ok 再兜底校验）。
+const REPLACE_FILTER = {
+  name: "Images",
+  extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
+};
+async function replaceWithPicked() {
+  const img = current.value;
+  closeCtxMenu();
+  if (!img) return;
+  const selected = await open({ multiple: false, filters: [REPLACE_FILTER] });
+  if (!selected || Array.isArray(selected)) return;
+  try {
+    const outcome = await invoke<{
+      kind: string;
+      image?: Image;
+      relatedPromptIds?: string[];
+    }>("replace_image", { oldId: img.id, source: selected });
+    if (outcome.kind === "same_image" || !outcome.image) {
+      showToast("与原图相同，未替换", "warning");
+      return;
+    }
+    showToast("替换成功", "success");
+    // 关联提示词的 updated_at 已变，标记提示词页过期
+    markPageStale("prompts");
+    emit("replaced", { oldId: img.id, image: outcome.image });
+    // 详情继续展示新图：主列表由父级原位换入，watch(id) 自动重载原图/标签/关联
+    currentId.value = outcome.image.id;
+  } catch (e) {
+    showToast(`替换失败：${e}`, "error");
+  }
 }
 
 const edit = ref(false);
@@ -782,7 +818,7 @@ const fmtSize = (bytes: number) => {
     </div>
   </Teleport>
 
-  <!-- 右键菜单：打开本地保存位置 -->
+  <!-- 右键菜单：打开本地保存位置 / 替换图像 -->
   <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
     <button
       type="button"
@@ -790,6 +826,13 @@ const fmtSize = (bytes: number) => {
       @click="openSavedLocation"
     >
       打开本地保存位置
+    </button>
+    <button
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+      @click="replaceWithPicked"
+    >
+      替换图像
     </button>
   </ContextMenu>
 

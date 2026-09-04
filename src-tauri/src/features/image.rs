@@ -93,6 +93,18 @@ pub fn upload_image(
     })
 }
 
+/// 替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。
+#[tauri::command]
+pub fn replace_image(
+    app: tauri::AppHandle,
+    db: State<BkDb>,
+    old_id: String,
+    source: String,
+) -> Result<image_service::ReplaceOutcome, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    image_service::replace_image(&conn, &app, &old_id, &source)
+}
+
 #[tauri::command]
 pub fn list_images(
     db: State<BkDb>,

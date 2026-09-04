@@ -115,6 +115,7 @@ pub fn run() {
       features::image::get_thumbnail,
       features::image::get_image_detail,
       features::image::get_image_src,
+      features::image::replace_image,
       features::image::update_image_detail,
       features::image::create_prompt_for_image,
       features::image::relate_images_to_prompt,

@@ -464,6 +464,12 @@ function onDetailUpdate(updated: Image) {
   // 同步回主列表（保序替换；shallowRef 需整体替换触发更新）
   images.value = images.value.map((i) => (i.id === updated.id ? updated : i));
 }
+function onDetailReplaced({ oldId, image }: { oldId: string; image: Image }) {
+  // 主列表移除旧图、加入新图（排序由 sortedImages 按时间自然处理）
+  images.value = [image, ...images.value.filter((i) => i.id !== oldId)];
+  // 详情顺序快照中原位替换，保持导航位置与索引
+  detailOrder.value = detailOrder.value.map((id) => (id === oldId ? image.id : id));
+}
 
 // ---- 批量选择（与提示词主页共用状态机：普通点击详情 / Ctrl 切换 / Shift 范围 / Ctrl+A 全选）----
 const {
@@ -909,6 +915,7 @@ function onUploadDone() {
       :thumbs="thumbs"
       @close="closeDetail"
       @update="onDetailUpdate"
+      @replaced="onDetailReplaced"
     />
 
     <!-- 标签管理（独立组件，图像域） -->

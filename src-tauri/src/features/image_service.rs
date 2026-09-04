@@ -98,6 +98,21 @@ pub fn import(
     app: &tauri::AppHandle,
     source: &str,
 ) -> rusqlite::Result<(Image, bool)> {
+    import_with(
+        conn,
+        &crate::db::images_dir(app),
+        &crate::db::thumbnails_dir(app),
+        source,
+    )
+}
+
+/// import 的路径注入版（供测试），app 依赖仅用于定位数据目录。
+pub(crate) fn import_with(
+    conn: &Connection,
+    images_dir: &Path,
+    thumbnails_dir: &Path,
+    source: &str,
+) -> rusqlite::Result<(Image, bool)> {
     let source = PathBuf::from(source);
     if !source.is_file() {
         return Err(rusqlite::Error::InvalidParameterName(
@@ -122,10 +137,8 @@ pub fn import(
         return Ok((img, true));
     }
 
-    let images_dir = crate::db::images_dir(app);
-    let thumbnails_dir = crate::db::thumbnails_dir(app);
-    std::fs::create_dir_all(&images_dir).map_err(io_to_sql)?;
-    std::fs::create_dir_all(&thumbnails_dir).map_err(io_to_sql)?;
+    std::fs::create_dir_all(images_dir).map_err(io_to_sql)?;
+    std::fs::create_dir_all(thumbnails_dir).map_err(io_to_sql)?;
 
     let md = std::fs::metadata(&source).map_err(io_to_sql)?;
     let file_size = md.len() as i64;
@@ -512,6 +525,110 @@ fn find_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> 
     )?;
     let mut rows = stmt.query_map(rusqlite::params![md5], row_to_image)?;
     rows.next().transpose()
+}
+
+/// 替换结果：SameImage 表示新图与旧图为同一张（MD5 相同），无需替换。
+#[derive(Debug, Serialize, Clone)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReplaceOutcome {
+    SameImage,
+    Replaced {
+        image: Image,
+        related_prompt_ids: Vec<String>,
+    },
+}
+
+/// 替换图像（对齐 pm）：
+/// 1. 新图走标准入库管线（复用 import：格式校验、MD5 去重、缩略图）
+/// 2. 新图与旧图为同一张（MD5 命中复用旧 id）→ SameImage
+/// 3. 否则事务内软删旧图、迁移提示词/标签关联、迁移 note/is_favorite/is_safe、
+///    更新新图与关联提示词的 updated_at；旧图进回收站可恢复，物理文件保留。
+pub fn replace_image(
+    conn: &Connection,
+    app: &tauri::AppHandle,
+    old_id: &str,
+    source: &str,
+) -> std::result::Result<ReplaceOutcome, AppError> {
+    replace_image_with(
+        conn,
+        &crate::db::images_dir(app),
+        &crate::db::thumbnails_dir(app),
+        old_id,
+        source,
+    )
+}
+
+/// replace_image 的路径注入版（供测试），app 依赖仅用于定位数据目录。
+pub(crate) fn replace_image_with(
+    conn: &Connection,
+    images_dir: &Path,
+    thumbnails_dir: &Path,
+    old_id: &str,
+    source: &str,
+) -> std::result::Result<ReplaceOutcome, AppError> {
+    // 旧图必须存在，防止对无效 id 操作
+    if get_by_id(conn, old_id)?.is_none() {
+        return Err(AppError::Message(format!("图像 {old_id} 不存在")));
+    }
+
+    let (new_img, is_duplicate) =
+        import_with(conn, images_dir, thumbnails_dir, source).map_err(AppError::from)?;
+    if is_duplicate && new_img.id == old_id {
+        return Ok(ReplaceOutcome::SameImage);
+    }
+
+    let tx = conn.unchecked_transaction()?;
+    // 软删旧图（进回收站可恢复）
+    tx.execute(
+        "UPDATE images SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![old_id],
+    )?;
+    // 迁移提示词-图像关联（UPDATE OR IGNORE 防新图已有同关联时主键冲突）
+    tx.execute(
+        "UPDATE OR IGNORE prompt_image_relations SET image_id = ?1 WHERE image_id = ?2",
+        rusqlite::params![new_img.id, old_id],
+    )?;
+    // 迁移图像-标签关联
+    tx.execute(
+        "UPDATE OR IGNORE image_tag_relations SET image_id = ?1 WHERE image_id = ?2",
+        rusqlite::params![new_img.id, old_id],
+    )?;
+    // 迁移元数据（备注/收藏/安全状态），保留用户手工设置
+    tx.execute(
+        "UPDATE images
+         SET note = (SELECT note FROM images WHERE id = ?1),
+             is_favorite = (SELECT is_favorite FROM images WHERE id = ?1),
+             is_safe = (SELECT is_safe FROM images WHERE id = ?1)
+         WHERE id = ?2",
+        rusqlite::params![old_id, new_img.id],
+    )?;
+    // 更新新图与关联提示词的更新时间
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![new_img.id],
+    )?;
+    let related_prompt_ids: Vec<String> = tx
+        .prepare("SELECT prompt_id FROM prompt_image_relations WHERE image_id = ?1")?
+        .query_map(rusqlite::params![new_img.id], |r| r.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if !related_prompt_ids.is_empty() {
+        let placeholders = vec!["?"; related_prompt_ids.len()].join(",");
+        tx.execute(
+            &format!(
+                "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                 WHERE id IN ({placeholders})"
+            ),
+            rusqlite::params_from_iter(related_prompt_ids.iter()),
+        )?;
+    }
+    tx.commit()?;
+
+    let image = get_by_id(conn, &new_img.id)?
+        .ok_or_else(|| AppError::Message("替换后读取图像失败".into()))?;
+    Ok(ReplaceOutcome::Replaced {
+        image,
+        related_prompt_ids,
+    })
 }
 
 fn row_to_image(row: &rusqlite::Row) -> rusqlite::Result<Image> {
