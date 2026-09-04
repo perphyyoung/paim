@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import TagChip from "./TagChip.vue";
+import { startTagDrag, tagDrag } from "../useTagDragToCard";
+
+// 拖拽到卡片快捷添加标签：脚本层引用防止格式化工具误删模板绑定
+const dragActive = tagDrag.active;
+const dragName = tagDrag.tagName;
+const dragX = tagDrag.x;
+const dragY = tagDrag.y;
 
 /**
  * TagFilterPanel - 通用标签筛选区（供图像/提示词主页复用）。
@@ -261,6 +268,7 @@ const tagSections = computed<TagSection[]>(() => {
           :variant="h.active ? 'solid' : 'checked'"
           :count="h.count"
           interactive
+          @pointerdown="startTagDrag($event, h.name)"
           @click="(e: MouseEvent) => toggleTag(h.name, e)"
         >
           {{ h.name }}
@@ -299,6 +307,7 @@ const tagSections = computed<TagSection[]>(() => {
               :variant="selectedTags.includes(t.name) ? 'solid' : 'checked'"
               :count="t.count"
               interactive
+              @pointerdown="startTagDrag($event, t.name)"
               @click="(e: MouseEvent) => toggleTag(t.name, e)"
             >
               {{ t.name }}
@@ -306,6 +315,15 @@ const tagSections = computed<TagSection[]>(() => {
           </div>
         </template>
       </div>
+    </div>
+
+    <!-- 拖拽到卡片时跟随光标的浮动标签（pointer-events-none 不挡 elementFromPoint） -->
+    <div
+      v-if="dragActive"
+      class="pointer-events-none fixed z-[90] -translate-x-1/2 -translate-y-full rounded-full bg-blue-600 px-3 py-1 text-xs text-white opacity-90 shadow-lg"
+      :style="{ left: dragX + 'px', top: dragY + 'px' }"
+    >
+      {{ dragName }}
     </div>
   </div>
 </template>

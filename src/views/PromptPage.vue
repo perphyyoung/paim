@@ -16,6 +16,7 @@ import MediaCard from "@/components/MediaCard.vue";
 import GridColumnsControl from "@/components/GridColumnsControl.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
+import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
@@ -391,6 +392,9 @@ async function loadTagFilter() {
     allTags.value = [];
   }
 }
+
+// 拖拽筛选区标签到卡片：快捷添加标签
+useCardTagAdd({ domain: "prompt", tagNames, loadTagFilter, showToast });
 function onModalUploaded() {
   // 新建提示词若选择了图像，图像主页卡片的关联提示词文案已变化
   markPageStale("images");

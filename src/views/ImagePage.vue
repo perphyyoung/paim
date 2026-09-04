@@ -14,6 +14,7 @@ import { useItemToggle } from "@/composables/useItemToggle";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
+import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
 import GridColumnsControl from "@/components/GridColumnsControl.vue";
@@ -272,6 +273,9 @@ async function loadTagFilter() {
     tagNames.value = {};
   }
 }
+
+// 拖拽筛选区标签到卡片：快捷添加标签
+useCardTagAdd({ domain: "image", tagNames, loadTagFilter, showToast });
 
 // 右键菜单
 const ctxMenu = ref<{ x: number; y: number; image: Image } | null>(null);

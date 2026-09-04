@@ -72,7 +72,8 @@ onUpdated(scheduleMeasure);
 <template>
   <div
     class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-800"
-    :class="[item.is_favorite ? 'border-amber-500' : 'border-gray-700']"
+    :class="item.is_favorite ? 'border-amber-500' : 'border-gray-700'"
+    :data-card-drop-id="item.id"
     @click="emit('cardClick', $event, index, item.id)"
     @mousedown="onMouseDown"
   >
@@ -210,3 +211,11 @@ onUpdated(scheduleMeasure);
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 拖拽筛选区标签悬停卡片时的高亮（由 useTagDragToCard 指令式切换，outline 不影响布局） */
+.tag-drop-hover {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+</style>
