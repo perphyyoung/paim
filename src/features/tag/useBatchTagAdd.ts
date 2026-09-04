@@ -5,7 +5,7 @@
  * 成功后提示、退出批量模式并刷新标签数据。仅提示名词不同，经 domain 注入。
  */
 import type { Ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 import { isSpecialTag } from "./specialTags";
 import type { ToastType } from "@/components/useToast";
 
@@ -22,7 +22,6 @@ export interface UseBatchTagAddOptions {
 
 export function useBatchTagAdd(options: UseBatchTagAddOptions) {
   const { domain, selectedIds, exitBatch, loadTagFilter, showToast } = options;
-  const command = `batch_add_${domain}_tag`;
   const noun = domain === "image" ? "张图像" : "个提示词";
 
   /** 返回是否成功（成功后调用方再关闭批量添加标签弹窗） */
@@ -35,7 +34,9 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
       return false;
     }
     try {
-      await invoke(command, { ids, name });
+      await (domain === "image"
+        ? commands.batchAddImageTag(ids, name)
+        : commands.batchAddPromptTag(ids, name));
       showToast(`已为 ${ids.length} ${noun}添加标签`, "success");
       exitBatch();
       await loadTagFilter();

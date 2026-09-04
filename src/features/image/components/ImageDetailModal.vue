@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 // 别名导入：组件模板用裸 v-if="open"（prop），直接导入 open 会遮蔽 prop 导致弹窗恒渲染
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
@@ -94,11 +95,7 @@ async function replaceWithPicked() {
   const selected = await openDialog({ multiple: false, filters: [REPLACE_FILTER] });
   if (!selected || Array.isArray(selected)) return;
   try {
-    const outcome = await invoke<{
-      kind: string;
-      image?: Image;
-      relatedPromptIds?: string[];
-    }>("replace_image", { oldId: img.id, source: selected });
+    const outcome = await commands.replaceImage(img.id, selected);
     if (outcome.kind === "same_image" || !outcome.image) {
       showToast("与原图相同，未替换", "warning");
       return;
@@ -191,10 +188,7 @@ function onNestedPromptUpdated() {
 
 async function loadPromptTagData() {
   try {
-    const data = await invoke<{
-      groups: { id: number; name: string; sort_order: number }[];
-      tags: { id: number; name: string; group_id: number | null; count: number }[];
-    }>("get_prompt_tag_data");
+    const data = await commands.getPromptTagData();
     promptAllTags.value = data.tags ?? [];
   } catch {
     promptAllTags.value = [];
@@ -230,10 +224,7 @@ async function doCreatePrompt() {
   }
   createSaving.value = true;
   try {
-    await invoke("create_prompt_for_image", {
-      content: createContent.value,
-      imageId: img.id,
-    });
+    await commands.createPromptForImage(createContent.value, img.id);
     // 新提示词卡片需要出现在提示词主页
     markPageStale("prompts");
     showToast("提示词已创建并关联", "success");
@@ -253,7 +244,7 @@ async function loadOrig() {
   if (!img) return;
   origSrc.value = "";
   try {
-    const p = await invoke<string>("get_image_src", { id: img.id });
+    const p = await commands.getImageSrc(img.id);
     origSrc.value = convertFileSrc(p);
   } catch {
     origSrc.value = "";
@@ -272,13 +263,13 @@ function openFullscreen() {
 }
 
 async function resolveFullscreenSrc(id: string) {
-  const p = await invoke<string>("get_image_src", { id });
+  const p = await commands.getImageSrc(id);
   return convertFileSrc(p);
 }
 
 // 全屏信息条：名称已由 items.name 预置，此处惰性补标签
 async function resolveFullscreenMeta(id: string) {
-  const tags = await invoke<{ id: number; name: string }[]>("get_image_tags", { id });
+  const tags = await commands.getImageTags(id);
   return { tags: tags.map((t) => t.name) };
 }
 
@@ -287,16 +278,14 @@ async function loadTags() {
   const img = current.value;
   if (!img) return;
   try {
-    tags.value = await invoke<{ id: number; name: string }[]>("get_image_tags", {
-      id: img.id,
-    });
+    tags.value = await commands.getImageTags(img.id);
   } catch {
     tags.value = [];
   }
 }
 // 添加标签：一次只添加一个标签
 const { tagInput, addTag } = useTagAdd({
-  command: "add_image_tag",
+  addTagCommand: commands.addImageTag,
   getItemId: () => current.value?.id,
   tags,
   showToast,
@@ -322,7 +311,7 @@ function copyPromptTranslate() {
 async function removeTag(tagId: number) {
   const img = current.value;
   if (!img) return;
-  await invoke("remove_image_tag", { id: img.id, tagId });
+  await commands.removeImageTag(img.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
   emit("update", img);
 }
@@ -349,7 +338,7 @@ async function unlinkPrompt(p: LinkedPrompt) {
   const img = current.value;
   if (!img) return;
   try {
-    await invoke("remove_prompt_from_image", { imageId: img.id, promptId: p.id });
+    await commands.removePromptFromImage(img.id, p.id);
     // 关联关系变化影响提示词主页的关联图像计数
     markPageStale("prompts");
     showToast("已解除与提示词的关联", "success");
@@ -372,9 +361,7 @@ async function loadRelatedPrompts() {
   const img = current.value;
   if (!img) return;
   try {
-    relatedPrompts.value = await invoke<LinkedPrompt[]>("get_image_related_prompts", {
-      id: img.id,
-    });
+    relatedPrompts.value = await commands.getImageRelatedPrompts(img.id);
   } catch {
     relatedPrompts.value = [];
   }
@@ -437,7 +424,7 @@ async function toggleSafe() {
   await toggleCurrent(current, "is_safe", () => emit("update", img));
   // 安全评级联动一层：同步到该图像关联的提示词
   try {
-    await invoke("sync_image_safe_to_prompts", { imageId: img.id, isSafe: v });
+    await commands.syncImageSafeToPrompts(img.id, v);
     // 刷新关联提示词缓存，保证「编辑」弹窗立即读到同步后的安全评级
     await loadRelatedPrompts();
     emit("safe-synced", v);
@@ -454,11 +441,7 @@ async function saveFields() {
     return;
   }
   try {
-    const upd = await invoke<Image>("update_image_detail", {
-      id: img.id,
-      fileName: fileName.value,
-      note: note.value,
-    });
+    const upd = await commands.updateImageDetail(img.id, fileName.value, note.value, null, null);
     img.file_name = upd.file_name;
     img.note = upd.note;
     emit("update", img);

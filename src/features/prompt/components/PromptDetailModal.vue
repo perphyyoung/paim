@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 提示词详情弹窗：展示/编辑标题、内容、翻译、备注，标签增删，关联图像网格查看/移除。
 import { computed, ref, toRef, watch } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -96,9 +97,7 @@ async function loadRelatedImages() {
   if (!p) return;
   imagesLoading.value = true;
   try {
-    relatedImages.value = await invoke<RelatedImage[]>("get_prompt_related_images", {
-      id: p.id,
-    });
+    relatedImages.value = await commands.getPromptRelatedImages(p.id);
   } catch {
     relatedImages.value = [];
   } finally {
@@ -155,7 +154,7 @@ async function toggleSafe() {
   await toggleCurrent(current, "is_safe", () => emit("updated"));
   // 安全评级联动一层：同步到该提示词关联的图像
   try {
-    await invoke("sync_prompt_safe_to_images", { promptId: p.id, isSafe: v });
+    await commands.syncPromptSafeToImages(p.id, v);
     emit("safe-synced", v);
   } catch (e) {
     showToast(`同步关联图像安全评级失败：${e}`, "error");
@@ -189,13 +188,15 @@ async function saveFields() {
     return;
   }
   try {
-    const upd = await invoke<Prompt>("update_prompt_detail", {
-      id: p.id,
-      title: title.value,
-      content: content.value,
-      contentTranslate: contentTranslate.value,
-      note: note.value,
-    });
+    const upd = await commands.updatePromptDetail(
+      p.id,
+      title.value,
+      content.value,
+      contentTranslate.value,
+      note.value,
+      null,
+      null,
+    );
     // 用后端返回值更新本地模型，避免未落库的输入值污染 UI
     p.title = upd.title;
     p.content = upd.content;
@@ -213,7 +214,7 @@ async function saveFields() {
 
 // 添加标签：一次只添加一个标签
 const { tagInput, addTag } = useTagAdd({
-  command: "add_prompt_tag",
+  addTagCommand: commands.addPromptTag,
   getItemId: () => current.value?.id,
   tags,
   showToast,
@@ -240,7 +241,7 @@ function copyTranslate() {
 async function removeTag(tagId: number) {
   const p = current.value;
   if (!p) return;
-  await invoke("remove_prompt_tag", { id: p.id, tagId });
+  await commands.removePromptTag(p.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
   emit("updated");
 }
@@ -286,7 +287,7 @@ async function setAsFirst() {
   closeCtxMenu();
   if (!img || !p) return;
   try {
-    await invoke("set_prompt_first_image", { promptId: p.id, imageId: img.id });
+    await commands.setPromptFirstImage(p.id, img.id);
     relatedImages.value = [img, ...relatedImages.value.filter((i) => i.id !== img.id)];
     emit("updated"); // 列表卡片封面已变化
   } catch (e) {
@@ -295,14 +296,14 @@ async function setAsFirst() {
 }
 
 async function resolveFullscreenSrc(id: string) {
-  const p = await invoke<string>("get_image_src", { id });
+  const p = await commands.getImageSrc(id);
   return convertFileSrc(p);
 }
 
 async function removeImage(img: RelatedImage) {
   const p = current.value;
   if (!p) return;
-  await invoke("remove_image_from_prompt", { promptId: p.id, imageId: img.id });
+  await commands.removeImageFromPrompt(p.id, img.id);
   relatedImages.value = relatedImages.value.filter((i) => i.id !== img.id);
   // 关联关系变化影响图像主页卡片的关联提示词文案
   markPageStale("images");
@@ -361,7 +362,7 @@ const imgDetailImages = ref<FullImage[]>([]);
 const imgDetailThumbs = ref<Record<string, string>>({});
 async function viewImage(img: RelatedImage) {
   try {
-    const detail = await invoke<FullImage>("get_image_detail", { id: img.id });
+    const detail = await commands.getImageDetail(img.id);
     imgDetailImages.value = [detail];
     imgDetailThumbs.value = {};
     imgDetailOpen.value = true;
@@ -388,10 +389,7 @@ async function importFromExternal() {
   const paths = Array.isArray(selected) ? selected : [selected];
   importLoading.value = true;
   try {
-    const res = await invoke<ImportBatchResult>("add_images_to_prompt", {
-      promptId: p.id,
-      imagePaths: paths,
-    });
+    const res = await commands.addImagesToPrompt(p.id, paths);
     await loadRelatedImages();
     emit("updated");
     if (res.errors.length > 0) {

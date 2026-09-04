@@ -1,19 +1,9 @@
 <script setup lang="ts">
 // 图像选择弹窗：从已有图像列表中多选并导入到指定提示词。供提示词详情「从图像列表导入」使用。
 import { computed, onMounted, ref, watch } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { commands, type Image } from "@/bindings";
 import { markPageStale } from "@/utils/crossPageCache";
-
-interface Image {
-  id: string;
-  file_name: string;
-  thumbnail_path: string | null;
-  width: number | null;
-  height: number | null;
-  file_size: number;
-  created_at: string;
-  updated_at: string;
-}
 
 const props = defineProps<{
   open: boolean;
@@ -96,16 +86,12 @@ async function loadImages() {
   loading.value = true;
   try {
     // 与 pm 一致：搜索/标签进后端过滤，最多加载 100 张（查询层 limit）
-    const page = await invoke<{ items: Image[]; total: number }>("list_images", {
-      limit: 100,
-      search: keyword.value.trim(),
-      tag: selectedTag.value,
-    });
+    const page = await commands.listImages(100, keyword.value.trim() || null, selectedTag.value);
     images.value = page.items;
     total.value = page.total;
     for (const img of images.value) {
       try {
-        const p = await invoke<string>("get_thumbnail", { id: img.id });
+        const p = await commands.getThumbnail(img.id);
         thumbs.value[img.id] = convertFileSrc(p);
       } catch {
         // 缩略图缺失时保持占位
@@ -120,8 +106,7 @@ async function loadImages() {
 
 async function loadTags() {
   try {
-    const tags =
-      await invoke<{ id: number; name: string; group_id: number | null }[]>("list_all_image_tags");
+    const tags = await commands.listAllImageTags();
     allTags.value = tags.map((t) => t.name);
   } catch {
     allTags.value = [];
@@ -146,10 +131,7 @@ async function confirm() {
   const ids = Array.from(selectedIds.value);
   if (ids.length === 0) return;
   try {
-    await invoke<number>("relate_images_to_prompt", {
-      promptId: props.promptId,
-      imageIds: ids,
-    });
+    await commands.relateImagesToPrompt(props.promptId, ids);
     // 关联后图像主页卡片的关联提示词文案已变化
     markPageStale("images");
     emit("imported");

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 重建缩略图的进度/结果弹窗：open 时开始重建，监听后端进度事件，完成后展示摘要。
 import { onUnmounted, ref, watch } from "vue";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { events } from "@/bindings";
 import {
   rebuildThumbnails,
   type ThumbnailRebuildProgress,
@@ -34,7 +35,7 @@ watch(
     summary.value = null;
     error.value = "";
     unlisten?.();
-    unlisten = await listen<ThumbnailRebuildProgress>("thumbnail-rebuild-progress", (e) => {
+    unlisten = await events.thumbnailRebuildProgress.listen((e) => {
       progress.value = e.payload;
     });
     try {

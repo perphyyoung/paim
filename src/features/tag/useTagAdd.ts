@@ -5,7 +5,6 @@
  * 命令名经 options 注入，命令返回新增的标签列表并合并到本地 tags 快照。
  */
 import { ref, type Ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
 import { isSpecialTag } from "./specialTags";
 import type { ToastType } from "@/components/useToast";
 
@@ -15,8 +14,8 @@ export interface TagLite {
 }
 
 export interface UseTagAddOptions {
-  /** 后端命令，如 "add_image_tag" / "add_prompt_tag"，接收 { id, name } */
-  command: string;
+  /** 添加标签的命令函数（bindings 的 addImageTag / addPromptTag），接收 (id, name) */
+  addTagCommand: (id: string, name: string) => Promise<TagLite[]>;
   /** 返回当前详情项的 id（详情关闭后可能为 undefined） */
   getItemId: () => string | number | undefined;
   /** 本地标签快照，添加成功后合并 */
@@ -28,7 +27,7 @@ export interface UseTagAddOptions {
 }
 
 export function useTagAdd(options: UseTagAddOptions) {
-  const { command, getItemId, tags, showToast, onAdded } = options;
+  const { addTagCommand, getItemId, tags, showToast, onAdded } = options;
   const tagInput = ref("");
 
   /** 一次只添加一个标签；返回本次新增数量（0 表示未添加） */
@@ -42,7 +41,7 @@ export function useTagAdd(options: UseTagAddOptions) {
       return 0;
     }
     try {
-      const added = await invoke<TagLite[]>(command, { id, name });
+      const added = await addTagCommand(String(id), name);
       tagInput.value = "";
       for (const t of added) {
         if (!tags.value.some((x) => x.id === t.id)) tags.value.push(t);

@@ -1,20 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
+// 提示词命令封装：类型安全绑定转调（bindings 由 tauri-specta 自动生成）。
+import { commands, type Prompt } from "@/bindings";
 
-export interface Prompt {
-  id: string;
-  title: string;
-  content: string;
-  content_translate: string;
-  created_at: string;
-  updated_at: string;
-  is_deleted: boolean;
-  deleted_at: string | null;
-  is_favorite: boolean;
-  is_safe: boolean;
-  note: string;
-}
+export type { Prompt } from "@/bindings";
 
-export const listPrompts = (): Promise<Prompt[]> => invoke("list_prompts");
-export const createPrompt = (content: string, title?: string | null): Promise<Prompt> =>
-  invoke("create_prompt", { content, title });
-export const deletePrompt = (id: string): Promise<void> => invoke("delete_prompt", { id });
+export const listPrompts = () => commands.listPrompts();
+export const createPrompt = (content: string, title?: string | null) =>
+  commands.createPrompt(content, title ?? null);
+export const deletePrompt = (id: string) => commands.deletePrompt(id);

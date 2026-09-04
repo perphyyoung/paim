@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 
 // 前端调试日志：经 `log_msg` 命令写入根目录 / paim.log。
 // 仅开发环境发送（避免发布后无谓 IPC 开销）。
@@ -18,7 +18,7 @@ function fmt(args: unknown[]): string {
 
 function send(level: string, args: unknown[]): void {
   if (!import.meta.env.DEV) return;
-  invoke("log_msg", { level, message: fmt(args) }).catch(() => {});
+  commands.logMsg(level, fmt(args)).catch(() => {});
 }
 
 export const log = {

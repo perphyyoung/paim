@@ -9,7 +9,8 @@ use crate::features::image_service::{
 use crate::features::prompt_service;
 use crate::features::thumbnail_service::{self, EnsureResult, RebuildProgress, RebuildSummary};
 
-use tauri::{Emitter, Manager, State};
+use tauri::{Manager, State};
+use tauri_specta::Event;
 
 #[tauri::command]
 #[specta::specta]
@@ -533,14 +534,12 @@ pub async fn rebuild_thumbnails(app: tauri::AppHandle) -> Result<RebuildSummary,
         let bk = app.state::<BkDb>();
         let conn = bk.0.lock().map_err(|e| e.to_string())?;
         thumbnail_service::rebuild_all(&data_dir, &thumbs_root, &conn, |done, total, file_name| {
-            let _ = app.emit(
-                thumbnail_service::PROGRESS_EVENT,
-                RebuildProgress {
-                    current: done,
-                    total,
-                    file_name: file_name.to_string(),
-                },
-            );
+            let _ = RebuildProgress {
+                current: done,
+                total,
+                file_name: file_name.to_string(),
+            }
+            .emit(&app);
         })
     })
     .await

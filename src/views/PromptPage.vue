@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { commands, type Prompt, type PromptTagItem, type TagGroup } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime } from "@/utils/date";
 import { matchesKeyword } from "@/utils/keywordMatch";
@@ -27,20 +28,6 @@ import { useThumbnailSelfHeal } from "@/components/useThumbnailSelfHeal";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
-
-interface Prompt {
-  id: string;
-  title: string;
-  content: string;
-  content_translate: string;
-  created_at: string;
-  updated_at: string;
-  is_deleted: boolean;
-  deleted_at: string | null;
-  is_favorite: boolean;
-  is_safe: boolean;
-  note: string;
-}
 
 const SORT_KEY = "prompt.sortBy";
 const SORT_DESC_KEY = "prompt.sortDesc";
@@ -128,7 +115,7 @@ const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } = u
 
 async function onThumbsFixed() {
   try {
-    const raw = await invoke<Record<string, string>>("get_prompt_thumbs_map");
+    const raw = await commands.getPromptThumbsMap();
     const urls: Record<string, string> = {};
     for (const k of Object.keys(raw)) urls[k] = convertFileSrc(raw[k]);
     thumbs.value = urls;
@@ -150,19 +137,8 @@ function onModalUpdated() {
 }
 
 // 标签筛选区分组数据
-interface TagGroupData {
-  id: number;
-  name: string;
-  sort_order: number;
-}
-interface TagItem {
-  id: number;
-  name: string;
-  group_id: number | null;
-  count: number;
-}
-const tagGroups = ref<TagGroupData[]>([]);
-const allTags = ref<TagItem[]>([]);
+const tagGroups = ref<TagGroup[]>([]);
+const allTags = ref<PromptTagItem[]>([]);
 
 const tagCounts = computed(() => {
   const counts: Record<string, number> = {};
@@ -271,7 +247,7 @@ async function doSingleDelete() {
   singleDeleteTarget.value = null;
   if (!p) return;
   try {
-    await invoke("delete_prompt", { id: p.id });
+    await commands.deletePrompt(p.id);
     prompts.value = prompts.value.filter((x) => x.id !== p.id);
     // 图像主页卡片的关联提示词文案过滤已删除提示词，需重载
     markPageStale("images");
@@ -323,7 +299,7 @@ async function doBatchDelete() {
   if (ids.length === 0) return;
   try {
     for (const id of ids) {
-      await invoke("delete_prompt", { id });
+      await commands.deletePrompt(id);
     }
     markPageStale("images");
     showToast(`已删除 ${ids.length} 个提示词`, "success");
@@ -354,16 +330,10 @@ function closeDetail() {
 }
 async function loadPrompts() {
   const [ps, tagMap, countMap, raw] = await Promise.all([
-    invoke<Prompt[]>("list_prompts"),
-    invoke<Record<string, string[]>>("get_prompt_tags_map").catch(
-      () => ({}) as Record<string, string[]>,
-    ),
-    invoke<Record<string, number>>("get_prompt_images_count_map").catch(
-      () => ({}) as Record<string, number>,
-    ),
-    invoke<Record<string, string>>("get_prompt_thumbs_map").catch(
-      () => ({}) as Record<string, string>,
-    ),
+    commands.listPrompts(),
+    commands.getPromptTagsMap().catch(() => ({}) as Record<string, string[]>),
+    commands.getPromptImagesCountMap().catch(() => ({}) as Record<string, number>),
+    commands.getPromptThumbsMap().catch(() => ({}) as Record<string, string>),
   ]);
   prompts.value = ps;
   tagNames.value = tagMap;
@@ -379,10 +349,8 @@ async function loadTagFilter() {
   try {
     // 与图像主页对称：同时刷新筛选区与卡片标签源（tagNames）
     const [data, map] = await Promise.all([
-      invoke<{ groups: TagGroupData[]; tags: TagItem[] }>("get_prompt_tag_data"),
-      invoke<Record<string, string[]>>("get_prompt_tags_map").catch(
-        () => ({}) as Record<string, string[]>,
-      ),
+      commands.getPromptTagData(),
+      commands.getPromptTagsMap().catch(() => ({}) as Record<string, string[]>),
     ]);
     tagGroups.value = data.groups ?? [];
     allTags.value = data.tags ?? [];
@@ -420,7 +388,7 @@ const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
   try {
-    trashPrompts.value = await invoke<Prompt[]>("list_trashed_prompts");
+    trashPrompts.value = await commands.listTrashedPrompts();
   } catch {
     trashPrompts.value = [];
   }
@@ -440,7 +408,7 @@ async function restoreAllTrash() {
     return;
   }
   try {
-    const restored = await invoke<number>("restore_all_prompts");
+    const restored = await commands.restoreAllPrompts();
     await Promise.all([loadTrash(), loadPrompts()]);
     markPageStale("images");
     showToast(`已恢复 ${restored} 个提示词`, "success");
@@ -460,7 +428,7 @@ function requestEmptyTrash() {
 async function doEmptyTrash() {
   emptyTrashOpen.value = false;
   try {
-    const r = await invoke<{ count: number; failures: number }>("empty_prompt_trash");
+    const r = await commands.emptyPromptTrash();
     trashPrompts.value = [];
     await loadPrompts();
     markPageStale("images");
@@ -487,7 +455,7 @@ async function doPurgePrompt() {
 
 async function restorePrompt(p: Prompt) {
   try {
-    await invoke("restore_prompt", { id: p.id });
+    await commands.restorePrompt(p.id);
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);
     await loadPrompts();
     // 恢复的提示词重新出现在图像主页的关联文案里
@@ -500,7 +468,7 @@ async function restorePrompt(p: Prompt) {
 
 async function purgePrompt(p: Prompt) {
   try {
-    await invoke("purge_prompt", { id: p.id });
+    await commands.purgePrompt(p.id);
     // 关联关系级联删除，图像主页的关联提示词文案已变化
     markPageStale("images");
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);

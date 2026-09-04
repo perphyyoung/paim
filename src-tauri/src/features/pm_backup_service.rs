@@ -14,9 +14,6 @@ use zip::ZipArchive;
 
 use crate::db::{self, BkDb};
 
-/// 进度推送事件名（前端 listen 用）。
-pub const PROGRESS_EVENT: &str = "pm-import-progress";
-
 /// 当前支持的数据格式版本（与 pm 的 CURRENT_DATA_VERSION 一致）。
 const SUPPORTED_DATA_VERSION: i64 = 1;
 
@@ -58,8 +55,9 @@ pub struct PmImportSummary {
     pub backup_dir: String,
 }
 
-/// 导入进度推送载荷。
-#[derive(Debug, Serialize, Clone, specta::Type)]
+/// 导入进度推送载荷（事件名固定为 pm-import-progress）。
+#[derive(Debug, Serialize, Deserialize, Clone, specta::Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "pm-import-progress")]
 pub struct ImportProgress {
     pub stage: String,
     pub percent: u32,

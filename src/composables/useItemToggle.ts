@@ -1,13 +1,13 @@
 /**
  * 图像/提示词条目布尔字段切换公共逻辑（收藏 / 安全，主页与详情弹窗共用）。
  *
- * 命令名按域拼 `update_{image|prompt}_detail`（单张/详情）/
- * `batch_toggle_{image|prompt}_favorite`（主页批量收藏，对齐 pm 的 1-is_favorite 语义）。
- * 仅命令名与提示名词不同，经 domain 注入；
+ * 命令按域分派 `update_{image|prompt}_detail`（单张/详情）/
+ * `batch_toggle_{image|prompt}_favorite`（主页批量收藏，对齐 pm 的 1-is_favorite 语义）；
+ * 仅命令与提示名词不同，经 domain 注入；
  * 主页用 `toggleOne`/`toggleBatch`（列表写回），详情弹窗用 `toggleCurrent`（原地更新并通知父级）。
  */
 import type { Ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 import type { ToastType } from "@/components/useToast";
 
 export type BoolField = "is_favorite" | "is_safe";
@@ -17,12 +17,6 @@ interface BoolItem {
   is_favorite?: boolean;
   is_safe?: boolean;
 }
-
-/** 字段名（snake）→ invoke 参数名（camel） */
-const FIELD_CAMEL: Record<BoolField, string> = {
-  is_favorite: "isFavorite",
-  is_safe: "isSafe",
-};
 
 interface UseItemToggleOptions<T extends BoolItem> {
   /** "image" | "prompt"，决定命令名与提示文案 */
@@ -35,19 +29,35 @@ interface UseItemToggleOptions<T extends BoolItem> {
 export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<T>) {
   const { domain, list, showToast } = options;
   const noun = domain === "image" ? "张图像" : "个提示词";
-  const singleCmd = `update_${domain}_detail`;
-  const batchCmd = `batch_toggle_${domain}_favorite`;
+
+  // 单条切换的下一个布尔值
+  function next(field: BoolField, item: BoolItem): boolean {
+    return !item[field];
+  }
+
+  // update_detail 命令：只翻转目标布尔字段，其余 Option 传 null 表示不更新
+  async function updateDetail(item: BoolItem, field: BoolField): Promise<BoolItem> {
+    const isFav = field === "is_favorite" ? next(field, item) : null;
+    const isSafe = field === "is_safe" ? next(field, item) : null;
+    return domain === "image"
+      ? ((await commands.updateImageDetail(item.id, null, null, isFav, isSafe)) as BoolItem)
+      : ((await commands.updatePromptDetail(
+          item.id,
+          null,
+          null,
+          null,
+          null,
+          isFav,
+          isSafe,
+        )) as BoolItem);
+  }
 
   // 详情弹窗单张切换：原地更新 current 对象并通知父级刷新
   async function toggleCurrent(current: Ref<T | null>, field: BoolField, emitChange: () => void) {
     const item = current.value;
     if (!item) return;
     try {
-      const payload: Record<string, unknown> = {
-        id: item.id,
-        [FIELD_CAMEL[field]]: !item[field],
-      };
-      const upd = await invoke<T>(singleCmd, payload);
+      const upd = await updateDetail(item, field);
       item[field] = upd[field];
       emitChange();
     } catch {
@@ -59,12 +69,8 @@ export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<
   async function toggleOne(item: T, field: BoolField) {
     if (!list) return;
     try {
-      const payload: Record<string, unknown> = {
-        id: item.id,
-        [FIELD_CAMEL[field]]: !item[field],
-      };
-      const updated = await invoke<T>(singleCmd, payload);
-      list.value = list.value.map((x) => (x.id === updated.id ? updated : x));
+      const updated = await updateDetail(item, field);
+      list.value = list.value.map((x) => (x.id === updated.id ? (updated as T) : x));
     } catch (e) {
       showToast(`更新失败：${e}`, "error");
     }
@@ -74,7 +80,9 @@ export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<
   async function toggleBatch(ids: string[]): Promise<boolean> {
     if (ids.length === 0) return false;
     try {
-      const n = await invoke<number>(batchCmd, { ids });
+      const n = await (domain === "image"
+        ? commands.batchToggleImageFavorite(ids)
+        : commands.batchTogglePromptFavorite(ids));
       const sel = new Set(ids);
       if (list) {
         list.value = list.value.map((x) =>

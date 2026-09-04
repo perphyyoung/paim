@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { listen } from "@tauri-apps/api/event";
+import { events } from "@/bindings";
 import { initFontScale } from "@/utils/font";
 import SettingsView from "@/views/SettingsView.vue";
 import ToastHost from "@/components/ToastHost.vue";
@@ -13,7 +13,7 @@ initFontScale();
 // 收到事件即切换设置面板开关
 let unlistenGlobalShortcut: (() => void) | undefined;
 onMounted(async () => {
-  unlistenGlobalShortcut = await listen("global-shortcut", () => {
+  unlistenGlobalShortcut = await events.globalShortcut.listen(() => {
     settingsOpen.value = !settingsOpen.value;
   });
 });

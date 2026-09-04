@@ -4,7 +4,14 @@ pub mod features;
 pub mod logging;
 pub mod text_utils;
 
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
+use tauri_specta::Event;
+
+/// 全局快捷键触发事件（payload 为动作名，如 "toggle-settings"）。
+#[derive(Debug, Serialize, Deserialize, Clone, specta::Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "global-shortcut")]
+pub struct GlobalShortcutEvent(pub String);
 
 /// tauri-specta 命令注册表：单一事实源，同时供 invoke_handler 与 TS 绑定导出使用。
 /// 新增命令必须：① `#[specta::specta]` 标注；② 在此注册；③ `cargo test export_bindings` 重新生成绑定。
@@ -12,6 +19,13 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         // 官方推荐：将 i64/u64 等 BigInt 类型统一导出为 TS number（file_size 值域 < 2^53，安全）
         .dangerously_cast_bigints_to_number()
+        // 错误以 Promise reject 抛出（bindings 返回 Promise<T>），与前端现有 try/catch + toast 模式一致
+        .error_handling(tauri_specta::ErrorHandlingMode::Throw)
+        .events(tauri_specta::collect_events![
+            GlobalShortcutEvent,
+            features::thumbnail_service::RebuildProgress,
+            features::pm_backup_service::ImportProgress,
+        ])
         .commands(tauri_specta::collect_commands![
             // —— 提示词通用 ——
             features::prompt::list_prompts,
@@ -128,7 +142,6 @@ pub fn run() {
       // 注：原 Ctrl+, 已被系统其它程序注册为全局热键，插件无法抢占，故加 Shift
       #[cfg(desktop)]
       {
-        use tauri::Emitter;
         use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
         let toggle_settings = Shortcut::new(
           Some(Modifiers::CONTROL | Modifiers::SHIFT),
@@ -139,7 +152,7 @@ pub fn run() {
             .with_shortcuts([toggle_settings])?
             .with_handler(move |app, shortcut, event| {
               if shortcut == &toggle_settings && event.state() == ShortcutState::Pressed {
-                let _ = app.emit("global-shortcut", "toggle-settings");
+                let _ = GlobalShortcutEvent("toggle-settings".into()).emit(app);
               }
             })
             .build(),

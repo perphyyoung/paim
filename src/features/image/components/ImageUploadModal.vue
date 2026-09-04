@@ -2,7 +2,8 @@
 // 上传图像弹窗：选择多图 → 预览（可移除）→ 可选关联提示词 → 确定上传。
 // 参考 pm 的图像上传弹窗：提示词为用户输入，非空则应用到本次每一张图。
 import { nextTick, ref, watch } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 
@@ -18,11 +19,6 @@ interface PendingFile {
 
 interface UploadedImage {
   stored_name: string;
-}
-
-interface UploadBatchResult {
-  results: { image: UploadedImage; is_duplicate: boolean }[];
-  errors: { path: string; message: string }[];
 }
 
 const ALLOWED_FILTER = {
@@ -60,7 +56,7 @@ async function pickFiles() {
       const name = p.split(/[\\/]/).pop() || p;
       let thumb = "";
       try {
-        thumb = convertFileSrc(await invoke<string>("get_source_thumbnail", { source: p }));
+        thumb = convertFileSrc(await commands.getSourceThumbnail(p));
       } catch {
         // 预览失败时仅显示文件名
       }
@@ -83,10 +79,10 @@ async function doUpload() {
   uploading.value = true;
   error.value = "";
   try {
-    const res = await invoke<UploadBatchResult>("upload_images", {
-      paths: files.value.map((f) => f.path),
-      prompt: prompt.value.trim() || null,
-    });
+    const res = await commands.uploadImages(
+      files.value.map((f) => f.path),
+      prompt.value.trim() || null,
+    );
     if (res.errors.length > 0) {
       error.value = res.errors.map((e) => e.message).join("\n");
     }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { appVersion } from "@/version";
 import { useFontScale, useDetailFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
@@ -29,13 +29,13 @@ const dataDir = ref("");
 const openError = ref("");
 
 async function loadDataDir() {
-  dataDir.value = await invoke<string>("get_data_dir");
+  dataDir.value = await commands.getDataDir();
 }
 
 async function openDir() {
   openError.value = "";
   try {
-    await invoke("open_data_dir");
+    await commands.openDataDir();
   } catch (e) {
     openError.value = String(e);
   }

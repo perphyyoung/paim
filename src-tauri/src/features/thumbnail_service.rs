@@ -4,13 +4,10 @@
 //! 只对丢失的重新生成；失败的单张计数，不中断整体、不改动其已有路径。
 
 use rusqlite::{Connection, OptionalExtension};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
-
-/// 重建进度推送事件名（前端 listen 用）。
-pub const PROGRESS_EVENT: &str = "thumbnail-rebuild-progress";
 
 /// 全量重建结果摘要。success 包含「已存在跳过」与「新生成」两类
 /// （与 pm 的 regenerated 计数口径一致）。
@@ -21,8 +18,9 @@ pub struct RebuildSummary {
     pub failed: usize,
 }
 
-/// 重建进度推送载荷。
-#[derive(Debug, Serialize, Clone)]
+/// 重建进度推送载荷（事件名固定为 thumbnail-rebuild-progress）。
+#[derive(Debug, Serialize, Deserialize, Clone, specta::Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "thumbnail-rebuild-progress")]
 pub struct RebuildProgress {
     pub current: usize,
     pub total: usize,

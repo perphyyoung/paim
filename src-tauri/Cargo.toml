@@ -32,6 +32,6 @@ jpeg-encoder = { version = "0.6", features = ["simd"] }
 md-5 = "0.10"
 zip = { version = "4", default-features = false, features = ["deflate"] }
 tauri-plugin-global-shortcut = "2"
-tauri-specta = { version = "=2.0.0-rc.25", features = ["javascript", "typescript"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "javascript", "typescript"] }
 specta = "=2.0.0-rc.25"
 specta-typescript = "=0.0.12"

@@ -10,7 +10,7 @@
  * pointerup 命中则回调页面注册的 onDrop。
  */
 import { ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 import type { Ref } from "vue";
 import type { ToastType } from "@/components/useToast";
 
@@ -117,7 +117,6 @@ export interface UseCardTagAddOptions {
  */
 export function useCardTagAdd(options: UseCardTagAddOptions) {
   const { domain, tagNames, loadTagFilter, showToast } = options;
-  const command = `add_${domain}_tag`;
 
   const dropFn = async (cardId: string, tagName: string) => {
     const existing = tagNames.value[cardId];
@@ -126,7 +125,9 @@ export function useCardTagAdd(options: UseCardTagAddOptions) {
       return;
     }
     try {
-      await invoke(command, { id: cardId, name: tagName });
+      await (domain === "image"
+        ? commands.addImageTag(cardId, tagName)
+        : commands.addPromptTag(cardId, tagName));
       tagNames.value = { ...tagNames.value, [cardId]: [...(existing ?? []), tagName] };
       showToast(`已添加标签「${tagName}」`, "success");
       await loadTagFilter();

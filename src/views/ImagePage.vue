@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { commands, type Image, type ImageTag, type TagGroup } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime } from "@/utils/date";
@@ -31,26 +32,6 @@ import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
 const { openImageLocation } = useOpenImageLocation();
-
-interface Image {
-  id: string;
-  file_name: string;
-  stored_name: string;
-  relative_path: string;
-  thumbnail_path: string | null;
-  md5: string | null;
-  width: number | null;
-  height: number | null;
-  file_size: number;
-  gen_params: string;
-  is_deleted: boolean;
-  deleted_at: string | null;
-  is_favorite: boolean;
-  is_safe: boolean;
-  created_at: string;
-  updated_at: string;
-  note: string;
-}
 
 const SORT_KEY = "image.sortBy";
 const SORT_DESC_KEY = "image.sortDesc";
@@ -184,7 +165,7 @@ function handleGridScroll(p: GridScrollPayload) {
 }
 
 // 标签筛选区
-const allTags = ref<{ id: number; name: string; group_id: number | null }[]>([]);
+const allTags = ref<ImageTag[]>([]);
 const tagNames = shallowRef<Record<string, string[]>>({});
 const selectedTags = ref<string[]>([]);
 
@@ -201,12 +182,7 @@ const {
 
 // 筛选/排序变化后回到顶部
 watch([keyword, sortBy, sortDesc, selectedTags], backToTop);
-interface TagGroupData {
-  id: number;
-  name: string;
-  sort_order: number;
-}
-const tagGroups = ref<TagGroupData[]>([]);
+const tagGroups = ref<TagGroup[]>([]);
 
 // —— 特殊标签（虚拟筛选，参考 pm）——
 // 未引/多引 依据图像关联的提示词数量（imagePrompts 映射：{imageId: [content,...]}）
@@ -260,9 +236,9 @@ const tagCounts = computed(() => {
 async function loadTagFilter() {
   try {
     const [tags, mgr, map] = await Promise.all([
-      invoke<{ id: number; name: string; group_id: number | null }[]>("list_all_image_tags"),
-      invoke<{ groups: TagGroupData[] }>("list_image_tag_groups"),
-      invoke<Record<string, string[]>>("get_image_tags_map"),
+      commands.listAllImageTags(),
+      commands.listImageTagGroups(),
+      commands.getImageTagsMap(),
     ]);
     allTags.value = tags;
     tagGroups.value = mgr.groups ?? [];
@@ -295,10 +271,7 @@ const purgeTarget = ref<Image | null>(null);
 const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
-  const [items, dir] = await Promise.all([
-    invoke<Image[]>("list_trash"),
-    invoke<string>("get_data_dir"),
-  ]);
+  const [items, dir] = await Promise.all([commands.listTrash(), commands.getDataDir()]);
   trashImages.value = items;
   const map: Record<string, string> = {};
   for (const img of items) {
@@ -321,7 +294,7 @@ async function restoreAllTrash() {
     return;
   }
   try {
-    const restored = await invoke<number>("restore_all_images");
+    const restored = await commands.restoreAllImages();
     await Promise.all([loadTrash(), loadImages()]);
     markPageStale("prompts");
     showToast(`已恢复 ${restored} 张图像`, "success");
@@ -341,7 +314,7 @@ function requestEmptyTrash() {
 async function doEmptyTrash() {
   emptyTrashOpen.value = false;
   try {
-    const r = await invoke<{ count: number; failures: number }>("empty_image_trash");
+    const r = await commands.emptyImageTrash();
     trashImages.value = [];
     trashThumbs.value = {};
     await loadImages();
@@ -375,7 +348,7 @@ async function openSavedLocation() {
 }
 
 async function restoreImage(img: Image) {
-  await invoke("restore_image", { id: img.id });
+  await commands.restoreImage(img.id);
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
   await loadImages(); // 刷新主列表，使恢复的图回到图像页
   // 恢复的图像重新成为提示词卡片的候选背景图
@@ -384,7 +357,7 @@ async function restoreImage(img: Image) {
 }
 
 async function purgeImage(img: Image) {
-  await invoke("purge_image", { id: img.id });
+  await commands.purgeImage(img.id);
   // 关联关系级联删除，提示词主页的关联图像计数已变化
   markPageStale("prompts");
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
@@ -394,9 +367,9 @@ async function purgeImage(img: Image) {
 async function loadImages() {
   // 并行拉取;缩略图 URL 直接由行内 thumbnail_path 构建,不再逐图 IPC
   const [page, promptsMap, dir] = await Promise.all([
-    invoke<{ items: Image[]; total: number }>("list_images"),
-    invoke<Record<string, string[]>>("get_image_prompts_map").catch(() => ({})),
-    invoke<string>("get_data_dir"),
+    commands.listImages(null, null, null),
+    commands.getImagePromptsMap().catch(() => ({})),
+    commands.getDataDir(),
   ]);
   const imgs = page.items;
   images.value = imgs;
@@ -528,7 +501,7 @@ async function doSingleDelete() {
   singleDeleteTarget.value = null;
   if (!img) return;
   try {
-    await invoke("delete_image", { id: img.id });
+    await commands.deleteImage(img.id);
     images.value = images.value.filter((i) => i.id !== img.id);
     delete thumbs.value[img.id];
     markPageStale("prompts");
@@ -551,7 +524,7 @@ async function doBatchDelete() {
   if (ids.length === 0) return;
   try {
     for (const id of ids) {
-      await invoke("delete_image", { id });
+      await commands.deleteImage(id);
     }
     markPageStale("prompts");
     showToast(`已将 ${ids.length} 张图像移入回收站`, "success");

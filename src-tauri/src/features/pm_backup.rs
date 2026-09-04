@@ -6,7 +6,8 @@
 use crate::db::BkDb;
 use crate::error::AppError;
 use crate::features::pm_backup_service::{self, ImportProgress, PmBackupInfo, PmImportSummary};
-use tauri::{Emitter, Manager};
+use tauri::Manager;
+use tauri_specta::Event;
 
 /// 解析 pm 备份包，返回内容概览（不改动本地数据）。
 #[tauri::command]
@@ -28,7 +29,7 @@ pub async fn import_pm_backup(
     tauri::async_runtime::spawn_blocking(move || {
         let bk = app.state::<BkDb>();
         pm_backup_service::import(&app, &bk, &zip_path, |p: ImportProgress| {
-            let _ = app.emit(pm_backup_service::PROGRESS_EVENT, p);
+            let _ = p.emit(&app);
         })
     })
     .await

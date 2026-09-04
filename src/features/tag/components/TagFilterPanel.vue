@@ -23,19 +23,19 @@ interface TagGroupData {
 interface TagItem {
   id: number;
   name: string;
-  group_id: number | null;
+  group_id?: number | null;
   count: number;
 }
-/** 父页实际传入的标签（无 count，由组件按 tagCounts 补充） */
+/** 父页实际传入的标签（无 count，由组件按 tagCounts 补充）；group_id 兼容 bindings 的可选字段 */
 interface TagRef {
   id: number;
   name: string;
-  group_id: number | null;
+  group_id?: number | null;
 }
 interface TagChip {
   id: number;
   name: string;
-  group_id: number | null;
+  group_id?: number | null;
   count: number;
 }
 interface TagSection {

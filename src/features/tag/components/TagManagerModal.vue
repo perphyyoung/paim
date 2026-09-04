@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { commands, type TagGroup, type TagItem, type TagManagerData } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import ContextMenu from "@/components/ContextMenu.vue";
 import InlineDialog from "@/components/InlineDialog.vue";
@@ -11,42 +11,25 @@ const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
 const { showToast } = useToast();
 
-interface TagGroup {
-  id: number;
-  name: string;
-  sort_order: number;
-}
-interface TagItem {
-  id: number;
-  name: string;
-  group_id: number | null;
-  count: number;
-}
-interface ManagerData {
-  groups: TagGroup[];
-  tags: TagItem[];
-}
-
-// 命令映射表：按域分发到对应前缀的命令名
+// 命令映射表：按域分发到对应 bindings 命令函数
 const cmds = computed(() => {
-  const p = props.domain === "image" ? "image" : "prompt";
-  const groupSuffix = "tag_groups";
+  const isImage = props.domain === "image";
   return {
-    list: `list_${p}_${groupSuffix}`,
-    createGroup: `create_${p}_tag_group`,
-    updateGroup: `update_${p}_tag_group`,
-    deleteGroup: `delete_${p}_tag_group`,
-    createTag: `create_${p}_tag`,
-    renameTag: `rename_${p}_tag`,
-    deleteTag: `delete_${p}_tag`,
-    moveTag: `move_${p}_tag_to_group`,
-    pinGroup: `pin_${p}_tag_group_to_top`,
+    list: isImage ? commands.listImageTagGroups : commands.listPromptTagGroups,
+    createGroup: isImage ? commands.createImageTagGroup : commands.createPromptTagGroup,
+    updateGroup: isImage ? commands.updateImageTagGroup : commands.updatePromptTagGroup,
+    deleteGroup: isImage ? commands.deleteImageTagGroup : commands.deletePromptTagGroup,
+    createTag: isImage ? commands.createImageTag : commands.createPromptTag,
+    renameTag: isImage ? commands.renameImageTag : commands.renamePromptTag,
+    deleteTag: isImage ? commands.deleteImageTag : commands.deletePromptTag,
+    moveTag: isImage ? commands.moveImageTagToGroup : commands.movePromptTagToGroup,
+    pinGroup: isImage ? commands.pinImageTagGroupToTop : commands.pinPromptTagGroupToTop,
   };
 });
 
 const domainLabel = computed(() => (props.domain === "image" ? "图像" : "提示词"));
 
-const data = ref<ManagerData>({ groups: [], tags: [] });
+const data = ref<TagManagerData>({ groups: [], tags: [] });
 const search = ref("");
 const loading = ref(false);
 const error = ref("");
@@ -145,7 +128,7 @@ async function pinToTop() {
   closeCtxMenu();
   if (id === null) return;
   try {
-    await invoke(cmds.value.pinGroup, { id });
+    await cmds.value.pinGroup(id);
     showToast("标签组已固定到首位", "success");
     await load();
     emit("saved");
@@ -212,7 +195,7 @@ function cancelDrag() {
 
 async function doMoveTag(id: number, groupId: number | null) {
   try {
-    await invoke(cmds.value.moveTag, { id, groupId });
+    await cmds.value.moveTag(id, groupId);
     showToast("标签已移动", "success");
     await load();
     emit("saved");
@@ -307,7 +290,7 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    data.value = await invoke<ManagerData>(cmds.value.list);
+    data.value = await cmds.value.list();
   } catch (e) {
     error.value = String(e);
   } finally {
@@ -335,7 +318,7 @@ function openNewTag() {
 async function runSave(opts: {
   name: string;
   checkReserved?: boolean;
-  run: () => Promise<void>;
+  run: () => Promise<unknown>;
   failMsg: string;
   successMsg: string;
 }): Promise<boolean> {
@@ -362,10 +345,7 @@ async function submitNewTag(): Promise<boolean> {
     name,
     checkReserved: true,
     run: () =>
-      invoke(cmds.value.createTag, {
-        name: name.trim(),
-        groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
-      }),
+      cmds.value.createTag(name.trim(), dlg.value.groupId ? Number(dlg.value.groupId) : null),
     failMsg: "新建标签失败",
     successMsg: `已新建标签「${name.trim()}」`,
   });
@@ -382,11 +362,8 @@ function openRenameTag(item: TagItem) {
       name,
       checkReserved: true,
       run: async () => {
-        await invoke(cmds.value.renameTag, { id: item.id, name: name.trim() });
-        await invoke(cmds.value.moveTag, {
-          id: item.id,
-          groupId: dlg.value.groupId ? Number(dlg.value.groupId) : null,
-        });
+        await cmds.value.renameTag(item.id, name.trim());
+        await cmds.value.moveTag(item.id, dlg.value.groupId ? Number(dlg.value.groupId) : null);
       },
       failMsg: "重命名标签失败",
       successMsg: "标签已更新",
@@ -399,7 +376,7 @@ function openDeleteTag(item: TagItem) {
     "删除标签",
     `确定删除标签「${item.name}」？其与${domainLabel.value}的关联将一并清除。`,
     async () => {
-      await invoke(cmds.value.deleteTag, { id: item.id });
+      await cmds.value.deleteTag(item.id);
       showToast("标签已删除", "success");
       refresh();
       closeDlg();
@@ -421,11 +398,7 @@ async function submitNewGroup(): Promise<boolean> {
   const name = dlg.value.value;
   return runSave({
     name,
-    run: () =>
-      invoke(cmds.value.createGroup, {
-        name: name.trim(),
-        sortOrder: parseSortOrder(dlg.value.sortOrder),
-      }),
+    run: () => cmds.value.createGroup(name.trim(), parseSortOrder(dlg.value.sortOrder)),
     failMsg: "新建组失败",
     successMsg: `已新建组「${name.trim()}」`,
   });
@@ -436,12 +409,7 @@ function openRenameGroup(g: TagGroup) {
     const name = dlg.value.value;
     const ok = await runSave({
       name,
-      run: () =>
-        invoke(cmds.value.updateGroup, {
-          id: g.id,
-          name: name.trim(),
-          sortOrder: parseSortOrder(dlg.value.sortOrder),
-        }),
+      run: () => cmds.value.updateGroup(g.id, name.trim(), parseSortOrder(dlg.value.sortOrder)),
       failMsg: "更新组失败",
       successMsg: "组已更新",
     });
@@ -450,7 +418,7 @@ function openRenameGroup(g: TagGroup) {
 }
 function openDeleteGroup(g: TagGroup) {
   openConfirm("删除组", `确定删除组「${g.name}」？组内标签将变为未分组。`, async () => {
-    await invoke(cmds.value.deleteGroup, { id: g.id });
+    await cmds.value.deleteGroup(g.id);
     showToast("组已删除", "success");
     refresh();
     closeDlg();

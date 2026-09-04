@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 导入 pm 备份的进度/结果弹窗：open 时开始导入，监听后端进度事件，完成或失败后展示摘要。
 import { onUnmounted, ref, watch } from "vue";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { events } from "@/bindings";
 import { importPmBackup, type PmImportProgress, type PmImportSummary } from "../api/pmBackup";
 
 const props = defineProps<{ open: boolean; zipPath: string }>();
@@ -30,7 +31,7 @@ watch(
     summary.value = null;
     error.value = "";
     unlisten?.();
-    unlisten = await listen<PmImportProgress>("pm-import-progress", (e) => {
+    unlisten = await events.pmImportProgress.listen((e) => {
       progress.value = e.payload;
     });
     try {

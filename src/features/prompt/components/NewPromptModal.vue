@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 新建提示词弹窗：内容必需，可关联图像（本地选图上传预览）。标题留空，由后端用提示词 id 自动生成。
 import { nextTick, ref, watch } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { commands } from "@/bindings";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 
@@ -11,10 +12,6 @@ const { showToast } = useToast();
 
 interface PromptImage {
   stored_name: string;
-}
-
-interface CreateResult {
-  errors: { path: string; message: string }[];
 }
 
 const ALLOWED_FILTER = {
@@ -52,7 +49,7 @@ async function pickFiles() {
       const name = p.split(/[\\/]/).pop() || p;
       let thumb = "";
       try {
-        thumb = convertFileSrc(await invoke<string>("get_source_thumbnail", { source: p }));
+        thumb = convertFileSrc(await commands.getSourceThumbnail(p));
       } catch {
         // 预览失败时仅显示文件名
       }
@@ -75,10 +72,11 @@ async function doCreate() {
   saving.value = true;
   error.value = "";
   try {
-    const res = await invoke<CreateResult>("create_prompt_with_images", {
-      content: content.value,
-      imagePaths: files.value.map((f) => f.path),
-    });
+    const res = await commands.createPromptWithImages(
+      content.value,
+      null,
+      files.value.map((f) => f.path),
+    );
     if (res.errors.length > 0) {
       error.value = res.errors.map((e) => e.message).join("\n");
     }
