@@ -100,9 +100,28 @@ pub fn restore(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
     get_by_id(conn, id)
 }
 
-/// 彻底删除提示词（从数据库中移除）。
+/// 彻底删除提示词（关联关系随外键级联删除）。
+/// 级联删除视为隐式解绑，同步刷新关联图像的 updated_at。
 pub fn purge(conn: &Connection, id: &str) -> Result<()> {
-    conn.execute("DELETE FROM prompts WHERE id = ?1", rusqlite::params![id])?;
+    let tx = conn.unchecked_transaction()?;
+    let related_image_ids: Vec<String> = {
+        let mut stmt =
+            tx.prepare("SELECT image_id FROM prompt_image_relations WHERE prompt_id = ?1")?;
+        let rows = stmt.query_map(rusqlite::params![id], |r| r.get(0))?;
+        rows.collect::<Result<Vec<String>>>()?
+    };
+    tx.execute("DELETE FROM prompts WHERE id = ?1", rusqlite::params![id])?;
+    if !related_image_ids.is_empty() {
+        let placeholders = vec!["?"; related_image_ids.len()].join(",");
+        tx.execute(
+            &format!(
+                "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                 WHERE id IN ({placeholders})"
+            ),
+            rusqlite::params_from_iter(related_image_ids.iter()),
+        )?;
+    }
+    tx.commit()?;
     Ok(())
 }
 
@@ -115,12 +134,22 @@ pub fn restore_all(conn: &Connection) -> Result<usize> {
 }
 
 /// 清空回收站提示词（关联关系随外键级联删除），返回清理数量。
+/// 级联删除视为隐式解绑，同步刷新关联图像的 updated_at。
 pub fn empty_trash(conn: &Connection) -> Result<usize> {
-    conn.execute("DELETE FROM prompts WHERE is_deleted = 1", [])
+    let tx = conn.unchecked_transaction()?;
+    let count = tx.execute("DELETE FROM prompts WHERE is_deleted = 1", [])?;
+    // 关联行已随删除级联消失，只能刷全部图像（回收站清空本身低频，可接受）
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id IN (SELECT image_id FROM prompt_image_relations)",
+        [],
+    )?;
+    tx.commit()?;
+    Ok(count)
 }
 
 /// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。仅更新传入 Some 的值；
-/// 更新提示词详情字段。标题/内容必填（修改不能为空；新建时标题隐式取 id，见 create），
+/// 标题/内容必填（修改不能为空；新建时标题隐式取 id，见 create），
 /// 翻译/备注允许清空；校验失败返回明确错误，不再静默跳过。
 pub fn update_detail(
     conn: &Connection,
@@ -395,12 +424,23 @@ pub fn remove_prompt_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()>
     Ok(())
 }
 
-/// 取消提示词与其一张图像的关联。
+/// 取消提示词与其一张图像的关联（双向解绑）。
+/// 关联变化视为两侧内容变更，同步提示词与图像的 updated_at。
 pub fn remove_image(conn: &Connection, prompt_id: &str, image_id: &str) -> Result<()> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "DELETE FROM prompt_image_relations WHERE prompt_id = ?1 AND image_id = ?2",
         rusqlite::params![prompt_id, image_id],
     )?;
+    tx.execute(
+        "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![prompt_id],
+    )?;
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![image_id],
+    )?;
+    tx.commit()?;
     Ok(())
 }
 

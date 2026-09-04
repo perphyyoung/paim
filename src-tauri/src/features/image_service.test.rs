@@ -295,3 +295,112 @@ fn replace_image_rejects_missing_old() {
     .unwrap_err();
     assert!(err.to_string().contains("不存在"), "实际：{err}");
 }
+
+#[test]
+fn relate_image_to_prompt_refreshes_both_updated_at() {
+    let (dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    let src = dir.join("src.png");
+    make_png(&src, 5, 5, 5);
+    let (img, _) = import_with(
+        &conn,
+        &dir.join("images"),
+        &dir.join("thumbnails"),
+        src.to_str().unwrap(),
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE images SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = ?1",
+        rusqlite::params![img.id],
+    )
+    .unwrap();
+
+    let n = super::relate_image_to_prompt(&conn, "p1", &img.id).unwrap();
+    assert_eq!(n, 1);
+    let prompt_at: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let image_at: String = conn
+        .query_row(
+            "SELECT updated_at FROM images WHERE id = ?1",
+            rusqlite::params![img.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(
+        prompt_at, "2000-01-01T00:00:00.000Z",
+        "关联应刷新提示词 updated_at"
+    );
+    assert_ne!(
+        image_at, "2000-01-01T00:00:00.000Z",
+        "关联应刷新图像 updated_at"
+    );
+
+    // 幂等重复关联：不新增也不刷新
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
+        [],
+    )
+    .unwrap();
+    let n2 = super::relate_image_to_prompt(&conn, "p1", &img.id).unwrap();
+    assert_eq!(n2, 0);
+    let prompt_at2: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(prompt_at2, "2000-01-01T00:00:00.000Z", "重复关联不应刷新");
+}
+
+#[test]
+fn purge_image_refreshes_related_prompt_updated_at() {
+    let (dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    let src = dir.join("src.png");
+    make_png(&src, 9, 9, 9);
+    let (img, _) = import_with(
+        &conn,
+        &dir.join("images"),
+        &dir.join("thumbnails"),
+        src.to_str().unwrap(),
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', ?1)",
+        rusqlite::params![img.id],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
+        [],
+    )
+    .unwrap();
+
+    super::purge_with(&conn, std::path::Path::new(&dir), &img.id).unwrap();
+    let prompt_at: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        prompt_at, "2000-01-01T00:00:00.000Z",
+        "purge 图像应刷新关联提示词 updated_at"
+    );
+}

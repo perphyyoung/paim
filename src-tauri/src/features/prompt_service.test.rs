@@ -271,3 +271,69 @@ fn prompt_tag_changes_refresh_updated_at() {
         "移除标签应刷新 updated_at"
     );
 }
+
+#[test]
+fn unlink_and_purge_prompt_refresh_related_image_updated_at() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES ('i1', 'a.png', 's.png', 'x')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', 'i1')",
+        [],
+    )
+    .unwrap();
+
+    // 解绑：图像侧 updated_at 刷新
+    conn.execute(
+        "UPDATE images SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'i1'",
+        [],
+    )
+    .unwrap();
+    super::remove_image(&conn, "p1", "i1").unwrap();
+    let image_at: String = conn
+        .query_row("SELECT updated_at FROM images WHERE id = 'i1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        image_at, "2000-01-01T00:00:00.000Z",
+        "解绑应刷新图像 updated_at"
+    );
+
+    // purge：级联解绑，图像侧 updated_at 再次刷新
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', 'i1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE images SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'i1'",
+        [],
+    )
+    .unwrap();
+    super::purge(&conn, "p1").unwrap();
+    let image_at2: String = conn
+        .query_row("SELECT updated_at FROM images WHERE id = 'i1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        image_at2, "2000-01-01T00:00:00.000Z",
+        "purge 提示词应刷新关联图像 updated_at"
+    );
+    let prompt_gone: i64 = conn
+        .query_row("SELECT COUNT(*) FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(prompt_gone, 0);
+}

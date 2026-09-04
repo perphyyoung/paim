@@ -436,10 +436,17 @@ fn get_or_create_image_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i64
 
 /// 移除图像的一个标签关联。
 pub fn remove_image_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "DELETE FROM image_tag_relations WHERE image_id = ?1 AND tag_id = ?2",
         rusqlite::params![id, tag_id],
     )?;
+    // 标签变化视为图像内容变更，同步 updated_at（与 add/batch_add 对称）
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![id],
+    )?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -487,7 +494,13 @@ pub fn update_detail(
 }
 
 /// 彻底删除：删除磁盘原图与缩略图并移除记录，不可恢复。
+/// 级联删除的 prompt_image_relations 视为隐式解绑，同步刷新关联提示词的 updated_at。
 pub fn purge(conn: &Connection, app: &tauri::AppHandle, id: &str) -> rusqlite::Result<()> {
+    purge_with(conn, &crate::db::data_dir(app), id)
+}
+
+/// purge 的路径注入版（供测试），app 依赖仅用于定位数据目录。
+pub(crate) fn purge_with(conn: &Connection, data_dir: &Path, id: &str) -> rusqlite::Result<()> {
     let row: Option<(Option<String>, Option<String>)> = conn
         .query_row(
             "SELECT relative_path, thumbnail_path FROM images WHERE id = ?1",
@@ -497,14 +510,31 @@ pub fn purge(conn: &Connection, app: &tauri::AppHandle, id: &str) -> rusqlite::R
         .optional()?;
 
     if let Some((rel, thumb)) = row {
-        let data_dir = crate::db::data_dir(app);
         if let Some(rel) = rel {
             let _ = std::fs::remove_file(data_dir.join(rel));
         }
         if let Some(thumb) = thumb {
             let _ = std::fs::remove_file(data_dir.join(thumb));
         }
-        conn.execute("DELETE FROM images WHERE id = ?1", rusqlite::params![id])?;
+        let tx = conn.unchecked_transaction()?;
+        let related_prompt_ids: Vec<String> = {
+            let mut stmt =
+                tx.prepare("SELECT prompt_id FROM prompt_image_relations WHERE image_id = ?1")?;
+            let rows = stmt.query_map(rusqlite::params![id], |r| r.get(0))?;
+            rows.collect::<rusqlite::Result<Vec<String>>>()?
+        };
+        tx.execute("DELETE FROM images WHERE id = ?1", rusqlite::params![id])?;
+        if !related_prompt_ids.is_empty() {
+            let placeholders = vec!["?"; related_prompt_ids.len()].join(",");
+            tx.execute(
+                &format!(
+                    "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                     WHERE id IN ({placeholders})"
+                ),
+                rusqlite::params_from_iter(related_prompt_ids.iter()),
+            )?;
+        }
+        tx.commit()?;
     }
     Ok(())
 }
@@ -684,29 +714,50 @@ fn unix_to_yyyymm(secs: i64) -> String {
 }
 
 /// 直接新建一条提示词并与该图片建立关联（幂等）。
+/// 新建提示词自带当前时间；关联视为图像内容变更，同步图像的 updated_at。
 pub(crate) fn relate_prompt(
     conn: &Connection,
     image_id: &str,
     content: &str,
 ) -> rusqlite::Result<()> {
-    let prompt_id = prompt_service::create(conn, content, None)?.id;
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    let prompt_id = prompt_service::create(&tx, content, None)?.id;
+    tx.execute(
         "INSERT OR IGNORE INTO prompt_image_relations(prompt_id, image_id) VALUES (?1, ?2)",
         rusqlite::params![prompt_id, image_id],
     )?;
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![image_id],
+    )?;
+    tx.commit()?;
     Ok(())
 }
 
 /// 将图片关联到已存在的提示词（幂等），返回实际新增的关联数；供新建提示词选择图像时使用。
+/// 关联视为双向内容变更，同步提示词与图像两侧的 updated_at。
 pub fn relate_image_to_prompt(
     conn: &Connection,
     prompt_id: &str,
     image_id: &str,
 ) -> rusqlite::Result<usize> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    let inserted = tx.execute(
         "INSERT OR IGNORE INTO prompt_image_relations(prompt_id, image_id) VALUES (?1, ?2)",
         rusqlite::params![prompt_id, image_id],
-    )
+    )?;
+    if inserted > 0 {
+        tx.execute(
+            "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            rusqlite::params![prompt_id],
+        )?;
+        tx.execute(
+            "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            rusqlite::params![image_id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(inserted)
 }
 
 #[cfg(test)]
