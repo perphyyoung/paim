@@ -286,6 +286,12 @@ pub fn set_prompt_first_image(
         rusqlite::params![prompt_id, image_id],
     )
     .map_err(AppError::from)?;
+    // 首图变化视为提示词内容变更，同步更新 updated_at（列表按时间排序时封面顺序随之生效）
+    tx.execute(
+        "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![prompt_id],
+    )
+    .map_err(AppError::from)?;
     tx.commit()?;
     Ok(())
 }

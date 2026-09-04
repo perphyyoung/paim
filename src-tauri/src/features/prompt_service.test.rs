@@ -160,6 +160,13 @@ fn set_prompt_first_image_moves_target_to_front() {
         .unwrap();
     }
 
+    // 预置旧时间戳，设为首图后应被刷新
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
+        [],
+    )
+    .unwrap();
+
     // 把第三张设为首图（存量 sort_order 全 0，置 -1 生效）
     set_prompt_first_image(&conn, "p1", "i3").unwrap();
     let order: Vec<String> = {
@@ -175,6 +182,14 @@ fn set_prompt_first_image_moves_target_to_front() {
             .unwrap()
     };
     assert_eq!(order, vec!["i3", "i1", "i2"]);
+
+    // 提示词 updated_at 已同步更新（不再是预置旧值）
+    let updated_at: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(updated_at, "2000-01-01T00:00:00.000Z");
 
     // 再次把第二张设为首图：重复调用幂等生效
     set_prompt_first_image(&conn, "p1", "i2").unwrap();
