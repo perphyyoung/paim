@@ -52,7 +52,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             features::prompt::remove_image_from_prompt,
             features::image::remove_prompt_from_image,
             // —— 图像通用 ——
-            features::image::import_image,
             features::image::import_images,
             features::image::get_source_thumbnail,
             features::image::list_images,

@@ -46,8 +46,6 @@ export const commands = {
 	removeImageFromPrompt: (promptId: string, imageId: string) => __TAURI_INVOKE<null>("remove_image_from_prompt", { promptId, imageId }),
 	/**  图像详情解绑提示词：从图像移除一条提示词关联（与提示词侧 remove_image_from_prompt 对称）。 */
 	removePromptFromImage: (imageId: string, promptId: string) => __TAURI_INVOKE<null>("remove_prompt_from_image", { imageId, promptId }),
-	/**  导入单张本地图像，返回导入结果（含是否与库内已有图像重复）。 */
-	importImage: (path: string) => __TAURI_INVOKE<ImageImportResult>("import_image", { path }),
 	/**  导入多张本地图像（可选关联到提示词内容），逐张容错返回结果与错误。 */
 	importImages: (paths: string[], prompt: string | null) => __TAURI_INVOKE<ImageImportBatchResult>("import_images", { paths, prompt }),
 	/**  为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。 */

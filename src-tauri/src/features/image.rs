@@ -85,23 +85,6 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
     Ok(dest.to_string_lossy().to_string())
 }
 
-/// 导入单张本地图像，返回导入结果（含是否与库内已有图像重复）。
-#[tauri::command]
-#[specta::specta]
-pub fn import_image(
-    app: tauri::AppHandle,
-    db: State<BkDb>,
-    path: String,
-) -> Result<ImageImportResult, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let (image, is_duplicate) =
-        image_service::import(&conn, &app, &path).map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(ImageImportResult {
-        image,
-        is_duplicate,
-    })
-}
-
 /// 替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。
 #[tauri::command]
 #[specta::specta]
