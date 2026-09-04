@@ -319,7 +319,7 @@ pub fn add_image_tag(db: State<BkDb>, id: String, name: String) -> Result<Vec<Im
 
 /// 为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。
 #[tauri::command]
-pub fn add_image_tag_batch(
+pub fn batch_add_image_tag(
     db: State<BkDb>,
     ids: Vec<String>,
     name: String,

@@ -371,9 +371,9 @@ pub fn add_prompt_tag(
         .collect())
 }
 
-/// 为多个提示词批量添加同一个标签（单事务）。
+/// 为多个提示词批量添加同一个标签（单事务），与图像侧 batch_add_image_tag 命名对齐。
 #[tauri::command]
-pub fn add_prompt_tag_batch(
+pub fn batch_add_prompt_tag(
     db: State<BkDb>,
     ids: Vec<String>,
     name: String,
