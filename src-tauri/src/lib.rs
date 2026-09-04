@@ -107,7 +107,8 @@ pub fn run() {
       features::prompt::add_prompt_tag,
       features::prompt::add_prompt_tag_batch,
       features::prompt::remove_prompt_tag,
-      features::prompt::remove_prompt_image,
+      features::prompt::remove_image_from_prompt,
+      features::image::remove_prompt_from_image,
       // —— 图像通用 ——
       features::image::upload_image,
       features::image::upload_images,

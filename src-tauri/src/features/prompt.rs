@@ -391,9 +391,9 @@ pub fn remove_prompt_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(),
         .map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 取消提示词与其一张图像的关联。
+/// 提示词详情解绑图像：从提示词移除一张图像的关联（与图像侧 remove_prompt_from_image 对称）。
 #[tauri::command]
-pub fn remove_prompt_image(
+pub fn remove_image_from_prompt(
     db: State<BkDb>,
     prompt_id: String,
     image_id: String,

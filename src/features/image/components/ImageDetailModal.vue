@@ -349,7 +349,7 @@ async function unlinkPrompt(p: LinkedPrompt) {
   const img = current.value;
   if (!img) return;
   try {
-    await invoke("remove_prompt_image", { promptId: p.id, imageId: img.id });
+    await invoke("remove_prompt_from_image", { imageId: img.id, promptId: p.id });
     // 关联关系变化影响提示词主页的关联图像计数
     markPageStale("prompts");
     showToast("已解除与提示词的关联", "success");

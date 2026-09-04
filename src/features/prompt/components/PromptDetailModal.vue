@@ -302,7 +302,7 @@ async function resolveFullscreenSrc(id: string) {
 async function removeImage(img: RelatedImage) {
   const p = current.value;
   if (!p) return;
-  await invoke("remove_prompt_image", { promptId: p.id, imageId: img.id });
+  await invoke("remove_image_from_prompt", { promptId: p.id, imageId: img.id });
   relatedImages.value = relatedImages.value.filter((i) => i.id !== img.id);
   // 关联关系变化影响图像主页卡片的关联提示词文案
   markPageStale("images");

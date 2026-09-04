@@ -337,6 +337,18 @@ pub fn remove_image_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), 
         .map_err(|e| AppError::Message(e.to_string()))
 }
 
+/// 图像详情解绑提示词：从图像移除一条提示词关联（与提示词侧 remove_image_from_prompt 对称）。
+#[tauri::command]
+pub fn remove_prompt_from_image(
+    db: State<BkDb>,
+    image_id: String,
+    prompt_id: String,
+) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    prompt_service::remove_image(&conn, &prompt_id, &image_id)
+        .map_err(|e| AppError::Message(e.to_string()))
+}
+
 /// 返回全部图像标签（供标签筛选区渲染），按名称排序。
 #[tauri::command]
 pub fn list_all_image_tags(db: State<BkDb>) -> Result<Vec<ImageTag>, AppError> {
