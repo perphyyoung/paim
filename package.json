@@ -4,7 +4,8 @@
   "version": "0.2.9",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tauri dev",
+    "dev:ui": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "format": "pnpm format:ui && pnpm format:rs",
