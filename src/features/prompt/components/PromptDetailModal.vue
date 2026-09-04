@@ -168,6 +168,14 @@ function onNestedImageSafeSynced(isSafe: boolean) {
   if (p) p.is_safe = isSafe;
 }
 
+// 嵌套图像详情内替换图像后：原位换入新图（图像详情的 current 依赖 imgDetailImages），
+// 重载关联图像条使缩略图立即反映新图；并通知主页刷新（卡片缩略图/图像页列表已变化）
+function onNestedImageReplaced({ oldId, image }: { oldId: string; image: FullImage }) {
+  imgDetailImages.value = imgDetailImages.value.map((i) => (i.id === oldId ? image : i));
+  loadRelatedImages();
+  emit("updated");
+}
+
 async function saveFields() {
   const p = current.value;
   if (!p) return;
@@ -742,6 +750,7 @@ async function onPickerImported() {
     :thumbs="imgDetailThumbs"
     is-nested
     @close="imgDetailOpen = false"
+    @replaced="onNestedImageReplaced"
     @safe-synced="onNestedImageSafeSynced"
   />
 
