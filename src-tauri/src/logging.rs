@@ -66,6 +66,7 @@ macro_rules! log_error {
 
 /// 前端上报日志：`rtk invoke("log_msg", { level, message })`。
 #[tauri::command]
+#[specta::specta]
 pub fn log_msg(level: String, message: String) {
     let lvl = match level.as_str() {
         "debug" => Level::Debug,

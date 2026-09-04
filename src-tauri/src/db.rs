@@ -264,11 +264,13 @@ pub fn pending_switch_datasets(app: &tauri::AppHandle) -> Vec<String> {
 // ---- Tauri commands ----
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_data_dir(app: tauri::AppHandle) -> String {
     data_dir(&app).to_string_lossy().into_owned()
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), AppError> {
     let dir = data_dir(&app);
     std::process::Command::new("explorer")
@@ -281,6 +283,7 @@ pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), AppError> {
 /// 在资源管理器中定位并选中指定图像的本地保存文件（「打开本地保存位置」）。
 /// 按图像 id 查库取得真实 relative_path（与前端拼接解耦，杜绝路径拼错）。
 #[tauri::command]
+#[specta::specta]
 pub fn open_image_location(
     app: tauri::AppHandle,
     db: State<'_, BkDb>,
@@ -330,6 +333,7 @@ fn toggle_favorite(db: &State<'_, BkDb>, table: &str, ids: Vec<String>) -> Resul
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn batch_toggle_image_favorite(
     db: State<'_, BkDb>,
     ids: Vec<String>,
@@ -338,6 +342,7 @@ pub fn batch_toggle_image_favorite(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn batch_toggle_prompt_favorite(
     db: State<'_, BkDb>,
     ids: Vec<String>,

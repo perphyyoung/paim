@@ -9,7 +9,7 @@ use rusqlite::{Connection, OptionalExtension, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct Image {
     pub id: String,
     pub file_name: String,
@@ -19,6 +19,7 @@ pub struct Image {
     pub md5: Option<String>,
     pub width: Option<i64>,
     pub height: Option<i64>,
+    /// 文件字节数（specta 的 BigInt 类型经 Builder 配置导出为 TS number）。
     pub file_size: i64,
     pub gen_params: String,
     pub is_deleted: bool,
@@ -30,33 +31,33 @@ pub struct Image {
     pub note: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct ImportResult {
     pub image: Image,
     pub is_duplicate: bool,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct ImportError {
     pub path: String,
     pub message: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct ImportBatchResult {
     pub results: Vec<ImportResult>,
     pub errors: Vec<ImportError>,
 }
 
 /// 分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct PaginatedImages {
     pub items: Vec<Image>,
     pub total: i64,
 }
 
 /// 图像标签（关联表 join image_tags 的返回对象）。
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct ImageTag {
     pub id: i64,
     pub name: String,
@@ -65,7 +66,7 @@ pub struct ImageTag {
     pub group_id: Option<i64>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct LinkedPrompt {
     pub id: String,
     pub title: String,
@@ -318,7 +319,7 @@ pub fn restore(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
 }
 
 /// 批量操作结果：成功数与失败数。
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct TrashBatchResult {
     pub count: usize,
     pub failures: usize,
@@ -326,13 +327,13 @@ pub struct TrashBatchResult {
 
 /// 恢复全部回收站图像，返回恢复数量。恢复是明显的更新操作，同步刷新 updated_at。
 pub fn restore_all(conn: &Connection) -> rusqlite::Result<usize> {
-    conn.execute(
+    Ok(conn.execute(
         "UPDATE images
          SET is_deleted = 0, deleted_at = NULL,
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
          WHERE is_deleted = 1",
         [],
-    )
+    )?)
 }
 
 /// 清空回收站：逐项彻底删除（含磁盘原图与缩略图），逐项容错。
@@ -569,7 +570,7 @@ fn find_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> 
 }
 
 /// 替换结果：SameImage 表示新图与旧图为同一张（MD5 相同），无需替换。
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ReplaceOutcome {
     SameImage,

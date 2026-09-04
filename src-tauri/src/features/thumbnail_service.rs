@@ -14,7 +14,7 @@ pub const PROGRESS_EVENT: &str = "thumbnail-rebuild-progress";
 
 /// 全量重建结果摘要。success 包含「已存在跳过」与「新生成」两类
 /// （与 pm 的 regenerated 计数口径一致）。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct RebuildSummary {
     pub total: usize,
     pub success: usize,
@@ -31,13 +31,13 @@ pub struct RebuildProgress {
 
 /// 懒自愈结果：fixed 为已补齐缩略图的记录（含新回写路径），
 /// missing 为无法修复的 id（记录不存在 / 原图缺失 / 生成失败）。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct EnsureResult {
     pub fixed: Vec<EnsureFixed>,
     pub missing: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct EnsureFixed {
     pub id: String,
     pub thumbnail_path: String,

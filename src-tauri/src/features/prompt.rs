@@ -10,6 +10,7 @@ use serde::Serialize;
 use tauri::State;
 
 #[tauri::command]
+#[specta::specta]
 pub fn list_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::Prompt>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::list(&conn).map_err(|e| AppError::Message(e.to_string()))
@@ -17,6 +18,7 @@ pub fn list_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::Prompt>, AppE
 
 /// 返回非删除提示词到其标签名的映射：{promptId: [tagName,...]}，供卡片 row3 与筛选。
 #[tauri::command]
+#[specta::specta]
 pub fn get_prompt_tags_map(
     db: State<BkDb>,
 ) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
@@ -44,6 +46,7 @@ pub fn get_prompt_tags_map(
 
 /// 返回每个提示词关联（未删除）的图像数：{promptId: count}，供「有图」特殊标签与排序。
 #[tauri::command]
+#[specta::specta]
 pub fn get_prompt_images_count_map(
     db: State<BkDb>,
 ) -> Result<std::collections::HashMap<String, i64>, AppError> {
@@ -68,14 +71,14 @@ pub fn get_prompt_images_count_map(
     Ok(map)
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct CreatePromptWithImagesResult {
     pub prompt: prompt_service::Prompt,
     pub results: Vec<crate::features::image_service::ImportResult>,
     pub errors: Vec<crate::features::image_service::ImportError>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct PromptTagItem {
     pub id: i64,
     pub name: String,
@@ -83,14 +86,14 @@ pub struct PromptTagItem {
     pub count: i64,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct PromptTagGroup {
     pub id: i64,
     pub name: String,
     pub sort_order: i64,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct PromptTagData {
     pub groups: Vec<PromptTagGroup>,
     pub tags: Vec<PromptTagItem>,
@@ -98,6 +101,7 @@ pub struct PromptTagData {
 
 /// 返回提示词标签筛选区所需数据：标签组 + 带关联数的标签。
 #[tauri::command]
+#[specta::specta]
 pub fn get_prompt_tag_data(db: State<BkDb>) -> Result<PromptTagData, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut groups = Vec::new();
@@ -148,6 +152,7 @@ pub fn get_prompt_tag_data(db: State<BkDb>) -> Result<PromptTagData, AppError> {
 
 /// 新建提示词（内容必需）；image_paths 非空时上传并关联到该提示词。
 #[tauri::command]
+#[specta::specta]
 pub fn create_prompt_with_images(
     db: State<BkDb>,
     app: tauri::AppHandle,
@@ -190,6 +195,7 @@ pub fn create_prompt_with_images(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn create_prompt(
     db: State<BkDb>,
     content: String,
@@ -200,6 +206,7 @@ pub fn create_prompt(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn delete_prompt(db: State<BkDb>, id: String) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::remove(&conn, &id).map_err(|e| AppError::Message(e.to_string()))
@@ -207,6 +214,7 @@ pub fn delete_prompt(db: State<BkDb>, id: String) -> Result<(), AppError> {
 
 /// 列出回收站中的提示词（已软删除）。
 #[tauri::command]
+#[specta::specta]
 pub fn list_trashed_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::Prompt>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::list_trashed(&conn).map_err(|e| AppError::Message(e.to_string()))
@@ -214,6 +222,7 @@ pub fn list_trashed_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::Promp
 
 /// 恢复回收站中的提示词。
 #[tauri::command]
+#[specta::specta]
 pub fn restore_prompt(db: State<BkDb>, id: String) -> Result<prompt_service::Prompt, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::restore(&conn, &id)
@@ -223,6 +232,7 @@ pub fn restore_prompt(db: State<BkDb>, id: String) -> Result<prompt_service::Pro
 
 /// 彻底删除回收站中的提示词。
 #[tauri::command]
+#[specta::specta]
 pub fn purge_prompt(db: State<BkDb>, id: String) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::purge(&conn, &id).map_err(|e| AppError::Message(e.to_string()))
@@ -230,6 +240,7 @@ pub fn purge_prompt(db: State<BkDb>, id: String) -> Result<(), AppError> {
 
 /// 恢复全部回收站提示词，返回恢复数量。
 #[tauri::command]
+#[specta::specta]
 pub fn restore_all_prompts(db: State<BkDb>) -> Result<usize, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::restore_all(&conn).map_err(|e| AppError::Message(e.to_string()))
@@ -237,6 +248,7 @@ pub fn restore_all_prompts(db: State<BkDb>) -> Result<usize, AppError> {
 
 /// 清空提示词回收站（关联关系级联删除）。
 #[tauri::command]
+#[specta::specta]
 pub fn empty_prompt_trash(db: State<BkDb>) -> Result<image_service::TrashBatchResult, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::empty_trash(&conn)
@@ -249,6 +261,7 @@ pub fn empty_prompt_trash(db: State<BkDb>) -> Result<image_service::TrashBatchRe
 
 /// 返回每个提示词第一张关联（未删除）图像的缩略图磁盘路径：{promptId: absPath}，供卡片背景。
 #[tauri::command]
+#[specta::specta]
 pub fn get_prompt_thumbs_map(
     app: tauri::AppHandle,
     db: State<BkDb>,
@@ -284,6 +297,7 @@ pub fn get_prompt_thumbs_map(
 
 /// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。
 #[tauri::command]
+#[specta::specta]
 pub fn update_prompt_detail(
     db: State<BkDb>,
     id: String,
@@ -311,6 +325,7 @@ pub fn update_prompt_detail(
 
 /// 同步提示词的安全评级到其关联图像（修改提示词安全评级时联动一层，参考 pm 的双向联动）。
 #[tauri::command]
+#[specta::specta]
 pub fn sync_prompt_safe_to_images(
     db: State<BkDb>,
     prompt_id: String,
@@ -329,6 +344,7 @@ pub fn sync_prompt_safe_to_images(
 
 /// 返回一个提示词关联的（未删除）图像列表（含缩略图与标签），供详情页网格展示。
 #[tauri::command]
+#[specta::specta]
 pub fn get_prompt_related_images(
     app: tauri::AppHandle,
     db: State<BkDb>,
@@ -341,6 +357,7 @@ pub fn get_prompt_related_images(
 
 /// 设为首图：提示词详情图像右键，调整关联 sort_order 使该图排首位（对齐 pm）。
 #[tauri::command]
+#[specta::specta]
 pub fn set_prompt_first_image(
     db: State<BkDb>,
     prompt_id: String,
@@ -352,6 +369,7 @@ pub fn set_prompt_first_image(
 
 /// 为单个提示词添加一个标签（不存在则创建），返回新增关联的标签。
 #[tauri::command]
+#[specta::specta]
 pub fn add_prompt_tag(
     db: State<BkDb>,
     id: String,
@@ -373,6 +391,7 @@ pub fn add_prompt_tag(
 
 /// 为多个提示词批量添加同一个标签（单事务），与图像侧 batch_add_image_tag 命名对齐。
 #[tauri::command]
+#[specta::specta]
 pub fn batch_add_prompt_tag(
     db: State<BkDb>,
     ids: Vec<String>,
@@ -385,6 +404,7 @@ pub fn batch_add_prompt_tag(
 
 /// 移除提示词的一个标签关联。
 #[tauri::command]
+#[specta::specta]
 pub fn remove_prompt_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::remove_prompt_tag(&conn, &id, tag_id)
@@ -393,6 +413,7 @@ pub fn remove_prompt_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(),
 
 /// 提示词详情解绑图像：从提示词移除一张图像的关联（与图像侧 remove_prompt_from_image 对称）。
 #[tauri::command]
+#[specta::specta]
 pub fn remove_image_from_prompt(
     db: State<BkDb>,
     prompt_id: String,
@@ -405,6 +426,7 @@ pub fn remove_image_from_prompt(
 
 /// 为已存在的提示词导入外部图像并关联（复用导入 + 幂等关联），供详情页「从外界导入」。
 #[tauri::command]
+#[specta::specta]
 pub fn add_images_to_prompt(
     app: tauri::AppHandle,
     db: State<BkDb>,

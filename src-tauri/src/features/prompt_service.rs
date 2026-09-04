@@ -7,7 +7,7 @@ use rusqlite::{Connection, OptionalExtension, Result};
 
 use serde::Serialize;
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct Prompt {
     pub id: String,
     pub title: String,
@@ -135,13 +135,13 @@ pub fn purge(conn: &Connection, id: &str) -> Result<()> {
 
 /// 恢复全部回收站提示词，返回恢复数量。恢复是明显的更新操作，同步刷新 updated_at。
 pub fn restore_all(conn: &Connection) -> Result<usize> {
-    conn.execute(
+    Ok(conn.execute(
         "UPDATE prompts
          SET is_deleted = 0, deleted_at = NULL,
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
          WHERE is_deleted = 1",
         [],
-    )
+    )?)
 }
 
 /// 清空回收站提示词（关联关系随外键级联删除），返回清理数量。
@@ -239,7 +239,7 @@ pub fn update_detail(
 }
 
 /// 提示词关联的（未删除）图像及其标签，供详情页图像网格展示。
-#[derive(Debug, serde::Serialize, Clone)]
+#[derive(Debug, serde::Serialize, Clone, specta::Type)]
 pub struct RelatedImage {
     pub id: String,
     pub file_name: String,

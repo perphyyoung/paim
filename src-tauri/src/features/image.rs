@@ -12,6 +12,7 @@ use crate::features::thumbnail_service::{self, EnsureResult, RebuildProgress, Re
 use tauri::{Emitter, Manager, State};
 
 #[tauri::command]
+#[specta::specta]
 pub fn upload_images(
     app: tauri::AppHandle,
     db: State<BkDb>,
@@ -51,6 +52,7 @@ pub fn upload_images(
 
 /// 为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。
 #[tauri::command]
+#[specta::specta]
 pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<String, AppError> {
     use std::path::PathBuf;
     let src = PathBuf::from(&source);
@@ -79,6 +81,7 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn upload_image(
     app: tauri::AppHandle,
     db: State<BkDb>,
@@ -95,6 +98,7 @@ pub fn upload_image(
 
 /// 替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。
 #[tauri::command]
+#[specta::specta]
 pub fn replace_image(
     app: tauri::AppHandle,
     db: State<BkDb>,
@@ -106,6 +110,7 @@ pub fn replace_image(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn list_images(
     db: State<BkDb>,
     limit: Option<i64>,
@@ -122,6 +127,7 @@ pub fn list_images(
 
 /// 将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。
 #[tauri::command]
+#[specta::specta]
 pub fn relate_images_to_prompt(
     db: State<BkDb>,
     prompt_id: String,
@@ -137,12 +143,14 @@ pub fn relate_images_to_prompt(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn list_trash(db: State<BkDb>) -> Result<Vec<Image>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::list_trashed(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn delete_image(db: State<BkDb>, id: String) -> Result<Image, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::soft_delete(&conn, &id)
@@ -151,6 +159,7 @@ pub fn delete_image(db: State<BkDb>, id: String) -> Result<Image, AppError> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn restore_image(db: State<BkDb>, id: String) -> Result<Image, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::restore(&conn, &id)
@@ -159,6 +168,7 @@ pub fn restore_image(db: State<BkDb>, id: String) -> Result<Image, AppError> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn purge_image(app: tauri::AppHandle, db: State<BkDb>, id: String) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::purge(&conn, &app, &id).map_err(|e| AppError::Message(e.to_string()))
@@ -166,6 +176,7 @@ pub fn purge_image(app: tauri::AppHandle, db: State<BkDb>, id: String) -> Result
 
 /// 恢复全部回收站图像，返回恢复数量。
 #[tauri::command]
+#[specta::specta]
 pub fn restore_all_images(db: State<BkDb>) -> Result<usize, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::restore_all(&conn).map_err(|e| AppError::Message(e.to_string()))
@@ -173,6 +184,7 @@ pub fn restore_all_images(db: State<BkDb>) -> Result<usize, AppError> {
 
 /// 清空图像回收站（逐项彻底删除，含磁盘文件），逐项容错。
 #[tauri::command]
+#[specta::specta]
 pub fn empty_image_trash(
     app: tauri::AppHandle,
     db: State<BkDb>,
@@ -183,6 +195,7 @@ pub fn empty_image_trash(
 
 /// 返回指定图像的缩略图磁盘路径，前端配合 convertFileSrc 加载。
 #[tauri::command]
+#[specta::specta]
 pub fn get_thumbnail(
     app: tauri::AppHandle,
     db: State<BkDb>,
@@ -208,6 +221,7 @@ pub fn get_thumbnail(
 
 /// 返回单张图像详情。
 #[tauri::command]
+#[specta::specta]
 pub fn get_image_detail(db: State<BkDb>, id: String) -> Result<Image, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::get_by_id(&conn, &id)
@@ -217,6 +231,7 @@ pub fn get_image_detail(db: State<BkDb>, id: String) -> Result<Image, AppError> 
 
 /// 返回图像原图磁盘路径，前端配合 convertFileSrc 加载（详情页大图使用）。
 #[tauri::command]
+#[specta::specta]
 pub fn get_image_src(
     app: tauri::AppHandle,
     db: State<BkDb>,
@@ -242,6 +257,7 @@ pub fn get_image_src(
 
 /// 更新图像详情字段（文件名、备注、收藏、安全评级）。
 #[tauri::command]
+#[specta::specta]
 pub fn update_image_detail(
     db: State<BkDb>,
     id: String,
@@ -265,6 +281,7 @@ pub fn update_image_detail(
 
 /// 同步图像的安全评级到其关联提示词（修改图像安全评级时联动一层，参考 pm 的双向联动）。
 #[tauri::command]
+#[specta::specta]
 pub fn sync_image_safe_to_prompts(
     db: State<BkDb>,
     image_id: String,
@@ -283,6 +300,7 @@ pub fn sync_image_safe_to_prompts(
 
 /// 返回图像的标签列表。
 #[tauri::command]
+#[specta::specta]
 pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut stmt = conn
@@ -312,6 +330,7 @@ pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, AppE
 
 /// 为单个图像添加一个标签：标签不存在则创建，关联存在则忽略，并更新图像的 updated_at。
 #[tauri::command]
+#[specta::specta]
 pub fn add_image_tag(db: State<BkDb>, id: String, name: String) -> Result<Vec<ImageTag>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::add_image_tag(&conn, &id, &name).map_err(|e| AppError::Message(e.to_string()))
@@ -319,6 +338,7 @@ pub fn add_image_tag(db: State<BkDb>, id: String, name: String) -> Result<Vec<Im
 
 /// 为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。
 #[tauri::command]
+#[specta::specta]
 pub fn batch_add_image_tag(
     db: State<BkDb>,
     ids: Vec<String>,
@@ -331,6 +351,7 @@ pub fn batch_add_image_tag(
 
 /// 移除图像的一个标签关联。
 #[tauri::command]
+#[specta::specta]
 pub fn remove_image_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::remove_image_tag(&conn, &id, tag_id)
@@ -339,6 +360,7 @@ pub fn remove_image_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), 
 
 /// 图像详情解绑提示词：从图像移除一条提示词关联（与提示词侧 remove_image_from_prompt 对称）。
 #[tauri::command]
+#[specta::specta]
 pub fn remove_prompt_from_image(
     db: State<BkDb>,
     image_id: String,
@@ -351,6 +373,7 @@ pub fn remove_prompt_from_image(
 
 /// 返回全部图像标签（供标签筛选区渲染），按名称排序。
 #[tauri::command]
+#[specta::specta]
 pub fn list_all_image_tags(db: State<BkDb>) -> Result<Vec<ImageTag>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut stmt = conn
@@ -374,6 +397,7 @@ pub fn list_all_image_tags(db: State<BkDb>) -> Result<Vec<ImageTag>, AppError> {
 
 /// 返回非删除图像到其标签名的映射：{imageId: [tagName,...]}，供前端内存过滤。
 #[tauri::command]
+#[specta::specta]
 pub fn get_image_tags_map(
     db: State<BkDb>,
 ) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
@@ -401,6 +425,7 @@ pub fn get_image_tags_map(
 
 /// 返回非删除图像到其关联提示词内容的映射：{imageId: [content,...]}，供卡片 row2 显示。
 #[tauri::command]
+#[specta::specta]
 pub fn get_image_prompts_map(
     db: State<BkDb>,
 ) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
@@ -428,6 +453,7 @@ pub fn get_image_prompts_map(
 
 /// 返回单张图像关联的提示词列表（含标题/内容/翻译/备注/标签），供详情页左侧展示。
 #[tauri::command]
+#[specta::specta]
 pub fn get_image_related_prompts(
     db: State<BkDb>,
     id: String,
@@ -482,6 +508,7 @@ pub fn get_image_related_prompts(
 
 /// 为指定图像新建提示词并关联（复用 create_prompt + relate），供图像详情「新建提示词」。
 #[tauri::command]
+#[specta::specta]
 pub fn create_prompt_for_image(
     db: State<BkDb>,
     content: String,
@@ -498,6 +525,7 @@ pub fn create_prompt_for_image(
 /// 设置页「重建缩略图」：扫描全部图像，补齐丢失的缩略图文件并回写路径，
 /// 进度经 thumbnail-rebuild-progress 事件推送。重 IO 长任务，async + spawn_blocking。
 #[tauri::command]
+#[specta::specta]
 pub async fn rebuild_thumbnails(app: tauri::AppHandle) -> Result<RebuildSummary, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let data_dir = crate::db::data_dir(&app);
@@ -523,6 +551,7 @@ pub async fn rebuild_thumbnails(app: tauri::AppHandle) -> Result<RebuildSummary,
 /// 懒自愈：批量校验指定图像的缩略图文件，缺失且原图存在时按需生成并回写。
 /// 正常路径仅 N 次文件存在性检查，同步命令即可。
 #[tauri::command]
+#[specta::specta]
 pub fn ensure_image_thumbnails(
     app: tauri::AppHandle,
     db: State<BkDb>,

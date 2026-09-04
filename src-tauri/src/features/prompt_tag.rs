@@ -11,6 +11,7 @@ use tauri::State;
 
 /// 返回提示词标签管理页所需数据（标签组 + 带计数的标签）。
 #[tauri::command]
+#[specta::specta]
 pub fn list_prompt_tag_groups(db: State<BkDb>) -> Result<tag_manager::TagManagerData, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     tag_manager::load_manager_data(&conn, TagDomain::Prompt)
@@ -19,6 +20,7 @@ pub fn list_prompt_tag_groups(db: State<BkDb>) -> Result<tag_manager::TagManager
 
 /// 新建标签组，返回新组。
 #[tauri::command]
+#[specta::specta]
 pub fn create_prompt_tag_group(
     db: State<BkDb>,
     name: String,
@@ -36,6 +38,7 @@ pub fn create_prompt_tag_group(
 
 /// 编辑标签组：更新名称与排序数值。
 #[tauri::command]
+#[specta::specta]
 pub fn update_prompt_tag_group(
     db: State<BkDb>,
     id: i64,
@@ -60,6 +63,7 @@ pub fn update_prompt_tag_group(
 
 /// 删除标签组（组内标签交由外键 ON DELETE SET NULL 变为未分组）。
 #[tauri::command]
+#[specta::specta]
 pub fn delete_prompt_tag_group(db: State<BkDb>, id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     tag_manager::delete_group(&conn, TagDomain::Prompt, id)
@@ -68,6 +72,7 @@ pub fn delete_prompt_tag_group(db: State<BkDb>, id: i64) -> Result<(), AppError>
 
 /// 新建标签（可指定所属组），返回新标签。
 #[tauri::command]
+#[specta::specta]
 pub fn create_prompt_tag(
     db: State<BkDb>,
     name: String,
@@ -85,6 +90,7 @@ pub fn create_prompt_tag(
 
 /// 重命名标签。
 #[tauri::command]
+#[specta::specta]
 pub fn rename_prompt_tag(db: State<BkDb>, id: i64, name: String) -> Result<(), AppError> {
     if name.trim().is_empty() {
         return Err("标签名不能为空".into());
@@ -98,6 +104,7 @@ pub fn rename_prompt_tag(db: State<BkDb>, id: i64, name: String) -> Result<(), A
 
 /// 删除标签（关联关系由外键 CASCADE 一并清除）。
 #[tauri::command]
+#[specta::specta]
 pub fn delete_prompt_tag(db: State<BkDb>, id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     tag_manager::delete_tag(&conn, TagDomain::Prompt, id)
@@ -106,6 +113,7 @@ pub fn delete_prompt_tag(db: State<BkDb>, id: i64) -> Result<(), AppError> {
 
 /// 移动标签到指定组（group_id 为 null 表示未分组）。
 #[tauri::command]
+#[specta::specta]
 pub fn move_prompt_tag_to_group(
     db: State<BkDb>,
     id: i64,
@@ -118,6 +126,7 @@ pub fn move_prompt_tag_to_group(
 
 /// 将标签组固定到首位（sort_order 设为当前最小值 - 1）。
 #[tauri::command]
+#[specta::specta]
 pub fn pin_prompt_tag_group_to_top(db: State<BkDb>, id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     tag_manager::pin_group_to_top(&conn, TagDomain::Prompt, id)

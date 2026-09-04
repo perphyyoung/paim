@@ -6,10 +6,122 @@ pub mod text_utils;
 
 use tauri::Manager;
 
+/// tauri-specta 命令注册表：单一事实源，同时供 invoke_handler 与 TS 绑定导出使用。
+/// 新增命令必须：① `#[specta::specta]` 标注；② 在此注册；③ `cargo test export_bindings` 重新生成绑定。
+fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        // 官方推荐：将 i64/u64 等 BigInt 类型统一导出为 TS number（file_size 值域 < 2^53，安全）
+        .dangerously_cast_bigints_to_number()
+        .commands(tauri_specta::collect_commands![
+            // —— 提示词通用 ——
+            features::prompt::list_prompts,
+            features::prompt::create_prompt,
+            features::prompt::delete_prompt,
+            features::prompt::update_prompt_detail,
+            features::prompt::create_prompt_with_images,
+            features::prompt::add_images_to_prompt,
+            features::prompt::list_trashed_prompts,
+            features::prompt::restore_prompt,
+            features::prompt::purge_prompt,
+            features::prompt::restore_all_prompts,
+            features::prompt::empty_prompt_trash,
+            features::prompt::get_prompt_tags_map,
+            features::prompt::get_prompt_images_count_map,
+            features::prompt::get_prompt_thumbs_map,
+            features::prompt::get_prompt_related_images,
+            features::prompt::set_prompt_first_image,
+            features::prompt::get_prompt_tag_data,
+            features::prompt::add_prompt_tag,
+            features::prompt::batch_add_prompt_tag,
+            features::prompt::remove_prompt_tag,
+            features::prompt::remove_image_from_prompt,
+            features::image::remove_prompt_from_image,
+            // —— 图像通用 ——
+            features::image::upload_image,
+            features::image::upload_images,
+            features::image::get_source_thumbnail,
+            features::image::list_images,
+            features::image::get_thumbnail,
+            features::image::get_image_detail,
+            features::image::get_image_src,
+            features::image::replace_image,
+            features::image::update_image_detail,
+            features::image::create_prompt_for_image,
+            features::image::relate_images_to_prompt,
+            features::image::list_trash,
+            features::image::delete_image,
+            features::image::restore_image,
+            features::image::purge_image,
+            features::image::restore_all_images,
+            features::image::empty_image_trash,
+            features::image::get_image_tags,
+            features::image::add_image_tag,
+            features::image::batch_add_image_tag,
+            features::image::remove_image_tag,
+            features::image::list_all_image_tags,
+            features::image::get_image_tags_map,
+            features::image::get_image_prompts_map,
+            features::image::get_image_related_prompts,
+            features::image::rebuild_thumbnails,
+            features::image::ensure_image_thumbnails,
+            // —— 提示词标签管理 ——
+            features::prompt_tag::list_prompt_tag_groups,
+            features::prompt_tag::create_prompt_tag_group,
+            features::prompt_tag::update_prompt_tag_group,
+            features::prompt_tag::delete_prompt_tag_group,
+            features::prompt_tag::create_prompt_tag,
+            features::prompt_tag::rename_prompt_tag,
+            features::prompt_tag::delete_prompt_tag,
+            features::prompt_tag::move_prompt_tag_to_group,
+            features::prompt_tag::pin_prompt_tag_group_to_top,
+            // —— 图像标签管理 ——
+            features::image_tag::list_image_tag_groups,
+            features::image_tag::create_image_tag_group,
+            features::image_tag::update_image_tag_group,
+            features::image_tag::delete_image_tag_group,
+            features::image_tag::create_image_tag,
+            features::image_tag::rename_image_tag,
+            features::image_tag::delete_image_tag,
+            features::image_tag::move_image_tag_to_group,
+            features::image_tag::pin_image_tag_group_to_top,
+            // —— 日志 & 数据目录 ——
+            logging::log_msg,
+            db::get_data_dir,
+            db::open_data_dir,
+            db::open_image_location,
+            db::batch_toggle_image_favorite,
+            db::batch_toggle_prompt_favorite,
+            features::prompt::sync_prompt_safe_to_images,
+            features::image::sync_image_safe_to_prompts,
+            // —— pm 备份导入 ——
+            features::pm_backup::inspect_pm_backup,
+            features::pm_backup::import_pm_backup,
+        ])
+}
+
+/// 导出 TypeScript 绑定：debug 构建启动时自动导出到 ../src/bindings.ts
+/// （测试二进制在 Windows 下有 DLL 加载问题，故不在测试中导出）。
+#[cfg(debug_assertions)]
+fn export_bindings(builder: &tauri_specta::Builder<tauri::Wry>) {
+    builder
+        .export(
+            specta_typescript::Typescript::default(),
+            "../src/bindings.ts",
+        )
+        .expect("导出 TypeScript 绑定失败");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let specta_builder = specta_builder();
+
+    #[cfg(debug_assertions)]
+    export_bindings(&specta_builder);
+
     tauri::Builder::default()
-    .setup(|app| {
+    .invoke_handler(specta_builder.invoke_handler())
+    .setup(move |app| {
+      specta_builder.mount_events(app);
       app.handle().plugin(tauri_plugin_dialog::init())?;
 
       // 全局快捷键：Ctrl+Shift+, 切换设置面板（系统级钩子，不受输入法/WebView 焦点影响）
@@ -85,91 +197,6 @@ pub fn run() {
 
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![
-      // —— 提示词通用 ——
-      features::prompt::list_prompts,
-      features::prompt::create_prompt,
-      features::prompt::delete_prompt,
-      features::prompt::update_prompt_detail,
-      features::prompt::create_prompt_with_images,
-      features::prompt::add_images_to_prompt,
-      features::prompt::list_trashed_prompts,
-      features::prompt::restore_prompt,
-      features::prompt::purge_prompt,
-      features::prompt::restore_all_prompts,
-      features::prompt::empty_prompt_trash,
-      features::prompt::get_prompt_tags_map,
-      features::prompt::get_prompt_images_count_map,
-      features::prompt::get_prompt_thumbs_map,
-      features::prompt::get_prompt_related_images,
-      features::prompt::set_prompt_first_image,
-      features::prompt::get_prompt_tag_data,
-      features::prompt::add_prompt_tag,
-      features::prompt::batch_add_prompt_tag,
-      features::prompt::remove_prompt_tag,
-      features::prompt::remove_image_from_prompt,
-      features::image::remove_prompt_from_image,
-      // —— 图像通用 ——
-      features::image::upload_image,
-      features::image::upload_images,
-      features::image::get_source_thumbnail,
-      features::image::list_images,
-      features::image::get_thumbnail,
-      features::image::get_image_detail,
-      features::image::get_image_src,
-      features::image::replace_image,
-      features::image::update_image_detail,
-      features::image::create_prompt_for_image,
-      features::image::relate_images_to_prompt,
-      features::image::list_trash,
-      features::image::delete_image,
-      features::image::restore_image,
-      features::image::purge_image,
-      features::image::restore_all_images,
-      features::image::empty_image_trash,
-      features::image::get_image_tags,
-      features::image::add_image_tag,
-      features::image::batch_add_image_tag,
-      features::image::remove_image_tag,
-      features::image::list_all_image_tags,
-      features::image::get_image_tags_map,
-      features::image::get_image_prompts_map,
-      features::image::get_image_related_prompts,
-      features::image::rebuild_thumbnails,
-      features::image::ensure_image_thumbnails,
-      // —— 提示词标签管理 ——
-      features::prompt_tag::list_prompt_tag_groups,
-      features::prompt_tag::create_prompt_tag_group,
-      features::prompt_tag::update_prompt_tag_group,
-      features::prompt_tag::delete_prompt_tag_group,
-      features::prompt_tag::create_prompt_tag,
-      features::prompt_tag::rename_prompt_tag,
-      features::prompt_tag::delete_prompt_tag,
-      features::prompt_tag::move_prompt_tag_to_group,
-      features::prompt_tag::pin_prompt_tag_group_to_top,
-      // —— 图像标签管理 ——
-      features::image_tag::list_image_tag_groups,
-      features::image_tag::create_image_tag_group,
-      features::image_tag::update_image_tag_group,
-      features::image_tag::delete_image_tag_group,
-      features::image_tag::create_image_tag,
-      features::image_tag::rename_image_tag,
-      features::image_tag::delete_image_tag,
-      features::image_tag::move_image_tag_to_group,
-      features::image_tag::pin_image_tag_group_to_top,
-      // —— 日志 & 数据目录 ——
-      logging::log_msg,
-      db::get_data_dir,
-      db::open_data_dir,
-      db::open_image_location,
-      db::batch_toggle_image_favorite,
-      db::batch_toggle_prompt_favorite,
-      features::prompt::sync_prompt_safe_to_images,
-      features::image::sync_image_safe_to_prompts,
-      // —— pm 备份导入 ——
-      features::pm_backup::inspect_pm_backup,
-      features::pm_backup::import_pm_backup,
-    ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

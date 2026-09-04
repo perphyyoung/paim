@@ -89,7 +89,7 @@ impl TagDomain {
 }
 
 /// 标签管理页中的标签（含所属组与关联对象数）。
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct TagItem {
     pub id: i64,
     pub name: String,
@@ -98,7 +98,7 @@ pub struct TagItem {
 }
 
 /// 标签管理页中的标签组（含排序序号，首位组即 sort_order 最小者）。
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct TagGroup {
     pub id: i64,
     pub name: String,
@@ -106,7 +106,7 @@ pub struct TagGroup {
 }
 
 /// 标签管理页数据：全部标签组 + 全部标签（含计数），供前端按需分组/排序。
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct TagManagerData {
     pub groups: Vec<TagGroup>,
     pub tags: Vec<TagItem>,

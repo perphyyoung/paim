@@ -10,6 +10,7 @@ use tauri::{Emitter, Manager};
 
 /// 解析 pm 备份包，返回内容概览（不改动本地数据）。
 #[tauri::command]
+#[specta::specta]
 pub async fn inspect_pm_backup(zip_path: String) -> Result<PmBackupInfo, AppError> {
     tauri::async_runtime::spawn_blocking(move || pm_backup_service::inspect(&zip_path))
         .await
@@ -19,6 +20,7 @@ pub async fn inspect_pm_backup(zip_path: String) -> Result<PmBackupInfo, AppErro
 
 /// 导入 pm 全量备份（整体替换当前数据），进度经 pm-import-progress 事件推送。
 #[tauri::command]
+#[specta::specta]
 pub async fn import_pm_backup(
     app: tauri::AppHandle,
     zip_path: String,

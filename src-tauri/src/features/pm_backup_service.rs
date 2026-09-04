@@ -38,7 +38,7 @@ struct BackupManifest {
 }
 
 /// 备份内容概览（供确认弹窗展示）。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct PmBackupInfo {
     pub exported_at: String,
     pub prompt_count: i64,
@@ -49,7 +49,7 @@ pub struct PmBackupInfo {
 }
 
 /// 导入结果摘要。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct PmImportSummary {
     pub prompts: i64,
     pub images: i64,
@@ -59,7 +59,7 @@ pub struct PmImportSummary {
 }
 
 /// 导入进度推送载荷。
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct ImportProgress {
     pub stage: String,
     pub percent: u32,

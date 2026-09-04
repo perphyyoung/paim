@@ -35,3 +35,11 @@ impl Serialize for AppError {
         serializer.serialize_str(&self.to_string())
     }
 }
+
+/// 跨 IPC 时 AppError 序列化为一个字符串；specta 类型同样按 string 建模，
+/// 使 tauri-specta 生成的绑定中错误分支为 string。
+impl specta::Type for AppError {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        <String as specta::Type>::definition(types)
+    }
+}
