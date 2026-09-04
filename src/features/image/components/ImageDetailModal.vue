@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+// 别名导入：组件模板用裸 v-if="open"（prop），直接导入 open 会遮蔽 prop 导致弹窗恒渲染
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useItemToggle } from "@/composables/useItemToggle";
@@ -90,7 +91,7 @@ async function replaceWithPicked() {
   const img = current.value;
   closeCtxMenu();
   if (!img) return;
-  const selected = await open({ multiple: false, filters: [REPLACE_FILTER] });
+  const selected = await openDialog({ multiple: false, filters: [REPLACE_FILTER] });
   if (!selected || Array.isArray(selected)) return;
   try {
     const outcome = await invoke<{
