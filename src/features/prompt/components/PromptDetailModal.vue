@@ -802,15 +802,8 @@ async function onPickerImported() {
     @close="fullscreenOpen = false"
   />
 
-  <!-- 右键菜单：打开本地保存位置 / 设为首图（对齐 pm，首图不显示） -->
+  <!-- 右键菜单：设为首图（对齐 pm，首图不显示）/ 打开本地保存位置 -->
   <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
-    <button
-      type="button"
-      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
-      @click="openSavedLocation"
-    >
-      打开本地保存位置
-    </button>
     <button
       v-if="ctxImageIndex > 0"
       type="button"
@@ -818,6 +811,13 @@ async function onPickerImported() {
       @click="setAsFirst"
     >
       设为首图
+    </button>
+    <button
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+      @click="openSavedLocation"
+    >
+      打开本地保存位置
     </button>
   </ContextMenu>
 </template>
