@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tauri dev",
     "dev:ui": "vite",
+    "release": "tauri build",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "format": "pnpm format:ui && pnpm format:rs",

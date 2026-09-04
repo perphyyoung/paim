@@ -16,11 +16,11 @@
 # 安装前端依赖
 pnpm install
 
-# 开发模式（启动 Vite + Tauri 窗口）
-cargo tauri dev
+# 开发模式（启动 Vite + Tauri 窗口，等效 cargo tauri dev）
+pnpm dev
 
-# 构建
-cargo tauri build
+# 构建（等效 cargo tauri build）
+pnpm release
 ```
 
 ## 目录结构
