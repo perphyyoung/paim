@@ -292,18 +292,26 @@ pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
 }
 
 /// 软删除：标记为已删除，保留文件以便恢复。
+/// 软删除是明显的更新操作，同步刷新 updated_at。
 pub fn soft_delete(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     conn.execute(
-        "UPDATE images SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        "UPDATE images
+         SET is_deleted = 1,
+             deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ?1",
         rusqlite::params![id],
     )?;
     get_by_id(conn, id)
 }
 
-/// 恢复软删除的图像。
+/// 恢复软删除的图像。恢复是明显的更新操作，同步刷新 updated_at。
 pub fn restore(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     conn.execute(
-        "UPDATE images SET is_deleted = 0, deleted_at = NULL WHERE id = ?1",
+        "UPDATE images
+         SET is_deleted = 0, deleted_at = NULL,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ?1",
         rusqlite::params![id],
     )?;
     get_by_id(conn, id)
@@ -316,10 +324,13 @@ pub struct TrashBatchResult {
     pub failures: usize,
 }
 
-/// 恢复全部回收站图像，返回恢复数量。
+/// 恢复全部回收站图像，返回恢复数量。恢复是明显的更新操作，同步刷新 updated_at。
 pub fn restore_all(conn: &Connection) -> rusqlite::Result<usize> {
     conn.execute(
-        "UPDATE images SET is_deleted = 0, deleted_at = NULL WHERE is_deleted = 1",
+        "UPDATE images
+         SET is_deleted = 0, deleted_at = NULL,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE is_deleted = 1",
         [],
     )
 }

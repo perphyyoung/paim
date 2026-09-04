@@ -73,9 +73,14 @@ pub fn list(conn: &Connection) -> Result<Vec<Prompt>> {
 }
 
 /// 软删除：标记为已删除（与图像回收站机制一致）。
+/// 软删除是明显的更新操作，同步刷新 updated_at。
 pub fn remove(conn: &Connection, id: &str) -> Result<()> {
     conn.execute(
-        "UPDATE prompts SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        "UPDATE prompts
+         SET is_deleted = 1,
+             deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ?1",
         rusqlite::params![id],
     )?;
     Ok(())
@@ -91,10 +96,13 @@ pub fn list_trashed(conn: &Connection) -> Result<Vec<Prompt>> {
     rows.collect()
 }
 
-/// 恢复软删除的提示词。
+/// 恢复软删除的提示词。恢复是明显的更新操作，同步刷新 updated_at。
 pub fn restore(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
     conn.execute(
-        "UPDATE prompts SET is_deleted = 0, deleted_at = NULL WHERE id = ?1",
+        "UPDATE prompts
+         SET is_deleted = 0, deleted_at = NULL,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ?1",
         rusqlite::params![id],
     )?;
     get_by_id(conn, id)
@@ -125,10 +133,13 @@ pub fn purge(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-/// 恢复全部回收站提示词，返回恢复数量。
+/// 恢复全部回收站提示词，返回恢复数量。恢复是明显的更新操作，同步刷新 updated_at。
 pub fn restore_all(conn: &Connection) -> Result<usize> {
     conn.execute(
-        "UPDATE prompts SET is_deleted = 0, deleted_at = NULL WHERE is_deleted = 1",
+        "UPDATE prompts
+         SET is_deleted = 0, deleted_at = NULL,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE is_deleted = 1",
         [],
     )
 }
