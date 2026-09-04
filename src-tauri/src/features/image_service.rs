@@ -335,14 +335,34 @@ pub fn empty_trash(conn: &Connection, app: &tauri::AppHandle) -> TrashBatchResul
     result
 }
 
+/// 校验图像存在，不存在则报错（避免静默创建孤立标签关联）。
+fn ensure_image_exists(tx: &rusqlite::Transaction, id: &str) -> std::result::Result<(), AppError> {
+    let found = tx
+        .query_row(
+            "SELECT 1 FROM images WHERE id = ?1",
+            rusqlite::params![id],
+            |_| Ok(()),
+        )
+        .optional()?;
+    if found.is_none() {
+        return Err(AppError::Message(format!("图像 {id} 不存在")));
+    }
+    Ok(())
+}
+
 /// 为单个图像添加一个标签（不存在则创建，关联存在则忽略），并更新图像的 updated_at。
-pub fn add_image_tag(conn: &Connection, id: &str, name: &str) -> Result<Vec<ImageTag>> {
+pub fn add_image_tag(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+) -> std::result::Result<Vec<ImageTag>, AppError> {
     let tx = conn.unchecked_transaction()?;
+    ensure_image_exists(&tx, id)?;
     let tag_id = get_or_create_image_tag(&tx, name)?;
-    let _ = tx.execute(
+    tx.execute(
         "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
         rusqlite::params![id, tag_id],
-    );
+    )?;
     tx.execute(
         "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
         rusqlite::params![id],
@@ -356,14 +376,21 @@ pub fn add_image_tag(conn: &Connection, id: &str, name: &str) -> Result<Vec<Imag
 }
 
 /// 为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。
-pub fn batch_add_image_tag(conn: &Connection, ids: &[&str], name: &str) -> Result<()> {
+pub fn batch_add_image_tag(
+    conn: &Connection,
+    ids: &[&str],
+    name: &str,
+) -> std::result::Result<(), AppError> {
     let tx = conn.unchecked_transaction()?;
+    for id in ids {
+        ensure_image_exists(&tx, id)?;
+    }
     let tag_id = get_or_create_image_tag(&tx, name)?;
     for id in ids {
-        let _ = tx.execute(
+        tx.execute(
             "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
             rusqlite::params![id, tag_id],
-        );
+        )?;
         tx.execute(
             "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
             rusqlite::params![id],

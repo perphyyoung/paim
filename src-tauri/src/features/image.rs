@@ -315,7 +315,6 @@ pub fn add_image_tag_batch(
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
     image_service::batch_add_image_tag(&conn, &id_refs, &name)
-        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 移除图像的一个标签关联。

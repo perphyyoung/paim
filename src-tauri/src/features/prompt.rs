@@ -370,7 +370,6 @@ pub fn add_prompt_tag_batch(
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
     prompt_service::batch_add_prompt_tag(&conn, &id_refs, &name)
-        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 移除提示词的一个标签关联。

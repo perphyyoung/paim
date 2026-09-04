@@ -1,6 +1,19 @@
 //! 图像领域服务单元测试：搜索/标签 WHERE 子句拼接（filter_sql）。
 
-use super::{filter_sql, update_detail};
+use super::{add_image_tag, batch_add_image_tag, filter_sql, update_detail};
+use crate::db;
+
+/// 建临时库（含完整 DDL），返回目录与连接句柄。
+fn setup_image_db() -> (std::path::PathBuf, db::BkDb) {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("paim-image-service-test-{nanos}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = db::init(dir.join("paim.db")).expect("init test db");
+    (dir, db)
+}
 
 #[test]
 fn search_escapes_wildcards_and_adds_escape_clause() {
@@ -72,4 +85,59 @@ fn update_detail_rejects_empty_file_name() {
         .unwrap()
         .expect("row must exist");
     assert_eq!(upd.file_name, "b.png");
+}
+
+#[test]
+fn add_image_tag_rejects_missing_image() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path)
+         VALUES ('i1', 'a.png', 's.png', 'x')",
+        [],
+    )
+    .unwrap();
+
+    // 不存在的图像：报错且不留孤立标签
+    let err = add_image_tag(&conn, "missing", "tag1").unwrap_err();
+    assert!(err.to_string().contains("不存在"), "实际：{err}");
+    let cnt: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM image_tags WHERE name = 'tag1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(cnt, 0);
+
+    // 存在的图像正常添加
+    let added = add_image_tag(&conn, "i1", "tag1").unwrap();
+    assert_eq!(added.len(), 1);
+}
+
+#[test]
+fn batch_add_image_tag_rejects_any_missing_id() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path)
+         VALUES ('i1', 'a.png', 's.png', 'x')",
+        [],
+    )
+    .unwrap();
+
+    // 混入不存在的 id：整批失败且完全回滚（i1 也不应有关联）
+    let err = batch_add_image_tag(&conn, &["i1", "missing"], "tag1").unwrap_err();
+    assert!(err.to_string().contains("不存在"), "实际：{err}");
+    let cnt: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM image_tag_relations WHERE image_id = 'i1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(cnt, 0);
+
+    // 全部存在时正常
+    batch_add_image_tag(&conn, &["i1"], "tag1").unwrap();
 }

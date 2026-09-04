@@ -258,27 +258,54 @@ pub fn list_related_images(
     Ok(out)
 }
 
+/// 校验提示词存在，不存在则报错（避免静默创建孤立标签关联）。
+fn ensure_prompt_exists(tx: &rusqlite::Transaction, id: &str) -> std::result::Result<(), AppError> {
+    let found = tx
+        .query_row(
+            "SELECT 1 FROM prompts WHERE id = ?1",
+            rusqlite::params![id],
+            |_| Ok(()),
+        )
+        .optional()?;
+    if found.is_none() {
+        return Err(AppError::Message(format!("提示词 {id} 不存在")));
+    }
+    Ok(())
+}
+
 /// 为单个提示词添加一个标签（不存在则创建，关联存在则忽略），返回关联的标签。
-pub fn add_prompt_tag(conn: &Connection, id: &str, name: &str) -> Result<Vec<(i64, String)>> {
+pub fn add_prompt_tag(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+) -> std::result::Result<Vec<(i64, String)>, AppError> {
     let tx = conn.unchecked_transaction()?;
+    ensure_prompt_exists(&tx, id)?;
     let tag_id = get_or_create_prompt_tag(&tx, name)?;
-    let _ = tx.execute(
+    tx.execute(
         "INSERT OR IGNORE INTO prompt_tag_relations(prompt_id, tag_id) VALUES (?1, ?2)",
         rusqlite::params![id, tag_id],
-    );
+    )?;
     tx.commit()?;
     Ok(vec![(tag_id, name.to_string())])
 }
 
 /// 为多个提示词批量添加同一个标签（单事务）：一次为多个项目打同一个标签。
-pub fn batch_add_prompt_tag(conn: &Connection, ids: &[&str], name: &str) -> Result<()> {
+pub fn batch_add_prompt_tag(
+    conn: &Connection,
+    ids: &[&str],
+    name: &str,
+) -> std::result::Result<(), AppError> {
     let tx = conn.unchecked_transaction()?;
+    for id in ids {
+        ensure_prompt_exists(&tx, id)?;
+    }
     let tag_id = get_or_create_prompt_tag(&tx, name)?;
     for id in ids {
-        let _ = tx.execute(
+        tx.execute(
             "INSERT OR IGNORE INTO prompt_tag_relations(prompt_id, tag_id) VALUES (?1, ?2)",
             rusqlite::params![id, tag_id],
-        );
+        )?;
     }
     tx.commit()?;
     Ok(())
