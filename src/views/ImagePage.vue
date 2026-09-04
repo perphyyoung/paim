@@ -274,8 +274,8 @@ async function loadTagFilter() {
   }
 }
 
-// 拖拽筛选区标签到卡片：快捷添加标签
-useCardTagAdd({ domain: "image", tagNames, loadTagFilter, showToast });
+// 拖拽筛选区标签到卡片：快捷添加标签（激活时注册，KeepAlive 下与另一主页共用单例回调）
+const cardTagAdd = useCardTagAdd({ domain: "image", tagNames, loadTagFilter, showToast });
 
 // 右键菜单
 const ctxMenu = ref<{ x: number; y: number; image: Image } | null>(null);
@@ -576,6 +576,7 @@ onMounted(() => {
   loadTagFilter();
 });
 onActivated(() => {
+  cardTagAdd.activate();
   window.addEventListener("click", closeCtxMenu);
   if (consumePageStale("images")) {
     loadImages();
@@ -584,6 +585,7 @@ onActivated(() => {
   restoreSaved();
 });
 onDeactivated(() => {
+  cardTagAdd.deactivate();
   window.removeEventListener("click", closeCtxMenu);
   exitBatch(); // 切走主页时退出批量模式，避免误操作
 });

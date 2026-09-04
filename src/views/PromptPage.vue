@@ -393,8 +393,8 @@ async function loadTagFilter() {
   }
 }
 
-// 拖拽筛选区标签到卡片：快捷添加标签
-useCardTagAdd({ domain: "prompt", tagNames, loadTagFilter, showToast });
+// 拖拽筛选区标签到卡片：快捷添加标签（激活时注册，KeepAlive 下与另一主页共用单例回调）
+const cardTagAdd = useCardTagAdd({ domain: "prompt", tagNames, loadTagFilter, showToast });
 function onModalUploaded() {
   // 新建提示词若选择了图像，图像主页卡片的关联提示词文案已变化
   markPageStale("images");
@@ -517,14 +517,18 @@ onMounted(() => {
   loadTagFilter();
 });
 onActivated(() => {
+  cardTagAdd.activate();
   if (consumePageStale("prompts")) {
     loadPrompts();
     loadTagFilter();
   }
   restoreSaved();
 });
-// 切走主页时退出批量模式，避免误操作
-onDeactivated(() => exitBatch());
+// 切走主页时退出批量模式，避免误操作；并注销卡片拖拽回调
+onDeactivated(() => {
+  exitBatch();
+  cardTagAdd.deactivate();
+});
 
 // ---- 主页快捷键（统一注册：Ctrl+F 搜索、Ctrl+P/I 切页、F5 刷新、Ctrl+T 标签折叠、Ctrl+A 全选）----
 const searchInput = ref<HTMLInputElement | null>(null);

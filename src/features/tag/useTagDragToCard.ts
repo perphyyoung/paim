@@ -111,12 +111,15 @@ export interface UseCardTagAddOptions {
  * 拖拽筛选区标签到卡片：快捷添加标签（图像/提示词主页共用）。
  * 命令名按域拼 `add_{image|prompt}_tag`（单条目添加，非 batch），
  * 重复标签提示已存在，成功后本地合并 tagNames 并刷新筛选区。
+ *
+ * 两主页被 KeepAlive 缓存且共用单例回调注册：返回 activate/deactivate
+ * 供页面在 onActivated/onDeactivated 中调用，保证 drop 回调始终属于当前页。
  */
 export function useCardTagAdd(options: UseCardTagAddOptions) {
   const { domain, tagNames, loadTagFilter, showToast } = options;
   const command = `add_${domain}_tag`;
 
-  registerCardTagDrop(async (cardId, tagName) => {
+  const dropFn = async (cardId: string, tagName: string) => {
     const existing = tagNames.value[cardId];
     if (existing?.includes(tagName)) {
       showToast(`标签「${tagName}」已存在`, "warning");
@@ -130,5 +133,17 @@ export function useCardTagAdd(options: UseCardTagAddOptions) {
     } catch (e) {
       showToast(`添加标签失败：${e}`, "error");
     }
-  });
+  };
+
+  let unregister: (() => void) | null = null;
+  return {
+    activate: () => {
+      unregister?.();
+      unregister = registerCardTagDrop(dropFn);
+    },
+    deactivate: () => {
+      unregister?.();
+      unregister = null;
+    },
+  };
 }
