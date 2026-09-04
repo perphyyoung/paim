@@ -77,3 +77,25 @@ std::process::Command::new("explorer")
 
 - Windows 用 `explorer /select,<file>` 定位文件时：参数必须拆分传（`/select,` 与路径分开），路径必须全反斜杠。
 - 排查同类问题时先与参考项目（lap 等）比对参数调用形式，不要先在业务代码里加条件/回退逻辑。
+
+## 3. tauri-specta 集成：BigInt 绕过方式错误与前端迁移
+
+### 现象
+
+集成 tauri-specta 自动生成 TS 绑定时，导出报「BigInt 类型禁止导出」错误；为绕过限制把一批业务类型从 `usize`/`i64` 改成 `i32`，引入 16 个编译错误并造成大范围返工；后续把 i32 还原为原始类型时又出现残留；前端迁移阶段还有若干类型不兼容报错。
+
+### 根因与教训
+
+1. **猜 API 而非查文档**：逐字段加 `#[specta(type = Number)]` 是字段级覆盖手段，但官方对「BigInt 类型导出」的推荐方式是 Builder 级配置 `dangerously_cast_bigints_to_number()`，一行全局生效、业务类型零侵入。为绕过导出限制去修改运行时类型（usize→i32）是本末倒置——类型应服务运行时语义，不应为绑定导出让路。
+2. **rc 版本文档不可用时读源码**：docs.rs 对 rc 版本经常构建失败（rc.25 即失败）。可靠途径是让 cargo 下载宏 crate（启用对应 feature 后），直接读本地 registry 里的宏源码——`Event` derive 的命名规则（默认类型名 kebab-case）与 `#[tauri_specta(event_name = "...")]` 属性就是读源码确认的。
+3. **确认默认行为再选型**：`ErrorHandlingMode` 默认是 `Result`（判别联合 `{ status, data/error }`），与项目既有 try/catch + toast 模式不匹配；两种模式都官方支持，选 `Throw`（Promise reject）迁移量最小。决策前先查 enum 的 `#[default]`。
+4. **replace_all 批量替换有遗漏风险**：用 `id: i32,`（带逗号）模式还原时漏掉了 `id: i32)`（右括号）形式的 9 处。批量替换后必须 `rg` 全局扫描确认清零，不能只看编译通过（此处 i32 传 i32 恰好能编译）。
+5. **编辑事故残留会伪装成新问题**：还原过程中发现此前编辑事故写入的字面 `` `n `` 字符残留在两个 `restore_all` 函数中（还丢了 `?` 与右括号），排查时先排除文件本身被污染的可能。
+6. **前端迁移的机械差异**：bindings 命令是**位置参数 + camelCase**（内部组包 snake_case 对象）；模板字符串拼命令名（`` `add_${domain}_tag` ``）必须改为 bindings 函数分派；本地重复类型定义应删除并从 bindings 导入（api 层用 re-export 保持下游别名兼容）；后端 `Option<T>` 字段导出为 `T | null` 且可能带 `?` 可选标记，组件 props 逐层传播时要同步兼容。
+
+### 后续参考 / 通用约束
+
+- 遇到 specta 导出限制，先查 Builder 配置（`dangerously_cast_bigints_to_number` / `error_handling` 等），禁止为绑定导出修改业务类型。
+- 批量类型替换后必须全局 `rg` 扫描验证清零；「编译通过」不等于「替换完整」。
+- 集成新库前用三处交叉确认 API：docs.rs 版本页 → Builder 源码 → 宏 crate 源码；不猜 API。
+- 修改命令签名后重新跑 `pnpm dev` 重新生成 `src/bindings.ts`，`vue-tsc` 会立即报出所有失配调用点——这正是类型安全绑定的核心价值。

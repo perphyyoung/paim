@@ -14,7 +14,8 @@ use tauri_specta::Event;
 pub struct GlobalShortcutEvent(pub String);
 
 /// tauri-specta 命令注册表：单一事实源，同时供 invoke_handler 与 TS 绑定导出使用。
-/// 新增命令必须：① `#[specta::specta]` 标注；② 在此注册；③ `cargo test export_bindings` 重新生成绑定。
+/// 新增命令必须：① `#[specta::specta]` 标注；② 在此注册；③ 跑 debug 构建（pnpm dev）
+/// 自动重新导出 ../src/bindings.ts（见下方 export_bindings，流程详见 docs/新增命令说明(tauri-specta 版).md）。
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         // 官方推荐：将 i64/u64 等 BigInt 类型统一导出为 TS number（file_size 值域 < 2^53，安全）
