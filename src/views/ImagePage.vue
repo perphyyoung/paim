@@ -271,7 +271,7 @@ const purgeTarget = ref<Image | null>(null);
 const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
-  const [items, dir] = await Promise.all([commands.listTrash(), commands.getDataDir()]);
+  const [items, dir] = await Promise.all([commands.listTrashedImages(), commands.getDataDir()]);
   trashImages.value = items;
   const map: Record<string, string> = {};
   for (const img of items) {

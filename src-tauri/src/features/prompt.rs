@@ -74,8 +74,8 @@ pub fn get_prompt_images_count_map(
 #[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct CreatePromptWithImagesResult {
     pub prompt: prompt_service::Prompt,
-    pub results: Vec<crate::features::image_service::ImportResult>,
-    pub errors: Vec<crate::features::image_service::ImportError>,
+    pub results: Vec<crate::features::image_service::ImageImportResult>,
+    pub errors: Vec<crate::features::image_service::ImageImportError>,
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -171,17 +171,17 @@ pub fn create_prompt_with_images(
                 if let Err(e) = crate::features::image_service::relate_image_to_prompt(
                     &conn, &prompt.id, &image.id,
                 ) {
-                    errors.push(crate::features::image_service::ImportError {
+                    errors.push(crate::features::image_service::ImageImportError {
                         path: path.clone(),
                         message: format!("关联图像失败: {e}"),
                     });
                 }
-                results.push(crate::features::image_service::ImportResult {
+                results.push(crate::features::image_service::ImageImportResult {
                     image,
                     is_duplicate,
                 });
             }
-            Err(e) => errors.push(crate::features::image_service::ImportError {
+            Err(e) => errors.push(crate::features::image_service::ImageImportError {
                 path: path.clone(),
                 message: e.to_string(),
             }),
@@ -432,8 +432,8 @@ pub fn add_images_to_prompt(
     db: State<BkDb>,
     prompt_id: String,
     image_paths: Vec<String>,
-) -> Result<crate::features::image_service::ImportBatchResult, AppError> {
-    use crate::features::image_service::{ImportError, ImportResult};
+) -> Result<crate::features::image_service::ImageImportBatchResult, AppError> {
+    use crate::features::image_service::{ImageImportError, ImageImportResult};
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let mut results = Vec::new();
     let mut errors = Vec::new();
@@ -443,22 +443,22 @@ pub fn add_images_to_prompt(
                 if let Err(e) = crate::features::image_service::relate_image_to_prompt(
                     &conn, &prompt_id, &image.id,
                 ) {
-                    errors.push(ImportError {
+                    errors.push(ImageImportError {
                         path: path.clone(),
                         message: format!("关联图像失败: {e}"),
                     });
                 } else {
-                    results.push(ImportResult {
+                    results.push(ImageImportResult {
                         image,
                         is_duplicate,
                     });
                 }
             }
-            Err(e) => errors.push(ImportError {
+            Err(e) => errors.push(ImageImportError {
                 path: path.clone(),
                 message: e.to_string(),
             }),
         }
     }
-    Ok(crate::features::image_service::ImportBatchResult { results, errors })
+    Ok(crate::features::image_service::ImageImportBatchResult { results, errors })
 }

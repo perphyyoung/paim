@@ -91,7 +91,7 @@ async function loadImages() {
     total.value = page.total;
     for (const img of images.value) {
       try {
-        const p = await commands.getThumbnail(img.id);
+        const p = await commands.getImageThumbnail(img.id);
         thumbs.value[img.id] = convertFileSrc(p);
       } catch {
         // 缩略图缺失时保持占位

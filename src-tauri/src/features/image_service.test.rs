@@ -2,7 +2,7 @@
 
 use super::{
     add_image_tag, batch_add_image_tag, filter_sql, import_with, replace_image_with, update_detail,
-    ReplaceOutcome,
+    ImageReplaceOutcome,
 };
 use crate::db;
 
@@ -197,7 +197,7 @@ fn replace_image_migrates_relations_and_meta() {
         src_b.to_str().unwrap(),
     )
     .unwrap();
-    let ReplaceOutcome::Replaced {
+    let ImageReplaceOutcome::Replaced {
         image: new_img,
         related_prompt_ids,
     } = outcome
@@ -267,7 +267,7 @@ fn replace_image_rejects_same_content() {
         src_a.to_str().unwrap(),
     )
     .unwrap();
-    assert!(matches!(outcome, ReplaceOutcome::SameImage));
+    assert!(matches!(outcome, ImageReplaceOutcome::SameImage));
     let deleted: bool = conn
         .query_row(
             "SELECT is_deleted FROM images WHERE id = ?1",

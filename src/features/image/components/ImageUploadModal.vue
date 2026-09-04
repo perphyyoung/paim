@@ -79,7 +79,7 @@ async function doUpload() {
   uploading.value = true;
   error.value = "";
   try {
-    const res = await commands.uploadImages(
+    const res = await commands.importImages(
       files.value.map((f) => f.path),
       prompt.value.trim() || null,
     );

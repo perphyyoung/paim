@@ -32,21 +32,21 @@ pub struct Image {
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
-pub struct ImportResult {
+pub struct ImageImportResult {
     pub image: Image,
     pub is_duplicate: bool,
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
-pub struct ImportError {
+pub struct ImageImportError {
     pub path: String,
     pub message: String,
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
-pub struct ImportBatchResult {
-    pub results: Vec<ImportResult>,
-    pub errors: Vec<ImportError>,
+pub struct ImageImportBatchResult {
+    pub results: Vec<ImageImportResult>,
+    pub errors: Vec<ImageImportError>,
 }
 
 /// 分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。
@@ -572,7 +572,7 @@ fn find_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> 
 /// 替换结果：SameImage 表示新图与旧图为同一张（MD5 相同），无需替换。
 #[derive(Debug, Serialize, Clone, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ReplaceOutcome {
+pub enum ImageReplaceOutcome {
     SameImage,
     Replaced {
         image: Image,
@@ -590,7 +590,7 @@ pub fn replace_image(
     app: &tauri::AppHandle,
     old_id: &str,
     source: &str,
-) -> std::result::Result<ReplaceOutcome, AppError> {
+) -> std::result::Result<ImageReplaceOutcome, AppError> {
     replace_image_with(
         conn,
         &crate::db::images_dir(app),
@@ -607,7 +607,7 @@ pub(crate) fn replace_image_with(
     thumbnails_dir: &Path,
     old_id: &str,
     source: &str,
-) -> std::result::Result<ReplaceOutcome, AppError> {
+) -> std::result::Result<ImageReplaceOutcome, AppError> {
     // 旧图必须存在，防止对无效 id 操作
     if get_by_id(conn, old_id)?.is_none() {
         return Err(AppError::Message(format!("图像 {old_id} 不存在")));
@@ -616,7 +616,7 @@ pub(crate) fn replace_image_with(
     let (new_img, is_duplicate) =
         import_with(conn, images_dir, thumbnails_dir, source).map_err(AppError::from)?;
     if is_duplicate && new_img.id == old_id {
-        return Ok(ReplaceOutcome::SameImage);
+        return Ok(ImageReplaceOutcome::SameImage);
     }
 
     let tx = conn.unchecked_transaction()?;
@@ -667,7 +667,7 @@ pub(crate) fn replace_image_with(
 
     let image = get_by_id(conn, &new_img.id)?
         .ok_or_else(|| AppError::Message("替换后读取图像失败".into()))?;
-    Ok(ReplaceOutcome::Replaced {
+    Ok(ImageReplaceOutcome::Replaced {
         image,
         related_prompt_ids,
     })

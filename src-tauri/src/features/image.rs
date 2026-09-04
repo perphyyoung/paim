@@ -4,22 +4,26 @@
 use crate::db::BkDb;
 use crate::error::AppError;
 use crate::features::image_service::{
-    self, Image, ImageTag, ImportBatchResult, ImportResult, LinkedPrompt, PaginatedImages,
+    self, Image, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome, ImageTag,
+    LinkedPrompt, PaginatedImages,
 };
 use crate::features::prompt_service;
-use crate::features::thumbnail_service::{self, EnsureResult, RebuildProgress, RebuildSummary};
+use crate::features::thumbnail_service::{
+    self, ThumbnailEnsureResult, ThumbnailRebuildProgress, ThumbnailRebuildSummary,
+};
 
 use tauri::{Manager, State};
 use tauri_specta::Event;
 
+/// 导入多张本地图像（可选关联到提示词内容），逐张容错返回结果与错误。
 #[tauri::command]
 #[specta::specta]
-pub fn upload_images(
+pub fn import_images(
     app: tauri::AppHandle,
     db: State<BkDb>,
     paths: Vec<String>,
     prompt: Option<String>,
-) -> Result<ImportBatchResult, AppError> {
+) -> Result<ImageImportBatchResult, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let prompt = prompt
         .map(|s| s.trim().to_string())
@@ -31,24 +35,24 @@ pub fn upload_images(
             Ok((image, is_duplicate)) => {
                 if let Some(content) = &prompt {
                     if let Err(e) = image_service::relate_prompt(&conn, &image.id, content) {
-                        errors.push(image_service::ImportError {
+                        errors.push(image_service::ImageImportError {
                             path: path.clone(),
                             message: format!("关联提示词失败: {e}"),
                         });
                     }
                 }
-                results.push(ImportResult {
+                results.push(ImageImportResult {
                     image,
                     is_duplicate,
                 });
             }
-            Err(e) => errors.push(image_service::ImportError {
+            Err(e) => errors.push(image_service::ImageImportError {
                 path: path.clone(),
                 message: e.to_string(),
             }),
         }
     }
-    Ok(ImportBatchResult { results, errors })
+    Ok(ImageImportBatchResult { results, errors })
 }
 
 /// 为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。
@@ -81,17 +85,18 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
     Ok(dest.to_string_lossy().to_string())
 }
 
+/// 导入单张本地图像，返回导入结果（含是否与库内已有图像重复）。
 #[tauri::command]
 #[specta::specta]
-pub fn upload_image(
+pub fn import_image(
     app: tauri::AppHandle,
     db: State<BkDb>,
     path: String,
-) -> Result<ImportResult, AppError> {
+) -> Result<ImageImportResult, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let (image, is_duplicate) =
         image_service::import(&conn, &app, &path).map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(ImportResult {
+    Ok(ImageImportResult {
         image,
         is_duplicate,
     })
@@ -105,7 +110,7 @@ pub fn replace_image(
     db: State<BkDb>,
     old_id: String,
     source: String,
-) -> Result<image_service::ReplaceOutcome, AppError> {
+) -> Result<ImageReplaceOutcome, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::replace_image(&conn, &app, &old_id, &source)
 }
@@ -143,9 +148,10 @@ pub fn relate_images_to_prompt(
     Ok(count)
 }
 
+/// 返回回收站中的图像（已软删除），与 list_trashed_prompts 对称。
 #[tauri::command]
 #[specta::specta]
-pub fn list_trash(db: State<BkDb>) -> Result<Vec<Image>, AppError> {
+pub fn list_trashed_images(db: State<BkDb>) -> Result<Vec<Image>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::list_trashed(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
@@ -197,7 +203,7 @@ pub fn empty_image_trash(
 /// 返回指定图像的缩略图磁盘路径，前端配合 convertFileSrc 加载。
 #[tauri::command]
 #[specta::specta]
-pub fn get_thumbnail(
+pub fn get_image_thumbnail(
     app: tauri::AppHandle,
     db: State<BkDb>,
     id: String,
@@ -527,14 +533,16 @@ pub fn create_prompt_for_image(
 /// 进度经 thumbnail-rebuild-progress 事件推送。重 IO 长任务，async + spawn_blocking。
 #[tauri::command]
 #[specta::specta]
-pub async fn rebuild_thumbnails(app: tauri::AppHandle) -> Result<RebuildSummary, AppError> {
+pub async fn rebuild_thumbnails(
+    app: tauri::AppHandle,
+) -> Result<ThumbnailRebuildSummary, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let data_dir = crate::db::data_dir(&app);
         let thumbs_root = crate::db::thumbnails_dir(&app);
         let bk = app.state::<BkDb>();
         let conn = bk.0.lock().map_err(|e| e.to_string())?;
         thumbnail_service::rebuild_all(&data_dir, &thumbs_root, &conn, |done, total, file_name| {
-            let _ = RebuildProgress {
+            let _ = ThumbnailRebuildProgress {
                 current: done,
                 total,
                 file_name: file_name.to_string(),
@@ -555,7 +563,7 @@ pub fn ensure_image_thumbnails(
     app: tauri::AppHandle,
     db: State<BkDb>,
     ids: Vec<String>,
-) -> Result<EnsureResult, AppError> {
+) -> Result<ThumbnailEnsureResult, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     thumbnail_service::ensure(
         &crate::db::data_dir(&app),

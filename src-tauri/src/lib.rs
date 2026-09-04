@@ -24,8 +24,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .events(tauri_specta::collect_events![
             GlobalShortcutEvent,
-            features::thumbnail_service::RebuildProgress,
-            features::pm_backup_service::ImportProgress,
+            features::thumbnail_service::ThumbnailRebuildProgress,
+            features::pm_backup_service::PmImportProgress,
         ])
         .commands(tauri_specta::collect_commands![
             // —— 提示词通用 ——
@@ -52,18 +52,18 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             features::prompt::remove_image_from_prompt,
             features::image::remove_prompt_from_image,
             // —— 图像通用 ——
-            features::image::upload_image,
-            features::image::upload_images,
+            features::image::import_image,
+            features::image::import_images,
             features::image::get_source_thumbnail,
             features::image::list_images,
-            features::image::get_thumbnail,
+            features::image::get_image_thumbnail,
             features::image::get_image_detail,
             features::image::get_image_src,
             features::image::replace_image,
             features::image::update_image_detail,
             features::image::create_prompt_for_image,
             features::image::relate_images_to_prompt,
-            features::image::list_trash,
+            features::image::list_trashed_images,
             features::image::delete_image,
             features::image::restore_image,
             features::image::purge_image,

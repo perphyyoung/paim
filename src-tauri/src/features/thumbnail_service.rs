@@ -12,7 +12,7 @@ use std::sync::Mutex;
 /// 全量重建结果摘要。success 包含「已存在跳过」与「新生成」两类
 /// （与 pm 的 regenerated 计数口径一致）。
 #[derive(Debug, Serialize, specta::Type)]
-pub struct RebuildSummary {
+pub struct ThumbnailRebuildSummary {
     pub total: usize,
     pub success: usize,
     pub failed: usize,
@@ -21,7 +21,7 @@ pub struct RebuildSummary {
 /// 重建进度推送载荷（事件名固定为 thumbnail-rebuild-progress）。
 #[derive(Debug, Serialize, Deserialize, Clone, specta::Type, tauri_specta::Event)]
 #[tauri_specta(event_name = "thumbnail-rebuild-progress")]
-pub struct RebuildProgress {
+pub struct ThumbnailRebuildProgress {
     pub current: usize,
     pub total: usize,
     pub file_name: String,
@@ -30,13 +30,13 @@ pub struct RebuildProgress {
 /// 懒自愈结果：fixed 为已补齐缩略图的记录（含新回写路径），
 /// missing 为无法修复的 id（记录不存在 / 原图缺失 / 生成失败）。
 #[derive(Debug, Serialize, specta::Type)]
-pub struct EnsureResult {
-    pub fixed: Vec<EnsureFixed>,
+pub struct ThumbnailEnsureResult {
+    pub fixed: Vec<ThumbnailEnsureFixed>,
     pub missing: Vec<String>,
 }
 
 #[derive(Debug, Serialize, specta::Type)]
-pub struct EnsureFixed {
+pub struct ThumbnailEnsureFixed {
     pub id: String,
     pub thumbnail_path: String,
 }
@@ -105,7 +105,7 @@ pub fn rebuild_all<F>(
     thumbs_root: &Path,
     conn: &Connection,
     on_progress: F,
-) -> Result<RebuildSummary, String>
+) -> Result<ThumbnailRebuildSummary, String>
 where
     F: Fn(usize, usize, &str) + Sync,
 {
@@ -125,7 +125,7 @@ where
     };
     let total = rows.len();
     if total == 0 {
-        return Ok(RebuildSummary {
+        return Ok(ThumbnailRebuildSummary {
             total: 0,
             success: 0,
             failed: 0,
@@ -186,7 +186,7 @@ where
     }
     conn.execute_batch("COMMIT;")
         .map_err(|e| format!("提交缩略图回写事务失败: {e}"))?;
-    Ok(RebuildSummary {
+    Ok(ThumbnailRebuildSummary {
         total,
         success,
         failed,
@@ -206,8 +206,8 @@ pub fn ensure(
     thumbs_root: &Path,
     conn: &Connection,
     ids: &[String],
-) -> Result<EnsureResult, String> {
-    let mut result = EnsureResult {
+) -> Result<ThumbnailEnsureResult, String> {
+    let mut result = ThumbnailEnsureResult {
         fixed: Vec::new(),
         missing: Vec::new(),
     };
@@ -237,7 +237,7 @@ pub fn ensure(
                     rusqlite::params![thumb_rel, id],
                 )
                 .map_err(|e| format!("更新缩略图路径失败: {e}"))?;
-                result.fixed.push(EnsureFixed {
+                result.fixed.push(ThumbnailEnsureFixed {
                     id: id.clone(),
                     thumbnail_path: thumb_rel,
                 });

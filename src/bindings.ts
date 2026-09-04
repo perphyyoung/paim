@@ -13,7 +13,7 @@ export const commands = {
 	/**  新建提示词（内容必需）；image_paths 非空时上传并关联到该提示词。 */
 	createPromptWithImages: (content: string, title: string | null, imagePaths: string[]) => __TAURI_INVOKE<CreatePromptWithImagesResult>("create_prompt_with_images", { content, title, imagePaths }),
 	/**  为已存在的提示词导入外部图像并关联（复用导入 + 幂等关联），供详情页「从外界导入」。 */
-	addImagesToPrompt: (promptId: string, imagePaths: string[]) => __TAURI_INVOKE<ImportBatchResult>("add_images_to_prompt", { promptId, imagePaths }),
+	addImagesToPrompt: (promptId: string, imagePaths: string[]) => __TAURI_INVOKE<ImageImportBatchResult>("add_images_to_prompt", { promptId, imagePaths }),
 	/**  列出回收站中的提示词（已软删除）。 */
 	listTrashedPrompts: () => __TAURI_INVOKE<Prompt[]>("list_trashed_prompts"),
 	/**  恢复回收站中的提示词。 */
@@ -46,26 +46,29 @@ export const commands = {
 	removeImageFromPrompt: (promptId: string, imageId: string) => __TAURI_INVOKE<null>("remove_image_from_prompt", { promptId, imageId }),
 	/**  图像详情解绑提示词：从图像移除一条提示词关联（与提示词侧 remove_image_from_prompt 对称）。 */
 	removePromptFromImage: (imageId: string, promptId: string) => __TAURI_INVOKE<null>("remove_prompt_from_image", { imageId, promptId }),
-	uploadImage: (path: string) => __TAURI_INVOKE<ImportResult>("upload_image", { path }),
-	uploadImages: (paths: string[], prompt: string | null) => __TAURI_INVOKE<ImportBatchResult>("upload_images", { paths, prompt }),
+	/**  导入单张本地图像，返回导入结果（含是否与库内已有图像重复）。 */
+	importImage: (path: string) => __TAURI_INVOKE<ImageImportResult>("import_image", { path }),
+	/**  导入多张本地图像（可选关联到提示词内容），逐张容错返回结果与错误。 */
+	importImages: (paths: string[], prompt: string | null) => __TAURI_INVOKE<ImageImportBatchResult>("import_images", { paths, prompt }),
 	/**  为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。 */
 	getSourceThumbnail: (source: string) => __TAURI_INVOKE<string>("get_source_thumbnail", { source }),
 	listImages: (limit: number | null, search: string | null, tag: string | null) => __TAURI_INVOKE<PaginatedImages>("list_images", { limit, search, tag }),
 	/**  返回指定图像的缩略图磁盘路径，前端配合 convertFileSrc 加载。 */
-	getThumbnail: (id: string) => __TAURI_INVOKE<string>("get_thumbnail", { id }),
+	getImageThumbnail: (id: string) => __TAURI_INVOKE<string>("get_image_thumbnail", { id }),
 	/**  返回单张图像详情。 */
 	getImageDetail: (id: string) => __TAURI_INVOKE<Image>("get_image_detail", { id }),
 	/**  返回图像原图磁盘路径，前端配合 convertFileSrc 加载（详情页大图使用）。 */
 	getImageSrc: (id: string) => __TAURI_INVOKE<string>("get_image_src", { id }),
 	/**  替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。 */
-	replaceImage: (oldId: string, source: string) => __TAURI_INVOKE<ReplaceOutcome>("replace_image", { oldId, source }),
+	replaceImage: (oldId: string, source: string) => __TAURI_INVOKE<ImageReplaceOutcome>("replace_image", { oldId, source }),
 	/**  更新图像详情字段（文件名、备注、收藏、安全评级）。 */
 	updateImageDetail: (id: string, fileName: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Image>("update_image_detail", { id, fileName, note, isFavorite, isSafe }),
 	/**  为指定图像新建提示词并关联（复用 create_prompt + relate），供图像详情「新建提示词」。 */
 	createPromptForImage: (content: string, imageId: string) => __TAURI_INVOKE<null>("create_prompt_for_image", { content, imageId }),
 	/**  将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。 */
 	relateImagesToPrompt: (promptId: string, imageIds: string[]) => __TAURI_INVOKE<number>("relate_images_to_prompt", { promptId, imageIds }),
-	listTrash: () => __TAURI_INVOKE<Image[]>("list_trash"),
+	/**  返回回收站中的图像（已软删除），与 list_trashed_prompts 对称。 */
+	listTrashedImages: () => __TAURI_INVOKE<Image[]>("list_trashed_images"),
 	deleteImage: (id: string) => __TAURI_INVOKE<Image>("delete_image", { id }),
 	restoreImage: (id: string) => __TAURI_INVOKE<Image>("restore_image", { id }),
 	purgeImage: (id: string) => __TAURI_INVOKE<null>("purge_image", { id }),
@@ -93,12 +96,12 @@ export const commands = {
 	 *  设置页「重建缩略图」：扫描全部图像，补齐丢失的缩略图文件并回写路径，
 	 *  进度经 thumbnail-rebuild-progress 事件推送。重 IO 长任务，async + spawn_blocking。
 	 */
-	rebuildThumbnails: () => __TAURI_INVOKE<RebuildSummary>("rebuild_thumbnails"),
+	rebuildThumbnails: () => __TAURI_INVOKE<ThumbnailRebuildSummary>("rebuild_thumbnails"),
 	/**
 	 *  懒自愈：批量校验指定图像的缩略图文件，缺失且原图存在时按需生成并回写。
 	 *  正常路径仅 N 次文件存在性检查，同步命令即可。
 	 */
-	ensureImageThumbnails: (ids: string[]) => __TAURI_INVOKE<EnsureResult>("ensure_image_thumbnails", { ids }),
+	ensureImageThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureResult>("ensure_image_thumbnails", { ids }),
 	/**  返回提示词标签管理页所需数据（标签组 + 带计数的标签）。 */
 	listPromptTagGroups: () => __TAURI_INVOKE<TagManagerData>("list_prompt_tag_groups"),
 	/**  新建标签组，返回新组。 */
@@ -159,29 +162,15 @@ export const commands = {
 /** Events */
 export const events = {
 	globalShortcut: makeEvent<GlobalShortcutEvent>("global-shortcut"),
-	pmImportProgress: makeEvent<ImportProgress>("pm-import-progress"),
-	thumbnailRebuildProgress: makeEvent<RebuildProgress>("thumbnail-rebuild-progress"),
+	pmImportProgress: makeEvent<PmImportProgress>("pm-import-progress"),
+	thumbnailRebuildProgress: makeEvent<ThumbnailRebuildProgress>("thumbnail-rebuild-progress"),
 };
 
 /* Types */
 export type CreatePromptWithImagesResult = {
 	prompt: Prompt,
-	results: ImportResult[],
-	errors: ImportError[],
-};
-
-export type EnsureFixed = {
-	id: string,
-	thumbnail_path: string,
-};
-
-/**
- *  懒自愈结果：fixed 为已补齐缩略图的记录（含新回写路径），
- *  missing 为无法修复的 id（记录不存在 / 原图缺失 / 生成失败）。
- */
-export type EnsureResult = {
-	fixed: EnsureFixed[],
-	missing: string[],
+	results: ImageImportResult[],
+	errors: ImageImportError[],
 };
 
 /**  全局快捷键触发事件（payload 为动作名，如 "toggle-settings"）。 */
@@ -208,35 +197,30 @@ export type Image = {
 	note: string,
 };
 
+export type ImageImportBatchResult = {
+	results: ImageImportResult[],
+	errors: ImageImportError[],
+};
+
+export type ImageImportError = {
+	path: string,
+	message: string,
+};
+
+export type ImageImportResult = {
+	image: Image,
+	is_duplicate: boolean,
+};
+
+/**  替换结果：SameImage 表示新图与旧图为同一张（MD5 相同），无需替换。 */
+export type ImageReplaceOutcome = { kind: "same_image" } | { kind: "replaced"; image: Image; related_prompt_ids: string[] };
+
 /**  图像标签（关联表 join image_tags 的返回对象）。 */
 export type ImageTag = {
 	id: number,
 	name: string,
 	/**  所属标签组，未分组为 None；其它命令不填时默认为 None */
 	group_id?: number | null,
-};
-
-export type ImportBatchResult = {
-	results: ImportResult[],
-	errors: ImportError[],
-};
-
-export type ImportError = {
-	path: string,
-	message: string,
-};
-
-/**  导入进度推送载荷（事件名固定为 pm-import-progress）。 */
-export type ImportProgress = {
-	stage: string,
-	percent: number,
-	status: string,
-	detail: string | null,
-};
-
-export type ImportResult = {
-	image: Image,
-	is_duplicate: boolean,
 };
 
 export type LinkedPrompt = {
@@ -264,6 +248,14 @@ export type PmBackupInfo = {
 	trashed_image_count: number,
 	prompt_tag_count: number,
 	image_tag_count: number,
+};
+
+/**  导入进度推送载荷（事件名固定为 pm-import-progress）。 */
+export type PmImportProgress = {
+	stage: string,
+	percent: number,
+	status: string,
+	detail: string | null,
 };
 
 /**  导入结果摘要。 */
@@ -307,23 +299,6 @@ export type PromptTagItem = {
 	count: number,
 };
 
-/**  重建进度推送载荷（事件名固定为 thumbnail-rebuild-progress）。 */
-export type RebuildProgress = {
-	current: number,
-	total: number,
-	file_name: string,
-};
-
-/**
- *  全量重建结果摘要。success 包含「已存在跳过」与「新生成」两类
- *  （与 pm 的 regenerated 计数口径一致）。
- */
-export type RebuildSummary = {
-	total: number,
-	success: number,
-	failed: number,
-};
-
 /**  提示词关联的（未删除）图像及其标签，供详情页图像网格展示。 */
 export type RelatedImage = {
 	id: string,
@@ -332,9 +307,6 @@ export type RelatedImage = {
 	src: string,
 	tags: string[],
 };
-
-/**  替换结果：SameImage 表示新图与旧图为同一张（MD5 相同），无需替换。 */
-export type ReplaceOutcome = { kind: "same_image" } | { kind: "replaced"; image: Image; related_prompt_ids: string[] };
 
 /**  标签管理页中的标签组（含排序序号，首位组即 sort_order 最小者）。 */
 export type TagGroup = {
@@ -355,6 +327,37 @@ export type TagItem = {
 export type TagManagerData = {
 	groups: TagGroup[],
 	tags: TagItem[],
+};
+
+export type ThumbnailEnsureFixed = {
+	id: string,
+	thumbnail_path: string,
+};
+
+/**
+ *  懒自愈结果：fixed 为已补齐缩略图的记录（含新回写路径），
+ *  missing 为无法修复的 id（记录不存在 / 原图缺失 / 生成失败）。
+ */
+export type ThumbnailEnsureResult = {
+	fixed: ThumbnailEnsureFixed[],
+	missing: string[],
+};
+
+/**  重建进度推送载荷（事件名固定为 thumbnail-rebuild-progress）。 */
+export type ThumbnailRebuildProgress = {
+	current: number,
+	total: number,
+	file_name: string,
+};
+
+/**
+ *  全量重建结果摘要。success 包含「已存在跳过」与「新生成」两类
+ *  （与 pm 的 regenerated 计数口径一致）。
+ */
+export type ThumbnailRebuildSummary = {
+	total: number,
+	success: number,
+	failed: number,
 };
 
 /**  批量操作结果：成功数与失败数。 */
