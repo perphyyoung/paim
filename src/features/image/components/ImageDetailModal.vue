@@ -182,6 +182,13 @@ function onNestedPromptSafeSynced(isSafe: boolean) {
   if (img) img.is_safe = isSafe;
 }
 
+// 嵌套提示词详情内数据变化（含设为首图改封面）：刷新关联提示词缓存，并标记提示词页过期，
+// 否则 KeepAlive 的提示词主页不重拉、卡片缩略图不更新
+function onNestedPromptUpdated() {
+  loadRelatedPrompts();
+  markPageStale("prompts");
+}
+
 async function loadPromptTagData() {
   try {
     const data = await invoke<{
@@ -881,7 +888,7 @@ const fmtSize = (bytes: number) => {
       editPromptOpen = false;
       loadRelatedPrompts();
     "
-    @updated="loadRelatedPrompts()"
+    @updated="onNestedPromptUpdated"
     @safe-synced="onNestedPromptSafeSynced"
   />
 
