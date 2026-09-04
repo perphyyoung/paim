@@ -324,6 +324,11 @@ pub fn add_prompt_tag(
         "INSERT OR IGNORE INTO prompt_tag_relations(prompt_id, tag_id) VALUES (?1, ?2)",
         rusqlite::params![id, tag_id],
     )?;
+    // 标签变化视为提示词内容变更，同步 updated_at（与图像侧 add_image_tag 对称）
+    tx.execute(
+        "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![id],
+    )?;
     tx.commit()?;
     Ok(vec![(tag_id, name.to_string())])
 }
@@ -343,6 +348,10 @@ pub fn batch_add_prompt_tag(
         tx.execute(
             "INSERT OR IGNORE INTO prompt_tag_relations(prompt_id, tag_id) VALUES (?1, ?2)",
             rusqlite::params![id, tag_id],
+        )?;
+        tx.execute(
+            "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+            rusqlite::params![id],
         )?;
     }
     tx.commit()?;
@@ -372,10 +381,17 @@ fn get_or_create_prompt_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i6
 
 /// 移除提示词的一个标签关联。
 pub fn remove_prompt_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "DELETE FROM prompt_tag_relations WHERE prompt_id = ?1 AND tag_id = ?2",
         rusqlite::params![id, tag_id],
     )?;
+    // 标签变化视为提示词内容变更，同步 updated_at（与图像侧 remove_image_tag 对称）
+    tx.execute(
+        "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![id],
+    )?;
+    tx.commit()?;
     Ok(())
 }
 

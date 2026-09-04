@@ -221,3 +221,53 @@ fn set_prompt_first_image_rejects_unrelated_image() {
     let err = set_prompt_first_image(&conn, "p1", "missing").unwrap_err();
     assert!(err.to_string().contains("未关联"), "实际：{err}");
 }
+
+#[test]
+fn prompt_tag_changes_refresh_updated_at() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+
+    // 添加标签后 updated_at 刷新（预置旧时间戳做确定性断言）
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
+        [],
+    )
+    .unwrap();
+    super::add_prompt_tag(&conn, "p1", "tag1").unwrap();
+    let after_add: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        after_add, "2000-01-01T00:00:00.000Z",
+        "加标签应刷新 updated_at"
+    );
+
+    // 移除标签后 updated_at 再次刷新
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
+        [],
+    )
+    .unwrap();
+    let tag_id: i64 = conn
+        .query_row("SELECT id FROM prompt_tags WHERE name = 'tag1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    super::remove_prompt_tag(&conn, "p1", tag_id).unwrap();
+    let after_remove: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        after_remove, "2000-01-01T00:00:00.000Z",
+        "移除标签应刷新 updated_at"
+    );
+}
