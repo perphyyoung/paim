@@ -1,6 +1,6 @@
 //! 提示词领域服务单元测试：详情编辑校验（标题/内容必填，不允许置空）。
 
-use super::update_detail;
+use super::{set_prompt_first_image, update_detail};
 use crate::db;
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
@@ -136,4 +136,73 @@ fn batch_add_prompt_tag_rejects_any_missing_id() {
 
     // 全部存在时正常
     batch_add_prompt_tag(&conn, &["p1"], "tag1").unwrap();
+}
+
+#[test]
+fn set_prompt_first_image_moves_target_to_front() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    for id in ["i1", "i2", "i3"] {
+        conn.execute(
+            "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES (?1, 'a.png', 's.png', 'x')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', ?1)",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+
+    // 把第三张设为首图（存量 sort_order 全 0，置 -1 生效）
+    set_prompt_first_image(&conn, "p1", "i3").unwrap();
+    let order: Vec<String> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT image_id FROM prompt_image_relations WHERE prompt_id = 'p1'
+                 ORDER BY sort_order, rowid",
+            )
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    assert_eq!(order, vec!["i3", "i1", "i2"]);
+
+    // 再次把第二张设为首图：重复调用幂等生效
+    set_prompt_first_image(&conn, "p1", "i2").unwrap();
+    let order: Vec<String> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT image_id FROM prompt_image_relations WHERE prompt_id = 'p1'
+                 ORDER BY sort_order, rowid",
+            )
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    assert_eq!(order, vec!["i2", "i3", "i1"]);
+}
+
+#[test]
+fn set_prompt_first_image_rejects_unrelated_image() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+
+    let err = set_prompt_first_image(&conn, "p1", "missing").unwrap_err();
+    assert!(err.to_string().contains("未关联"), "实际：{err}");
 }

@@ -258,6 +258,38 @@ pub fn list_related_images(
     Ok(out)
 }
 
+/// 设为首图：将关联行的 sort_order 置为当前最小值 - 1（借鉴标签组固定首位的模式）。
+/// 对齐 pm 的"设为首图"：读取侧按 sort_order 升序，最小者即首图；存量全 0 数据置 -1 自然生效。
+pub fn set_prompt_first_image(
+    conn: &Connection,
+    prompt_id: &str,
+    image_id: &str,
+) -> std::result::Result<(), AppError> {
+    let tx = conn.unchecked_transaction()?;
+    let related = tx
+        .query_row(
+            "SELECT 1 FROM prompt_image_relations WHERE prompt_id = ?1 AND image_id = ?2",
+            rusqlite::params![prompt_id, image_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(AppError::from)?;
+    if related.is_none() {
+        return Err(AppError::Message(format!(
+            "图像 {image_id} 未关联提示词 {prompt_id}"
+        )));
+    }
+    tx.execute(
+        "UPDATE prompt_image_relations
+         SET sort_order = (SELECT MIN(sort_order) - 1 FROM prompt_image_relations WHERE prompt_id = ?1)
+         WHERE prompt_id = ?1 AND image_id = ?2",
+        rusqlite::params![prompt_id, image_id],
+    )
+    .map_err(AppError::from)?;
+    tx.commit()?;
+    Ok(())
+}
+
 /// 校验提示词存在，不存在则报错（避免静默创建孤立标签关联）。
 fn ensure_prompt_exists(tx: &rusqlite::Transaction, id: &str) -> std::result::Result<(), AppError> {
     let found = tx

@@ -276,6 +276,24 @@ async function openSavedLocation() {
   if (img) await openImageLocation(img.id);
 }
 
+// 设为首图（对齐 pm）：仅非首图显示；调命令改 sort_order，本地移到首位不重拉
+const ctxImageIndex = computed(() =>
+  ctxMenu.value ? relatedImages.value.findIndex((i) => i.id === ctxMenu.value!.image.id) : -1,
+);
+async function setAsFirst() {
+  const img = ctxMenu.value?.image;
+  const p = current.value;
+  closeCtxMenu();
+  if (!img || !p) return;
+  try {
+    await invoke("set_prompt_first_image", { promptId: p.id, imageId: img.id });
+    relatedImages.value = [img, ...relatedImages.value.filter((i) => i.id !== img.id)];
+    emit("updated"); // 列表卡片封面已变化
+  } catch (e) {
+    showToast(`设为首图失败：${e}`, "error");
+  }
+}
+
 async function resolveFullscreenSrc(id: string) {
   const p = await invoke<string>("get_image_src", { id });
   return convertFileSrc(p);
@@ -784,7 +802,7 @@ async function onPickerImported() {
     @close="fullscreenOpen = false"
   />
 
-  <!-- 右键菜单：打开本地保存位置 -->
+  <!-- 右键菜单：打开本地保存位置 / 设为首图（对齐 pm，首图不显示） -->
   <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
     <button
       type="button"
@@ -792,6 +810,14 @@ async function onPickerImported() {
       @click="openSavedLocation"
     >
       打开本地保存位置
+    </button>
+    <button
+      v-if="ctxImageIndex > 0"
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+      @click="setAsFirst"
+    >
+      设为首图
     </button>
   </ContextMenu>
 </template>

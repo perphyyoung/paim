@@ -102,6 +102,7 @@ pub fn run() {
       features::prompt::get_prompt_images_count_map,
       features::prompt::get_prompt_thumbs_map,
       features::prompt::get_prompt_related_images,
+      features::prompt::set_prompt_first_image,
       features::prompt::get_prompt_tag_data,
       features::prompt::add_prompt_tag,
       features::prompt::add_prompt_tag_batch,

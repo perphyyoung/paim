@@ -259,7 +259,7 @@ pub fn get_prompt_thumbs_map(
             "SELECT prompt_id, thumbnail_path
              FROM (
                 SELECT pir.prompt_id AS prompt_id, img.thumbnail_path AS thumbnail_path,
-                       ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.rowid) AS rn
+                       ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.sort_order, pir.rowid) AS rn
                 FROM prompt_image_relations pir
                 JOIN images img ON img.id = pir.image_id
                 WHERE img.is_deleted = 0
@@ -337,6 +337,17 @@ pub fn get_prompt_related_images(
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::list_related_images(&conn, &app, &id)
         .map_err(|e| AppError::Message(e.to_string()))
+}
+
+/// 设为首图：提示词详情图像右键，调整关联 sort_order 使该图排首位（对齐 pm）。
+#[tauri::command]
+pub fn set_prompt_first_image(
+    db: State<BkDb>,
+    prompt_id: String,
+    image_id: String,
+) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    prompt_service::set_prompt_first_image(&conn, &prompt_id, &image_id)
 }
 
 /// 为单个提示词添加一个标签（不存在则创建），返回新增关联的标签。
