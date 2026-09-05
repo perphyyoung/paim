@@ -45,7 +45,11 @@ pnpm e2e --grep 上传  # 单个用例
 - 测试期间会弹出多个应用窗口（每 worker 一个），属正常现象。
 - e2e 实例与正常 dev 实例（1420）互不干扰；若报「paim.db 被占用」，是上一轮异常退出
   泄漏的实例还开着数据目录，关闭它即可（`paim.log` 有记录）。
-- 应用日志写在项目根 `paim.log`，失败排查先看它；用例输出里 `[webview]/[http-error]` 为页面侧日志。
+- 应用与测试侧日志统一写在项目根 `paim.log`（测试侧带 `[E2E w<n>]` 前缀），失败排查先看它，
+  控制台只保留 playwright 自身的用例结果输出；
+- `[connect]` 行（fixture 连上应用时记录，含尝试次数）是排查测试超时的边界标记：
+  超时且无该行 → 应用启动/CDP 未就绪（往 webview 启动方向查）；有该行 → 应用正常，
+  问题在用例步骤本身（结合 `[step]` 行定位到具体步骤）。尝试次数也直观反映应用启动耗时。
 
 ## 约定
 
@@ -53,4 +57,6 @@ pnpm e2e --grep 上传  # 单个用例
 - 引用数据目录内文件前现写一份（`writePng`），不假设旧文件仍在；
   上传预览目录按实例隔离（`preview-<PAIM_DATA_DIR 末段>`，见 `db.rs::preview_dir`）。
 - 涉及文件选择的用例复用 `select_images` 测试缝：`launchApp` 已把 mock 路径写入实例环境。
-- 用例内采集 webview 控制台与 ≥400 响应日志，输出以 `[webview]/[http-error]` 前缀标识。
+- 用例内采集 webview 控制台与 ≥400 响应日志，经 `e2e/e2e-logger.ts` 以 `[webview]/[http-error]`
+  等前缀写入 `paim.log`；测试侧新增日志也用它（`e2eLog.debug/info/warn/error`，调用方式与前端 logger 一致），
+  不要在 e2e 文件里直接 `console.log` 或另写日志实现。

@@ -8,6 +8,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { chromium, test as base, type Browser, type Page } from "@playwright/test";
+import { e2eLog, setWorkerTag } from "./e2e-logger";
 
 export interface AppHandle {
   child: ChildProcess;
@@ -42,6 +43,7 @@ function freePort(): Promise<number> {
 /// e2e 实例设置了 PAIM_DATA_DIR，应用侧会跳过全局快捷键注册。
 /// 内嵌前端的页面地址是 http://tauri.localhost（非 dev 模式的 localhost:1420）。
 async function launchApp(workerIndex: number): Promise<AppHandle> {
+  setWorkerTag(workerIndex);
   const root = path.join(import.meta.dirname, "..");
   const dataDir = path.join(root, "temp", `e2e-w${workerIndex}`);
   // 应用侧 preview 目录 = temp_dir/preview-<PAIM_DATA_DIR 末段>（见 db.rs::preview_dir）
@@ -61,8 +63,8 @@ async function launchApp(workerIndex: number): Promise<AppHandle> {
     },
     stdio: "ignore",
   });
-  child.on("error", (e) => console.log("[app] spawn 失败:", e.message));
-  child.on("exit", (code) => console.log("[app] 进程退出:", code));
+  child.on("error", (e) => e2eLog.error(`[app] spawn 失败: ${e.message}`));
+  child.on("exit", (code) => e2eLog.info(`[app] 进程退出: ${code}`));
 
   const cdpUrl = `http://127.0.0.1:${cdpPort}`;
   const deadline = Date.now() + 60_000;
@@ -78,14 +80,13 @@ async function launchApp(workerIndex: number): Promise<AppHandle> {
         .flatMap((c) => c.pages())
         .find((p) => p.url().startsWith("http://tauri.localhost"));
       if (page) {
-        console.log(`[connect] worker${workerIndex} 第 ${attempt} 次尝试连上应用页面`);
+        e2eLog.info(`[connect] 第 ${attempt} 次尝试连上应用页面`);
         return { child, browser, page, dataDir, previewDir, mockImagePath };
       }
       lastErr = new Error("已连接 CDP 但未找到应用页面");
     } catch (e) {
       lastErr = e;
-      if (attempt % 10 === 0)
-        console.log(`[connect] worker${workerIndex} 第 ${attempt} 次尝试失败：${e}`);
+      if (attempt % 10 === 0) e2eLog.info(`[connect] 第 ${attempt} 次尝试失败：${e}`);
     }
     await new Promise((r) => setTimeout(r, 1_000));
   }
@@ -117,14 +118,18 @@ const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandl
   _app: [
     async ({}, use, workerInfo) => {
       const app = await launchApp(workerInfo.workerIndex);
-      // 页面侧与测试侧日志都打到输出，便于失败时定位卡在哪一步
-      app.page.on("console", (msg) => console.log("[webview]", msg.type(), msg.text()));
-      app.page.on("pageerror", (err) => console.log("[pageerror]", err.message));
+      // 页面侧诊断（控制台消息/失败请求/4xx 响应）写入 paim.log，便于失败时定位卡在哪一步
+      app.page.on("console", (msg) => {
+        const text = `[webview] ${msg.type()} ${msg.text()}`;
+        if (msg.type() === "error") e2eLog.error(text);
+        else e2eLog.info(text);
+      });
+      app.page.on("pageerror", (err) => e2eLog.error(`[pageerror] ${err.message}`));
       app.page.on("requestfailed", (req) =>
-        console.log("[req-failed]", req.url(), req.failure()?.errorText),
+        e2eLog.error(`[req-failed] ${req.url()} ${req.failure()?.errorText ?? ""}`),
       );
       app.page.on("response", (res) => {
-        if (res.status() >= 400) console.log("[http-error]", res.status(), res.url());
+        if (res.status() >= 400) e2eLog.error(`[http-error] ${res.status()} ${res.url()}`);
       });
       await use(app);
       await closeApp(app);

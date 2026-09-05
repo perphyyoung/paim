@@ -6,6 +6,7 @@
  */
 import { expect } from "@playwright/test";
 import { test } from "./helpers";
+import { e2eLog } from "./e2e-logger";
 
 test("新建提示词后，新卡片应置顶显示", async ({ page }) => {
   // 打开新建弹窗，填写内容
@@ -21,7 +22,7 @@ test("新建提示词后，新卡片应置顶显示", async ({ page }) => {
   await page.getByRole("button", { name: "确定", exact: true }).click();
   await expect(contentInput).toBeHidden();
   await expect(page.getByText("提示词已创建")).toBeVisible();
-  console.log("[step] 提示词已创建");
+  e2eLog.info("[step] 提示词已创建");
 
   // 新卡片按更新时间排序置顶显示
   await expect(page.getByText(promptContent).first()).toBeVisible();
