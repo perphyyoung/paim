@@ -140,9 +140,11 @@ pub fn run() {
       app.handle().plugin(tauri_plugin_dialog::init())?;
 
       // 全局快捷键：Ctrl+Shift+, 切换设置面板（系统级钩子，不受输入法/WebView 焦点影响）
-      // 注：原 Ctrl+, 已被系统其它程序注册为全局热键，插件无法抢占，故加 Shift
+      // 注：原 Ctrl+, 已被系统其它程序注册为全局热键，插件无法抢占，故加 Shift。
+      // e2e 实例（设置了 PAIM_DATA_DIR）跳过注册：全局热键是系统级单例资源，
+      // 注册冲突会让第二个实例启动即失败；e2e 也不依赖全局快捷键。
       #[cfg(desktop)]
-      {
+      if std::env::var("PAIM_DATA_DIR").is_err() {
         use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
         let toggle_settings = Shortcut::new(
           Some(Modifiers::CONTROL | Modifiers::SHIFT),
