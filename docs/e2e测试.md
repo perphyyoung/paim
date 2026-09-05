@@ -63,3 +63,8 @@ pnpm e2e --grep 上传  # 单个用例
 - 用例内采集 webview 控制台与 ≥400 响应日志，经 `e2e/e2e-logger.ts` 以 `[webview]/[http-error]`
   等前缀写入 `paim.log`；测试侧新增日志也用它（`e2eLog.debug/info/warn/error`，调用方式与前端 logger 一致），
   不要在 e2e 文件里直接 `console.log` 或另写日志实现。
+- **元素定位优先用语义属性**（Playwright 官方推荐）：`getByRole`（角色+名称）、`getByPlaceholder`、
+  `getByText` 等，如 `getByRole("button", { name: "上传图像" })`——断言贴近用户视角、抗 UI 重构、
+  无需为测试给产品代码加 id。仅当元素没有语义属性可用时才退回 `data-testid`；
+  不要用 CSS/XPath 路径选择器（pm 的 `Constants.Ids.*` 是 Electron 时代惯例，Playwright 下不推荐）。
+  代价是改用户可见文案需同步改测试，属合理耦合。
