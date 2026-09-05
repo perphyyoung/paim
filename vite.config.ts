@@ -10,6 +10,9 @@ const pkg = JSON.parse(
 // @ts-expect-error process is env defined by tauri recommended config
 const host = process.env.TAURI_DEV_HOST;
 
+// e2e 通过 VITE_PORT 换端口启动，与正常开发的 1420 互不干扰
+const port = Number(process.env.VITE_PORT) || 1420;
+
 export default defineConfig({
   plugins: [vue()],
   define: {
@@ -22,14 +25,14 @@ export default defineConfig({
   },
   clearScreen: false,
   server: {
-    port: 1420,
+    port,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: port + 1,
         }
       : undefined,
     watch: {

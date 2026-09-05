@@ -28,10 +28,18 @@ impl Level {
     }
 }
 
-/// 日志文件路径：当前工作目录 / paim.log，惰性计算一次。
+/// 日志文件路径，惰性计算一次：
+/// - 开发环境（debug）：项目根 / paim.log（e2e/dev 都写这里，便于排查）；
+/// - 部署环境：进程工作目录 / paim.log。
 fn log_path() -> &'static std::path::PathBuf {
     static PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
-    PATH.get_or_init(|| std::env::current_dir().unwrap_or_default().join("paim.log"))
+    PATH.get_or_init(|| {
+        if cfg!(debug_assertions) {
+            crate::db::project_root().join("paim.log")
+        } else {
+            std::env::current_dir().unwrap_or_default().join("paim.log")
+        }
+    })
 }
 
 /// 写一行日志：`本地时间 [级别] 消息`。

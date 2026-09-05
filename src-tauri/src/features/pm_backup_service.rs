@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 use crate::db::{self, BkDb};
+use crate::{log_error, log_info};
 
 /// 当前支持的数据格式版本（与 pm 的 CURRENT_DATA_VERSION 一致）。
 const SUPPORTED_DATA_VERSION: i64 = 1;
@@ -124,6 +125,7 @@ where
         status: "准备导入...".into(),
         detail: None,
     });
+    log_info!("导入: 开始 zip={zip_path}");
 
     let file = std::fs::File::open(zip_path).map_err(|e| format!("无法打开备份文件: {e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("备份文件不是有效的 ZIP: {e}"))?;
@@ -158,12 +160,15 @@ where
     let mut guard = bk.0.lock().map_err(|e| e.to_string())?;
     if had_data_dir {
         *guard = Connection::open_in_memory().map_err(|e| format!("切换临时连接失败: {e}"))?;
+        log_info!("导入: 已切换内存连接，开始让位改名 from={data_dir:?} to={backup_dir:?}");
         if let Err(e) = std::fs::rename(&data_dir, &backup_dir) {
+            log_error!("导入: 数据目录让位改名失败 err={e}");
             *guard = open_app_db(&db_path)?;
             return Err(format!(
                 "备份原数据目录失败，请关闭可能占用数据目录的程序（如资源管理器窗口）后重试: {e}"
             ));
         }
+        log_info!("导入: 让位改名完成");
     }
 
     let mut run = || -> Result<PmImportSummary, String> {
@@ -175,6 +180,7 @@ where
         let result = import_inner(app, &guard, &mut archive, &root, &images_dir, &tmp, &emit);
         let _ = std::fs::remove_dir_all(&tmp);
         let (prompts, images, thumbnail_failures) = result?;
+        log_info!("导入: 完成 prompts={prompts} images={images} 缩略图失败={thumbnail_failures}");
         emit(PmImportProgress {
             stage: "complete".into(),
             percent: 100,
@@ -511,6 +517,9 @@ fn is_safe_rel_path(rel: &str) -> bool {
         .any(|seg| seg.is_empty() || seg == "." || seg == ".." || seg.ends_with(':'))
 }
 
+/// 在系统临时目录下建当次导入的解压目录（须在数据目录之外：导入会让
+/// 数据目录整体改名让位，解压句柄若在其内会导致改名失败）。
+/// import 结束/失败后清理；inspect 由调用侧清理。
 fn create_temp_dir() -> Result<PathBuf, String> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

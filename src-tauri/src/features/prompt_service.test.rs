@@ -5,12 +5,7 @@ use crate::db;
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
 fn setup() -> (std::path::PathBuf, db::BkDb) {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("paim-prompt-service-test-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = db::test_temp_dir("prompt-service");
     let db = db::init(dir.join("paim.db")).expect("init test db");
     (dir, db)
 }

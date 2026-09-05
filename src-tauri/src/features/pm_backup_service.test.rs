@@ -88,13 +88,7 @@ fn write_backup_zip(zip_path: &Path, prefix: &str, db_bytes: &[u8]) {
 }
 
 fn unique_test_dir(name: &str) -> PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("paim-pm-import-test-{name}-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+    crate::db::test_temp_dir(name)
 }
 
 #[test]

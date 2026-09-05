@@ -46,6 +46,15 @@ export const commands = {
 	removeImageFromPrompt: (promptId: string, imageId: string) => __TAURI_INVOKE<null>("remove_image_from_prompt", { promptId, imageId }),
 	/**  图像详情解绑提示词：从图像移除一条提示词关联（与提示词侧 remove_image_from_prompt 对称）。 */
 	removePromptFromImage: (imageId: string, promptId: string) => __TAURI_INVOKE<null>("remove_prompt_from_image", { imageId, promptId }),
+	/**
+	 *  选择图像文件（支持多选），返回所选路径；与 import_images 构成上传弹窗的动作对：
+	 *  select_images 选择文件 → import_images 导入入库。
+	 *  e2e 测试缝（参考 pm 的主进程 dialog mock 模式）：debug 构建且设置了
+	 *  PAIM_E2E_MOCK_IMAGE_PATHS（JSON 路径数组）时直接返回，绕过原生对话框；
+	 *  生产路径不受影响（该环境变量只在 e2e 启动的进程里存在）。
+	 *  长任务（阻塞等待用户选择），async + spawn_blocking。
+	 */
+	selectImages: () => __TAURI_INVOKE<string[]>("select_images"),
 	/**  导入多张本地图像（可选关联到提示词内容），逐张容错返回结果与错误。 */
 	importImages: (paths: string[], prompt: string | null) => __TAURI_INVOKE<ImageImportBatchResult>("import_images", { paths, prompt }),
 	/**  为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。 */

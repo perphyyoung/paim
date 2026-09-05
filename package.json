@@ -10,10 +10,11 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "format": "pnpm format:ui && pnpm format:rs",
-    "format:ui": "oxfmt src/",
+    "format:ui": "oxfmt src/ e2e/",
     "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
-    "format:check": "oxfmt src/ --check && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
+    "format:check": "oxfmt src/ e2e/ --check && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "e2e": "playwright test --config e2e/playwright.config.ts",
     "check": "pnpm format && vue-tsc --noEmit && pnpm build && cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
@@ -23,7 +24,9 @@
     "vue-router": "4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tauri-apps/cli": "^2",
+    "@types/node": "^26.4.1",
     "@vitejs/plugin-vue": "^5",
     "autoprefixer": "^10.4",
     "oxfmt": "^0.65.0",

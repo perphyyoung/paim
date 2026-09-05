@@ -4,7 +4,6 @@
 import { nextTick, ref, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands } from "@/bindings";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 
 const props = defineProps<{ open: boolean }>();
@@ -20,11 +19,6 @@ interface PendingFile {
 interface UploadedImage {
   stored_name: string;
 }
-
-const ALLOWED_FILTER = {
-  name: "图像",
-  extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
-};
 
 const files = ref<PendingFile[]>([]);
 const prompt = ref("");
@@ -46,11 +40,9 @@ watch(
 );
 
 async function pickFiles() {
-  const selected = await open({ multiple: true, filters: [ALLOWED_FILTER] });
-  if (!selected) return;
-  const paths = Array.isArray(selected) ? selected : [selected];
   thumbLoading.value = true;
   try {
+    const paths = await commands.selectImages();
     for (const p of paths) {
       if (files.value.some((f) => f.path === p)) continue;
       const name = p.split(/[\\/]/).pop() || p;

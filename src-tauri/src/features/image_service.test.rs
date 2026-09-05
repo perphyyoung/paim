@@ -14,12 +14,7 @@ fn make_png(path: &std::path::Path, r: u8, g: u8, b: u8) {
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
 fn setup_image_db() -> (std::path::PathBuf, db::BkDb) {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("paim-image-service-test-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = crate::db::test_temp_dir("image-service");
     let db = db::init(dir.join("paim.db")).expect("init test db");
     (dir, db)
 }
@@ -63,13 +58,7 @@ fn tag_filter_is_separate_from_search() {
 
 #[test]
 fn update_detail_rejects_empty_file_name() {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("paim-image-service-test-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
-    let db = crate::db::init(dir.join("paim.db")).expect("init test db");
+    let (_dir, db) = setup_image_db();
     let conn = db.0.lock().unwrap();
     conn.execute(
         "INSERT INTO images(id, file_name, stored_name, relative_path)

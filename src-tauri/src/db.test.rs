@@ -4,13 +4,7 @@ use super::*;
 use std::path::PathBuf;
 
 fn temp_dir(name: &str) -> PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("paim-db-test-{name}-{nanos}"));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+    test_temp_dir(name)
 }
 
 #[test]
@@ -20,6 +14,25 @@ fn base_exists_is_never_pending() {
     std::fs::create_dir_all(&base).unwrap();
     std::fs::create_dir_all(root.join("paim-data.工作")).unwrap();
     assert!(pending_switch_datasets_at(&base).is_empty());
+}
+
+/// 复现 pm 备份导入的让位场景：应用运行中持有 paim.db 连接，
+/// 换成内存连接释放文件锁后，数据目录应可整体改名（否则导入报 os error 5）。
+#[test]
+fn connection_swap_releases_db_for_dir_rename() {
+    let dir = test_temp_dir("rename-after-swap");
+    let bk = crate::db::init(dir.join("paim.db")).expect("init db");
+    let mut guard = bk.0.lock().unwrap();
+
+    // 与 pm_backup_service::import 一致：换成内存连接，旧连接随之关闭
+    *guard = rusqlite::Connection::open_in_memory().unwrap();
+
+    let backup = dir.parent().unwrap().join(format!(
+        "{}__moved",
+        dir.file_name().unwrap().to_str().unwrap()
+    ));
+    std::fs::rename(&dir, &backup).expect("换内存连接后应可整体改名数据目录");
+    std::fs::rename(&backup, &dir).expect("改回原名");
 }
 
 #[test]

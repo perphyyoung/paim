@@ -13,7 +13,41 @@ use crate::features::thumbnail_service::{
 };
 
 use tauri::{Manager, State};
+use tauri_plugin_dialog::DialogExt;
 use tauri_specta::Event;
+
+/// 选择图像文件（支持多选），返回所选路径；与 import_images 构成上传弹窗的动作对：
+/// select_images 选择文件 → import_images 导入入库。
+/// e2e 测试缝（参考 pm 的主进程 dialog mock 模式）：debug 构建且设置了
+/// PAIM_E2E_MOCK_IMAGE_PATHS（JSON 路径数组）时直接返回，绕过原生对话框；
+/// 生产路径不受影响（该环境变量只在 e2e 启动的进程里存在）。
+/// 长任务（阻塞等待用户选择），async + spawn_blocking。
+#[tauri::command]
+#[specta::specta]
+pub async fn select_images(app: tauri::AppHandle) -> Result<Vec<String>, AppError> {
+    #[cfg(debug_assertions)]
+    if let Ok(mock) = std::env::var("PAIM_E2E_MOCK_IMAGE_PATHS") {
+        if !mock.trim().is_empty() {
+            return serde_json::from_str(&mock)
+                .map_err(|e| AppError::Message(format!("e2e mock 路径解析失败: {e}")));
+        }
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let picked = app
+            .dialog()
+            .file()
+            .add_filter("图像", &["png", "jpg", "jpeg", "gif", "webp", "bmp"])
+            .blocking_pick_files();
+        Ok(picked
+            .unwrap_or_default()
+            .iter()
+            .map(|p| p.to_string())
+            .collect())
+    })
+    .await
+    .map_err(|e| AppError::Message(format!("文件选择任务执行失败: {e}")))?
+}
 
 /// 导入多张本地图像（可选关联到提示词内容），逐张容错返回结果与错误。
 #[tauri::command]
@@ -68,7 +102,7 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
     let thumb = image_service::make_center_thumb(&img)
         .map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
 
-    let prev_dir = crate::db::data_dir(&app).join("preview");
+    let prev_dir = crate::db::temp_dir(&app).join("preview");
     std::fs::create_dir_all(&prev_dir).map_err(|e| AppError::Message(e.to_string()))?;
     // 以源文件路径哈希命名，重复选择复用
     let mut hasher = std::collections::hash_map::DefaultHasher::new();

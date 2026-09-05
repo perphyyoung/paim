@@ -183,17 +183,29 @@ pub const PROMPT_ID_PREFIX: &str = "pmt";
 pub const IMAGE_ID_PREFIX: &str = "img";
 
 /// 数据目录基准：
-/// - 开发环境（debug）使用项目根目录下的 paim-data（从进程启动目录定位，
-///   需从项目根启动 `cargo tauri dev`）；
+/// - 环境变量 PAIM_DATA_DIR 优先（e2e 测试用它指向 temp/ 下的隔离目录）；
+/// - 开发环境（debug）使用项目根目录下的 paim-data（经编译期路径定位，
+///   不依赖进程工作目录——tauri CLI 以 src-tauri 为 cwd 启动 exe）；
 /// - 部署环境使用 Windows 默认的应用数据目录。
 fn base_data_dir(app: &tauri::AppHandle) -> PathBuf {
+    if let Ok(dir) = std::env::var("PAIM_DATA_DIR") {
+        if !dir.is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
     if cfg!(debug_assertions) {
-        std::env::current_dir()
-            .map(|d| d.join("paim-data"))
-            .unwrap_or_else(|_| default_data_dir(app))
+        project_root().join("paim-data")
     } else {
         default_data_dir(app)
     }
+}
+
+/// 项目根目录（src-tauri 的上级），经 CARGO_MANIFEST_DIR 编译期定位。
+pub(crate) fn project_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("manifest 必有父目录")
+        .to_path_buf()
 }
 
 /// 数据目录（images 与 paim.db 的父目录）。
@@ -221,6 +233,41 @@ pub fn images_dir(app: &tauri::AppHandle) -> PathBuf {
 /// 缩略图存储目录（数据目录基准下）。
 pub fn thumbnails_dir(app: &tauri::AppHandle) -> PathBuf {
     base_data_dir(app).join("thumbnails")
+}
+
+/// 临时目录：应用运行中的临时文件统一放这里（上传预览图、备份导入解压、
+/// e2e 测试数据等），下次正常启动时整体清空。
+/// 必须与数据目录隔离（位于其外）：pm 备份导入会把整个数据目录改名让位，
+/// 解压等临时产物若在其内，改名时会因自身占用的句柄而失败（os error 5）。
+/// - 开发环境：项目根下 temp/，与 paim-data 平级；
+/// - 部署环境：应用缓存目录（LocalAppData/{identifier}/cache）下的 temp/。
+pub fn temp_dir(app: &tauri::AppHandle) -> PathBuf {
+    if cfg!(debug_assertions) {
+        project_root().join("temp")
+    } else {
+        use tauri::Manager;
+        app.path()
+            .app_cache_dir()
+            .expect("failed to resolve app cache dir")
+            .join("temp")
+    }
+}
+
+/// 单元测试专用临时目录：<项目根>/paim-data/temp/test/{name}-{nanos}/。
+/// 与应用运行时 temp 同处一体，随应用下次正常启动一并清空，不落系统临时目录。
+#[cfg(test)]
+pub(crate) fn test_temp_dir(name: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let dir = project_root()
+        .join("paim-data")
+        .join("temp")
+        .join("test")
+        .join(format!("{name}-{nanos}"));
+    std::fs::create_dir_all(&dir).expect("创建测试临时目录失败");
+    dir
 }
 
 /// 数据集切换防呆的核心检查：激活数据目录不存在时，
