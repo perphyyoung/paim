@@ -83,15 +83,18 @@ async function doUpload() {
       files.value.map((f) => f.path),
       prompt.value.trim() || null,
     );
+    // 有成功导入的图像时通知主页刷新；弹窗仅在完全无错误时关闭，出错则保留展示错误详情
+    if (res.results.length > 0) {
+      emit("uploaded");
+      showToast(`已上传 ${res.results.length} 张图像`, "success");
+    } else {
+      showToast("没有新上传的图像", "info");
+    }
     if (res.errors.length > 0) {
       error.value = res.errors.map((e) => e.message).join("\n");
+    } else {
+      emit("close");
     }
-    showToast(
-      res.results.length > 0 ? `已上传 ${res.results.length} 张图像` : "没有新上传的图像",
-      res.results.length > 0 ? "success" : "info",
-    );
-    emit("uploaded");
-    emit("close");
   } catch (e) {
     error.value = String(e);
   } finally {
