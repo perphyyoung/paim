@@ -26,6 +26,9 @@ test("上传图像附带提示词后，图像卡片应关联该提示词", async
   page.on("requestfailed", (req) =>
     console.log("[req-failed]", req.url(), req.failure()?.errorText),
   );
+  page.on("response", (res) => {
+    if (res.status() >= 400) console.log("[http-error]", res.status(), res.url());
+  });
 
   // mock 图现写一份：导入等用例会让数据目录让位改名，不能假设配置期写入的文件仍在
   writePng(mockImagePath);

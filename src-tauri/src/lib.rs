@@ -205,6 +205,8 @@ pub fn run() {
 
       // 将数据目录加入 asset 协议 scope，使前端能通过 convertFileSrc 读取本地图片
       app.asset_protocol_scope().allow_directory(db::data_dir(app.handle()), true)?;
+      // 临时目录在数据目录之外（导入让位改名要求分离），但上传预览图也要经 asset 协议加载
+      app.asset_protocol_scope().allow_directory(db::temp_dir(app.handle()), true)?;
 
       // 启动时清空临时目录（预览图/备份解压/e2e 测试数据），避免长期积累
       let _ = std::fs::remove_dir_all(db::temp_dir(app.handle()));
