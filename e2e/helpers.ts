@@ -1,12 +1,13 @@
 /// e2e 共用工具：每 worker spawn 独立应用实例 + CDP 连接 + PNG 生成。
+/// 应用实例生命周期由 worker 级 fixture 管理（参考 pm 的 _electronTest fixture）：
+/// Playwright 保证该 worker 的全部用例结束后 teardown 一定执行（含用例失败/超时），
+/// 测试内只接收 page/app，不碰进程管理。
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import zlib from "node:zlib";
 import { execSync, spawn, type ChildProcess } from "node:child_process";
-import { chromium, type Browser, type Page } from "@playwright/test";
-
-const DEV_URL = "http://localhost:1420";
+import { chromium, test as base, type Browser, type Page } from "@playwright/test";
 
 export interface AppHandle {
   child: ChildProcess;
@@ -39,7 +40,7 @@ function freePort(): Promise<number> {
 /// 每实例独立数据目录（temp/e2e-w<n>）、WebView2 目录、CDP 端口，互不冲突；
 /// e2e 实例设置了 PAIM_DATA_DIR，应用侧会跳过全局快捷键注册。
 /// 内嵌前端的页面地址是 http://tauri.localhost（非 dev 模式的 localhost:1420）。
-export async function launchApp(workerIndex: number): Promise<AppHandle> {
+async function launchApp(workerIndex: number): Promise<AppHandle> {
   const root = path.join(import.meta.dirname, "..");
   const dataDir = path.join(root, "temp", `e2e-w${workerIndex}`);
   const mockImagePath = path.join(dataDir, "e2e-upload.png");
@@ -89,7 +90,7 @@ export async function launchApp(workerIndex: number): Promise<AppHandle> {
 }
 
 /// 优雅关闭自己的实例：先 WM_CLOSE（进程以 0 退出），兜底强杀进程树。
-export async function closeApp(app: AppHandle): Promise<void> {
+async function closeApp(app: AppHandle): Promise<void> {
   const pid = app.child.pid;
   await app.browser.close().catch(() => {});
   if (pid === undefined) return;
@@ -106,18 +107,36 @@ export async function closeApp(app: AppHandle): Promise<void> {
   }
 }
 
-/// launch + 测试体 + 确保关闭的包装（用例失败/超时也会关闭自己的实例）。
-export async function withApp(
-  workerIndex: number,
-  body: (app: AppHandle) => Promise<void>,
-): Promise<void> {
-  const app = await launchApp(workerIndex);
-  try {
-    await body(app);
-  } finally {
-    await closeApp(app);
-  }
-}
+/// worker 级 fixture：每个 worker spawn 一个应用实例并 CDP 连接，
+/// 该 worker 的全部用例共享；teardown（Playwright 保证执行，用例失败/超时也算）
+/// 优雅关闭实例。测试通过本文件的 test 拿到 app/page。
+const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandle }>({
+  _app: [
+    async ({}, use, workerInfo) => {
+      const app = await launchApp(workerInfo.workerIndex);
+      // 页面侧与测试侧日志都打到输出，便于失败时定位卡在哪一步
+      app.page.on("console", (msg) => console.log("[webview]", msg.type(), msg.text()));
+      app.page.on("pageerror", (err) => console.log("[pageerror]", err.message));
+      app.page.on("requestfailed", (req) =>
+        console.log("[req-failed]", req.url(), req.failure()?.errorText),
+      );
+      app.page.on("response", (res) => {
+        if (res.status() >= 400) console.log("[http-error]", res.status(), res.url());
+      });
+      await use(app);
+      await closeApp(app);
+    },
+    { scope: "worker" },
+  ],
+  app: async ({ _app }, use) => {
+    await use(_app);
+  },
+  page: async ({ _app }, use) => {
+    await use(_app.page);
+  },
+});
+
+export const test = helpersTest;
 
 /// ---- PNG 生成 ----
 
