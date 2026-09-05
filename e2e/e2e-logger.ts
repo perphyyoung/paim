@@ -37,7 +37,17 @@ function timestamp(): string {
   )}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 }
 
-function send(level: "DEBUG" | "INFO" | "WARN" | "ERROR", args: unknown[]): void {
+/// 输出级别阈值：低于阈值的日志不写入。经 playwright.config.ts 设置
+/// （PAIM_E2E_LOG_LEVEL，默认 warn），跑全量用例只记异常信号，
+/// 排查失败时在配置里临时改为 info/debug 后重跑即可看到步骤细节。
+const LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 } as const;
+type Level = keyof typeof LEVELS;
+const threshold =
+  LEVELS[(process.env.PAIM_E2E_LOG_LEVEL as Level | undefined)?.toUpperCase() as Level] ??
+  LEVELS.WARN;
+
+function send(level: Level, args: unknown[]): void {
+  if (LEVELS[level] < threshold) return;
   try {
     const tag = workerTag ? ` ${workerTag.trim()}` : "";
     fs.appendFileSync(

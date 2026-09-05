@@ -7,11 +7,14 @@
  * 对话框 mock 与数据目录隔离见 helpers.ts / docs/e2e测试.md。
  *
  * 运行前提：关闭正在运行的 dev 实例（globalSetup 会先清理残留的 paim 进程，
- * globalTeardown 会结束所有 paim 实例）。
+ * teardown 阶段不杀任何进程）。
  */
-import fs from "node:fs";
-import path from "node:path";
 import { defineConfig } from "@playwright/test";
+
+// e2e 测试侧日志的输出级别（写入 paim.log 的阈值）：
+// 默认 warn——跑全量用例只记异常信号（pageerror/失败请求/4xx 等）；
+// 排查失败时临时改为 info 或 debug 重跑，即可看到 [step]/[connect] 等步骤细节
+process.env.PAIM_E2E_LOG_LEVEL ??= "warn";
 
 export default defineConfig({
   testDir: import.meta.dirname,
