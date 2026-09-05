@@ -23,5 +23,4 @@ export default defineConfig({
   workers: 4,
   reporter: "list",
   globalSetup: "./global-setup.ts",
-  globalTeardown: "./global-teardown.ts",
 });

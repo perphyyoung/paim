@@ -125,6 +125,8 @@ const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandl
       });
       await use(app);
       await closeApp(app);
+      // 进程已退出、句柄已释放，删除本轮数据目录（对齐 pm 的 _testDataDir 清理）
+      fs.rmSync(app.dataDir, { recursive: true, force: true });
     },
     { scope: "worker" },
   ],

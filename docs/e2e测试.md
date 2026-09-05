@@ -12,14 +12,16 @@
 
 ## 并行模型
 
-- `global-setup.ts`：清理残留 paim 进程与 worker 目录，然后 `pnpm tauri build --debug --no-bundle`
-  构建一次**带内嵌前端的调试二进制**（等价 pm 的 `pnpm build`），运行期不依赖 vite/devServer。
+- `global-setup.ts`：`pnpm tauri build --debug --no-bundle` 构建一次**带内嵌前端的调试二进制**
+  （等价 pm 的 `pnpm build`），运行期不依赖 vite/devServer。
 - `workers: 4` + `fullyParallel: false`：**用例文件间并行、文件内串行**（与 pm 一致）。
-  每个 worker 通过 `helpers.ts` 的 `launchApp(workerIndex)` spawn 自己的应用实例：
-  - 数据目录 `temp/e2e-w<n>`、WebView2 目录 `temp/wv2-w<n>`（互不冲突，每轮由 globalSetup 清理重建）；
+  每个 worker 通过 `helpers.ts` 的 worker 级 fixture spawn 自己的应用实例：
+  - 数据目录 `temp/e2e-w<n>`、WebView2 目录 `temp/wv2-w<n>`（互不冲突，teardown 时删除自己的目录）；
   - CDP 端口按空闲端口动态分配；
-  - 用例结束对**自己 spawn 的进程**优雅关闭（WM_CLOSE → 兜底强杀），不影响其他 worker 与 dev 实例。
-- `global-teardown.ts` 兜底结束所有 paim 实例（崩溃/超时泄漏的场景）。
+  - teardown 由 Playwright 保证执行（用例失败/超时也算）：优雅关闭**自己 spawn 的进程**（不影响其他
+    worker 与 dev 实例）后删除本轮数据目录。
+- 无全局强杀；极端场景（globalTimeout 强杀 worker / 进程崩溃）可能泄漏实例并锁住数据目录，
+  下一轮该 worker 会因 paim.db 被占用而启动失败——按报错关闭残留实例即可（`paim.log` 有记录）。
 
 ## 测试缝与环境变量
 
@@ -40,7 +42,8 @@ pnpm e2e --grep 上传  # 单个用例
 
 - 首次运行 globalSetup 需编译 Rust；globalTimeout 10 分钟。
 - 测试期间会弹出多个应用窗口（每 worker 一个），属正常现象。
-- **globalSetup / globalTeardown 会结束所有 paim 实例**（含正在使用的 dev 实例），请先保存工作。
+- e2e 实例与正常 dev 实例（1420）互不干扰；若报「paim.db 被占用」，是上一轮异常退出
+  泄漏的实例还开着数据目录，关闭它即可（`paim.log` 有记录）。
 - 应用日志写在项目根 `paim.log`，失败排查先看它；用例输出里 `[webview]/[http-error]` 为页面侧日志。
 
 ## 约定
