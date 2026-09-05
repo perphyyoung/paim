@@ -210,8 +210,9 @@ pub fn run() {
       // 临时目录在数据目录之外（导入让位改名要求分离），但上传预览图也要经 asset 协议加载
       app.asset_protocol_scope().allow_directory(db::temp_dir(app.handle()), true)?;
 
-      // 启动时清空临时目录（预览图/备份解压/e2e 测试数据），避免长期积累
-      let _ = std::fs::remove_dir_all(db::temp_dir(app.handle()));
+      // 启动时清空临时目录（预览图/备份解压），避免长期积累；
+      // 跳过 e2e 的并行实例目录（e2e-*、wv2-*，各 worker 自行管理生命周期）
+      db::clean_temp_dir(app.handle());
 
       Ok(())
     })

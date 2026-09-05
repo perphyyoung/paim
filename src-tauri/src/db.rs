@@ -235,8 +235,8 @@ pub fn thumbnails_dir(app: &tauri::AppHandle) -> PathBuf {
     base_data_dir(app).join("thumbnails")
 }
 
-/// 临时目录：应用运行中的临时文件统一放这里（上传预览图、备份导入解压、
-/// e2e 测试数据等），下次正常启动时整体清空。
+/// 临时目录（数据目录基准下的 temp/）：应用运行中的临时文件统一放这里
+/// （上传预览图、备份导入解压等），下次正常启动时整体清空。
 /// 必须与数据目录隔离（位于其外）：pm 备份导入会把整个数据目录改名让位，
 /// 解压等临时产物若在其内，改名时会因自身占用的句柄而失败（os error 5）。
 /// - 开发环境：项目根下 temp/，与 paim-data 平级；
@@ -250,6 +250,23 @@ pub fn temp_dir(app: &tauri::AppHandle) -> PathBuf {
             .app_cache_dir()
             .expect("failed to resolve app cache dir")
             .join("temp")
+    }
+}
+
+/// 清空临时目录（启动时调用），但跳过 e2e 的并行实例目录（e2e-*、wv2-* 前缀）：
+/// 并行 worker 各自持有其中的句柄并自行管理生命周期，清掉会让其他 worker 崩溃。
+pub fn clean_temp_dir(app: &tauri::AppHandle) {
+    let root = temp_dir(app);
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with("e2e-") || name.starts_with("wv2-") {
+            continue;
+        }
+        let _ = std::fs::remove_dir_all(entry.path());
+        let _ = std::fs::remove_file(entry.path());
     }
 }
 

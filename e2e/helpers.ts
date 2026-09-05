@@ -1,43 +1,122 @@
-/// e2e 共用工具：CDP 连接真实应用窗口。
+/// e2e 共用工具：每 worker spawn 独立应用实例 + CDP 连接 + PNG 生成。
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import zlib from "node:zlib";
+import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
-export const CDP_URL = "http://127.0.0.1:9223";
-export const DEV_URL = "http://localhost:1430";
+const DEV_URL = "http://localhost:1420";
 
-/// 连接应用的 CDP 端口并找到应用页面。
-/// tauri dev 首次需要编译 Rust，轮询等待 CDP 端口就绪。
-export async function connectAppPage(): Promise<{ browser: Browser; page: Page }> {
-  const deadline = Date.now() + 100_000;
+export interface AppHandle {
+  child: ChildProcess;
+  browser: Browser;
+  page: Page;
+  dataDir: string;
+  mockImagePath: string;
+}
+
+/// 调试二进制路径（tauri build --debug --no-bundle 产物，globalSetup 已构建）。
+function exePath(): string {
+  const targetDir =
+    process.env.CARGO_TARGET_DIR ?? path.join(import.meta.dirname, "..", "src-tauri", "target");
+  return path.join(targetDir, "debug", "paim.exe");
+}
+
+/// 探测一个空闲端口（CDP 每实例独立，并行 worker 互不冲突）。
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const port = (server.address() as net.AddressInfo).port;
+      server.close(() => resolve(port));
+    });
+    server.on("error", reject);
+  });
+}
+
+/// spawn 当前 worker 专属的应用实例并 CDP 连接。
+/// 每实例独立数据目录（temp/e2e-w<n>）、WebView2 目录、CDP 端口，互不冲突；
+/// e2e 实例设置了 PAIM_DATA_DIR，应用侧会跳过全局快捷键注册。
+/// 内嵌前端的页面地址是 http://tauri.localhost（非 dev 模式的 localhost:1420）。
+export async function launchApp(workerIndex: number): Promise<AppHandle> {
+  const root = path.join(import.meta.dirname, "..");
+  const dataDir = path.join(root, "temp", `e2e-w${workerIndex}`);
+  const mockImagePath = path.join(dataDir, "e2e-upload.png");
+  writePng(mockImagePath);
+
+  const cdpPort = await freePort();
+  const child = spawn(exePath(), [], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PAIM_DATA_DIR: dataDir,
+      PAIM_E2E_MOCK_IMAGE_PATHS: JSON.stringify([mockImagePath]),
+      WEBVIEW2_USER_DATA_FOLDER: path.join(root, "temp", `wv2-w${workerIndex}`),
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
+    },
+    stdio: "ignore",
+  });
+  child.on("error", (e) => console.log("[app] spawn 失败:", e.message));
+  child.on("exit", (code) => console.log("[app] 进程退出:", code));
+
+  const cdpUrl = `http://127.0.0.1:${cdpPort}`;
+  const deadline = Date.now() + 60_000;
   let lastErr: unknown = new Error("CDP 连接超时");
   let attempt = 0;
   while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error(`应用进程提前退出，code=${child.exitCode}`);
     attempt += 1;
     try {
-      const browser = await chromium.connectOverCDP(CDP_URL);
+      const browser = await chromium.connectOverCDP(cdpUrl);
       const page = browser
         .contexts()
         .flatMap((c) => c.pages())
-        .find((p) => p.url().startsWith(DEV_URL));
+        .find((p) => p.url().startsWith("http://tauri.localhost"));
       if (page) {
-        console.log(`[connect] 第 ${attempt} 次尝试连上应用页面`);
-        return { browser, page };
+        console.log(`[connect] worker${workerIndex} 第 ${attempt} 次尝试连上应用页面`);
+        return { child, browser, page, dataDir, mockImagePath };
       }
-      lastErr = new Error(
-        `已连接 CDP 但未找到应用页面，现有页面：${browser
-          .contexts()
-          .flatMap((c) => c.pages())
-          .map((p) => p.url())}`,
-      );
+      lastErr = new Error("已连接 CDP 但未找到应用页面");
     } catch (e) {
       lastErr = e;
-      if (attempt % 10 === 0) console.log(`[connect] 第 ${attempt} 次尝试失败：${e}`);
+      if (attempt % 10 === 0)
+        console.log(`[connect] worker${workerIndex} 第 ${attempt} 次尝试失败：${e}`);
     }
     await new Promise((r) => setTimeout(r, 1_000));
   }
   throw lastErr;
+}
+
+/// 优雅关闭自己的实例：先 WM_CLOSE（进程以 0 退出），兜底强杀进程树。
+export async function closeApp(app: AppHandle): Promise<void> {
+  const pid = app.child.pid;
+  await app.browser.close().catch(() => {});
+  if (pid === undefined) return;
+  try {
+    execSync(`taskkill /PID ${pid}`, { stdio: "ignore" });
+    await new Promise((r) => setTimeout(r, 1_500));
+  } catch {
+    // 已退出
+  }
+  try {
+    execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
+  } catch {
+    // 已优雅退出
+  }
+}
+
+/// launch + 测试体 + 确保关闭的包装（用例失败/超时也会关闭自己的实例）。
+export async function withApp(
+  workerIndex: number,
+  body: (app: AppHandle) => Promise<void>,
+): Promise<void> {
+  const app = await launchApp(workerIndex);
+  try {
+    await body(app);
+  } finally {
+    await closeApp(app);
+  }
 }
 
 /// ---- PNG 生成 ----
@@ -69,8 +148,7 @@ function pngChunk(type: string, data: Buffer): Buffer {
 }
 
 /// 在 filePath 写一张内容唯一的 2×2 truecolor png（颜色取自时间戳，
-/// md5 不与既有图像撞车）。导入用例会让数据目录让位改名，其他用例引用
-/// 数据目录内的文件前应现写一份，不假设配置期写入的文件仍存在。
+/// md5 不与既有图像撞车）。引用数据目录内文件前现写一份，不假设旧文件仍在。
 export function writePng(filePath: string): void {
   const seed = Date.now() % 0xffffff;
   const r = (seed >> 16) & 0xff;
