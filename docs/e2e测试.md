@@ -16,7 +16,8 @@
   （等价 pm 的 `pnpm build`），运行期不依赖 vite/devServer。
 - `workers: 4` + `fullyParallel: false`：**用例文件间并行、文件内串行**（与 pm 一致）。
   每个 worker 通过 `helpers.ts` 的 worker 级 fixture spawn 自己的应用实例：
-  - 数据目录 `temp/e2e-w<n>`、WebView2 目录 `temp/wv2-w<n>`（互不冲突，teardown 时删除自己的目录）；
+  - 数据目录 `temp/e2e-w<n>`、WebView2 目录 `temp/wv2-w<n>`、上传预览目录 `temp/preview-e2e-w<n>`
+    （互不冲突，teardown 时删除数据目录与预览目录）；
   - CDP 端口按空闲端口动态分配；
   - teardown 由 Playwright 保证执行（用例失败/超时也算）：优雅关闭**自己 spawn 的进程**（不影响其他
     worker 与 dev 实例）后删除本轮数据目录。
@@ -49,6 +50,7 @@ pnpm e2e --grep 上传  # 单个用例
 ## 约定
 
 - 用例文件按序号命名（`01-*.spec.ts`），文件间并行、文件内串行；涉及数据目录让位的用例（如导入）放最后。
-- 引用数据目录内文件前现写一份（`writePng`），不假设旧文件仍在。
+- 引用数据目录内文件前现写一份（`writePng`），不假设旧文件仍在；
+  上传预览目录按实例隔离（`preview-<PAIM_DATA_DIR 末段>`，见 `db.rs::preview_dir`）。
 - 涉及文件选择的用例复用 `select_images` 测试缝：`launchApp` 已把 mock 路径写入实例环境。
 - 用例内采集 webview 控制台与 ≥400 响应日志，输出以 `[webview]/[http-error]` 前缀标识。

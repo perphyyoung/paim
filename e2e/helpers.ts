@@ -14,6 +14,7 @@ export interface AppHandle {
   browser: Browser;
   page: Page;
   dataDir: string;
+  previewDir: string;
   mockImagePath: string;
 }
 
@@ -43,6 +44,8 @@ function freePort(): Promise<number> {
 async function launchApp(workerIndex: number): Promise<AppHandle> {
   const root = path.join(import.meta.dirname, "..");
   const dataDir = path.join(root, "temp", `e2e-w${workerIndex}`);
+  // 应用侧 preview 目录 = temp_dir/preview-<PAIM_DATA_DIR 末段>（见 db.rs::preview_dir）
+  const previewDir = path.join(root, "temp", `preview-${path.basename(dataDir)}`);
   const mockImagePath = path.join(dataDir, "e2e-upload.png");
   writePng(mockImagePath);
 
@@ -76,7 +79,7 @@ async function launchApp(workerIndex: number): Promise<AppHandle> {
         .find((p) => p.url().startsWith("http://tauri.localhost"));
       if (page) {
         console.log(`[connect] worker${workerIndex} 第 ${attempt} 次尝试连上应用页面`);
-        return { child, browser, page, dataDir, mockImagePath };
+        return { child, browser, page, dataDir, previewDir, mockImagePath };
       }
       lastErr = new Error("已连接 CDP 但未找到应用页面");
     } catch (e) {
@@ -125,8 +128,9 @@ const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandl
       });
       await use(app);
       await closeApp(app);
-      // 进程已退出、句柄已释放，删除本轮数据目录（对齐 pm 的 _testDataDir 清理）
+      // 进程已退出、句柄已释放，删除本轮数据目录与预览目录（对齐 pm 的 _testDataDir 清理）
       fs.rmSync(app.dataDir, { recursive: true, force: true });
+      fs.rmSync(app.previewDir, { recursive: true, force: true });
     },
     { scope: "worker" },
   ],

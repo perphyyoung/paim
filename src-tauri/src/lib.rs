@@ -211,8 +211,10 @@ pub fn run() {
       app.asset_protocol_scope().allow_directory(db::temp_dir(app.handle()), true)?;
 
       // 启动时清空临时目录（预览图/备份解压），避免长期积累；
-      // 跳过 e2e 的并行实例目录（e2e-*、wv2-*，各 worker 自行管理生命周期）
+      // 跳过带实例标识的前缀（e2e-*、wv2-*、preview-*，各实例自行管理生命周期）；
+      // 随后清空本实例的上传预览目录，保证每次启动预览全新
       db::clean_temp_dir(app.handle());
+      let _ = std::fs::remove_dir_all(db::preview_dir(app.handle()));
 
       Ok(())
     })

@@ -253,8 +253,10 @@ pub fn temp_dir(app: &tauri::AppHandle) -> PathBuf {
     }
 }
 
-/// 清空临时目录（启动时调用），但跳过 e2e 的并行实例目录（e2e-*、wv2-* 前缀）：
-/// 并行 worker 各自持有其中的句柄并自行管理生命周期，清掉会让其他 worker 崩溃。
+/// 清空临时目录（启动时调用），但跳过带实例标识的前缀：
+/// - `e2e-*`/`wv2-*`：e2e 并行 worker 的数据目录与 WebView2 目录；
+/// - `preview-*`：各实例的上传预览目录。
+/// 这些目录由各自的实例/fixture 自行管理生命周期，清掉会影响别的实例。
 pub fn clean_temp_dir(app: &tauri::AppHandle) {
     let root = temp_dir(app);
     let Ok(entries) = std::fs::read_dir(&root) else {
@@ -262,12 +264,32 @@ pub fn clean_temp_dir(app: &tauri::AppHandle) {
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with("e2e-") || name.starts_with("wv2-") {
+        if name.starts_with("e2e-") || name.starts_with("wv2-") || name.starts_with("preview-") {
             continue;
         }
         let _ = std::fs::remove_dir_all(entry.path());
         let _ = std::fs::remove_file(entry.path());
     }
+}
+
+/// 实例标识：e2e 实例取 PAIM_DATA_DIR 的末段（如 e2e-w0），其余为 main。
+/// 用于派生 per-instance 的临时子目录（如 preview-<tag>），并行实例互不干扰。
+fn instance_tag() -> String {
+    std::env::var("PAIM_DATA_DIR")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|dir| {
+            PathBuf::from(dir)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| "main".to_string())
+}
+
+/// 上传预览图目录：per-instance（temp/preview-<tag>），避免并行实例启动时
+/// 清掉其他实例正在显示的预览图（webview 对显示中的图片持有句柄）。
+pub fn preview_dir(app: &tauri::AppHandle) -> PathBuf {
+    temp_dir(app).join(format!("preview-{}", instance_tag()))
 }
 
 /// 单元测试专用临时目录：<项目根>/paim-data/temp/test/{name}-{nanos}/。

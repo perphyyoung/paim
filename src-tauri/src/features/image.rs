@@ -102,7 +102,7 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
     let thumb = image_service::make_center_thumb(&img)
         .map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
 
-    let prev_dir = crate::db::temp_dir(&app).join("preview");
+    let prev_dir = crate::db::preview_dir(&app);
     std::fs::create_dir_all(&prev_dir).map_err(|e| AppError::Message(e.to_string()))?;
     // 以源文件路径哈希命名，重复选择复用
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
