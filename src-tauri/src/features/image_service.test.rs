@@ -365,6 +365,39 @@ fn relate_image_to_prompt_refreshes_both_updated_at() {
 }
 
 #[test]
+fn relate_prompt_creates_prompt_and_links_image() {
+    let (dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    let src = dir.join("src.png");
+    make_png(&src, 7, 7, 7);
+    let (img, _) = import_with(
+        &conn,
+        &dir.join("images"),
+        &dir.join("thumbnails"),
+        src.to_str().unwrap(),
+    )
+    .unwrap();
+
+    super::relate_prompt(&conn, &img.id, "测试提示词").unwrap();
+    let prompt_id: String = conn
+        .query_row(
+            "SELECT id FROM prompts WHERE content = '测试提示词'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let rel_cnt: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM prompt_image_relations
+             WHERE prompt_id = ?1 AND image_id = ?2",
+            rusqlite::params![prompt_id, img.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rel_cnt, 1, "应建立提示词与图像的关联");
+}
+
+#[test]
 fn purge_image_refreshes_related_prompt_updated_at() {
     let (dir, db) = setup_image_db();
     let conn = db.0.lock().unwrap();

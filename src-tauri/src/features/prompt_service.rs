@@ -44,14 +44,12 @@ pub fn create(conn: &Connection, content: &str, title: Option<String>) -> Result
         title = id.clone();
     }
 
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
+    // 单条 INSERT 原子生效，不开事务；调用方需要多步原子性时在外层自行包事务
+    conn.execute(
         "INSERT INTO prompts(id, title, content) VALUES (?1, ?2, ?3)",
         rusqlite::params![id, title, content],
     )?;
-    let prompt = get_by_id(&tx, &id)?.expect("inserted prompt must exist");
-    tx.commit()?;
-    Ok(prompt)
+    Ok(get_by_id(conn, &id)?.expect("inserted prompt must exist"))
 }
 
 pub fn get_by_id(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
