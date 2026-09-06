@@ -128,10 +128,13 @@ worker 内跨用例保留），其全屏遮罩挡住了后续所有点击。
 
 ### 根因与正确做法
 
-worker 级 fixture 的应用实例跨用例共享，UI 状态（打开的弹窗）不会自动复位。需要前置安排的用例，
-开头先 `await page.reload()` 重置 UI（数据都在库里，重载无副作用），再做导航与业务操作。
+worker 级 fixture 的应用实例跨用例共享，UI 状态（打开的弹窗）不会自动复位。复位统一放在 `helpers.ts` 的
+test 级 `page` fixture 里：**每个用例开始前 reload 一次**（数据都在库里，重载无副作用），用例内不要自行 reload；
+**worker 首个用例跳过 reload**——全新实例无残留，且 reload 会打断初始加载中的 IPC 请求
+（ERR_ABORTED + 「Couldn't find callback id」回调失联），可能让后续 invoke 挂起。
 
 ### 后续参考 / 通用约束
 
-- 同文件的多个用例共享同一应用实例：写用例时默认「上一用例可能残留打开的弹窗/状态」，前置安排前先 reload。
+- 同文件的多个用例共享同一应用实例：写用例时默认「上一用例可能残留打开的弹窗/状态」，但复位由 `page` fixture 统一处理，用例内不要重复 reload。
+- 首个用例不要 reload：全新实例无残留，强行 reload 反而撞上初始加载导致回调失联。
 - 排查时若 call log 出现 `intercepts pointer events`，先找是谁的遮罩（常见：上一用例没关的弹窗、未消失的 toast）。
