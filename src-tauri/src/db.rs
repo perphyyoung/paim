@@ -235,10 +235,11 @@ pub fn thumbnails_dir(app: &tauri::AppHandle) -> PathBuf {
     base_data_dir(app).join("thumbnails")
 }
 
-/// 临时目录（数据目录基准下的 temp/）：应用运行中的临时文件统一放这里
-/// （上传预览图、备份导入解压等），下次正常启动时整体清空。
-/// 必须与数据目录隔离（位于其外）：pm 备份导入会把整个数据目录改名让位，
-/// 解压等临时产物若在其内，改名时会因自身占用的句柄而失败（os error 5）。
+/// 临时目录：上传预览图（preview-<tag>）等运行中临时文件，下次正常启动时整体清空。
+/// 必须位于数据目录之外：pm 备份导入会把整个数据目录改名让位，本目录若在其内，
+/// 显示中的预览图句柄会让改名失败（os error 5）。
+/// 注意：pm 备份导入的解压目录不在此处，用的是系统临时目录
+/// （见 pm_backup_service.rs 的 create_temp_dir / std::env::temp_dir）。
 /// - 开发环境：项目根下 temp/，与 paim-data 平级；
 /// - 部署环境：应用缓存目录（LocalAppData/{identifier}/cache）下的 temp/。
 pub fn temp_dir(app: &tauri::AppHandle) -> PathBuf {

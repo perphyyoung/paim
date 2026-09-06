@@ -138,3 +138,45 @@ test 级 `page` fixture 里：**每个用例开始前 reload 一次**（数据�
 - 同文件的多个用例共享同一应用实例：写用例时默认「上一用例可能残留打开的弹窗/状态」，但复位由 `page` fixture 统一处理，用例内不要重复 reload。
 - 首个用例不要 reload：全新实例无残留，强行 reload 反而撞上初始加载导致回调失联。
 - 排查时若 call log 出现 `intercepts pointer events`，先找是谁的遮罩（常见：上一用例没关的弹窗、未消失的 toast）。
+
+## 6. pm 备份导入 dev 失败 release 正常：vite chokidar 监听句柄挡住数据目录改名
+
+### 现象
+
+`pnpm dev` 下导入 pm 备份必失败，报「备份原数据目录失败……拒绝访问 (os error 5)」；
+`pnpm release` 后导入正常，且 release 在**有数据、缩略图显示中**时连续导入也正常。
+paim.log 显示失败点固定：让位改名 `paim-data → paim-data_<时间戳>` 被拒
+（`pm_backup_service.rs` 的 `std::fs::rename`）。关闭 VS Code/ZCode 后复现依旧。
+
+### 排查过程
+
+1. 对比 dev/release 导入代码路径：**零分叉**（整个导入路径无 `debug_assertions` 分支）。
+2. 对比解压目录：`create_temp_dir` 用的是系统临时目录（`std::env::temp_dir()`），
+   两个构建完全一致——且**失败发生在解压之前**（改名先于 `create_temp_dir`），解压目录排除。
+3. 排除孤儿进程（tasklist 无 paim.exe）；排除 webview 显示句柄假设（release 有数据时二次导入正常）。
+4. **LockHunter 查看 `paim-data` 的锁定进程**：`node.exe` 持有 paim-data、images、thumbnails
+   等大量目录句柄——即 `pnpm dev` 拉起的 vite dev server。
+
+### 根因
+
+vite 的 chokidar 默认**递归监听项目根**（仅默认排除 .git/node_modules），数据目录 paim-data
+在监听范围内。`pnpm dev` 运行期间 node.exe 一直持有 paim-data 内目录句柄，而导入的
+「整目录改名让位」要求无任何进程持有目录树内句柄 → rename 被 os error 5 拒绝。
+release 没有 vite 进程所以正常；「关编辑器无效」是因为监听者是 pnpm dev 的子进程，不是编辑器。
+
+### 修复
+
+`vite.config.ts` 的 `server.watch.ignored` 从黑名单改为**白名单函数**：仅监听前端运行所需
+（index.html + src/ + public/），其余一律忽略。注意 package.json 随之不再被监听，
+改版本号后需手动重启 vite。
+
+### 后续参考 / 通用约束
+
+- 「整目录改名」类操作（如数据目录让位）要求无任何进程持有目录树内句柄；失败时先查占用者，
+  LockHunter / 资源监视器「关联的句柄」可直接列出进程名，不要靠猜。
+- dev 环境此类占用最先怀疑**开发工具链自身**：vite chokidar、tauri CLI、编辑器 watcher——
+  它们以子进程形式随 dev 常驻，关掉编辑器不等于解除占用。
+- vite 项目里的数据/产物目录要么移出项目根，要么在 watch.ignored 中排除；白名单（ignored
+  传函数）比黑名单更省心，新顶层目录自动豁免。
+- pm 备份导入的解压目录在系统临时目录（`create_temp_dir`），与 `db::temp_dir` 无关；
+  db.rs 曾有「备份导入解压」的误导注释（已更正），排查前先核对实现而非注释。
