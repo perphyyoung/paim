@@ -267,26 +267,32 @@ pub fn get_prompt_thumbs_map(
     db: State<BkDb>,
 ) -> Result<std::collections::HashMap<String, String>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT prompt_id, thumbnail_path
-             FROM (
-                SELECT pir.prompt_id AS prompt_id, img.thumbnail_path AS thumbnail_path,
-                       ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.sort_order, pir.rowid) AS rn
-                FROM prompt_image_relations pir
-                JOIN images img ON img.id = pir.image_id
-                WHERE img.is_deleted = 0
-             )
-             WHERE rn = 1",
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let data_dir = crate::db::data_dir(&app);
-    let rows = stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        .map_err(|e| AppError::Message(e.to_string()))?;
+    prompt_thumbs_map(&conn, &crate::db::data_dir(&app))
+        .map_err(|e| AppError::Message(e.to_string()))
+}
+
+/// 按关联顺序取每个提示词第一张**有缩略图**的图像：
+/// thumbnail_path 为 NULL 的记录（如导入时无法解码的文件）自动跳过，
+/// 让位给后续可用图像，且不会因 NULL 阻塞整个映射的构建。
+pub(crate) fn prompt_thumbs_map(
+    conn: &rusqlite::Connection,
+    data_dir: &std::path::Path,
+) -> rusqlite::Result<std::collections::HashMap<String, String>> {
+    let mut stmt = conn.prepare(
+        "SELECT prompt_id, thumbnail_path
+         FROM (
+            SELECT pir.prompt_id AS prompt_id, img.thumbnail_path AS thumbnail_path,
+                   ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.sort_order, pir.rowid) AS rn
+            FROM prompt_image_relations pir
+            JOIN images img ON img.id = pir.image_id
+            WHERE img.is_deleted = 0 AND img.thumbnail_path IS NOT NULL
+         )
+         WHERE rn = 1",
+    )?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
     let mut map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for row in rows {
-        let (pid, thumb_rel) = row.map_err(|e| AppError::Message(e.to_string()))?;
+        let (pid, thumb_rel) = row?;
         map.insert(
             pid,
             data_dir.join(&thumb_rel).to_string_lossy().into_owned(),
@@ -462,3 +468,7 @@ pub fn add_images_to_prompt(
     }
     Ok(crate::features::image_service::ImageImportBatchResult { results, errors })
 }
+
+#[cfg(test)]
+#[path = "prompt.test.rs"]
+mod tests;

@@ -56,6 +56,30 @@ fn tag_filter_is_separate_from_search() {
     assert_eq!(params, vec!["收藏".to_string()]);
 }
 
+/// png 后缀伪装成图像的坏内容（如 AVIF 数据）必须被拒绝，不得落库——
+/// 否则 thumbnail_path 为 NULL 会让提示词页卡片背景整批失效。
+#[test]
+fn import_with_rejects_undecodable_content() {
+    let (dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    let src = dir.join("fake.png");
+    std::fs::write(&src, b"not an image at all").unwrap();
+
+    let err = import_with(
+        &conn,
+        &dir.join("images"),
+        &dir.join("thumbnails"),
+        src.to_str().unwrap(),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("无法解析图像文件"), "实际：{err}");
+
+    let cnt: i64 = conn
+        .query_row("SELECT COUNT(*) FROM images", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(cnt, 0, "坏文件不应落库");
+}
+
 #[test]
 fn update_detail_rejects_empty_file_name() {
     let (_dir, db) = setup_image_db();

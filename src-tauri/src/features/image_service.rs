@@ -137,6 +137,14 @@ pub(crate) fn import_with(
         return Ok((img, true));
     }
 
+    // 先解码验证：拒绝扩展名伪装或损坏的文件。解码失败的文件若静默入库，
+    // thumbnail_path 为 NULL，会让提示词页的卡片背景整批失效。
+    let img = image::open(&source).map_err(|e| {
+        rusqlite::Error::InvalidParameterName(format!(
+            "无法解析图像文件（可能已损坏或为不支持的格式）: {e}"
+        ))
+    })?;
+
     std::fs::create_dir_all(images_dir).map_err(io_to_sql)?;
     std::fs::create_dir_all(thumbnails_dir).map_err(io_to_sql)?;
 
@@ -164,32 +172,29 @@ pub(crate) fn import_with(
     let dest = month_dir.join(&stored_name);
     std::fs::copy(&source, &dest).map_err(io_to_sql)?;
 
-    // 解码原图（同时拿到尺寸），生成居中裁剪的方图缩略图
-    let (width, height, thumb_rel) = match image::open(&source) {
-        Ok(img) => {
-            let (w, h) = img.dimensions();
-            match make_center_thumb(&img) {
-                Ok(thumb) => {
-                    let thumb_name = format!("thumb_{id}.jpg");
-                    let thumb_month_dir = thumbnails_dir.join(&yyyymm);
-                    std::fs::create_dir_all(&thumb_month_dir).map_err(io_to_sql)?;
-                    let thumb_abs = thumb_month_dir.join(&thumb_name);
-                    thumb.save(&thumb_abs).map_err(|e| {
-                        rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("生成缩略图失败: {e}"),
-                        )))
-                    })?;
-                    (
-                        Some(w as i64),
-                        Some(h as i64),
-                        Some(format!("thumbnails/{yyyymm}/{thumb_name}")),
-                    )
-                }
-                Err(_) => (Some(w as i64), Some(h as i64), None),
+    // 生成居中裁剪的方图缩略图（生成失败仅缺缩略图，不阻断导入）
+    let (width, height, thumb_rel) = {
+        let (w, h) = img.dimensions();
+        match make_center_thumb(&img) {
+            Ok(thumb) => {
+                let thumb_name = format!("thumb_{id}.jpg");
+                let thumb_month_dir = thumbnails_dir.join(&yyyymm);
+                std::fs::create_dir_all(&thumb_month_dir).map_err(io_to_sql)?;
+                let thumb_abs = thumb_month_dir.join(&thumb_name);
+                thumb.save(&thumb_abs).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("生成缩略图失败: {e}"),
+                    )))
+                })?;
+                (
+                    Some(w as i64),
+                    Some(h as i64),
+                    Some(format!("thumbnails/{yyyymm}/{thumb_name}")),
+                )
             }
+            Err(_) => (Some(w as i64), Some(h as i64), None),
         }
-        Err(_) => (None, None, None),
     };
 
     let relative_path = format!("images/{yyyymm}/{stored_name}");
