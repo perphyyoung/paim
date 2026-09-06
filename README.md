@@ -8,6 +8,16 @@
 - **前端**：Vue 3 + TypeScript + Tailwind CSS + Vite
 - **存储**：SQLite（rusqlite，bundled，WAL 模式）
 
+## 支持的图像格式
+
+| 状态 | 格式 | 说明 |
+| --- | --- | --- |
+| ✅ 支持 | png、jpg/jpeg、gif、webp、bmp、ico、tif/tiff | 导入时解码验证并生成缩略图 |
+| ❌ 不支持 | avif、heic、svg、相机 raw 等 | 导入会明确报错，请先转换格式 |
+
+- 扩展名伪装或内容损坏的文件会在导入时被拒绝（先解码校验再落盘）。
+- 极少数解码成功但缩略图生成失败的文件，卡片无背景但详情页仍可查看原图。
+
 ## 快速开始
 
 前置要求：Rust、Node（pnpm）、对应平台的 WebView2/WebKit。

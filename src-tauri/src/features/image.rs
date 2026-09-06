@@ -37,7 +37,12 @@ pub async fn select_images(app: tauri::AppHandle) -> Result<Vec<String>, AppErro
         let picked = app
             .dialog()
             .file()
-            .add_filter("图像", &["png", "jpg", "jpeg", "gif", "webp", "bmp"])
+            .add_filter(
+                "图像",
+                &[
+                    "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff",
+                ],
+            )
             .blocking_pick_files();
         Ok(picked
             .unwrap_or_default()
