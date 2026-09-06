@@ -1,0 +1,106 @@
+# 分层与依赖方向 —— 与 项目架构.md 保持一致
+# layers:order 越小越基础,依赖只能从大 order 流向小 order
+#   rust: infra(0) ← domain(1) ← commands(2)
+#   web : bindings(3) ← shared(4) ← features(5) ← views(6) ← app(7)
+#   e2e(9) 可引用任意层
+# boundaries:与 order 无关的点名禁令,给出比 layer_direction 更明确的违规原因
+
+[constraints]
+max_cycles = 0
+max_cc = 25
+no_god_files = true
+
+# ==== Rust 后端(src-tauri/src):commands 薄壳 → domain 领域逻辑 → infra 基础件 ====
+
+# ---- 基础件(order 0):连接/schema、错误、纯函数、日志,不引用任何上层 ----
+[[layers]]
+name = "rust-infra"
+paths = [
+  "src-tauri/src/db*",
+  "src-tauri/src/error.rs",
+  "src-tauri/src/text_utils*",
+  "src-tauri/src/logging.rs",
+]
+order = 0
+
+# ---- 领域逻辑(order 1):*_service 与 tag_manager,不感知 Tauri 命令层 ----
+[[layers]]
+name = "rust-domain"
+paths = [
+  "src-tauri/src/features/image_service*",
+  "src-tauri/src/features/prompt_service*",
+  "src-tauri/src/features/thumbnail_service*",
+  "src-tauri/src/features/pm_backup_service*",
+  "src-tauri/src/features/tag_manager*",
+]
+order = 1
+
+# ---- 命令与组合根(order 2):薄 commands、注册表 lib.rs、入口 main.rs ----
+[[layers]]
+name = "rust-commands"
+paths = [
+  "src-tauri/src/features/image.rs",
+  "src-tauri/src/features/prompt.rs",
+  "src-tauri/src/features/prompt_tag.rs",
+  "src-tauri/src/features/image_tag.rs",
+  "src-tauri/src/features/pm_backup.rs",
+  "src-tauri/src/features.rs",
+  "src-tauri/src/lib.rs",
+  "src-tauri/src/main.rs",
+]
+order = 2
+
+# ==== Vue 前端(src):app → views → features → shared → bindings ====
+
+# ---- bindings(order 3):tauri-specta 生成文件,零内部依赖,禁止手改引用 ----
+[[layers]]
+name = "web-bindings"
+paths = ["src/bindings.ts"]
+order = 3
+
+# ---- 共享件(order 4):通用组件、composables、utils,不依赖业务切片 ----
+[[layers]]
+name = "web-shared"
+paths = ["src/components/**", "src/composables/**", "src/utils/**"]
+order = 4
+
+# ---- 特征切片(order 5):prompt/image/tag/backup,两端对齐的业务模块 ----
+[[layers]]
+name = "web-features"
+paths = ["src/features/**"]
+order = 5
+
+# ---- 页面(order 6):两个主页与设置页 ----
+[[layers]]
+name = "web-views"
+paths = ["src/views/**"]
+order = 6
+
+# ---- 应用根(order 7):入口、根组件、路由 ----
+[[layers]]
+name = "web-app"
+paths = ["src/main.ts", "src/App.vue", "src/router/**", "src/version.ts"]
+order = 7
+
+# ---- 测试(order 9):e2e 与脚本可引用任意层 ----
+[[layers]]
+name = "e2e"
+paths = ["e2e/**", "scripts/**"]
+order = 9
+
+# ==== 点名禁令(boundaries 与 order 无关) ====
+
+[[boundaries]]
+from = "src/components/**"
+to = "src/features/**"
+reason = "共享组件禁止依赖业务切片:通用件下沉到 components,业务件留在 features(现存 MediaCard/useThumbnailSelfHeal 违例待重构)"
+
+[[boundaries]]
+from = "src/bindings.ts"
+to = "src/**"
+reason = "bindings.ts 为 tauri-specta 生成文件,禁止引用业务代码或手工编辑"
+
+[[boundaries]]
+from = "src/**"
+to = "e2e/**"
+reason = "应用源码禁止依赖 e2e 测试代码"
