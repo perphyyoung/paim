@@ -80,15 +80,17 @@ pub struct LinkedPrompt {
 /// 缩略图尺寸（宽=高=200，居中裁剪）。
 const THUMB_SIZE: u32 = 200;
 
-/// 允许导入的图片扩展名（与 README 的支持格式矩阵、文件对话框过滤保持一致）。
-const ALLOWED_EXT: &[&str] = &[
+/// 支持导入的图像格式扩展名（小写）。唯一定义处：
+/// `select_images` 对话框过滤、导入校验（ext_ok）与解码失败报错文案均由此派生；
+/// README 的「支持的图像格式」矩阵为文档，需手动同步。
+pub const SUPPORTED_EXT: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff",
 ];
 
 fn ext_ok(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| ALLOWED_EXT.contains(&e.to_lowercase().as_str()))
+        .map(|e| SUPPORTED_EXT.contains(&e.to_lowercase().as_str()))
         .unwrap_or(false)
 }
 
@@ -143,7 +145,8 @@ pub(crate) fn import_with(
     // thumbnail_path 为 NULL，会让提示词页的卡片背景整批失效。
     let img = image::open(&source).map_err(|e| {
         rusqlite::Error::InvalidParameterName(format!(
-            "无法解析图像文件（可能已损坏或为不支持的格式；当前支持 png/jpg/jpeg/gif/webp/bmp/ico/tif/tiff，AVIF/HEIC/SVG 请先转换）: {e}"
+            "无法解析图像文件（可能已损坏或为不支持的格式；当前支持 {}，AVIF/HEIC/SVG 请先转换）: {e}",
+            SUPPORTED_EXT.join(" / ")
         ))
     })?;
 

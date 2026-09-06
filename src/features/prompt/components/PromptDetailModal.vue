@@ -3,7 +3,6 @@
 import { computed, ref, toRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands } from "@/bindings";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useItemToggle } from "@/composables/useItemToggle";
@@ -376,17 +375,12 @@ interface ImportBatchResult {
   results: { is_duplicate: boolean }[];
   errors: { path: string; message: string }[];
 }
-const ALLOWED_FILTER = {
-  name: "图像",
-  extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
-};
 const importLoading = ref(false);
 async function importFromExternal() {
   const p = current.value;
   if (!p) return;
-  const selected = await open({ multiple: true, filters: [ALLOWED_FILTER] });
-  if (!selected) return;
-  const paths = Array.isArray(selected) ? selected : [selected];
+  const paths = await commands.selectImages();
+  if (paths.length === 0) return;
   importLoading.value = true;
   try {
     const res = await commands.addImagesToPrompt(p.id, paths);

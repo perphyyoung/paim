@@ -3,7 +3,6 @@ import { computed, nextTick, ref, toRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands } from "@/bindings";
 // 别名导入：组件模板用裸 v-if="open"（prop），直接导入 open 会遮蔽 prop 导致弹窗恒渲染
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useItemToggle } from "@/composables/useItemToggle";
@@ -83,19 +82,18 @@ async function openSavedLocation() {
 }
 
 // 替换图像（对齐 pm）：选文件 → 走标准入库管线 → 旧图软删并迁移关联。
-// 与上传弹窗同一扩展名白名单（Rust 端 ext_ok 再兜底校验）。
-const REPLACE_FILTER = {
-  name: "Images",
-  extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
-};
+// 文件选择统一走 select_images（格式列表后端单源，替换仅需单选）。
 async function replaceWithPicked() {
   const img = current.value;
   closeCtxMenu();
   if (!img) return;
-  const selected = await openDialog({ multiple: false, filters: [REPLACE_FILTER] });
-  if (!selected || Array.isArray(selected)) return;
+  const paths = await commands.selectImages();
+  if (paths.length !== 1) {
+    if (paths.length > 1) showToast("替换图像一次只能选择一个文件", "warning");
+    return;
+  }
   try {
-    const outcome = await commands.replaceImage(img.id, selected);
+    const outcome = await commands.replaceImage(img.id, paths[0]);
     if (outcome.kind === "same_image" || !outcome.image) {
       showToast("与原图相同，未替换", "warning");
       return;

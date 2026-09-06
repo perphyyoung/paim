@@ -3,7 +3,6 @@
 import { nextTick, ref, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands } from "@/bindings";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/useToast";
 
 const props = defineProps<{ open: boolean }>();
@@ -13,11 +12,6 @@ const { showToast } = useToast();
 interface PromptImage {
   stored_name: string;
 }
-
-const ALLOWED_FILTER = {
-  name: "图像",
-  extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
-};
 
 const content = ref("");
 const contentInput = ref<HTMLTextAreaElement | null>(null);
@@ -39,9 +33,8 @@ watch(
 );
 
 async function pickFiles() {
-  const selected = await open({ multiple: true, filters: [ALLOWED_FILTER] });
-  if (!selected) return;
-  const paths = Array.isArray(selected) ? selected : [selected];
+  const paths = await commands.selectImages();
+  if (paths.length === 0) return;
   thumbLoading.value = true;
   try {
     for (const p of paths) {
