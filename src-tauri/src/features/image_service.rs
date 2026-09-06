@@ -3,7 +3,6 @@
 //! 命令层见 `features::image`。
 
 use crate::error::AppError;
-use crate::features::prompt_service;
 use image::GenericImageView;
 use rusqlite::{Connection, OptionalExtension, Result};
 use serde::Serialize;
@@ -723,27 +722,6 @@ fn unix_to_yyyymm(secs: i64) -> String {
     let m = mp + if mp < 10 { 3 } else { -9 };
     let year = if m <= 2 { y + 1 } else { y };
     format!("{:04}{:02}", year, m)
-}
-
-/// 直接新建一条提示词并与该图片建立关联（幂等）。
-/// 新建提示词自带当前时间；关联视为图像内容变更，同步图像的 updated_at。
-pub(crate) fn relate_prompt(
-    conn: &Connection,
-    image_id: &str,
-    content: &str,
-) -> rusqlite::Result<()> {
-    let tx = conn.unchecked_transaction()?;
-    let prompt_id = prompt_service::create(&tx, content, None)?.id;
-    tx.execute(
-        "INSERT OR IGNORE INTO prompt_image_relations(prompt_id, image_id) VALUES (?1, ?2)",
-        rusqlite::params![prompt_id, image_id],
-    )?;
-    tx.execute(
-        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
-        rusqlite::params![image_id],
-    )?;
-    tx.commit()?;
-    Ok(())
 }
 
 /// 将图片关联到已存在的提示词（幂等），返回实际新增的关联数；供新建提示词选择图像时使用。

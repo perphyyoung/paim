@@ -55,7 +55,11 @@ export const commands = {
 	 *  长任务（阻塞等待用户选择），async + spawn_blocking。
 	 */
 	selectImages: () => __TAURI_INVOKE<string[]>("select_images"),
-	/**  导入多张本地图像（可选关联到提示词内容），逐张容错返回结果与错误。 */
+	/**
+	 *  导入多张本地图像（可选关联到提示词内容），逐张容错返回结果与错误。
+	 *  附带提示词时只创建一条（首次导入成功时才创建，全部失败不留空提示词），
+	 *  本批全部图像关联到同一条——此前按图逐张新建，两张图附带同一提示词会生成两个提示词。
+	 */
 	importImages: (paths: string[], prompt: string | null) => __TAURI_INVOKE<ImageImportBatchResult>("import_images", { paths, prompt }),
 	/**  为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。 */
 	getSourceThumbnail: (source: string) => __TAURI_INVOKE<string>("get_source_thumbnail", { source }),

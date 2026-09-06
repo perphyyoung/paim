@@ -13,7 +13,7 @@
  */
 import path from "node:path";
 import { expect } from "@playwright/test";
-import { test } from "./helpers";
+import { test, writePng } from "./helpers";
 import { e2eLog } from "./e2e-logger";
 
 test("上传图像附带提示词后，图像卡片应关联该提示词", async ({ page, app }) => {
@@ -45,4 +45,54 @@ test("上传图像附带提示词后，图像卡片应关联该提示词", async
 
   // 回归断言：卡片内容行显示关联的提示词内容
   await expect(page.getByText(promptContent).first()).toBeVisible();
+});
+
+test("两张图像附带同一提示词，应只创建一个提示词并关联两张图像", async ({ page, app }) => {
+  // 一次上传批次附带两张图与同一提示词（弹窗确定按钮即此命令：逐图 import 后关联提示词）
+  const firstPath = path.join(app.dataDir, "e2e-batch-1.png");
+  const secondPath = path.join(app.dataDir, "e2e-batch-2.png");
+  writePng(firstPath);
+  writePng(secondPath);
+  const promptContent = `e2e 同一提示词两张图 ${Date.now()}`;
+
+  await page.evaluate(
+    async ({ paths, prompt }) => {
+      return await (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke: (cmd: string, args?: unknown) => Promise<unknown>;
+          };
+        }
+      ).__TAURI_INTERNALS__.invoke("import_images", { paths, prompt });
+    },
+    { paths: [firstPath, secondPath], prompt: promptContent },
+  );
+  e2eLog.info("[step] 两张图已导入");
+
+  // 回归断言：同一提示词内容只应有一个提示词（bug 下会按图重复创建为两个）
+  const prompts = await page.evaluate(() =>
+    (
+      window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string) => Promise<Array<{ content: string }>> };
+      }
+    ).__TAURI_INTERNALS__.invoke("list_prompts"),
+  );
+  const matched = prompts.filter((p) => p.content === promptContent);
+  e2eLog.info(`[step] 内容匹配的提示词数量: ${matched.length}`);
+  expect(matched.length, "同一提示词内容应只创建一个提示词").toBe(1);
+
+  // 且两张图像都关联到这一个提示词
+  const promptMap = await page.evaluate(() =>
+    (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (cmd: string) => Promise<Record<string, string[]>>;
+        };
+      }
+    ).__TAURI_INTERNALS__.invoke("get_image_prompts_map"),
+  );
+  const linkedImages = Object.entries(promptMap).filter(([, contents]) =>
+    contents.includes(promptContent),
+  );
+  expect(linkedImages.length, "两张图像都应关联到该提示词").toBe(2);
 });

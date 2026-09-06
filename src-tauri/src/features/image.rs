@@ -50,6 +50,8 @@ pub async fn select_images(app: tauri::AppHandle) -> Result<Vec<String>, AppErro
 }
 
 /// 导入多张本地图像（可选关联到提示词内容），逐张容错返回结果与错误。
+/// 附带提示词时只创建一条（首次导入成功时才创建，全部失败不留空提示词），
+/// 本批全部图像关联到同一条——此前按图逐张新建，两张图附带同一提示词会生成两个提示词。
 #[tauri::command]
 #[specta::specta]
 pub fn import_images(
@@ -64,11 +66,32 @@ pub fn import_images(
         .filter(|s| !s.is_empty());
     let mut results = Vec::new();
     let mut errors = Vec::new();
+    let mut prompt_id: Option<String> = None;
     for path in &paths {
         match image_service::import(&conn, &app, path) {
             Ok((image, is_duplicate)) => {
                 if let Some(content) = &prompt {
-                    if let Err(e) = image_service::relate_prompt(&conn, &image.id, content) {
+                    let id = match &prompt_id {
+                        Some(id) => id.clone(),
+                        None => match prompt_service::create(&conn, content, None) {
+                            Ok(created) => {
+                                prompt_id = Some(created.id.clone());
+                                created.id
+                            }
+                            Err(e) => {
+                                errors.push(image_service::ImageImportError {
+                                    path: path.clone(),
+                                    message: format!("创建提示词失败: {e}"),
+                                });
+                                results.push(ImageImportResult {
+                                    image,
+                                    is_duplicate,
+                                });
+                                continue;
+                            }
+                        },
+                    };
+                    if let Err(e) = image_service::relate_image_to_prompt(&conn, &id, &image.id) {
                         errors.push(image_service::ImageImportError {
                             path: path.clone(),
                             message: format!("关联提示词失败: {e}"),
