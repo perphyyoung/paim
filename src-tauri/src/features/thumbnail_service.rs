@@ -9,6 +9,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
+use crate::features::image_ops::{make_center_thumb, open_image};
+
 /// 全量重建结果摘要。success 包含「已存在跳过」与「新生成」两类
 /// （与 pm 的 regenerated 计数口径一致）。
 #[derive(Debug, Serialize, specta::Type)]
@@ -76,9 +78,8 @@ pub fn build_thumbnail(data_dir: &Path, thumbs_root: &Path, rel: &str) -> Result
         return Ok(format!("{thumb_rel_prefix}/{name}"));
     }
 
-    let img = image::open(data_dir.join(rel)).map_err(|e| format!("读取图像失败: {e}"))?;
-    let thumb = crate::features::image_service::make_center_thumb(&img)
-        .map_err(|e| format!("生成缩略图失败: {e}"))?;
+    let img = open_image(&data_dir.join(rel)).map_err(|e| format!("读取图像失败: {e}"))?;
+    let thumb = make_center_thumb(&img).map_err(|e| format!("生成缩略图失败: {e}"))?;
     std::fs::create_dir_all(&thumb_dir).map_err(io_err)?;
     // 编码用 jpeg-encoder（SIMD，image 自带编码器无 SIMD），质量 80 与 pm 一致
     let rgb = thumb.to_rgb8();

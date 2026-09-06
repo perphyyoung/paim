@@ -3,6 +3,7 @@
 //! 命令层见 `features::image`。
 
 use crate::error::AppError;
+use crate::features::image_ops::{make_center_thumb, open_image};
 use image::GenericImageView;
 use rusqlite::{Connection, OptionalExtension, Result};
 use serde::Serialize;
@@ -77,9 +78,6 @@ pub struct LinkedPrompt {
     pub tags: Vec<String>,
 }
 
-/// 缩略图尺寸（宽=高=200，居中裁剪）。
-const THUMB_SIZE: u32 = 200;
-
 /// 支持导入的图像格式扩展名（小写）。唯一定义处：
 /// `select_images` 对话框过滤、导入校验（ext_ok）与解码失败报错文案均由此派生；
 /// README 的「支持的图像格式」矩阵为文档，需手动同步。
@@ -143,7 +141,7 @@ pub(crate) fn import_with(
 
     // 先解码验证：拒绝扩展名伪装或损坏的文件。解码失败的文件若静默入库，
     // thumbnail_path 为 NULL，会让提示词页的卡片背景整批失效。
-    let img = image::open(&source).map_err(|e| {
+    let img = open_image(&source).map_err(|e| {
         rusqlite::Error::InvalidParameterName(format!(
             "无法解析图像文件（可能已损坏或为不支持的格式；当前支持 {}，AVIF/HEIC/SVG 请先转换）: {e}",
             SUPPORTED_EXT.join(" / ")
@@ -225,17 +223,6 @@ pub(crate) fn import_with(
     )?;
     let new_img = get_by_id(conn, &id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
     Ok((new_img, false))
-}
-
-/// 生成 200×200 方形缩略图：短边贴满 + 居中裁剪（等价 pm sharp 的 fit: cover）。
-pub(crate) fn make_center_thumb(
-    img: &image::DynamicImage,
-) -> Result<image::DynamicImage, image::ImageError> {
-    Ok(img.resize_to_fill(
-        THUMB_SIZE,
-        THUMB_SIZE,
-        image::imageops::FilterType::Triangle,
-    ))
 }
 
 /// 拼接搜索/标签的 WHERE 条件子句与参数（search 匹配文件名/备注/标签名，tag 需存在同名标签关联）。

@@ -1,4 +1,5 @@
 pub mod image;
+pub mod image_ops;
 pub mod image_service;
 pub mod image_tag;
 pub mod pm_backup;

@@ -23,10 +23,11 @@ paths = [
 ]
 order = 0
 
-# ---- 领域逻辑(order 1):*_service 与 tag_manager,不感知 Tauri 命令层 ----
+# ---- 领域逻辑(order 1):*_service、tag_manager 与 image_ops(纯图像处理),不感知 Tauri 命令层 ----
 [[layers]]
 name = "rust-domain"
 paths = [
+  "src-tauri/src/features/image_ops*",
   "src-tauri/src/features/image_service*",
   "src-tauri/src/features/prompt_service*",
   "src-tauri/src/features/thumbnail_service*",
@@ -93,7 +94,7 @@ order = 9
 [[boundaries]]
 from = "src/components/**"
 to = "src/features/**"
-reason = "共享组件禁止依赖业务切片:通用件下沉到 components,业务件留在 features(现存 MediaCard/useThumbnailSelfHeal 违例待重构)"
+reason = "共享组件禁止依赖业务切片:通用件下沉到 components,业务件留在 features"
 
 [[boundaries]]
 from = "src/bindings.ts"

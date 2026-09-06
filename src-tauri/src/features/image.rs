@@ -3,6 +3,7 @@
 
 use crate::db::BkDb;
 use crate::error::AppError;
+use crate::features::image_ops::{make_center_thumb, open_image};
 use crate::features::image_service::{
     self, Image, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome, ImageTag,
     LinkedPrompt, PaginatedImages,
@@ -121,9 +122,9 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
     if !src.is_file() {
         return Err("源文件不存在".into());
     }
-    let img = image::open(&src).map_err(|e| AppError::Message(format!("无法读取图像: {e}")))?;
-    let thumb = image_service::make_center_thumb(&img)
-        .map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
+    let img = open_image(&src).map_err(|e| AppError::Message(format!("无法读取图像: {e}")))?;
+    let thumb =
+        make_center_thumb(&img).map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
 
     let prev_dir = crate::db::preview_dir(&app);
     std::fs::create_dir_all(&prev_dir).map_err(|e| AppError::Message(e.to_string()))?;
