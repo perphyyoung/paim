@@ -17,6 +17,9 @@ export interface AppHandle {
   dataDir: string;
   previewDir: string;
   mockImagePath: string;
+  /// 已被用例使用过：page fixture 据此决定是否 reload 复位
+  /// （worker 首个用例的全新实例跳过 reload，避免打断初始加载的 IPC 请求）
+  used: boolean;
 }
 
 /// 调试二进制路径（tauri build --debug --no-bundle 产物，globalSetup 已构建）。
@@ -82,7 +85,7 @@ async function launchApp(workerIndex: number): Promise<AppHandle> {
         .find((p) => p.url().startsWith("http://tauri.localhost"));
       if (page) {
         e2eLog.info(`[connect] 第 ${attempt} 次尝试连上应用页面`);
-        return { child, browser, page, dataDir, previewDir, mockImagePath };
+        return { child, browser, page, dataDir, previewDir, mockImagePath, used: false };
       }
       lastErr = new Error("已连接 CDP 但未找到应用页面");
     } catch (e) {
@@ -126,9 +129,12 @@ const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandl
         else e2eLog.info(text);
       });
       app.page.on("pageerror", (err) => e2eLog.error(`[pageerror] ${err.message}`));
-      app.page.on("requestfailed", (req) =>
-        e2eLog.error(`[req-failed] ${req.url()} ${req.failure()?.errorText ?? ""}`),
-      );
+      app.page.on("requestfailed", (req) => {
+        const text = `[req-failed] ${req.url()} ${req.failure()?.errorText ?? ""}`;
+        // 导航（如用例间复位 reload）打断在途请求是预期行为，降为 info，避免稀释真异常
+        if (req.failure()?.errorText === "net::ERR_ABORTED") e2eLog.info(text);
+        else e2eLog.error(text);
+      });
       app.page.on("response", (res) => {
         if (res.status() >= 400) e2eLog.error(`[http-error] ${res.status()} ${res.url()}`);
       });
@@ -145,9 +151,12 @@ const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandl
   },
   // 每个用例开始前重置 UI：同 worker 的上一用例可能残留打开的弹窗（数据在库里，
   // 重载无副作用）。统一在 fixture 处理，用例内不要自行 reload。
+  // worker 首个用例跳过 reload：全新实例无残留，且 reload 会打断初始加载的
+  // IPC 请求（ERR_ABORTED + 回调失联），可能让后续 invoke 挂起。
   page: [
     async ({ _app }, use) => {
-      await _app.page.reload();
+      if (_app.used) await _app.page.reload();
+      _app.used = true;
       await use(_app.page);
     },
     { scope: "test" },
