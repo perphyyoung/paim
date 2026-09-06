@@ -292,7 +292,7 @@ pub fn preview_dir(app: &tauri::AppHandle) -> PathBuf {
     temp_dir(app).join(format!("preview-{}", instance_tag()))
 }
 
-/// 单元测试专用临时目录：<项目根>/paim-data/temp/test/{name}-{nanos}/。
+/// 单元测试专用临时目录：<项目根>/temp/test/{name}-{nanos}/。
 /// 与应用运行时 temp 同处一体，随应用下次正常启动一并清空，不落系统临时目录。
 #[cfg(test)]
 pub(crate) fn test_temp_dir(name: &str) -> PathBuf {
@@ -301,7 +301,6 @@ pub(crate) fn test_temp_dir(name: &str) -> PathBuf {
         .unwrap_or_default()
         .as_nanos();
     let dir = project_root()
-        .join("paim-data")
         .join("temp")
         .join("test")
         .join(format!("{name}-{nanos}"));
