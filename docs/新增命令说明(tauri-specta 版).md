@@ -9,6 +9,9 @@ paim 已集成 tauri-specta（v2.0.0-rc.25，版本用 `=` 锁定），命令调
   `invoke_handler` 与 TS 绑定导出使用。
 - **导出时机**：debug 构建启动时自动导出到 `src/bindings.ts`（`export_bindings`，仅
   `#[cfg(debug_assertions)]`）。release 构建不导出。
+- **check 自动复写**：`pnpm check` 以「导出即退」模式启动调试主程序（环境变量
+  `PAIM_EXPORT_BINDINGS`，见 lib.rs `run()` 开头短路）直接重新生成 `src/bindings.ts`
+  ——改了命令但没跑 `pnpm dev` 也不会留下过时绑定，check 时自动补上。
 - **Builder 全局配置**（新增命令无需关心，已配好）：
   - `dangerously_cast_bigints_to_number()`：i64/u64/usize/isize 等统一导出为 TS `number`
   - `error_handling(ErrorHandlingMode::Throw)`：命令失败时 Promise reject，错误为 string
@@ -27,8 +30,9 @@ paim 已集成 tauri-specta（v2.0.0-rc.25，版本用 `=` 锁定），命令调
 
 2. **注册**：加入 [lib.rs](../src-tauri/src/lib.rs) `collect_commands![...]`（按既有分组注释归位）。
 
-3. **重新生成绑定**：跑 `pnpm dev`（debug 构建启动即导出）。提交时把 `src/bindings.ts`
-   一并提交；`vue-tsc` 会立即报出前端所有失配调用点。
+3. **重新生成绑定**：跑 `pnpm dev`（debug 构建启动即导出）；忘了也没关系，`pnpm check`
+   会自动复写 `src/bindings.ts`。提交时把 `src/bindings.ts` 一并提交；`vue-tsc` 会立即
+   报出前端所有失配调用点。
 
 ## 类型要求
 
@@ -97,5 +101,5 @@ try {
 | --- | --- |
 | 编译报「BigInt forbidden」 | 不要改业务类型；确认 Builder 有 `dangerously_cast_bigints_to_number()` |
 | 前端类型与后端不一致 | 重跑 `pnpm dev` 重新导出 bindings；确认 `src/bindings.ts` 已随代码更新 |
-| bindings.ts 未重新生成 | 仅 debug 构建导出；确认走的是 `pnpm dev`（`tauri dev`），而非 release |
+| bindings.ts 未重新生成 | 仅 debug 构建导出；确认走的是 `pnpm dev`（`tauri dev`），而非 release；或直接跑 `pnpm check` 自动复写 |
 | 事件监听收不到 | 确认事件类型已加入 `collect_events!` 且 `mount_events` 已调用（lib.rs setup 中） |

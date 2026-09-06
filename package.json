@@ -15,7 +15,7 @@
     "format:check": "oxfmt src/ e2e/ --check && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "e2e": "playwright test --config e2e/playwright.config.ts",
-    "check": "pnpm format && vue-tsc --noEmit && pnpm build && tsc --noEmit -p e2e && cargo check --manifest-path src-tauri/Cargo.toml"
+    "check": "cargo build --manifest-path src-tauri/Cargo.toml && node scripts/check-bindings.mjs && pnpm format && vue-tsc --noEmit && pnpm build && tsc --noEmit -p e2e"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

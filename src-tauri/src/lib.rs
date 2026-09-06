@@ -15,7 +15,9 @@ pub struct GlobalShortcutEvent(pub String);
 
 /// tauri-specta 命令注册表：单一事实源，同时供 invoke_handler 与 TS 绑定导出使用。
 /// 新增命令必须：① `#[specta::specta]` 标注；② 在此注册；③ 跑 debug 构建（pnpm dev）
-/// 自动重新导出 ../src/bindings.ts（见下方 export_bindings，流程详见 docs/新增命令说明(tauri-specta 版).md）。
+/// 自动重新导出 ../src/bindings.ts（见下方 export_bindings，流程详见 docs/新增命令说明(tauri-specta 版).md）；
+/// bindings 由 pnpm check 直接复写：主程序 PAIM_EXPORT_BINDINGS 导出即退模式
+/// （scripts/check-bindings.mjs 调用）。
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         // 官方推荐：将 i64/u64 等 BigInt 类型统一导出为 TS number（file_size 值域 < 2^53，安全）
@@ -126,9 +128,28 @@ fn export_bindings(builder: &tauri_specta::Builder<tauri::Wry>) {
         .expect("导出 TypeScript 绑定失败");
 }
 
+/// 供 pnpm check 复写 bindings：以环境变量 PAIM_EXPORT_BINDINGS 触发「导出即退」
+/// 模式（见 run() 开头短路），直接重新生成 src/bindings.ts。
+/// 路径锚定 CARGO_MANIFEST_DIR（编译期绝对路径），与进程工作目录无关。
+#[cfg(debug_assertions)]
+fn export_bindings_standalone(builder: &tauri_specta::Builder<tauri::Wry>) {
+    let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts");
+    builder
+        .export(specta_typescript::Typescript::default(), &out)
+        .expect("导出 TypeScript 绑定失败");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let specta_builder = specta_builder();
+
+    // 导出即退模式：pnpm check 直接复写 src/bindings.ts（等价于 debug 启动自动导出，
+    // 但不创建窗口、不连 webview、不初始化任何子系统），导出后立即退出。
+    #[cfg(debug_assertions)]
+    if std::env::var_os("PAIM_EXPORT_BINDINGS").is_some() {
+        export_bindings_standalone(&specta_builder);
+        return;
+    }
 
     #[cfg(debug_assertions)]
     export_bindings(&specta_builder);
