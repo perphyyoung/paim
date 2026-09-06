@@ -67,7 +67,8 @@ async function launchApp(workerIndex: number): Promise<AppHandle> {
   child.on("exit", (code) => e2eLog.info(`[app] 进程退出: ${code}`));
 
   const cdpUrl = `http://127.0.0.1:${cdpPort}`;
-  const deadline = Date.now() + 60_000;
+  // 本地 spawn 的进程 8 秒连不上 CDP 即为真故障（如启动即失败），快速失败
+  const deadline = Date.now() + 8_000;
   let lastErr: unknown = new Error("CDP 连接超时");
   let attempt = 0;
   while (Date.now() < deadline) {
@@ -142,9 +143,15 @@ const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandl
   app: async ({ _app }, use) => {
     await use(_app);
   },
-  page: async ({ _app }, use) => {
-    await use(_app.page);
-  },
+  // 每个用例开始前重置 UI：同 worker 的上一用例可能残留打开的弹窗（数据在库里，
+  // 重载无副作用）。统一在 fixture 处理，用例内不要自行 reload。
+  page: [
+    async ({ _app }, use) => {
+      await _app.page.reload();
+      await use(_app.page);
+    },
+    { scope: "test" },
+  ],
 });
 
 export const test = helpersTest;

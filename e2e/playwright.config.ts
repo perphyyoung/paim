@@ -14,13 +14,14 @@ import { defineConfig } from "@playwright/test";
 // e2e 测试侧日志的输出级别（写入 paim.log 的阈值）：
 // 默认 warn——跑全量用例只记异常信号（pageerror/失败请求/4xx 等）；
 // 排查失败时临时改为 info 或 debug 重跑，即可看到 [step]/[connect] 等步骤细节
-process.env.PAIM_E2E_LOG_LEVEL ??= "warn";
+process.env.PAIM_E2E_LOG_LEVEL ??= "info";
 
 export default defineConfig({
   testDir: import.meta.dirname,
-  // 覆盖应用启动等待（CDP 连接重试）；globalTimeout 覆盖 globalSetup 构建耗时
-  timeout: 120_000,
-  globalTimeout: 600_000,
+  // 首个用例承担本 worker 的应用启动（spawn + CDP 就绪，典型 2~4 秒），30 秒已留足余量；
+  // globalTimeout 覆盖 globalSetup 构建耗时（缓存命中时整轮实测 30 秒左右）
+  timeout: 10_000,
+  globalTimeout: 300_000,
   // 文件间并行（每 worker 一个应用实例），文件内串行（与 pm 一致）
   fullyParallel: false,
   workers: 4,

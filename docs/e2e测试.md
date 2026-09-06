@@ -54,17 +54,24 @@ pnpm e2e --grep 上传  # 单个用例
   超时且无该行 → 应用启动/CDP 未就绪（往 webview 启动方向查）；有该行 → 应用正常，
   问题在用例步骤本身（结合 `[step]` 行定位到具体步骤）。尝试次数也直观反映应用启动耗时。
 
-## 约定
+## 约定（速查）
 
-- 用例文件按序号命名（`01-*.spec.ts`），文件间并行、文件内串行；涉及数据目录让位的用例（如导入）放最后。
-- 引用数据目录内文件前现写一份（`writePng`），不假设旧文件仍在；
-  上传预览目录按实例隔离（`preview-<PAIM_DATA_DIR 末段>`，见 `db.rs::preview_dir`）。
-- 涉及文件选择的用例复用 `select_images` 测试缝：`launchApp` 已把 mock 路径写入实例环境。
-- 用例内采集 webview 控制台与 ≥400 响应日志，经 `e2e/e2e-logger.ts` 以 `[webview]/[http-error]`
-  等前缀写入 `paim.log`；测试侧新增日志也用它（`e2eLog.debug/info/warn/error`，调用方式与前端 logger 一致），
-  不要在 e2e 文件里直接 `console.log` 或另写日志实现。
-- **元素定位优先用语义属性**（Playwright 官方推荐）：`getByRole`（角色+名称）、`getByPlaceholder`、
-  `getByText` 等，如 `getByRole("button", { name: "上传图像" })`——断言贴近用户视角、抗 UI 重构、
-  无需为测试给产品代码加 id。仅当元素没有语义属性可用时才退回 `data-testid`；
-  不要用 CSS/XPath 路径选择器（pm 的 `Constants.Ids.*` 是 Electron 时代惯例，Playwright 下不推荐）。
-  代价是改用户可见文案需同步改测试，属合理耦合。
+| 场景 | 做法 |
+| --- | --- |
+| 新建用例文件 | **按页面分配、序号命名**（`01-upload-image-page`…）。有独立弹窗即视为独立页面（如「替换图像」在图像详情页，不放上传页文件里）；文件间并行、文件内串行；涉及数据目录让位的用例（如导入）放最后 |
+| 打日志 | 用 `e2e-logger.ts` 的 `e2eLog.debug/info/warn/error`（调用方式与前端 logger 一致，自动带 `[E2E w<n>]` 前缀）。**不要**在 e2e 文件里 `console.log` 或另写日志实现 |
+| 页面侧诊断 | fixture 已自动采集 webview 控制台消息、失败请求、≥400 响应（`[webview]`/`[pageerror]`/`[req-failed]`/`[http-error]` 前缀写入 paim.log），无需重复采集 |
+| 定位元素 | 语义属性优先：`getByRole("button", { name: "上传图像" })`、`getByPlaceholder`、`getByText`；无语义属性才退 `data-testid`。**禁 CSS/XPath 路径选择器优先**（pm 的 `Constants.Ids.*` 是 Electron 时代惯例，Playwright 下不推荐） |
+| 点击卡片 | **点文字层**（`getByText(卡片内容)`），**不要点缩略图 `<img>`**——img 上方盖着文字覆盖层（MediaCard 的 `absolute inset-0`），点 img 会被命中目标检查拦下并重试至超时；点文字会冒泡到卡片根，同样触发打开详情 |
+| 断言 toast | 用 `.first()`——同一 worker 里前一用例的同文案 toast 可能未消失，直接断言会严格模式冲突（resolved to 2 elements） |
+| 用例间状态复位 | page fixture 已内置：每用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload` |
+| 用新定位 API | 先查类型定义。playwright 1.62 已移除 `getByDisplayValue` 等旧 API；e2e 目录已纳入 `pnpm check` 的类型检查（`tsc --noEmit -p e2e`），方法名写错会在 check 时暴露 |
+| 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每 worker 独立目录；导入会让数据目录改名，不假设旧文件仍在） |
+| 文件选择 | 复用 `select_images` 测试缝（`launchApp` 已把 mock 路径写入实例环境）；替换图像等单选场景需自行校验返回数量 |
+
+## 排查超时
+
+- 先看 `paim.log` 的 `[connect]` 行（fixture 连上应用时记录，含尝试次数）：**超时且无该行** →
+  应用启动/CDP 未就绪（往 webview 启动方向查）；**有该行** → 应用正常，问题在用例步骤本身
+  （结合 `[step]` 行定位到具体步骤）。尝试次数也直观反映应用启动耗时。
+- 控制台只剩 playwright 自身的用例结果输出；测试侧详细日志按上面的级别阈值写进 `paim.log`。

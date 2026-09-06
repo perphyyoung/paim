@@ -99,3 +99,39 @@ std::process::Command::new("explorer")
 - 批量类型替换后必须全局 `rg` 扫描验证清零；「编译通过」不等于「替换完整」。
 - 集成新库前用三处交叉确认 API：docs.rs 版本页 → Builder 源码 → 宏 crate 源码；不猜 API。
 - 修改命令签名后重新跑 `pnpm dev` 重新生成 `src/bindings.ts`，`vue-tsc` 会立即报出所有失配调用点——这正是类型安全绑定的核心价值。
+
+## 4. e2e 失败排查：完整控制台输出才有报错行数，error-context.md 只有页面快照
+
+### 现象
+
+e2e 用例失败时，只读 `test-results/*/error-context.md` 定位——里面只有失败时的页面 ARIA 快照（且可能只有一两行），
+**没有报错行号与调用日志**，导致反复猜测失败在哪一步。
+
+### 根因与正确做法
+
+`error-context.md` 是给「页面状态」参考的；**报错行数、调用日志（如「元素被某遮罩拦截 pointer events」的具体细节）
+都在 playwright 的完整控制台输出里**。排查必须看运行命令的完整输出文件（如 `pnpm e2e > x.log 2>&1` 后读 x.log），
+不要只看 error-context.md，也不要用 grep/head 截断输出。
+
+### 后续参考 / 通用约束
+
+- e2e 失败排查顺序：先读完整控制台输出（定位报错行 + call log），再按需看 error-context.md 的页面快照。
+- 输出里有「`<div ...> intercepts pointer events`」类信息 = 点击被别的元素遮挡；有「waiting for ...」= 元素未出现。
+
+## 5. e2e 同 worker 用例间残留 UI 状态：上一用例的弹窗挡住下一用例
+
+### 现象
+
+同一个 spec 文件里前一个用例结束后，后一个用例一开头点击侧边栏导航就超时——完整控制台输出显示
+`<div class="fixed inset-0 z-50 ...">intercepts pointer events`：上一用例结束后**详情弹窗仍开着**（应用状态在
+worker 内跨用例保留），其全屏遮罩挡住了后续所有点击。
+
+### 根因与正确做法
+
+worker 级 fixture 的应用实例跨用例共享，UI 状态（打开的弹窗）不会自动复位。需要前置安排的用例，
+开头先 `await page.reload()` 重置 UI（数据都在库里，重载无副作用），再做导航与业务操作。
+
+### 后续参考 / 通用约束
+
+- 同文件的多个用例共享同一应用实例：写用例时默认「上一用例可能残留打开的弹窗/状态」，前置安排前先 reload。
+- 排查时若 call log 出现 `intercepts pointer events`，先找是谁的遮罩（常见：上一用例没关的弹窗、未消失的 toast）。
