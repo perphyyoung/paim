@@ -16,6 +16,37 @@ paim 已集成 tauri-specta（v2.0.0-rc.25，版本用 `=` 锁定），命令调
   - `dangerously_cast_bigints_to_number()`：i64/u64/usize/isize 等统一导出为 TS `number`
   - `error_handling(ErrorHandlingMode::Throw)`：命令失败时 Promise reject，错误为 string
 
+## bindings 生成：尝试记录与现状
+
+### 官方机制（查证自 tauri-specta rc.25 源码）
+
+- v2 **没有构建期/脚本期生成**，唯一方式是运行期调 `Builder::export()`；官方示例就是
+  `#[cfg(debug_assertions)]` 下在 `run()` 里导出（即本项目的 `export_bindings`）。
+- `export()` **不需要运行中的应用**（签名只收 language 和路径，不用 AppHandle）——
+  只要能构造出 builder 并调一次 export 即可，理论上任何二进制都能生成。
+
+### 尝试过的路线（已否决，勿重试）
+
+| 路线                    | 结果                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| examples 独立二进制导出 | 启动即失败：`STATUS_ENTRYPOINT_NOT_FOUND`（0xC0000139），导入表全是系统 DLL，原因未定位                    |
+| `cargo test` 内导出     | 测试二进制同样报 0xC0000139（注意：同日上午 `pnpm test` 的测试二进制曾正常运行，现象不稳定，未深挖即停止） |
+
+结论：**只有主程序 paim.exe 被长期证明可稳定启动**（pnpm dev / e2e 每天都在用），
+任何「新造二进制来导出」的路线都撞上启动失败，故复用主程序本身。
+
+### 现状：两条生成路径
+
+1. **人工**：跑 `pnpm dev`，debug 构建启动时自动导出（`export_bindings`）。
+2. **自动**：`pnpm check` 链路中 `gen:bindings`（`scripts/gen-bindings.mjs`）以
+   「导出即退」模式启动调试主程序复写 `src/bindings.ts`——环境变量
+   `PAIM_EXPORT_BINDINGS` 触发 `run()` 开头短路（仅 debug 编译期存在），只导出后立即
+   退出，不创建窗口、不连 webview，毫秒级完成。
+
+check 全链顺序：`format → build:rs → gen:bindings → typecheck → build`（bindings
+先复写、typecheck 后校验，保证 vue-tsc 看到的是新鲜绑定）。曾试过「导出到临时文件 +
+git diff 校验过时」的方案，后按「直接复写、无需校验」简化为现状。
+
 ## 新增命令流程（三步）
 
 1. **标注命令**：
@@ -97,9 +128,9 @@ try {
 
 ## 排查速查
 
-| 现象 | 处理 |
-| --- | --- |
-| 编译报「BigInt forbidden」 | 不要改业务类型；确认 Builder 有 `dangerously_cast_bigints_to_number()` |
-| 前端类型与后端不一致 | 重跑 `pnpm dev` 重新导出 bindings；确认 `src/bindings.ts` 已随代码更新 |
-| bindings.ts 未重新生成 | 仅 debug 构建导出；确认走的是 `pnpm dev`（`tauri dev`），而非 release；或直接跑 `pnpm check` 自动复写 |
-| 事件监听收不到 | 确认事件类型已加入 `collect_events!` 且 `mount_events` 已调用（lib.rs setup 中） |
+| 现象                       | 处理                                                                                                  |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 编译报「BigInt forbidden」 | 不要改业务类型；确认 Builder 有 `dangerously_cast_bigints_to_number()`                                |
+| 前端类型与后端不一致       | 重跑 `pnpm dev` 重新导出 bindings；确认 `src/bindings.ts` 已随代码更新                                |
+| bindings.ts 未重新生成     | 仅 debug 构建导出；确认走的是 `pnpm dev`（`tauri dev`），而非 release；或直接跑 `pnpm check` 自动复写 |
+| 事件监听收不到             | 确认事件类型已加入 `collect_events!` 且 `mount_events` 已调用（lib.rs setup 中）                      |
