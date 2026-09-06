@@ -7,7 +7,7 @@
     "dev": "tauri dev",
     "dev:ui": "vite",
     "release": "tauri build",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vite build",
     "build:rs": "cargo build --manifest-path src-tauri/Cargo.toml",
     "gen:bindings": "node scripts/gen-bindings.mjs",
     "typecheck": "vue-tsc --noEmit && tsc --noEmit -p e2e",
