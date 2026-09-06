@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import TagChip from "./TagChip.vue";
+import TagChip from "@/components/TagChip.vue";
 import { startTagDrag, tagDrag } from "../useTagDragToCard";
 
 // 拖拽到卡片快捷添加标签：脚本层引用防止格式化工具误删模板绑定

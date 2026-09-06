@@ -4,7 +4,7 @@ import { commands, type TagGroup, type TagItem, type TagManagerData } from "@/bi
 import { useToast } from "@/components/useToast";
 import ContextMenu from "@/components/ContextMenu.vue";
 import InlineDialog from "@/components/InlineDialog.vue";
-import TagChip from "./TagChip.vue";
+import TagChip from "@/components/TagChip.vue";
 import { isSpecialTag } from "../specialTags";
 
 const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();

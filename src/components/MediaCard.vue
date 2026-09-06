@@ -6,7 +6,7 @@
  * - content/tags/sortInfo/cardSize：三行文字区数据
  * - fav/copy/delete/check/cardClick：交互事件（父在 v-for 闭包绑定对象）
  */
-import CardTagRow from "@/features/image/components/CardTagRow.vue";
+import CardTagRow from "@/components/CardTagRow.vue";
 import { nextTick, onMounted, onUpdated, ref, watch } from "vue";
 
 interface MediaItem {

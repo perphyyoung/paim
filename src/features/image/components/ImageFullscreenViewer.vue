@@ -19,7 +19,7 @@ export interface FullscreenItem {
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import NavAndIndex from "@/components/NavAndIndex.vue";
-import TagChip from "@/features/tag/components/TagChip.vue";
+import TagChip from "@/components/TagChip.vue";
 
 const props = defineProps<{
   open: boolean;

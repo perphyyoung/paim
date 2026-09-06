@@ -24,7 +24,7 @@ import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
-import { useThumbnailSelfHeal } from "@/components/useThumbnailSelfHeal";
+import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 
 const { showToast } = useToast();
