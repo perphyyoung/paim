@@ -3,7 +3,7 @@
 //! 构建提示词背景映射时必须跳过这些记录，而不是阻塞整个映射。
 
 use super::prompt_thumbs_map;
-use crate::db;
+use crate::infra::db;
 use std::path::{Path, PathBuf};
 
 #[test]

@@ -1,5 +1,5 @@
 use super::*;
-use crate::db;
+use crate::infra::db;
 use std::path::PathBuf;
 use std::sync::Mutex;
 

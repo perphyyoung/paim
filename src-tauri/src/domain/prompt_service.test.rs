@@ -1,7 +1,7 @@
 //! 提示词领域服务单元测试：详情编辑校验（标题/内容必填，不允许置空）。
 
 use super::{set_prompt_first_image, update_detail};
-use crate::db;
+use crate::infra::db;
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
 fn setup() -> (std::path::PathBuf, db::BkDb) {

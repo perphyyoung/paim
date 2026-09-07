@@ -12,7 +12,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
-use crate::db::{self, BkDb};
+use crate::infra::db::{self, BkDb};
 use crate::{log_error, log_info};
 
 /// 当前支持的数据格式版本（与 pm 的 CURRENT_DATA_VERSION 一致）。
@@ -390,7 +390,7 @@ where
 {
     let data_dir = db::data_dir(app);
     let thumbs_root = db::thumbnails_dir(app);
-    let summary = crate::features::thumbnail_service::rebuild_all(
+    let summary = crate::domain::thumbnail_service::rebuild_all(
         &data_dir,
         &thumbs_root,
         conn,

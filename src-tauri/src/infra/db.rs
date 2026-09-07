@@ -1,7 +1,7 @@
 //! 数据库连接管理与 schema 初始化。
 //! 持久化细节集中在基础设施层，业务层通过 repository 接口访问。
 
-use crate::error::AppError;
+use crate::infra::error::AppError;
 use rusqlite::{Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 use tauri::State;

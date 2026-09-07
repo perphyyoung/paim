@@ -1,17 +1,17 @@
 //! 图像命令层：薄适配，从 managed state 取连接，转调领域服务。
-//! 路径 `features::image::`，与提示词侧 `features::prompt::` 对称。
+//! 路径 `commands::image::`，与提示词侧 `commands::prompt::` 对称。
 
-use crate::db::BkDb;
-use crate::error::AppError;
-use crate::features::image_ops::{make_center_thumb, open_image};
-use crate::features::image_service::{
+use crate::domain::image_ops::{make_center_thumb, open_image};
+use crate::domain::image_service::{
     self, Image, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome, ImageTag,
     LinkedPrompt, PaginatedImages,
 };
-use crate::features::prompt_service;
-use crate::features::thumbnail_service::{
+use crate::domain::prompt_service;
+use crate::domain::thumbnail_service::{
     self, ThumbnailEnsureResult, ThumbnailRebuildProgress, ThumbnailRebuildSummary,
 };
+use crate::infra::db::BkDb;
+use crate::infra::error::AppError;
 
 use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -38,7 +38,7 @@ pub async fn select_images(app: tauri::AppHandle) -> Result<Vec<String>, AppErro
         let picked = app
             .dialog()
             .file()
-            .add_filter("图像", crate::features::image_service::SUPPORTED_EXT)
+            .add_filter("图像", crate::domain::image_service::SUPPORTED_EXT)
             .blocking_pick_files();
         Ok(picked
             .unwrap_or_default()
@@ -126,7 +126,7 @@ pub fn get_source_thumbnail(app: tauri::AppHandle, source: String) -> Result<Str
     let thumb =
         make_center_thumb(&img).map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
 
-    let prev_dir = crate::db::preview_dir(&app);
+    let prev_dir = crate::infra::db::preview_dir(&app);
     std::fs::create_dir_all(&prev_dir).map_err(|e| AppError::Message(e.to_string()))?;
     // 以源文件路径哈希命名，重复选择复用
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -261,7 +261,7 @@ pub fn get_image_thumbnail(
     let Some(rel) = rel else {
         return Err("缩略图不存在".into());
     };
-    Ok(crate::db::data_dir(&app)
+    Ok(crate::infra::db::data_dir(&app)
         .join(&rel)
         .to_string_lossy()
         .into_owned())
@@ -297,7 +297,7 @@ pub fn get_image_src(
     let Some(rel) = rel else {
         return Err("原图不存在".into());
     };
-    Ok(crate::db::data_dir(&app)
+    Ok(crate::infra::db::data_dir(&app)
         .join(&rel)
         .to_string_lossy()
         .into_owned())
@@ -578,8 +578,8 @@ pub async fn rebuild_thumbnails(
     app: tauri::AppHandle,
 ) -> Result<ThumbnailRebuildSummary, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let data_dir = crate::db::data_dir(&app);
-        let thumbs_root = crate::db::thumbnails_dir(&app);
+        let data_dir = crate::infra::db::data_dir(&app);
+        let thumbs_root = crate::infra::db::thumbnails_dir(&app);
         let bk = app.state::<BkDb>();
         let conn = bk.0.lock().map_err(|e| e.to_string())?;
         thumbnail_service::rebuild_all(&data_dir, &thumbs_root, &conn, |done, total, file_name| {
@@ -607,8 +607,8 @@ pub fn ensure_image_thumbnails(
 ) -> Result<ThumbnailEnsureResult, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     thumbnail_service::ensure(
-        &crate::db::data_dir(&app),
-        &crate::db::thumbnails_dir(&app),
+        &crate::infra::db::data_dir(&app),
+        &crate::infra::db::thumbnails_dir(&app),
         &conn,
         &ids,
     )

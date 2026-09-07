@@ -2,6 +2,20 @@
 
 按版本记录有影响的改动（架构/重构/修复）。日常环境要点与踩坑见 [AGENTS.md](AGENTS.md)。
 
+## v0.2.15
+
+### 重构：后端目录即层名
+
+- 删除混排的 `src-tauri/src/features/`（命令层与领域层同目录）与 `features.rs`，改为三个顶层目录：
+  - `commands/`（order 2）：`prompt.rs`(+test)、`image.rs`、`prompt_tag.rs`、`image_tag.rs`、`pm_backup.rs`；
+  - `domain/`（order 1）：`prompt_service.rs`(+test)、`image_service.rs`(+test)、`image_ops.rs`、`thumbnail_service.rs`(+test)、`tag_manager.rs`、`pm_backup_service.rs`(+test)；
+  - `infra/`（order 0）：`db.rs`(+test)、`error.rs`、`logging.rs`、`text_utils.rs`(+test)。
+- 层模块声明放在同名的 `commands.rs` / `domain.rs` / `infra.rs`（不用 mod.rs），`lib.rs` 只声明这三个模块。
+- 业务切片不再靠后端目录体现，改由文件前缀承担（`prompt` / `image` / `tag` / `pm_backup`）；前端仍是 `src/features/<切片>/`。
+- `.sentrux/rules.toml` 三条 glob 简化为整目录匹配（`infra/**`、`domain/**`、`commands/**`）：新文件放错目录会被 `sentrux check .` 拦下；同时修掉此前 `features/prompt.test.rs` 不属于任何层的漏网。
+- 影响面：约 107 处 `features::` 引用改为 `commands::` / `domain::`，`crate::{db,error,logging,text_utils}` 改为 `crate::infra::*`；命令函数名不变，`src/bindings.ts` 无变化，前端零改动。
+- 验证：`pnpm check` 通过；`pnpm test` 通过；`sentrux check .` 全部规则通过。
+
 ## v0.2.14
 
 架构规范专项：引入分层规则与结构检查，清理既有违例。
@@ -27,4 +41,4 @@
 
 ### 遗留约定
 
-- 外部 crate `image` 与 `features::image` 同名：任何图像处理调用统一经 `image_ops.rs`，不要在其它模块直接写 `image::`，以免再次触发同名歧义误判。
+- 外部 crate `image` 与本地模块 `commands::image` 同名（重构后路径，当时为 `features::image`）：任何图像处理调用统一经 `domain/image_ops.rs`，不要在其它模块直接写 `image::`，以免再次触发同名歧义误判。

@@ -1,9 +1,9 @@
 //! 图像领域服务：承载图像存储（落盘 + 缩略图 + 入库）与查询的业务规则。
 //! 领域层感知 app（用于定位数据目录）与连接访问数据，但不直接面向 IPC。
-//! 命令层见 `features::image`。
+//! 命令层见 `commands::image`。
 
-use crate::error::AppError;
-use crate::features::image_ops::{make_center_thumb, open_image};
+use crate::domain::image_ops::{make_center_thumb, open_image};
+use crate::infra::error::AppError;
 use image::GenericImageView;
 use rusqlite::{Connection, OptionalExtension, Result};
 use serde::Serialize;
@@ -102,8 +102,8 @@ pub fn import(
 ) -> rusqlite::Result<(Image, bool)> {
     import_with(
         conn,
-        &crate::db::images_dir(app),
-        &crate::db::thumbnails_dir(app),
+        &crate::infra::db::images_dir(app),
+        &crate::infra::db::thumbnails_dir(app),
         source,
     )
 }
@@ -170,7 +170,7 @@ pub(crate) fn import_with(
         .unwrap_or("png")
         .to_lowercase();
     // stored_name 与 pm 一致："{imageId}{ext}"，缩略图随之命名
-    let id = crate::db::gen_id(crate::db::IMAGE_ID_PREFIX);
+    let id = crate::infra::db::gen_id(crate::infra::db::IMAGE_ID_PREFIX);
     let stored_name = format!("{id}.{ext}");
     let dest = month_dir.join(&stored_name);
     std::fs::copy(&source, &dest).map_err(io_to_sql)?;
@@ -235,7 +235,7 @@ fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) 
         clauses.push_str(
             " AND (file_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM image_tag_relations r2 JOIN image_tags t2 ON t2.id = r2.tag_id WHERE r2.image_id = images.id AND t2.name LIKE ? ESCAPE '\\'))",
         );
-        let like = format!("%{}%", crate::text_utils::escape_like(search));
+        let like = format!("%{}%", crate::infra::text_utils::escape_like(search));
         params.push(like.clone());
         params.push(like.clone());
         params.push(like);
@@ -504,7 +504,7 @@ pub fn update_detail(
 /// 彻底删除：删除磁盘原图与缩略图并移除记录，不可恢复。
 /// 级联删除的 prompt_image_relations 视为隐式解绑，同步刷新关联提示词的 updated_at。
 pub fn purge(conn: &Connection, app: &tauri::AppHandle, id: &str) -> rusqlite::Result<()> {
-    purge_with(conn, &crate::db::data_dir(app), id)
+    purge_with(conn, &crate::infra::db::data_dir(app), id)
 }
 
 /// purge 的路径注入版（供测试），app 依赖仅用于定位数据目录。
@@ -589,8 +589,8 @@ pub fn replace_image(
 ) -> std::result::Result<ImageReplaceOutcome, AppError> {
     replace_image_with(
         conn,
-        &crate::db::images_dir(app),
-        &crate::db::thumbnails_dir(app),
+        &crate::infra::db::images_dir(app),
+        &crate::infra::db::thumbnails_dir(app),
         old_id,
         source,
     )

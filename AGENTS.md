@@ -1,7 +1,7 @@
 # AGENTS.md
 
 - 对同一文件的多处修改：合并为一次编辑完成，或分多条消息串行执行；禁止在同一条消息里并行发起多个编辑到同一文件（并行读-改-写会竞态覆盖，仅最后一个编辑生效，其余静默丢失）
-- 修改代码后，执行 `pnpm check` 来验证，通过后输出简要的一句话 git commit 信息
+- 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → typecheck → build），通过后再按需跑 `pnpm test` / `sentrux check .` / `pnpm e2e`；验证通过才输出简要的一句话 git commit 信息。不要跳过 `pnpm check` 直接跑其它命令
 - 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
 - 语义搜索优先使用 gitnexus mcp，查询时传 `repo: "paim"` 指定当前仓库
   - 查找某概念的所有相关代码（不看函数怎么命名）：用自然语言查询（中文/英文皆可），走语义向量召回
@@ -25,7 +25,7 @@
 
 ## 环境要点（防踩坑）
 
-- **target 不在项目内**：`CARGO_TARGET_DIR` 指向共享目录 `D:\cargo-shared-target`，找 exe/产物去那里。
+- **target 不在项目内**：`CARGO_TARGET_DIR` 指向共享目录 `D:\cargo-shared-target`，找 exe/产物去那里。**不要手动覆盖该变量**（项目已配好）：手动传值会被写成 `D://cargo-shared-target`，link.exe 收到畸形参数报 `missing operand after '\377\376'`；不带则会冷编译项目内 `target/` 并触发 0xc0000005。直接跑 `pnpm check` / `pnpm test` 即可。
 - `pnpm check` 链路：format → build:rs → **gen:bindings（自动复写 src/bindings.ts）** → typecheck → build；改了 Rust 命令签名记得跑 pnpm check 或 pnpm dev；验证须 grep warning 和 error 双查。
 - bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta 版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。

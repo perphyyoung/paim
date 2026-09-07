@@ -21,7 +21,7 @@ fn base_exists_is_never_pending() {
 #[test]
 fn connection_swap_releases_db_for_dir_rename() {
     let dir = test_temp_dir("rename-after-swap");
-    let bk = crate::db::init(dir.join("paim.db")).expect("init db");
+    let bk = crate::infra::db::init(dir.join("paim.db")).expect("init db");
     let mut guard = bk.0.lock().unwrap();
 
     // 与 pm_backup_service::import 一致：换成内存连接，旧连接随之关闭

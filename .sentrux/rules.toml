@@ -12,40 +12,23 @@ no_god_files = true
 
 # ==== Rust 后端(src-tauri/src):commands 薄壳 → domain 领域逻辑 → infra 基础件 ====
 
-# ---- 基础件(order 0):连接/schema、错误、纯函数、日志,不引用任何上层 ----
+# ---- 基础件(order 0):目录即层名,infra/ 下为连接/schema、错误、纯函数、日志,不引用任何上层 ----
 [[layers]]
 name = "rust-infra"
-paths = [
-  "src-tauri/src/db*",
-  "src-tauri/src/error.rs",
-  "src-tauri/src/text_utils*",
-  "src-tauri/src/logging.rs",
-]
+paths = ["src-tauri/src/infra/**"]
 order = 0
 
-# ---- 领域逻辑(order 1):*_service、tag_manager 与 image_ops(纯图像处理),不感知 Tauri 命令层 ----
+# ---- 领域逻辑(order 1):domain/ 下为 *_service、tag_manager 与 image_ops,不感知 Tauri 命令层 ----
 [[layers]]
 name = "rust-domain"
-paths = [
-  "src-tauri/src/features/image_ops*",
-  "src-tauri/src/features/image_service*",
-  "src-tauri/src/features/prompt_service*",
-  "src-tauri/src/features/thumbnail_service*",
-  "src-tauri/src/features/pm_backup_service*",
-  "src-tauri/src/features/tag_manager*",
-]
+paths = ["src-tauri/src/domain/**"]
 order = 1
 
-# ---- 命令与组合根(order 2):薄 commands、注册表 lib.rs、入口 main.rs ----
+# ---- 命令与组合根(order 2):commands/ 薄壳命令 + lib.rs 注册表 + main.rs 入口 ----
 [[layers]]
 name = "rust-commands"
 paths = [
-  "src-tauri/src/features/image.rs",
-  "src-tauri/src/features/prompt.rs",
-  "src-tauri/src/features/prompt_tag.rs",
-  "src-tauri/src/features/image_tag.rs",
-  "src-tauri/src/features/pm_backup.rs",
-  "src-tauri/src/features.rs",
+  "src-tauri/src/commands/**",
   "src-tauri/src/lib.rs",
   "src-tauri/src/main.rs",
 ]

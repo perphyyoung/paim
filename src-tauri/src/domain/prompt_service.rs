@@ -2,7 +2,7 @@
 //! 领域层不感知 Tauri，通过注入的事务获取连接访问数据。
 //! 表结构与字段名与 prompt-manager 一致。
 
-use crate::error::AppError;
+use crate::infra::error::AppError;
 use rusqlite::{Connection, OptionalExtension, Result};
 
 use serde::Serialize;
@@ -38,7 +38,7 @@ pub fn create(conn: &Connection, content: &str, title: Option<String>) -> Result
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
         .unwrap_or_default();
-    let id = crate::db::gen_id(crate::db::PROMPT_ID_PREFIX);
+    let id = crate::infra::db::gen_id(crate::infra::db::PROMPT_ID_PREFIX);
     // 与 pm 一致：未提供标题时，用提示词 id 作为标题
     if title.is_empty() {
         title = id.clone();
@@ -252,7 +252,7 @@ pub fn list_related_images(
     app: &tauri::AppHandle,
     prompt_id: &str,
 ) -> Result<Vec<RelatedImage>> {
-    let data_dir = crate::db::data_dir(app);
+    let data_dir = crate::infra::db::data_dir(app);
     let mut stmt = conn.prepare(
         "SELECT img.id, img.file_name, img.relative_path
          FROM prompt_image_relations pir

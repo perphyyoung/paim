@@ -4,7 +4,7 @@ use super::{
     add_image_tag, batch_add_image_tag, filter_sql, import_with, replace_image_with, update_detail,
     ImageReplaceOutcome,
 };
-use crate::db;
+use crate::infra::db;
 
 /// 生成一张指定颜色的 2×2 png 源图（不同颜色 ⇒ 不同 MD5）。
 fn make_png(path: &std::path::Path, r: u8, g: u8, b: u8) {
@@ -14,7 +14,7 @@ fn make_png(path: &std::path::Path, r: u8, g: u8, b: u8) {
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
 fn setup_image_db() -> (std::path::PathBuf, db::BkDb) {
-    let dir = crate::db::test_temp_dir("image-service");
+    let dir = crate::infra::db::test_temp_dir("image-service");
     let db = db::init(dir.join("paim.db")).expect("init test db");
     (dir, db)
 }

@@ -35,7 +35,7 @@ fn log_path() -> &'static std::path::PathBuf {
     static PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
     PATH.get_or_init(|| {
         if cfg!(debug_assertions) {
-            crate::db::project_root().join("paim.log")
+            crate::infra::db::project_root().join("paim.log")
         } else {
             std::env::current_dir().unwrap_or_default().join("paim.log")
         }
@@ -57,19 +57,19 @@ pub fn write(level: Level, msg: impl AsRef<str>) {
 /// 日志宏（导出供 crate 内模块调用）。
 #[macro_export]
 macro_rules! log_debug {
-    ($($arg:tt)*) => { $crate::logging::write($crate::logging::Level::Debug, format!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::infra::logging::write($crate::infra::logging::Level::Debug, format!($($arg)*)) };
 }
 #[macro_export]
 macro_rules! log_info {
-    ($($arg:tt)*) => { $crate::logging::write($crate::logging::Level::Info, format!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::infra::logging::write($crate::infra::logging::Level::Info, format!($($arg)*)) };
 }
 #[macro_export]
 macro_rules! log_warn {
-    ($($arg:tt)*) => { $crate::logging::write($crate::logging::Level::Warn, format!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::infra::logging::write($crate::infra::logging::Level::Warn, format!($($arg)*)) };
 }
 #[macro_export]
 macro_rules! log_error {
-    ($($arg:tt)*) => { $crate::logging::write($crate::logging::Level::Error, format!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::infra::logging::write($crate::infra::logging::Level::Error, format!($($arg)*)) };
 }
 
 /// 前端上报日志：`rtk invoke("log_msg", { level, message })`。

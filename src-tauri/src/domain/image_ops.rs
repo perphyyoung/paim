@@ -1,5 +1,5 @@
 //! 纯图像处理助手：解码、缩略图裁剪。供 image_service / thumbnail_service 共用。
-//! 外部 `image` crate 的调用统一收拢在此：crate 名与本地命令模块 `features::image`
+//! 外部 `image` crate 的调用统一收拢在此：crate 名与本地命令模块 `commands::image`
 //! 同名，集中一处可避免全限定名歧义（sentrux 曾因此报出文件级假环）。
 
 use std::path::Path;

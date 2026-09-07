@@ -88,7 +88,7 @@ fn write_backup_zip(zip_path: &Path, prefix: &str, db_bytes: &[u8]) {
 }
 
 fn unique_test_dir(name: &str) -> PathBuf {
-    crate::db::test_temp_dir(name)
+    crate::infra::db::test_temp_dir(name)
 }
 
 #[test]

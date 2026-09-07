@@ -70,7 +70,7 @@ git diff 校验过时」的方案，后按「直接复写、无需校验」简�
 - 自定义返回结构体：`#[derive(Serialize, Clone, specta::Type)]`（Clone 按需）。
 - **数值类型直接用运行时语义**：`i64`/`usize` 等由 Builder 配置导出为 `number`。
   禁止为绑定导出把业务类型改成 `i32`（教训见 [lessons.md](./lessons.md) 第 3 条）。
-- 错误：返回 `Result<T, AppError>`。[AppError](../src-tauri/src/error.rs) 已实现
+- 错误：返回 `Result<T, AppError>`。[AppError](../src-tauri/src/infra/error.rs) 已实现
   `Serialize` + `specta::Type`（序列化为可读字符串），前端 catch 到的是 string。
 - 不要在前端重复定义 bindings 已导出的类型；需要的类型 `import type { X } from "@/bindings"`。
 

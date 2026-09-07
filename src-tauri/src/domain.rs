@@ -1,11 +1,8 @@
-pub mod image;
+//! 领域层（order 1）：业务逻辑，不感知 Tauri 命令层，可独立单测。
+
 pub mod image_ops;
 pub mod image_service;
-pub mod image_tag;
-pub mod pm_backup;
 pub mod pm_backup_service;
-pub mod prompt;
 pub mod prompt_service;
-pub mod prompt_tag;
 pub mod tag_manager;
 pub mod thumbnail_service;
