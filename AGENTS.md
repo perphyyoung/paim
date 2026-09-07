@@ -1,5 +1,16 @@
 # AGENTS.md
 
+## 检索工具选择：Grep 还是 zg
+
+- **已知符号/字符串** → 用 Grep（ripgrep）：最快、零维护；本仓需自行排除 `dist/`、`temp/`、`paim-data/`。
+- **想看命中行属于哪个函数** → `zg query --rg -n "<pattern>"`：等价 ripgrep，但输出带 `[function xxx]` 上下文，省掉再读一次文件。
+- **只知道"干什么、不知道叫什么"** → `zg query "<自然语言>"` 语义检索；但本仓语义结果偏文档（`docs/lessons.md` 常排第一），代码命中率一般，**必须用 `--rg` 或 `--fts` 复核**后再下结论。
+- `--fts` 命中代码并带 `symbol:` 标签，介于精确与语义之间。
+- 代码结构变动后（如目录重命名、大批文件搬迁）先跑 `zg index`（增量：补新增与变更文件）。只有索引里仍出现已删除/旧路径的命中时，才用 `zg index --rebuild`（丢弃旧索引、全量重算 embedding，更慢）。
+- 与 gitnexus 的分工：zg 找「文本片段/文档/自然语言描述」，gitnexus 找「已知符号的调用链与影响面」（见下「项目规则」）。
+
+## 项目规则
+
 - 对同一文件的多处修改：合并为一次编辑完成，或分多条消息串行执行；禁止在同一条消息里并行发起多个编辑到同一文件（并行读-改-写会竞态覆盖，仅最后一个编辑生效，其余静默丢失）
 - 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → typecheck → build），通过后再按需跑 `pnpm test` / `sentrux check .` / `pnpm e2e`；验证通过才输出简要的一句话 git commit 信息。不要跳过 `pnpm check` 直接跑其它命令
 - 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
@@ -25,7 +36,7 @@
 
 ## 环境要点（防踩坑）
 
-- **target 不在项目内**：`CARGO_TARGET_DIR` 指向共享目录 `D:\cargo-shared-target`，找 exe/产物去那里。**不要手动覆盖该变量**（项目已配好）：手动传值会被写成 `D://cargo-shared-target`，link.exe 收到畸形参数报 `missing operand after '\377\376'`；不带则会冷编译项目内 `target/` 并触发 0xc0000005。直接跑 `pnpm check` / `pnpm test` 即可。
+- **target 不在项目内**：`CARGO_TARGET_DIR` 指向共享目录 `D:\cargo-shared-target`，找 exe/产物去那里。**永远不要手动覆盖该变量**（系统环境变量已配好），直接跑 `pnpm check` / `pnpm test` 即可。
 - `pnpm check` 链路：format → build:rs → **gen:bindings（自动复写 src/bindings.ts）** → typecheck → build；改了 Rust 命令签名记得跑 pnpm check 或 pnpm dev；验证须 grep warning 和 error 双查。
 - bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta 版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。

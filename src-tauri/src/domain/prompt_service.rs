@@ -160,6 +160,10 @@ pub fn empty_trash(conn: &Connection) -> Result<usize> {
 /// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。仅更新传入 Some 的值；
 /// 标题/内容必填（修改不能为空；新建时标题隐式取 id，见 create），
 /// 翻译/备注允许清空；校验失败返回明确错误，不再静默跳过。
+///
+/// **变更检测**（2026-09-07）：先读当前行逐字段比较，只为真正变化的字段写库，全部相等则
+/// 完全不写。原因：SQLite 对同值 UPDATE 不跳过（仍重写行），而 `prompts` 列表按
+/// `updated_at DESC` 排序（见 list），空保存会把记录顶到最前。
 pub fn update_detail(
     conn: &Connection,
     id: &str,
@@ -180,59 +184,65 @@ pub fn update_detail(
             return Err(AppError::Message("内容不能为空".into()));
         }
     }
-    let tx = conn.unchecked_transaction()?;
-    let mut changed = false;
+
+    // 当前行：既用于比较，也是「无变化」时直接返回的基线（替代原先结尾那次读）
+    let Some(cur) = get_by_id(conn, id)? else {
+        return Ok(None);
+    };
+
+    let mut sets: Vec<String> = Vec::new();
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     if let Some(v) = title {
         let v = v.trim().to_string();
-        tx.execute(
-            "UPDATE prompts SET title = ?1 WHERE id = ?2",
-            rusqlite::params![v, id],
-        )?;
-        changed = true;
+        if v != cur.title {
+            sets.push("title = ?".into());
+            params.push(Box::new(v));
+        }
     }
     if let Some(v) = content {
         let v = v.trim().to_string();
-        tx.execute(
-            "UPDATE prompts SET content = ?1 WHERE id = ?2",
-            rusqlite::params![v, id],
-        )?;
-        changed = true;
+        if v != cur.content {
+            sets.push("content = ?".into());
+            params.push(Box::new(v));
+        }
     }
     if let Some(v) = content_translate {
-        tx.execute(
-            "UPDATE prompts SET content_translate = ?1 WHERE id = ?2",
-            rusqlite::params![v, id],
-        )?;
-        changed = true;
+        if v != cur.content_translate {
+            sets.push("content_translate = ?".into());
+            params.push(Box::new(v));
+        }
     }
     if let Some(v) = note {
-        tx.execute(
-            "UPDATE prompts SET note = ?1 WHERE id = ?2",
-            rusqlite::params![v, id],
-        )?;
-        changed = true;
+        if v != cur.note {
+            sets.push("note = ?".into());
+            params.push(Box::new(v));
+        }
     }
     if let Some(v) = is_favorite {
-        tx.execute(
-            "UPDATE prompts SET is_favorite = ?1 WHERE id = ?2",
-            rusqlite::params![v as i64, id],
-        )?;
-        changed = true;
+        if v != cur.is_favorite {
+            sets.push("is_favorite = ?".into());
+            params.push(Box::new(v as i64));
+        }
     }
     if let Some(v) = is_safe {
-        tx.execute(
-            "UPDATE prompts SET is_safe = ?1 WHERE id = ?2",
-            rusqlite::params![v as i64, id],
-        )?;
-        changed = true;
+        if v != cur.is_safe {
+            sets.push("is_safe = ?".into());
+            params.push(Box::new(v as i64));
+        }
     }
-    if changed {
-        tx.execute(
-            "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
-            rusqlite::params![id],
-        )?;
+
+    // 无任何变化：一次写都不做，updated_at 保持不变
+    if sets.is_empty() {
+        return Ok(Some(cur));
     }
-    tx.commit()?;
+
+    sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')".into());
+    let sql = format!("UPDATE prompts SET {} WHERE id = ?", sets.join(", "));
+    params.push(Box::new(id.to_string()));
+    conn.execute(
+        &sql,
+        rusqlite::params_from_iter(params.iter().map(|b| b.as_ref())),
+    )?;
     Ok(get_by_id(conn, id)?)
 }
 

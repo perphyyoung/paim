@@ -16,6 +16,15 @@
 - 影响面：约 107 处 `features::` 引用改为 `commands::` / `domain::`，`crate::{db,error,logging,text_utils}` 改为 `crate::infra::*`；命令函数名不变，`src/bindings.ts` 无变化，前端零改动。
 - 验证：`pnpm check` 通过；`pnpm test` 通过；`sentrux check .` 全部规则通过。
 
+### 修复：详情弹窗「未改动也写库」
+
+- 现象：详情弹窗进入编辑态后未改动直接保存，仍会写库；`prompts` 列表按 `updated_at DESC` 排序，导致该记录被顶到最前。
+- 前端（A）：`PromptDetailModal.vue` / `ImageDetailModal.vue` 的 `saveFields()` 增加变更检测，与后端逐字段比较（后端对标题/内容/文件名做 trim），无改动则直接退出编辑态并提示「没有改动」，不发起命令。
+- 后端（B）：`prompt_service::update_detail` 与 `image_service::update_detail` 先读当前行逐字段比较，只为真正变化的字段拼**一条** UPDATE，`updated_at` 随变化写入；全部相等则一次都不写（此前 `image_service` 即使所有字段传 None 也会写 `updated_at`）。
+  - `prompt_service` 顺带把「每字段一条 UPDATE + 一条 updated_at」合并为单条语句，去掉了 `unchecked_transaction`（单语句自带原子性）。
+- 净效果：提示词空保存由 5 次 UPDATE 降为 0 次；改动 1 个字段由 5 次 UPDATE 降为 1 次（多一次主键读用于比较，远低于写成本）。
+- 测试：`prompt_service.test.rs` 新增 `update_detail_no_change_does_not_write`，断言未改动时 `updated_at` 不变。
+
 ## v0.2.14
 
 架构规范专项：引入分层规则与结构检查，清理既有违例。

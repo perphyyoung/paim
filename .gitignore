@@ -3,6 +3,7 @@ paim-data*/
 test-results/
 temp/
 tmp-*
+target/
 
 # 内置浏览器验证产物（docs/内置浏览器使用经验.md）
 verify/

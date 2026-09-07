@@ -186,6 +186,18 @@ async function saveFields() {
     showToast("内容不能为空", "warning");
     return;
   }
+  // 变更检测：与后端 update_detail 的逐字段比较对齐（后端对标题/内容做 trim）
+  // 无改动直接退出编辑态，不发起命令——避免空保存写库并把该提示词顶到列表最前
+  const unchanged =
+    title.value.trim() === (p.title ?? "") &&
+    content.value.trim() === (p.content ?? "") &&
+    contentTranslate.value === (p.content_translate ?? "") &&
+    note.value === (p.note ?? "");
+  if (unchanged) {
+    edit.value = false;
+    showToast("没有改动", "info");
+    return;
+  }
   try {
     const upd = await commands.updatePromptDetail(
       p.id,

@@ -78,6 +78,37 @@ fn update_detail_writes_fields_and_allows_clearing_translate_note() {
     assert_eq!(upd.note, "");
 }
 
+#[test]
+fn update_detail_no_change_does_not_write() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content, content_translate, note)
+         VALUES ('p1', 't', 'c', 'tr', 'n')",
+        [],
+    )
+    .unwrap();
+    let before = super::get_by_id(&conn, "p1")
+        .unwrap()
+        .expect("row must exist")
+        .updated_at;
+
+    // 完全相同的字段：不应写库，updated_at 保持不变（否则列表排序会被顶到最前）
+    let upd = update_detail(
+        &conn,
+        "p1",
+        Some("t".into()),
+        Some("c".into()),
+        Some("tr".into()),
+        Some("n".into()),
+        None,
+        None,
+    )
+    .unwrap()
+    .expect("row must exist");
+    assert_eq!(upd.updated_at, before, "未改动不应刷新 updated_at");
+}
+
 use super::{add_prompt_tag, batch_add_prompt_tag};
 
 #[test]

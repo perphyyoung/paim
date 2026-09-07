@@ -438,6 +438,15 @@ async function saveFields() {
     showToast("文件名不能为空", "warning");
     return;
   }
+  // 变更检测：与后端 update_detail 的逐字段比较对齐（后端对文件名做 trim）
+  // 无改动直接退出编辑态，不发起命令——避免空保存写库并刷新 updated_at
+  const unchanged =
+    fileName.value.trim() === (img.file_name ?? "") && note.value === (img.note ?? "");
+  if (unchanged) {
+    edit.value = false;
+    showToast("没有改动", "info");
+    return;
+  }
   try {
     const upd = await commands.updateImageDetail(img.id, fileName.value, note.value, null, null);
     img.file_name = upd.file_name;
