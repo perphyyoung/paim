@@ -2,6 +2,8 @@
 
 **Prompt and Image Manager** — 文生图提示词及图像的管理工具。
 
+本文件是**使用与上手文档**：这是什么、怎么跑起来、怎么用。目录结构、分层约定与实现细节见 [项目架构.md](项目架构.md)；逐版本的改动记录见 [CHANGE.md](CHANGE.md)。
+
 ## 技术栈
 
 - **桌面框架**：Tauri 2
@@ -33,44 +35,15 @@ pnpm dev
 pnpm release
 ```
 
-## 目录结构
+## 项目结构
 
-按「特征切片」组织业务模块，前端与后端各有一个 `features/`，同一业务在两端对齐。
-
-```
-src/                          # Vue 前端
-├── main.ts / App.vue / styles.css
-├── views/                    # 页面（如图像/提示词主页）
-└── features/
-    └── tag/                  # 标签切片（标签管理共用组件）
-        └── components/
-            └── TagManagerModal.vue   # 通用标签管理弹窗（图像/提示词复用）
-src-tauri/
-└── src/
-    ├── lib.rs                # 依赖注入（DB 连接）+ 注册 commands
-    ├── db.rs                 # 连接管理与 schema 迁移
-    └── features/
-        ├── prompt.rs        # 提示词命令
-        ├── prompt_service.rs# 提示词领域逻辑
-        ├── image.rs         # 图像命令
-        ├── image_service.rs # 图像领域逻辑
-        ├── prompt_tag.rs    # 提示词标签管理命令
-        ├── image_tag.rs     # 图像标签管理命令
-        └── tag_manager.rs   # TagDomain 泛化 CRUD，图像/提示词共用
-```
-
-## 架构约定
-
-- **业务逻辑全部放 Rust 后端**，Vue 只做展示与参数传递，通过 Tauri commands 调用。
-- **特征切片**：按业务模块纵向切分，prompt / image / tag 相对独立，可单独增删。
-- **依赖方向**：commands（薄）→ service（领域逻辑）→ db；service 不感知 Tauri。
-- **数据一致性**：标签名唯一、外键级联删除等约束由 SQLite 承担，事务在 Rust 侧控制。
+业务按「特征切片」组织，前端与后端各有一个 `features/`，同一业务在两端对齐。完整目录树、分层规则与依赖约束见 [项目架构.md](项目架构.md)。
 
 ## 数据集切换
 
 数据目录路径恒定，应用始终打开它；多套数据集通过**目录改名**切换，切换前需关闭应用：
 
-```
+``` dir
 <数据目录同级>/
 ├── paim-data        ← 激活中的数据集（路径恒定）
 ├── paim-data.工作    ← 备用数据集（目录名 = 数据目录名 + "." + 名字）
