@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { commands } from "@/bindings";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { appVersion } from "@/version";
 import { useFontScale, useDetailFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -9,6 +9,9 @@ import { useToast } from "@/components/useToast";
 import { markPageStale } from "@/utils/crossPageCache";
 import { inspectPmBackup, type PmBackupInfo } from "@/features/backup/api/pmBackup";
 import PmBackupImportModal from "@/features/backup/components/PmBackupImportModal.vue";
+import { inspectPaimBackup, type PaimBackupInfo } from "@/features/backup/api/paimBackup";
+import PaimBackupImportModal from "@/features/backup/components/PaimBackupImportModal.vue";
+import PaimBackupExportModal from "@/features/backup/components/PaimBackupExportModal.vue";
 import ThumbnailRebuildModal from "@/features/image/components/ThumbnailRebuildModal.vue";
 
 const { showToast } = useToast();
@@ -92,6 +95,88 @@ function onImported() {
 function onModalClose() {
   modalOpen.value = false;
   if (importSucceeded.value) {
+    // 数据已整体替换，整页刷新以加载新数据
+    window.location.reload();
+  }
+}
+
+// —— paim 备份导出 ——
+const exportModalOpen = ref(false);
+const exportZipPath = ref("");
+const exportError = ref("");
+
+async function pickExportPath() {
+  exportError.value = "";
+  let target: string | null = null;
+  try {
+    const ts = new Date()
+      .toLocaleString("sv-SE", { hour12: false })
+      .replace(/[-: ]/g, (m) => (m === " " ? "-" : ""))
+      .slice(0, 15);
+    target = await saveFileDialog({
+      defaultPath: `paim-backup-${ts}.zip`,
+      filters: [{ name: "paim 备份文件", extensions: ["zip"] }],
+    });
+  } catch (e) {
+    exportError.value = String(e);
+    return;
+  }
+  if (!target) return;
+  exportZipPath.value = target;
+  exportModalOpen.value = true;
+}
+
+// —— paim 备份导入 ——
+const paimInspecting = ref(false);
+const paimImportError = ref("");
+const paimImportZipPath = ref("");
+const paimImportInfo = ref<PaimBackupInfo | null>(null);
+const paimConfirmOpen = ref(false);
+const paimModalOpen = ref(false);
+const paimImportSucceeded = ref(false);
+
+const paimConfirmMessage = computed(() => {
+  const info = paimImportInfo.value;
+  if (!info) return "";
+  return (
+    `将导入 ${info.prompt_count} 条提示词、${info.image_count} 张图像` +
+    `（回收站：提示词 ${info.trashed_prompt_count} 条、图像 ${info.trashed_image_count} 张）。` +
+    "原数据目录将整体备份（含缩略图）后替换。"
+  );
+});
+
+async function pickPaimBackup() {
+  paimImportError.value = "";
+  const selected = await openFileDialog({
+    multiple: false,
+    filters: [{ name: "paim 备份文件", extensions: ["zip"] }],
+  });
+  if (!selected) return;
+  paimInspecting.value = true;
+  try {
+    paimImportZipPath.value = selected as string;
+    paimImportInfo.value = await inspectPaimBackup(selected);
+    paimConfirmOpen.value = true;
+  } catch (e) {
+    paimImportError.value = String(e);
+  } finally {
+    paimInspecting.value = false;
+  }
+}
+
+function startPaimImport() {
+  paimConfirmOpen.value = false;
+  paimImportSucceeded.value = false;
+  paimModalOpen.value = true;
+}
+
+function onPaimImported() {
+  paimImportSucceeded.value = true;
+}
+
+function onPaimModalClose() {
+  paimModalOpen.value = false;
+  if (paimImportSucceeded.value) {
     // 数据已整体替换，整页刷新以加载新数据
     window.location.reload();
   }
@@ -185,6 +270,37 @@ onMounted(loadDataDir);
 
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
+          <dt class="text-gray-400">导出备份</dt>
+          <dd class="text-sm text-gray-500">
+            导出全部数据（提示词、图像文件与数据库）为 ZIP 备份包
+          </dd>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+          @click="pickExportPath"
+        >
+          导出
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <dt class="text-gray-400">paim 备份导入</dt>
+          <dd class="text-sm text-gray-500">导入 paim 导出的全量备份，当前数据将被替换</dd>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="paimInspecting"
+          @click="pickPaimBackup"
+        >
+          {{ paimInspecting ? "检查备份..." : "导入 paim 备份" }}
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
           <dt class="text-gray-400">pm 备份导入</dt>
           <dd class="text-sm text-gray-500">
             导入 prompt-manager 导出的全量备份，当前数据将被替换
@@ -201,10 +317,37 @@ onMounted(loadDataDir);
       </div>
 
       <p v-if="openError" class="py-2 text-sm text-red-400">{{ openError }}</p>
+      <p v-if="exportError" class="py-2 text-sm text-red-400">{{ exportError }}</p>
+      <p v-if="paimImportError" class="py-2 text-sm text-red-400">
+        {{ paimImportError }}
+      </p>
       <p v-if="importError" class="py-2 text-sm text-red-400">
         {{ importError }}
       </p>
     </dl>
+
+    <ConfirmDialog
+      :open="paimConfirmOpen"
+      title="导入 paim 备份"
+      :message="paimConfirmMessage"
+      confirm-text="替换导入"
+      danger
+      @confirm="startPaimImport"
+      @cancel="paimConfirmOpen = false"
+    />
+
+    <PaimBackupImportModal
+      :open="paimModalOpen"
+      :zip-path="paimImportZipPath"
+      @close="onPaimModalClose"
+      @imported="onPaimImported"
+    />
+
+    <PaimBackupExportModal
+      :open="exportModalOpen"
+      :export-path="exportZipPath"
+      @close="exportModalOpen = false"
+    />
 
     <ConfirmDialog
       :open="confirmOpen"

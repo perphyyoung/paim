@@ -28,6 +28,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             GlobalShortcutEvent,
             domain::thumbnail_service::ThumbnailRebuildProgress,
             domain::pm_backup_service::PmImportProgress,
+            domain::paim_backup_service::PaimBackupProgress,
         ])
         .commands(tauri_specta::collect_commands![
             // —— 提示词通用 ——
@@ -112,6 +113,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // —— pm 备份导入 ——
             commands::pm_backup::inspect_pm_backup,
             commands::pm_backup::import_pm_backup,
+            // —— paim 备份导出/导入 ——
+            commands::paim_backup::inspect_paim_backup,
+            commands::paim_backup::export_paim_backup,
+            commands::paim_backup::import_paim_backup,
             // —— 数据统计 ——
             commands::stats::get_statistics,
         ])

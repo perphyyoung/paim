@@ -8,10 +8,13 @@
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use zip::ZipArchive;
 
+use crate::domain::backup_common::{
+    count_image_entries, create_temp_dir, extract_entry, io_err, is_safe_rel_path, locate_root,
+    open_app_db, read_entry_to_string, MANIFEST_ENTRY,
+};
 use crate::infra::db::{self, BkDb};
 use crate::infra::time::normalize_ts;
 use crate::{log_error, log_info};
@@ -19,8 +22,7 @@ use crate::{log_error, log_info};
 /// 当前支持的数据格式版本（与 pm 的 CURRENT_DATA_VERSION 一致）。
 const SUPPORTED_DATA_VERSION: i64 = 1;
 
-/// pm 备份包内的固定布局。
-const MANIFEST_ENTRY: &str = "manifest.json";
+/// pm 备份包内的固定布局（manifest 条目名复用 backup_common 的 MANIFEST_ENTRY）。
 const DB_ENTRY: &str = "database/prompt-manager.db";
 const IMAGES_ENTRY_PREFIX: &str = "files/images/";
 
@@ -76,7 +78,7 @@ pub fn inspect(zip_path: &str) -> Result<PmBackupInfo, String> {
     let manifest = read_manifest(&mut archive, &root)?;
     validate_manifest(&manifest)?;
 
-    let tmp = create_temp_dir()?;
+    let tmp = create_temp_dir("paim-pm-import")?;
     let result = (|| {
         let pm_db = tmp.join("prompt-manager.db");
         extract_entry(&mut archive, &format!("{root}{DB_ENTRY}"), &pm_db)?;
@@ -97,15 +99,6 @@ pub fn inspect(zip_path: &str) -> Result<PmBackupInfo, String> {
     })();
     let _ = std::fs::remove_dir_all(&tmp);
     result
-}
-
-/// 在指定路径打开应用数据库（含建表），返回裸连接供装入 BkDb。
-fn open_app_db(path: &Path) -> Result<Connection, String> {
-    db::init(path.to_path_buf())
-        .map_err(|e| format!("初始化数据库失败: {e}"))?
-        .0
-        .into_inner()
-        .map_err(|_| "数据库句柄已损坏".to_string())
 }
 
 /// 执行导入：整体替换当前数据。与 pm 一致——导入前整个数据目录改名让位
@@ -177,7 +170,7 @@ where
         *guard = open_app_db(&db_path)?;
         let images_dir = db::images_dir(app);
         std::fs::create_dir_all(&images_dir).map_err(|e| format!("创建图像目录失败: {e}"))?;
-        let tmp = create_temp_dir()?;
+        let tmp = create_temp_dir("paim-pm-import")?;
         let result = import_inner(app, &guard, &mut archive, &root, &images_dir, &tmp, &emit);
         let _ = std::fs::remove_dir_all(&tmp);
         let (prompts, images, thumbnail_failures) = result?;
@@ -558,28 +551,6 @@ where
     Ok(summary.failed)
 }
 
-/// 在包内定位 manifest.json，返回其目录前缀（"" 或 "dir/"）。
-/// 兼容 Unix `zip -r` 打包时多出的一层临时目录包裹（pm 自身导入不支持该格式）。
-fn locate_root(archive: &mut ZipArchive<std::fs::File>) -> Result<String, String> {
-    let mut normalized: Vec<String> = Vec::with_capacity(archive.len());
-    for i in 0..archive.len() {
-        let f = archive
-            .by_index(i)
-            .map_err(|e| format!("读取 ZIP 条目失败: {e}"))?;
-        normalized.push(f.name().replace('\\', "/"));
-    }
-    let prefixes: Vec<&str> = normalized
-        .iter()
-        .filter_map(|n| n.strip_suffix(MANIFEST_ENTRY))
-        .filter(|p| p.is_empty() || (p.ends_with('/') && !p[..p.len() - 1].contains('/')))
-        .collect();
-    match prefixes.len() {
-        1 => Ok(prefixes[0].to_string()),
-        0 => Err("无效的备份文件：缺少 manifest.json".into()),
-        _ => Err("无效的备份文件：manifest.json 不唯一".into()),
-    }
-}
-
 /// 读取 manifest.json 并解析。
 fn read_manifest(
     archive: &mut ZipArchive<std::fs::File>,
@@ -601,89 +572,6 @@ fn validate_manifest(m: &BackupManifest) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-/// 按归一化路径读取一个条目为字符串。
-fn read_entry_to_string(
-    archive: &mut ZipArchive<std::fs::File>,
-    normalized: &str,
-) -> Result<String, String> {
-    let raw = raw_name_of(archive, normalized).ok_or_else(|| format!("备份缺少 {normalized}"))?;
-    let mut entry = archive
-        .by_name(&raw)
-        .map_err(|e| format!("读取 {normalized} 失败: {e}"))?;
-    let mut buf = String::new();
-    entry
-        .read_to_string(&mut buf)
-        .map_err(|e| format!("读取 {normalized} 失败: {e}"))?;
-    Ok(buf)
-}
-
-/// 把包内指定条目解压为单个文件（用于 pm 数据库）。
-fn extract_entry(
-    archive: &mut ZipArchive<std::fs::File>,
-    normalized: &str,
-    dest: &Path,
-) -> Result<(), String> {
-    let raw = raw_name_of(archive, normalized).ok_or_else(|| format!("备份缺少 {normalized}"))?;
-    let mut entry = archive
-        .by_name(&raw)
-        .map_err(|e| format!("读取 {normalized} 失败: {e}"))?;
-    let mut out = std::fs::File::create(dest).map_err(|e| format!("创建临时文件失败: {e}"))?;
-    std::io::copy(&mut entry, &mut out).map_err(|e| format!("解压 {normalized} 失败: {e}"))?;
-    Ok(())
-}
-
-/// 按归一化路径查找条目的原始名（Windows Compress-Archive 可能用反斜杠存储条目名）。
-fn raw_name_of(archive: &mut ZipArchive<std::fs::File>, normalized: &str) -> Option<String> {
-    for i in 0..archive.len() {
-        if let Ok(f) = archive.by_index(i) {
-            if f.name().replace('\\', "/") == normalized {
-                return Some(f.name().to_string());
-            }
-        }
-    }
-    None
-}
-
-/// 统计图像目录下的文件条目数（用于进度）。
-fn count_image_entries(archive: &mut ZipArchive<std::fs::File>, image_prefix: &str) -> usize {
-    let mut n = 0usize;
-    for i in 0..archive.len() {
-        if let Ok(f) = archive.by_index(i) {
-            if f.is_dir() {
-                continue;
-            }
-            let norm = f.name().replace('\\', "/");
-            if norm.starts_with(image_prefix) && norm.len() > image_prefix.len() {
-                n += 1;
-            }
-        }
-    }
-    n
-}
-
-/// 条目相对路径是否安全（拒绝空段/./.. /盘符），防 zip-slip。
-fn is_safe_rel_path(rel: &str) -> bool {
-    !rel.split('/')
-        .any(|seg| seg.is_empty() || seg == "." || seg == ".." || seg.ends_with(':'))
-}
-
-/// 在系统临时目录下建当次导入的解压目录（须在数据目录之外：导入会让
-/// 数据目录整体改名让位，解压句柄若在其内会导致改名失败）。
-/// import 结束/失败后清理；inspect 由调用侧清理。
-fn create_temp_dir() -> Result<PathBuf, String> {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("paim-pm-import-{nanos}"));
-    std::fs::create_dir_all(&dir).map_err(|e| format!("创建临时目录失败: {e}"))?;
-    Ok(dir)
-}
-
-fn io_err(e: std::io::Error) -> String {
-    format!("写入文件失败: {e}")
 }
 
 #[cfg(test)]

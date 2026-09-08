@@ -1,5 +1,6 @@
 use super::*;
 use std::io::Write;
+use std::path::PathBuf;
 
 #[test]
 fn rel_path_safety() {

@@ -2,6 +2,16 @@
 
 按版本记录有影响的改动（架构/重构/修复）。日常环境要点与踩坑见 [AGENTS.md](AGENTS.md)。
 
+## v0.2.18
+
+### 新增：paim 自有全量备份导出/导入
+
+- 备份包结构（对齐 pm）：`manifest.json + database/paim.db + files/images/**`；缩略图不导出，导入端重建。
+- 后端：新增 `domain/paim_backup_service.rs(+test)` 与 `commands/paim_backup.rs`（`inspect/export/import_paim_backup` 三命令）。导出用 `VACUUM INTO` 生成库快照（原子、自动合并 WAL，不断库）+ 图像目录复制 + ZipWriter 压缩；导入与 pm 同构——内存占位连接换绑 → 数据目录整目录让位（`paim-data_{时间戳}`）→ 解包换库文件 → `db::init` 重开（自动迁移旧版本备份）→ 重建缩略图 → 失败自动回滚。校验：manifest 存在、`appName == "paim"`、`dataVersion ≤ 1`。
+- 重构：ZIP 条目读取/安全路径/临时目录/递归复制/`open_app_db` 等从 `pm_backup_service` 抽到 `domain/backup_common.rs`，pm 与 paim 备份服务共用。
+- 前端：新增 `features/backup/api/paimBackup.ts`、`PaimBackupImportModal.vue`/`PaimBackupExportModal.vue`（进度事件 `paim-backup-progress`）；设置页「数据」区新增「导出备份」「paim 备份导入」两行（保存/打开对话框 + 确认弹窗，与 pm 导入同款交互）。
+- 测试：`paim_backup_service.test.rs` 覆盖导出→恢复往返（逐表一致、图像文件落位、包内条目齐备）、manifest 校验（appName/版本）、缺库文件报错。
+
 ## v0.2.17
 
 ### 新增：侧栏「统计」弹窗（对齐 pm 统计页）
