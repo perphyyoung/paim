@@ -85,18 +85,18 @@ function toggleSelect(id: string) {
 async function loadImages() {
   loading.value = true;
   try {
-    // 与 pm 一致：搜索/标签进后端过滤，最多加载 100 张（查询层 limit）
-    const page = await commands.listImages(100, keyword.value.trim() || null, selectedTag.value);
+    // 列表与数据目录并行取；缩略图 URL 由行内 thumbnail_path 本地拼，不再逐图 IPC
+    const [page, dir] = await Promise.all([
+      commands.listImages(100, keyword.value.trim() || null, selectedTag.value),
+      commands.getDataDir(),
+    ]);
     images.value = page.items;
     total.value = page.total;
-    for (const img of images.value) {
-      try {
-        const p = await commands.getImageThumbnail(img.id);
-        thumbs.value[img.id] = convertFileSrc(p);
-      } catch {
-        // 缩略图缺失时保持占位
-      }
+    const map: Record<string, string> = {};
+    for (const img of page.items) {
+      if (img.thumbnail_path) map[img.id] = convertFileSrc(`${dir}/${img.thumbnail_path}`);
     }
+    thumbs.value = map;
   } catch {
     images.value = [];
   } finally {

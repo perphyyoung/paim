@@ -64,8 +64,6 @@ export const commands = {
 	/**  为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。 */
 	getSourceThumbnail: (source: string) => __TAURI_INVOKE<string>("get_source_thumbnail", { source }),
 	listImages: (limit: number | null, search: string | null, tag: string | null) => __TAURI_INVOKE<PaginatedImages>("list_images", { limit, search, tag }),
-	/**  返回指定图像的缩略图磁盘路径，前端配合 convertFileSrc 加载。 */
-	getImageThumbnail: (id: string) => __TAURI_INVOKE<string>("get_image_thumbnail", { id }),
 	/**  返回单张图像详情。 */
 	getImageDetail: (id: string) => __TAURI_INVOKE<Image>("get_image_detail", { id }),
 	/**  返回图像原图磁盘路径，前端配合 convertFileSrc 加载（详情页大图使用）。 */

@@ -241,32 +241,6 @@ pub fn empty_image_trash(
     Ok(image_service::empty_trash(&conn, &app))
 }
 
-/// 返回指定图像的缩略图磁盘路径，前端配合 convertFileSrc 加载。
-#[tauri::command]
-#[specta::specta]
-pub fn get_image_thumbnail(
-    app: tauri::AppHandle,
-    db: State<BkDb>,
-    id: String,
-) -> Result<String, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let rel: Option<String> = conn
-        .query_row(
-            "SELECT thumbnail_path FROM images WHERE id = ?1",
-            rusqlite::params![id],
-            |r| r.get(0),
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-
-    let Some(rel) = rel else {
-        return Err("缩略图不存在".into());
-    };
-    Ok(crate::infra::db::data_dir(&app)
-        .join(&rel)
-        .to_string_lossy()
-        .into_owned())
-}
-
 /// 返回单张图像详情。
 #[tauri::command]
 #[specta::specta]

@@ -58,7 +58,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::image::import_images,
             commands::image::get_source_thumbnail,
             commands::image::list_images,
-            commands::image::get_image_thumbnail,
             commands::image::get_image_detail,
             commands::image::get_image_src,
             commands::image::replace_image,
