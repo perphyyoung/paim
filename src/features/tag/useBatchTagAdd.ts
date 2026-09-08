@@ -1,7 +1,7 @@
 /**
  * 批量添加标签公共逻辑（图像/提示词主页共用）。
  *
- * 两个主页的批量打标签流程同构：命令名按域拼 `batch_add_{image|prompt}_tag`，
+ * 两个主页的批量打标签流程同构：统一走合一的 batchAddTag(domain, ids, name)，
  * 成功后提示、退出批量模式并刷新标签数据。仅提示名词不同，经 domain 注入。
  */
 import type { Ref } from "vue";
@@ -34,9 +34,7 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
       return false;
     }
     try {
-      await (domain === "image"
-        ? commands.batchAddImageTag(ids, name)
-        : commands.batchAddPromptTag(ids, name));
+      await commands.batchAddTag(domain, ids, name);
       showToast(`已为 ${ids.length} ${noun}添加标签`, "success");
       exitBatch();
       await loadTagFilter();

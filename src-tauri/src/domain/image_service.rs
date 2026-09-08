@@ -57,16 +57,6 @@ pub struct PaginatedImages {
     pub total: i64,
 }
 
-/// 图像标签（关联表 join image_tags 的返回对象）。
-#[derive(Debug, Serialize, Clone, specta::Type)]
-pub struct ImageTag {
-    pub id: i64,
-    pub name: String,
-    /// 所属标签组，未分组为 None；其它命令不填时默认为 None
-    #[serde(default)]
-    pub group_id: Option<i64>,
-}
-
 #[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct LinkedPrompt {
     pub id: String,
@@ -382,108 +372,6 @@ pub fn empty_trash(conn: &Connection, app: &tauri::AppHandle) -> TrashBatchResul
         }
     }
     result
-}
-
-/// 校验图像存在，不存在则报错（避免静默创建孤立标签关联）。
-fn ensure_image_exists(tx: &rusqlite::Transaction, id: &str) -> std::result::Result<(), AppError> {
-    let found = tx
-        .query_row(
-            "SELECT 1 FROM images WHERE id = ?1",
-            rusqlite::params![id],
-            |_| Ok(()),
-        )
-        .optional()?;
-    if found.is_none() {
-        return Err(AppError::Message(format!("图像 {id} 不存在")));
-    }
-    Ok(())
-}
-
-/// 为单个图像添加一个标签（不存在则创建，关联存在则忽略），并更新图像的 updated_at。
-pub fn add_image_tag(
-    conn: &Connection,
-    id: &str,
-    name: &str,
-) -> std::result::Result<Vec<ImageTag>, AppError> {
-    let tx = conn.unchecked_transaction()?;
-    ensure_image_exists(&tx, id)?;
-    let tag_id = get_or_create_image_tag(&tx, name)?;
-    tx.execute(
-        "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
-        rusqlite::params![id, tag_id],
-    )?;
-    tx.execute(
-        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
-        rusqlite::params![id],
-    )?;
-    tx.commit()?;
-    Ok(vec![ImageTag {
-        id: tag_id,
-        name: name.trim().to_string(),
-        group_id: None,
-    }])
-}
-
-/// 为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。
-pub fn batch_add_image_tag(
-    conn: &Connection,
-    ids: &[&str],
-    name: &str,
-) -> std::result::Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-    for id in ids {
-        ensure_image_exists(&tx, id)?;
-    }
-    let tag_id = get_or_create_image_tag(&tx, name)?;
-    for id in ids {
-        tx.execute(
-            "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
-            rusqlite::params![id, tag_id],
-        )?;
-        tx.execute(
-            "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
-            rusqlite::params![id],
-        )?;
-    }
-    tx.commit()?;
-    Ok(())
-}
-
-/// 获取图像标签 id，不存在则创建（供单标签与批量场景复用）。
-fn get_or_create_image_tag(tx: &rusqlite::Transaction, name: &str) -> Result<i64> {
-    match tx
-        .query_row(
-            "SELECT id FROM image_tags WHERE name = ?1",
-            rusqlite::params![name],
-            |r| r.get(0),
-        )
-        .optional()?
-    {
-        Some(tid) => Ok(tid),
-        None => {
-            tx.execute(
-                "INSERT INTO image_tags(name) VALUES (?1)",
-                rusqlite::params![name],
-            )?;
-            Ok(tx.last_insert_rowid())
-        }
-    }
-}
-
-/// 移除图像的一个标签关联。
-pub fn remove_image_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> {
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
-        "DELETE FROM image_tag_relations WHERE image_id = ?1 AND tag_id = ?2",
-        rusqlite::params![id, tag_id],
-    )?;
-    // 标签变化视为图像内容变更，同步 updated_at（与 add/batch_add 对称）
-    tx.execute(
-        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
-        rusqlite::params![id],
-    )?;
-    tx.commit()?;
-    Ok(())
 }
 
 /// 更新图像详情字段（文件名、备注、收藏、安全评级）。仅更新传入 `Some` 的字段，未传的字段不动。

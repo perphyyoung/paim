@@ -109,7 +109,7 @@ export interface UseCardTagAddOptions {
 
 /**
  * 拖拽筛选区标签到卡片：快捷添加标签（图像/提示词主页共用）。
- * 命令名按域拼 `add_{image|prompt}_tag`（单条目添加，非 batch），
+ * 走合一命令 addTag(domain, id, name)（单条目添加，非 batch），
  * 重复标签提示已存在，成功后本地合并 tagNames 并刷新筛选区。
  *
  * 两主页被 KeepAlive 缓存且共用单例回调注册：返回 activate/deactivate
@@ -125,9 +125,7 @@ export function useCardTagAdd(options: UseCardTagAddOptions) {
       return;
     }
     try {
-      await (domain === "image"
-        ? commands.addImageTag(cardId, tagName)
-        : commands.addPromptTag(cardId, tagName));
+      await commands.addTag(domain, cardId, tagName);
       tagNames.value = { ...tagNames.value, [cardId]: [...(existing ?? []), tagName] };
       showToast(`已添加标签「${tagName}」`, "success");
       await loadTagFilter();

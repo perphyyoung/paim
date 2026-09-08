@@ -3,8 +3,8 @@
 
 use crate::domain::image_ops::{make_center_thumb, open_image};
 use crate::domain::image_service::{
-    self, Image, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome, ImageTag,
-    LinkedPrompt, PaginatedImages,
+    self, Image, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome, LinkedPrompt,
+    PaginatedImages,
 };
 use crate::domain::prompt_service;
 use crate::domain::thumbnail_service::{
@@ -320,66 +320,6 @@ pub fn sync_image_safe_to_prompts(
     .map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 返回图像的标签列表。
-#[tauri::command]
-#[specta::specta]
-pub fn get_image_tags(db: State<BkDb>, id: String) -> Result<Vec<ImageTag>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT it.id, it.name
-             FROM image_tags it
-             JOIN image_tag_relations itr ON itr.tag_id = it.id
-             WHERE itr.image_id = ?1
-             ORDER BY it.name",
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let rows = stmt
-        .query_map(rusqlite::params![id], |r| {
-            Ok(ImageTag {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                group_id: None,
-            })
-        })
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut tags = Vec::new();
-    for row in rows {
-        tags.push(row.map_err(|e| AppError::Message(e.to_string()))?);
-    }
-    Ok(tags)
-}
-
-/// 为单个图像添加一个标签：标签不存在则创建，关联存在则忽略，并更新图像的 updated_at。
-#[tauri::command]
-#[specta::specta]
-pub fn add_image_tag(db: State<BkDb>, id: String, name: String) -> Result<Vec<ImageTag>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    image_service::add_image_tag(&conn, &id, &name).map_err(|e| AppError::Message(e.to_string()))
-}
-
-/// 为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。
-#[tauri::command]
-#[specta::specta]
-pub fn batch_add_image_tag(
-    db: State<BkDb>,
-    ids: Vec<String>,
-    name: String,
-) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-    image_service::batch_add_image_tag(&conn, &id_refs, &name)
-}
-
-/// 移除图像的一个标签关联。
-#[tauri::command]
-#[specta::specta]
-pub fn remove_image_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    image_service::remove_image_tag(&conn, &id, tag_id)
-        .map_err(|e| AppError::Message(e.to_string()))
-}
-
 /// 图像详情解绑提示词：从图像移除一条提示词关联（与提示词侧 remove_image_from_prompt 对称）。
 #[tauri::command]
 #[specta::specta]
@@ -391,58 +331,6 @@ pub fn remove_prompt_from_image(
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::remove_image(&conn, &prompt_id, &image_id)
         .map_err(|e| AppError::Message(e.to_string()))
-}
-
-/// 返回全部图像标签（供标签筛选区渲染），按名称排序。
-#[tauri::command]
-#[specta::specta]
-pub fn list_all_image_tags(db: State<BkDb>) -> Result<Vec<ImageTag>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut stmt = conn
-        .prepare("SELECT id, name, group_id FROM image_tags ORDER BY name")
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let rows = stmt
-        .query_map([], |r| {
-            Ok(ImageTag {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                group_id: r.get(2)?,
-            })
-        })
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut tags = Vec::new();
-    for row in rows {
-        tags.push(row.map_err(|e| AppError::Message(e.to_string()))?);
-    }
-    Ok(tags)
-}
-
-/// 返回非删除图像到其标签名的映射：{imageId: [tagName,...]}，供前端内存过滤。
-#[tauri::command]
-#[specta::specta]
-pub fn get_image_tags_map(
-    db: State<BkDb>,
-) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT img.id, it.name
-             FROM images img
-             JOIN image_tag_relations itr ON itr.image_id = img.id
-             JOIN image_tags it ON it.id = itr.tag_id
-             WHERE img.is_deleted = 0
-             ORDER BY it.name",
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let rows = stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for row in rows {
-        let (img_id, tag_name) = row.map_err(|e| AppError::Message(e.to_string()))?;
-        map.entry(img_id).or_default().push(tag_name);
-    }
-    Ok(map)
 }
 
 /// 返回非删除图像到其关联提示词内容的映射：{imageId: [content,...]}，供卡片 row2 显示。

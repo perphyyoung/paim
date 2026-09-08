@@ -91,61 +91,6 @@ fn update_detail_all_none_does_not_write() {
     assert_eq!(upd.updated_at, before, "全 None 不应刷新 updated_at");
 }
 
-use super::{add_prompt_tag, batch_add_prompt_tag};
-
-#[test]
-fn add_prompt_tag_rejects_missing_prompt() {
-    let (_dir, db) = setup();
-    let conn = db.0.lock().unwrap();
-    conn.execute(
-        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
-        [],
-    )
-    .unwrap();
-
-    // 不存在的提示词：报错且不留孤立标签
-    let err = add_prompt_tag(&conn, "missing", "tag1").unwrap_err();
-    assert!(err.to_string().contains("不存在"), "实际：{err}");
-    let cnt: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM prompt_tags WHERE name = 'tag1'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
-    assert_eq!(cnt, 0);
-
-    // 存在的提示词正常添加
-    let added = add_prompt_tag(&conn, "p1", "tag1").unwrap();
-    assert_eq!(added.len(), 1);
-}
-
-#[test]
-fn batch_add_prompt_tag_rejects_any_missing_id() {
-    let (_dir, db) = setup();
-    let conn = db.0.lock().unwrap();
-    conn.execute(
-        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
-        [],
-    )
-    .unwrap();
-
-    // 混入不存在的 id：整批失败且完全回滚（p1 也不应有关联）
-    let err = batch_add_prompt_tag(&conn, &["p1", "missing"], "tag1").unwrap_err();
-    assert!(err.to_string().contains("不存在"), "实际：{err}");
-    let cnt: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM prompt_tag_relations WHERE prompt_id = 'p1'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
-    assert_eq!(cnt, 0);
-
-    // 全部存在时正常
-    batch_add_prompt_tag(&conn, &["p1"], "tag1").unwrap();
-}
-
 #[test]
 fn set_prompt_first_image_moves_target_to_front() {
     let (_dir, db) = setup();
@@ -228,56 +173,6 @@ fn set_prompt_first_image_rejects_unrelated_image() {
 
     let err = set_prompt_first_image(&conn, "p1", "missing").unwrap_err();
     assert!(err.to_string().contains("未关联"), "实际：{err}");
-}
-
-#[test]
-fn prompt_tag_changes_refresh_updated_at() {
-    let (_dir, db) = setup();
-    let conn = db.0.lock().unwrap();
-    conn.execute(
-        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
-        [],
-    )
-    .unwrap();
-
-    // 添加标签后 updated_at 刷新（预置旧时间戳做确定性断言）
-    conn.execute(
-        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
-        [],
-    )
-    .unwrap();
-    super::add_prompt_tag(&conn, "p1", "tag1").unwrap();
-    let after_add: String = conn
-        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
-            r.get(0)
-        })
-        .unwrap();
-    assert_ne!(
-        after_add, "2000-01-01T00:00:00.000Z",
-        "加标签应刷新 updated_at"
-    );
-
-    // 移除标签后 updated_at 再次刷新
-    conn.execute(
-        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
-        [],
-    )
-    .unwrap();
-    let tag_id: i64 = conn
-        .query_row("SELECT id FROM prompt_tags WHERE name = 'tag1'", [], |r| {
-            r.get(0)
-        })
-        .unwrap();
-    super::remove_prompt_tag(&conn, "p1", tag_id).unwrap();
-    let after_remove: String = conn
-        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
-            r.get(0)
-        })
-        .unwrap();
-    assert_ne!(
-        after_remove, "2000-01-01T00:00:00.000Z",
-        "移除标签应刷新 updated_at"
-    );
 }
 
 #[test]

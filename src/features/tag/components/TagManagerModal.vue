@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { commands, type TagGroup, type TagItem, type TagManagerData } from "@/bindings";
+import { commands, type TagData, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import ContextMenu from "@/components/ContextMenu.vue";
 import InlineDialog from "@/components/InlineDialog.vue";
@@ -11,25 +11,27 @@ const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
 const { showToast } = useToast();
 
-// 命令映射表：按域分发到对应 bindings 命令函数
+// 命令映射表：标签命令已按域合一，统一注入 domain 作为首个参数
 const cmds = computed(() => {
-  const isImage = props.domain === "image";
+  const domain = props.domain;
   return {
-    list: isImage ? commands.listImageTagGroups : commands.listPromptTagGroups,
-    createGroup: isImage ? commands.createImageTagGroup : commands.createPromptTagGroup,
-    updateGroup: isImage ? commands.updateImageTagGroup : commands.updatePromptTagGroup,
-    deleteGroup: isImage ? commands.deleteImageTagGroup : commands.deletePromptTagGroup,
-    createTag: isImage ? commands.createImageTag : commands.createPromptTag,
-    renameTag: isImage ? commands.renameImageTag : commands.renamePromptTag,
-    deleteTag: isImage ? commands.deleteImageTag : commands.deletePromptTag,
-    moveTag: isImage ? commands.moveImageTagToGroup : commands.movePromptTagToGroup,
-    pinGroup: isImage ? commands.pinImageTagGroupToTop : commands.pinPromptTagGroupToTop,
+    list: () => commands.getTagData(domain),
+    createGroup: (name: string, sortOrder: number | null) =>
+      commands.createTagGroup(domain, name, sortOrder),
+    updateGroup: (id: number, name: string, sortOrder: number | null) =>
+      commands.updateTagGroup(domain, id, name, sortOrder),
+    deleteGroup: (id: number) => commands.deleteTagGroup(domain, id),
+    createTag: (name: string, groupId: number | null) => commands.createTag(domain, name, groupId),
+    renameTag: (id: number, name: string) => commands.renameTag(domain, id, name),
+    deleteTag: (id: number) => commands.deleteTag(domain, id),
+    moveTag: (id: number, groupId: number | null) => commands.moveTagToGroup(domain, id, groupId),
+    pinGroup: (id: number) => commands.pinTagGroupToTop(domain, id),
   };
 });
 
 const domainLabel = computed(() => (props.domain === "image" ? "图像" : "提示词"));
 
-const data = ref<TagManagerData>({ groups: [], tags: [] });
+const data = ref<TagData>({ groups: [], tags: [] });
 const search = ref("");
 const loading = ref(false);
 const error = ref("");

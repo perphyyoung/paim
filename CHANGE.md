@@ -2,6 +2,15 @@
 
 按版本记录有影响的改动（架构/重构/修复）。日常环境要点与踩坑见 [AGENTS.md](AGENTS.md)。
 
+## v0.2.19
+
+### 重构：标签命令图像域/提示词域合一
+
+- 背景：写侧（标签管理）早已按 `TagDomain` 参数化统一，读侧仍散落在 `commands/image.rs` / `commands/prompt.rs` 手写 SQL，导致 `list_all_image_tags`（无 count）与 `get_prompt_tag_data`（groups + tags + count）命名/结构不对称，类型长出 `ImageTag` / `PromptTagItem` / `TagItem` 三套，前端两主页取数方式也不同构（图像侧前端自算计数）。
+- 后端：新增 `domain/tag_service.rs`（`load_tag_data` / `load_tags_map` / `load_item_tags` / `add_tag` / `batch_add_tag` / `remove_tag`，按域参数化）与 `commands/tag.rs`（14 条命令统一带 `domain: TagDomain`）；`domain/tag_manager.rs` 的 `TagManagerData` 改名 `TagData`、`load_manager_data` 改名 `load_tag_data`（筛选区与标签管理页共用），新增 `TagLite`。删除 `commands/image_tag.rs`、`commands/prompt_tag.rs` 及两 service 中的重复实现与旧类型。命令数 24 → 14。
+- 计数语义统一：`TagItem.count` 改为只统计未删除实体（`LEFT JOIN` 实体表并带 `is_deleted = 0`），回收站条目不再计入角标；前端 `ImagePage` 删除自算 `tagCounts`，改为直接取后端 count，与提示词主页同构。
+- 前端：两主页、两个详情弹窗、`ImagePickerModal`、`TagManagerModal`、`useTagAdd` / `useBatchTagAdd` / `useTagDragToCard` / `detailCache` 全量改用合一命令与 `TagItem` / `TagLite` 类型（bindings 需 `pnpm check` 重生）。
+
 ## v0.2.18
 
 ### 新增：paim 自有全量备份导出/导入

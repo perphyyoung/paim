@@ -252,7 +252,7 @@ async function saveFields() {
 
 // 添加标签：一次只添加一个标签
 const { tagInput, addTag } = useTagAdd({
-  addTagCommand: commands.addPromptTag,
+  addTagCommand: (id, name) => commands.addTag("prompt", id, name),
   getItemId: () => current.value?.id,
   tags,
   showToast,
@@ -279,7 +279,7 @@ function copyTranslate() {
 async function removeTag(tagId: number) {
   const p = current.value;
   if (!p) return;
-  await commands.removePromptTag(p.id, tagId);
+  await commands.removeTag("prompt", p.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
   emit("updated");
 }

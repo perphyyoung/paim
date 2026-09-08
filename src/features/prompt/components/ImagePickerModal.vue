@@ -107,8 +107,8 @@ async function loadImages() {
 
 async function loadTags() {
   try {
-    const tags = await commands.listAllImageTags();
-    allTags.value = tags.map((t) => t.name);
+    const data = await commands.getTagData("image");
+    allTags.value = (data.tags ?? []).map((t) => t.name);
   } catch {
     allTags.value = [];
   }

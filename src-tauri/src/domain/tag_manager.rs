@@ -3,11 +3,13 @@
 //! 供图像标签管理与提示词标签管理共用。
 
 use rusqlite::{Connection, OptionalExtension, Result as RusqliteResult};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// 标签所属域：决定表名前缀（image_/prompt_）与文案。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 作为命令参数下发到前端，serde/specta 用小写字符串（"image" / "prompt"）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
 pub enum TagDomain {
     Image,
     Prompt,
@@ -62,29 +64,36 @@ pub fn ensure_name_not_dup(
 }
 
 impl TagDomain {
-    fn tags_table(self) -> &'static str {
+    pub fn tags_table(self) -> &'static str {
         match self {
             TagDomain::Image => "image_tags",
             TagDomain::Prompt => "prompt_tags",
         }
     }
-    fn groups_table(self) -> &'static str {
+    pub fn groups_table(self) -> &'static str {
         match self {
             TagDomain::Image => "image_tag_groups",
             TagDomain::Prompt => "prompt_tag_groups",
         }
     }
-    fn relations_table(self) -> &'static str {
+    pub fn relations_table(self) -> &'static str {
         match self {
             TagDomain::Image => "image_tag_relations",
             TagDomain::Prompt => "prompt_tag_relations",
         }
     }
     /// 关联表中指向实体 id 的列名（image_id / prompt_id）。
-    fn owner_column(self) -> &'static str {
+    pub fn owner_column(self) -> &'static str {
         match self {
             TagDomain::Image => "image_id",
             TagDomain::Prompt => "prompt_id",
+        }
+    }
+    /// 被标签标注的实体表（images / prompts），用于计数与存在性校验。
+    pub fn items_table(self) -> &'static str {
+        match self {
+            TagDomain::Image => "images",
+            TagDomain::Prompt => "prompts",
         }
     }
     /// 面向用户的对象名，用于文案（如「图像标签管理」）。
@@ -132,7 +141,14 @@ pub fn tags_by_owner(
     Ok(out)
 }
 
-/// 标签管理页中的标签（含所属组与关联对象数）。
+/// 标签精简结构（id + 名称）：单条目标签列表、增删标签的返回统一使用。
+#[derive(Debug, Serialize, Clone, specta::Type)]
+pub struct TagLite {
+    pub id: i64,
+    pub name: String,
+}
+
+/// 标签（含所属组与关联对象数；count 只统计未删除的实体）。
 #[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct TagItem {
     pub id: i64,
@@ -141,7 +157,7 @@ pub struct TagItem {
     pub count: i64,
 }
 
-/// 标签管理页中的标签组（含排序序号，首位组即 sort_order 最小者）。
+/// 标签组（含排序序号，首位组即 sort_order 最小者）。
 #[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct TagGroup {
     pub id: i64,
@@ -149,14 +165,15 @@ pub struct TagGroup {
     pub sort_order: i64,
 }
 
-/// 标签管理页数据：全部标签组 + 全部标签（含计数），供前端按需分组/排序。
+/// 标签数据（标签组 + 全部标签含计数）：标签筛选区与标签管理页共用。
 #[derive(Debug, Serialize, Clone, specta::Type)]
-pub struct TagManagerData {
+pub struct TagData {
     pub groups: Vec<TagGroup>,
     pub tags: Vec<TagItem>,
 }
 
-pub fn load_manager_data(conn: &Connection, domain: TagDomain) -> rusqlite::Result<TagManagerData> {
+/// 读取域内全部标签数据：标签组（按 sort_order）+ 标签（按名称，含未删除实体计数）。
+pub fn load_tag_data(conn: &Connection, domain: TagDomain) -> rusqlite::Result<TagData> {
     let mut groups = Vec::new();
     {
         let sql = format!(
@@ -177,14 +194,19 @@ pub fn load_manager_data(conn: &Connection, domain: TagDomain) -> rusqlite::Resu
     }
     let mut tags = Vec::new();
     {
+        // count 只统计未删除实体：LEFT JOIN 实体表并带 is_deleted = 0，
+        // 回收站内的条目不计入角标（删除后计数随之下降）。
         let sql = format!(
-            "SELECT t.id, t.name, t.group_id, COUNT(r.tag_id) AS cnt
-             FROM {} t
-             LEFT JOIN {} r ON r.tag_id = t.id
+            "SELECT t.id, t.name, t.group_id, COUNT(i.id) AS cnt
+             FROM {tags} t
+             LEFT JOIN {rel} r ON r.tag_id = t.id
+             LEFT JOIN {items} i ON i.id = r.{owner} AND i.is_deleted = 0
              GROUP BY t.id
              ORDER BY t.name",
-            domain.tags_table(),
-            domain.relations_table()
+            tags = domain.tags_table(),
+            rel = domain.relations_table(),
+            items = domain.items_table(),
+            owner = domain.owner_column(),
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |r| {
@@ -199,7 +221,7 @@ pub fn load_manager_data(conn: &Connection, domain: TagDomain) -> rusqlite::Resu
             tags.push(row?);
         }
     }
-    Ok(TagManagerData { groups, tags })
+    Ok(TagData { groups, tags })
 }
 
 /// 新建标签组，返回新组。未指定排序时追加到末尾。

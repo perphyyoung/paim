@@ -8,4 +8,5 @@ pub mod pm_backup_service;
 pub mod prompt_service;
 pub mod statistics_service;
 pub mod tag_manager;
+pub mod tag_service;
 pub mod thumbnail_service;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands, type Prompt, type PromptTagItem, type TagGroup } from "@/bindings";
+import { commands, type Prompt, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { formatLocalTime, toTimestamp } from "@/utils/date";
 import { matchesKeyword } from "@/utils/keywordMatch";
@@ -138,7 +138,7 @@ function onModalUpdated() {
 
 // 标签筛选区分组数据
 const tagGroups = ref<TagGroup[]>([]);
-const allTags = ref<PromptTagItem[]>([]);
+const allTags = ref<TagItem[]>([]);
 
 const tagCounts = computed(() => {
   const counts: Record<string, number> = {};
@@ -334,7 +334,7 @@ function closeDetail() {
 async function loadPrompts() {
   const [ps, tagMap, countMap, raw] = await Promise.all([
     commands.listPrompts(),
-    commands.getPromptTagsMap().catch(() => ({}) as Record<string, string[]>),
+    commands.getTagsMap("prompt").catch(() => ({}) as Record<string, string[]>),
     commands.getPromptImagesCountMap().catch(() => ({}) as Record<string, number>),
     commands.getPromptThumbsMap().catch(() => ({}) as Record<string, string>),
   ]);
@@ -352,8 +352,8 @@ async function loadTagFilter() {
   try {
     // 与图像主页对称：同时刷新筛选区与卡片标签源（tagNames）
     const [data, map] = await Promise.all([
-      commands.getPromptTagData(),
-      commands.getPromptTagsMap().catch(() => ({}) as Record<string, string[]>),
+      commands.getTagData("prompt"),
+      commands.getTagsMap("prompt").catch(() => ({}) as Record<string, string[]>),
     ]);
     tagGroups.value = data.groups ?? [];
     allTags.value = data.tags ?? [];

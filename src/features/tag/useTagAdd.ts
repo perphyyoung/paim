@@ -5,16 +5,12 @@
  * 命令名经 options 注入，命令返回新增的标签列表并合并到本地 tags 快照。
  */
 import { ref, type Ref } from "vue";
+import type { TagLite } from "@/bindings";
 import { isSpecialTag } from "./specialTags";
 import type { ToastType } from "@/components/useToast";
 
-export interface TagLite {
-  id: number;
-  name: string;
-}
-
 export interface UseTagAddOptions {
-  /** 添加标签的命令函数（bindings 的 addImageTag / addPromptTag），接收 (id, name) */
+  /** 添加标签的命令函数（bindings 的 addTag + domain），接收 (id, name) */
   addTagCommand: (id: string, name: string) => Promise<TagLite[]>;
   /** 返回当前详情项的 id（详情关闭后可能为 undefined） */
   getItemId: () => string | number | undefined;

@@ -16,34 +16,6 @@ pub fn list_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::Prompt>, AppE
     prompt_service::list(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 返回非删除提示词到其标签名的映射：{promptId: [tagName,...]}，供卡片 row3 与筛选。
-#[tauri::command]
-#[specta::specta]
-pub fn get_prompt_tags_map(
-    db: State<BkDb>,
-) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT pr.id, pt.name
-             FROM prompts pr
-             JOIN prompt_tag_relations ptr ON ptr.prompt_id = pr.id
-             JOIN prompt_tags pt ON pt.id = ptr.tag_id
-             WHERE pr.is_deleted = 0
-             ORDER BY pt.name",
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let rows = stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for row in rows {
-        let (pid, tag_name) = row.map_err(|e| AppError::Message(e.to_string()))?;
-        map.entry(pid).or_default().push(tag_name);
-    }
-    Ok(map)
-}
-
 /// 返回每个提示词关联（未删除）的图像数：{promptId: count}，供「有图」特殊标签与排序。
 #[tauri::command]
 #[specta::specta]
@@ -76,78 +48,6 @@ pub struct CreatePromptWithImagesResult {
     pub prompt: prompt_service::Prompt,
     pub results: Vec<crate::domain::image_service::ImageImportResult>,
     pub errors: Vec<crate::domain::image_service::ImageImportError>,
-}
-
-#[derive(Debug, Serialize, Clone, specta::Type)]
-pub struct PromptTagItem {
-    pub id: i64,
-    pub name: String,
-    pub group_id: Option<i64>,
-    pub count: i64,
-}
-
-#[derive(Debug, Serialize, Clone, specta::Type)]
-pub struct PromptTagGroup {
-    pub id: i64,
-    pub name: String,
-    pub sort_order: i64,
-}
-
-#[derive(Debug, Serialize, Clone, specta::Type)]
-pub struct PromptTagData {
-    pub groups: Vec<PromptTagGroup>,
-    pub tags: Vec<PromptTagItem>,
-}
-
-/// 返回提示词标签筛选区所需数据：标签组 + 带关联数的标签。
-#[tauri::command]
-#[specta::specta]
-pub fn get_prompt_tag_data(db: State<BkDb>) -> Result<PromptTagData, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut groups = Vec::new();
-    {
-        let mut stmt = conn
-            .prepare("SELECT id, name, sort_order FROM prompt_tag_groups ORDER BY sort_order, name")
-            .map_err(|e| AppError::Message(e.to_string()))?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok(PromptTagGroup {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    sort_order: r.get(2)?,
-                })
-            })
-            .map_err(|e| AppError::Message(e.to_string()))?;
-        for row in rows {
-            groups.push(row.map_err(|e| AppError::Message(e.to_string()))?);
-        }
-    }
-    let mut tags = Vec::new();
-    {
-        let mut stmt = conn
-            .prepare(
-                "SELECT t.id, t.name, t.group_id, COUNT(r.tag_id) AS cnt
-                 FROM prompt_tags t
-                 LEFT JOIN prompt_tag_relations r ON r.tag_id = t.id
-                 GROUP BY t.id
-                 ORDER BY t.name",
-            )
-            .map_err(|e| AppError::Message(e.to_string()))?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok(PromptTagItem {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    group_id: r.get(2)?,
-                    count: r.get(3)?,
-                })
-            })
-            .map_err(|e| AppError::Message(e.to_string()))?;
-        for row in rows {
-            tags.push(row.map_err(|e| AppError::Message(e.to_string()))?);
-        }
-    }
-    Ok(PromptTagData { groups, tags })
 }
 
 /// 新建提示词（内容必需）；image_paths 非空时上传并关联到该提示词。
@@ -371,50 +271,6 @@ pub fn set_prompt_first_image(
 ) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::set_prompt_first_image(&conn, &prompt_id, &image_id)
-}
-
-/// 为单个提示词添加一个标签（不存在则创建），返回新增关联的标签。
-#[tauri::command]
-#[specta::specta]
-pub fn add_prompt_tag(
-    db: State<BkDb>,
-    id: String,
-    name: String,
-) -> Result<Vec<PromptTagItem>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let added = prompt_service::add_prompt_tag(&conn, &id, &name)
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(added
-        .into_iter()
-        .map(|(id, name)| PromptTagItem {
-            id,
-            name,
-            group_id: None,
-            count: 0,
-        })
-        .collect())
-}
-
-/// 为多个提示词批量添加同一个标签（单事务），与图像侧 batch_add_image_tag 命名对齐。
-#[tauri::command]
-#[specta::specta]
-pub fn batch_add_prompt_tag(
-    db: State<BkDb>,
-    ids: Vec<String>,
-    name: String,
-) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-    prompt_service::batch_add_prompt_tag(&conn, &id_refs, &name)
-}
-
-/// 移除提示词的一个标签关联。
-#[tauri::command]
-#[specta::specta]
-pub fn remove_prompt_tag(db: State<BkDb>, id: String, tag_id: i64) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    prompt_service::remove_prompt_tag(&conn, &id, tag_id)
-        .map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 提示词详情解绑图像：从提示词移除一张图像的关联（与图像侧 remove_prompt_from_image 对称）。

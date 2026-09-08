@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands } from "@/bindings";
+import { commands, type TagItem } from "@/bindings";
 // 别名导入：组件模板用裸 v-if="open"（prop），直接导入 open 会遮蔽 prop 导致弹窗恒渲染
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -141,9 +141,7 @@ const currentPrompt = computed<LinkedPrompt | undefined>(() =>
 // —— 编辑提示词（打开提示词详情弹窗，复用 PromptDetailModal）——
 const editPromptOpen = ref(false);
 // 供 PromptDetailModal 使用的标签数据（由本图像的提示词标签构造）
-const promptAllTags = ref<{ id: number; name: string; group_id: number | null; count: number }[]>(
-  [],
-);
+const promptAllTags = ref<TagItem[]>([]);
 const promptTagNames = ref<Record<string, string[]>>({});
 // 编辑目标：把当前选中的提示词转成 PromptDetailModal 需要的 Prompt 对象
 const editPrompt = computed<
@@ -191,7 +189,7 @@ function onNestedPromptUpdated() {
 
 async function loadPromptTagData() {
   try {
-    const data = await commands.getPromptTagData();
+    const data = await commands.getTagData("prompt");
     promptAllTags.value = data.tags ?? [];
   } catch {
     promptAllTags.value = [];
@@ -276,7 +274,7 @@ async function resolveFullscreenSrc(id: string) {
 
 // 全屏信息条：名称已由 items.name 预置，此处惰性补标签
 async function resolveFullscreenMeta(id: string) {
-  const tags = await commands.getImageTags(id);
+  const tags = await commands.getItemTags("image", id);
   return { tags: tags.map((t) => t.name) };
 }
 
@@ -297,7 +295,7 @@ async function loadTags() {
 }
 // 添加标签：一次只添加一个标签
 const { tagInput, addTag } = useTagAdd({
-  addTagCommand: commands.addImageTag,
+  addTagCommand: (id, name) => commands.addTag("image", id, name),
   getItemId: () => current.value?.id,
   tags,
   showToast,
@@ -327,7 +325,7 @@ function copyPromptTranslate() {
 async function removeTag(tagId: number) {
   const img = current.value;
   if (!img) return;
-  await commands.removeImageTag(img.id, tagId);
+  await commands.removeTag("image", img.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
   imageTagsCache.invalidate(img.id);
   emit("update", img);

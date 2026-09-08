@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands, type Image, type ImageTag, type TagGroup } from "@/bindings";
+import { commands, type Image, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime, toTimestamp } from "@/utils/date";
@@ -165,7 +165,7 @@ function handleGridScroll(p: GridScrollPayload) {
 }
 
 // 标签筛选区
-const allTags = ref<ImageTag[]>([]);
+const allTags = ref<TagItem[]>([]);
 const tagNames = shallowRef<Record<string, string[]>>({});
 const selectedTags = ref<string[]>([]);
 
@@ -223,25 +223,21 @@ function onTagManagerSaved() {
   loadTagFilter();
 }
 
-// 每个标签关联的图片数（基于当前未删除图片）用于角标计数
+// 每个标签关联的图片数：直接取后端 count（只统计未删除图片）
 const tagCounts = computed(() => {
   const counts: Record<string, number> = {};
-  for (const img of images.value) {
-    const tags = tagNames.value[img.id];
-    if (tags) for (const t of tags) counts[t] = (counts[t] ?? 0) + 1;
-  }
+  for (const t of allTags.value) counts[t.name] = t.count;
   return counts;
 });
 
 async function loadTagFilter() {
   try {
-    const [tags, mgr, map] = await Promise.all([
-      commands.listAllImageTags(),
-      commands.listImageTagGroups(),
-      commands.getImageTagsMap(),
+    const [data, map] = await Promise.all([
+      commands.getTagData("image"),
+      commands.getTagsMap("image").catch(() => ({}) as Record<string, string[]>),
     ]);
-    allTags.value = tags;
-    tagGroups.value = mgr.groups ?? [];
+    allTags.value = data.tags ?? [];
+    tagGroups.value = data.groups ?? [];
     tagNames.value = map;
   } catch {
     allTags.value = [];

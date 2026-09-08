@@ -24,8 +24,6 @@ export const commands = {
 	restoreAllPrompts: () => __TAURI_INVOKE<number>("restore_all_prompts"),
 	/**  清空提示词回收站（关联关系级联删除）。 */
 	emptyPromptTrash: () => __TAURI_INVOKE<TrashBatchResult>("empty_prompt_trash"),
-	/**  返回非删除提示词到其标签名的映射：{promptId: [tagName,...]}，供卡片 row3 与筛选。 */
-	getPromptTagsMap: () => __TAURI_INVOKE<{ [key in string]: string[] }>("get_prompt_tags_map"),
 	/**  返回每个提示词关联（未删除）的图像数：{promptId: count}，供「有图」特殊标签与排序。 */
 	getPromptImagesCountMap: () => __TAURI_INVOKE<{ [key in string]: number }>("get_prompt_images_count_map"),
 	/**  返回每个提示词第一张关联（未删除）图像的缩略图磁盘路径：{promptId: absPath}，供卡片背景。 */
@@ -34,14 +32,6 @@ export const commands = {
 	getPromptRelatedImages: (id: string) => __TAURI_INVOKE<RelatedImage[]>("get_prompt_related_images", { id }),
 	/**  设为首图：提示词详情图像右键，调整关联 sort_order 使该图排首位（对齐 pm）。 */
 	setPromptFirstImage: (promptId: string, imageId: string) => __TAURI_INVOKE<null>("set_prompt_first_image", { promptId, imageId }),
-	/**  返回提示词标签筛选区所需数据：标签组 + 带关联数的标签。 */
-	getPromptTagData: () => __TAURI_INVOKE<PromptTagData>("get_prompt_tag_data"),
-	/**  为单个提示词添加一个标签（不存在则创建），返回新增关联的标签。 */
-	addPromptTag: (id: string, name: string) => __TAURI_INVOKE<PromptTagItem[]>("add_prompt_tag", { id, name }),
-	/**  为多个提示词批量添加同一个标签（单事务），与图像侧 batch_add_image_tag 命名对齐。 */
-	batchAddPromptTag: (ids: string[], name: string) => __TAURI_INVOKE<null>("batch_add_prompt_tag", { ids, name }),
-	/**  移除提示词的一个标签关联。 */
-	removePromptTag: (id: string, tagId: number) => __TAURI_INVOKE<null>("remove_prompt_tag", { id, tagId }),
 	/**  提示词详情解绑图像：从提示词移除一张图像的关联（与图像侧 remove_prompt_from_image 对称）。 */
 	removeImageFromPrompt: (promptId: string, imageId: string) => __TAURI_INVOKE<null>("remove_image_from_prompt", { promptId, imageId }),
 	/**  图像详情解绑提示词：从图像移除一条提示词关联（与提示词侧 remove_image_from_prompt 对称）。 */
@@ -85,18 +75,6 @@ export const commands = {
 	restoreAllImages: () => __TAURI_INVOKE<number>("restore_all_images"),
 	/**  清空图像回收站（逐项彻底删除，含磁盘文件），逐项容错。 */
 	emptyImageTrash: () => __TAURI_INVOKE<TrashBatchResult>("empty_image_trash"),
-	/**  返回图像的标签列表。 */
-	getImageTags: (id: string) => __TAURI_INVOKE<ImageTag[]>("get_image_tags", { id }),
-	/**  为单个图像添加一个标签：标签不存在则创建，关联存在则忽略，并更新图像的 updated_at。 */
-	addImageTag: (id: string, name: string) => __TAURI_INVOKE<ImageTag[]>("add_image_tag", { id, name }),
-	/**  为多个图像批量添加同一个标签（单事务），并更新各图像的 updated_at。 */
-	batchAddImageTag: (ids: string[], name: string) => __TAURI_INVOKE<null>("batch_add_image_tag", { ids, name }),
-	/**  移除图像的一个标签关联。 */
-	removeImageTag: (id: string, tagId: number) => __TAURI_INVOKE<null>("remove_image_tag", { id, tagId }),
-	/**  返回全部图像标签（供标签筛选区渲染），按名称排序。 */
-	listAllImageTags: () => __TAURI_INVOKE<ImageTag[]>("list_all_image_tags"),
-	/**  返回非删除图像到其标签名的映射：{imageId: [tagName,...]}，供前端内存过滤。 */
-	getImageTagsMap: () => __TAURI_INVOKE<{ [key in string]: string[] }>("get_image_tags_map"),
 	/**  返回非删除图像到其关联提示词内容的映射：{imageId: [content,...]}，供卡片 row2 显示。 */
 	getImagePromptsMap: () => __TAURI_INVOKE<{ [key in string]: string[] }>("get_image_prompts_map"),
 	/**  返回单张图像关联的提示词列表（含标题/内容/翻译/备注/标签），供详情页左侧展示。 */
@@ -111,42 +89,34 @@ export const commands = {
 	 *  正常路径仅 N 次文件存在性检查，同步命令即可。
 	 */
 	ensureImageThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureResult>("ensure_image_thumbnails", { ids }),
-	/**  返回提示词标签管理页所需数据（标签组 + 带计数的标签）。 */
-	listPromptTagGroups: () => __TAURI_INVOKE<TagManagerData>("list_prompt_tag_groups"),
+	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
+	getTagData: (domain: TagDomain) => __TAURI_INVOKE<TagData>("get_tag_data", { domain }),
+	/**  未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。 */
+	getTagsMap: (domain: TagDomain) => __TAURI_INVOKE<{ [key in string]: string[] }>("get_tags_map", { domain }),
+	/**  单个实体的标签列表（按名称升序）。 */
+	getItemTags: (domain: TagDomain, id: string) => __TAURI_INVOKE<TagLite[]>("get_item_tags", { domain, id }),
+	/**  为单个实体添加一个标签（标签不存在则创建），返回该标签并刷新实体 updated_at。 */
+	addTag: (domain: TagDomain, id: string, name: string) => __TAURI_INVOKE<TagLite[]>("add_tag", { domain, id, name }),
+	/**  为多个实体批量添加同一个标签（单事务），并逐个刷新 updated_at。 */
+	batchAddTag: (domain: TagDomain, ids: string[], name: string) => __TAURI_INVOKE<null>("batch_add_tag", { domain, ids, name }),
+	/**  移除实体的一个标签关联，并刷新实体 updated_at。 */
+	removeTag: (domain: TagDomain, id: string, tagId: number) => __TAURI_INVOKE<null>("remove_tag", { domain, id, tagId }),
 	/**  新建标签组，返回新组。 */
-	createPromptTagGroup: (name: string, sortOrder: number | null) => __TAURI_INVOKE<TagGroup>("create_prompt_tag_group", { name, sortOrder }),
+	createTagGroup: (domain: TagDomain, name: string, sortOrder: number | null) => __TAURI_INVOKE<TagGroup>("create_tag_group", { domain, name, sortOrder }),
 	/**  编辑标签组：更新名称与排序数值。 */
-	updatePromptTagGroup: (id: number, name: string, sortOrder: number | null) => __TAURI_INVOKE<null>("update_prompt_tag_group", { id, name, sortOrder }),
+	updateTagGroup: (domain: TagDomain, id: number, name: string, sortOrder: number | null) => __TAURI_INVOKE<null>("update_tag_group", { domain, id, name, sortOrder }),
 	/**  删除标签组（组内标签交由外键 ON DELETE SET NULL 变为未分组）。 */
-	deletePromptTagGroup: (id: number) => __TAURI_INVOKE<null>("delete_prompt_tag_group", { id }),
+	deleteTagGroup: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("delete_tag_group", { domain, id }),
 	/**  新建标签（可指定所属组），返回新标签。 */
-	createPromptTag: (name: string, groupId: number | null) => __TAURI_INVOKE<TagItem>("create_prompt_tag", { name, groupId }),
+	createTag: (domain: TagDomain, name: string, groupId: number | null) => __TAURI_INVOKE<TagItem>("create_tag", { domain, name, groupId }),
 	/**  重命名标签。 */
-	renamePromptTag: (id: number, name: string) => __TAURI_INVOKE<null>("rename_prompt_tag", { id, name }),
+	renameTag: (domain: TagDomain, id: number, name: string) => __TAURI_INVOKE<null>("rename_tag", { domain, id, name }),
 	/**  删除标签（关联关系由外键 CASCADE 一并清除）。 */
-	deletePromptTag: (id: number) => __TAURI_INVOKE<null>("delete_prompt_tag", { id }),
-	/**  移动标签到指定组（group_id 为 null 表示未分组）。 */
-	movePromptTagToGroup: (id: number, groupId: number | null) => __TAURI_INVOKE<null>("move_prompt_tag_to_group", { id, groupId }),
-	/**  将标签组固定到首位（sort_order 设为当前最小值 - 1）。 */
-	pinPromptTagGroupToTop: (id: number) => __TAURI_INVOKE<null>("pin_prompt_tag_group_to_top", { id }),
-	/**  返回图像标签管理页所需数据（标签组 + 带计数的标签）。 */
-	listImageTagGroups: () => __TAURI_INVOKE<TagManagerData>("list_image_tag_groups"),
-	/**  新建标签组，返回新组。 */
-	createImageTagGroup: (name: string, sortOrder: number | null) => __TAURI_INVOKE<TagGroup>("create_image_tag_group", { name, sortOrder }),
-	/**  编辑标签组：更新名称与排序数值。 */
-	updateImageTagGroup: (id: number, name: string, sortOrder: number | null) => __TAURI_INVOKE<null>("update_image_tag_group", { id, name, sortOrder }),
-	/**  删除标签组（组内标签交由外键 ON DELETE SET NULL 变为未分组）。 */
-	deleteImageTagGroup: (id: number) => __TAURI_INVOKE<null>("delete_image_tag_group", { id }),
-	/**  新建标签（可指定所属组），返回新标签。 */
-	createImageTag: (name: string, groupId: number | null) => __TAURI_INVOKE<TagItem>("create_image_tag", { name, groupId }),
-	/**  重命名标签。 */
-	renameImageTag: (id: number, name: string) => __TAURI_INVOKE<null>("rename_image_tag", { id, name }),
-	/**  删除标签（关联关系由外键 CASCADE 一并清除）。 */
-	deleteImageTag: (id: number) => __TAURI_INVOKE<null>("delete_image_tag", { id }),
+	deleteTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("delete_tag", { domain, id }),
 	/**  将标签移动到指定组（group_id 为 null 表示未分组）。 */
-	moveImageTagToGroup: (id: number, groupId: number | null) => __TAURI_INVOKE<null>("move_image_tag_to_group", { id, groupId }),
+	moveTagToGroup: (domain: TagDomain, id: number, groupId: number | null) => __TAURI_INVOKE<null>("move_tag_to_group", { domain, id, groupId }),
 	/**  将标签组固定到首位（sort_order 设为当前最小值 - 1）。 */
-	pinImageTagGroupToTop: (id: number) => __TAURI_INVOKE<null>("pin_image_tag_group_to_top", { id }),
+	pinTagGroupToTop: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("pin_tag_group_to_top", { domain, id }),
 	/**  前端上报日志：`rtk invoke("log_msg", { level, message })`。 */
 	logMsg: (level: string, message: string) => __TAURI_INVOKE<void>("log_msg", { level, message }),
 	getDataDir: () => __TAURI_INVOKE<string>("get_data_dir"),
@@ -270,14 +240,6 @@ export type ImageImportResult = {
 /**  替换结果：SameImage 表示新图与旧图为同一张（MD5 相同），无需替换。 */
 export type ImageReplaceOutcome = { kind: "same_image" } | { kind: "replaced"; image: Image; related_prompt_ids: string[] };
 
-/**  图像标签（关联表 join image_tags 的返回对象）。 */
-export type ImageTag = {
-	id: number,
-	name: string,
-	/**  所属标签组，未分组为 None；其它命令不填时默认为 None */
-	group_id?: number | null,
-};
-
 export type LinkedPrompt = {
 	id: string,
 	title: string,
@@ -307,24 +269,6 @@ export type Prompt = {
 	is_favorite: boolean,
 	is_safe: boolean,
 	note: string,
-};
-
-export type PromptTagData = {
-	groups: PromptTagGroup[],
-	tags: PromptTagItem[],
-};
-
-export type PromptTagGroup = {
-	id: number,
-	name: string,
-	sort_order: number,
-};
-
-export type PromptTagItem = {
-	id: number,
-	name: string,
-	group_id: number | null,
-	count: number,
 };
 
 /**  提示词关联的（未删除）图像及其标签，供详情页图像网格展示。 */
@@ -364,14 +308,26 @@ export type Statistics = {
 	total_image_tags: number,
 };
 
-/**  标签管理页中的标签组（含排序序号，首位组即 sort_order 最小者）。 */
+/**  标签数据（标签组 + 全部标签含计数）：标签筛选区与标签管理页共用。 */
+export type TagData = {
+	groups: TagGroup[],
+	tags: TagItem[],
+};
+
+/**
+ *  标签所属域：决定表名前缀（image_/prompt_）与文案。
+ *  作为命令参数下发到前端，serde/specta 用小写字符串（"image" / "prompt"）。
+ */
+export type TagDomain = "image" | "prompt";
+
+/**  标签组（含排序序号，首位组即 sort_order 最小者）。 */
 export type TagGroup = {
 	id: number,
 	name: string,
 	sort_order: number,
 };
 
-/**  标签管理页中的标签（含所属组与关联对象数）。 */
+/**  标签（含所属组与关联对象数；count 只统计未删除的实体）。 */
 export type TagItem = {
 	id: number,
 	name: string,
@@ -379,10 +335,10 @@ export type TagItem = {
 	count: number,
 };
 
-/**  标签管理页数据：全部标签组 + 全部标签（含计数），供前端按需分组/排序。 */
-export type TagManagerData = {
-	groups: TagGroup[],
-	tags: TagItem[],
+/**  标签精简结构（id + 名称）：单条目标签列表、增删标签的返回统一使用。 */
+export type TagLite = {
+	id: number,
+	name: string,
 };
 
 export type ThumbnailEnsureFixed = {
