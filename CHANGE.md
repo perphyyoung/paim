@@ -2,6 +2,16 @@
 
 按版本记录有影响的改动（架构/重构/修复）。日常环境要点与踩坑见 [AGENTS.md](AGENTS.md)。
 
+## v0.2.16
+
+### 修复：提示词/图像主页按更新时间排序错乱
+
+- 现象：提示词主页「更新时间」排序结果与实际不符——默认「最新在前」时反而把 4 月老数据排在 9 月新数据之前。卡片显示的时间是对的，但顺序错。
+- 根因：`updated_at` 在库里并存两种格式——paim 原生/pm 新版为 ISO 8601 UTC（`2026-09-08T04:13:54.348Z`），pm 早期备份为本地斜杠（`2026/4/15 22:40:24`）。排序比较（`list_prompts` 的 `ORDER BY updated_at` 与前端 `localeCompare`）都是字符串序，而 `'-'`(45) < `'/'`(47)，两类数据被切成两个互不可比区间，跨格式排序即错乱。
+- 后端（治本）：导入时把 `prompts`/`images` 的 `created_at`/`updated_at` 经 `normalize_ts` 统一规整为 ISO 8601 UTC（斜杠本地时间按本地墙钟转 UTC，显示时间不变；ISO 原样规整为 `Z` 毫秒格式），不再整表 `INSERT...SELECT` 原样搬入。导入后库内时间字段格式一致，SQL `ORDER BY` 与前端的字符串/时间戳排序都正确。时间规整函数下沉到 `infra/time.rs`（纯函数，供各处复用）。
+- 前端（加固）：`PromptPage.vue` 的 `sortedPrompts` 时间类排序由 `localeCompare` 改为按 `new Date(s).getTime()` 时间戳比较，跨格式仍正确，杜绝未来再混入非规范格式时复发。
+- 测试：`infra/time.test.rs` 新增 `normalize_ts_canonicalizes_iso_and_slash`（ISO 原样规整、斜杠转合法 RFC3339 且以 `Z` 结尾、无法识别保留原值）。
+
 ## v0.2.15
 
 ### 重构：后端目录即层名

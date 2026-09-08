@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 use crate::infra::db::{self, BkDb};
+use crate::infra::time::normalize_ts;
 use crate::{log_error, log_info};
 
 /// 当前支持的数据格式版本（与 pm 的 CURRENT_DATA_VERSION 一致）。
@@ -334,6 +335,11 @@ fn replace_tables(conn: &Connection, pm_db: &Path) -> Result<(i64, i64), String>
              DELETE FROM images;
              DELETE FROM db_version;",
         )?;
+        // prompts / images 是 relations 的父表；foreign_keys=ON 下必须先插入父表，
+        // 故在 REPLACE_SQL 之前写入。其 created_at/updated_at 经 normalize_ts 规整为 ISO 8601 UTC，
+        // 故不走整表拷贝，改为 Rust 侧逐行读取转换后写入（pm_import 此时仍挂载）
+        import_prompts(conn)?;
+        import_images(conn)?;
         conn.execute_batch(REPLACE_SQL)?;
         // 必须显式提交：否则数据停留在未提交事务里，仅本连接可见，断开即回滚
         conn.execute_batch("COMMIT;")
@@ -355,11 +361,10 @@ fn replace_tables(conn: &Connection, pm_db: &Path) -> Result<(i64, i64), String>
 }
 
 /// 从 pm_import 灌入全部业务表（显式列名；两边列结构一致）。
+/// 注意：prompts / images 的时间字段在此不走整表拷贝——它们的 created_at/updated_at 可能为非规范的
+/// 斜杠本地格式（pm 早期备份），需经 `normalize_ts` 规整为 ISO 8601 UTC 后再写入，故由
+/// `import_prompts` / `import_images` 在 Rust 侧逐行转换，不在此批量 INSERT...SELECT 中处理。
 const REPLACE_SQL: &str = "
-INSERT INTO prompts (id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note)
-  SELECT id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note FROM pm_import.prompts;
-INSERT INTO images (id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note)
-  SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note FROM pm_import.images;
 INSERT INTO prompt_tag_groups (id, name, sort_order, created_at, updated_at)
   SELECT id, name, sort_order, created_at, updated_at FROM pm_import.prompt_tag_groups;
 INSERT INTO prompt_tags (id, name, group_id, created_at, updated_at)
@@ -377,6 +382,153 @@ INSERT INTO prompt_image_relations (prompt_id, image_id, sort_order)
 INSERT INTO db_version (version, applied_at)
   SELECT version, applied_at FROM pm_import.db_version;
 ";
+
+/// 从 pm_import 灌入 prompts，并把 created_at/updated_at 规整为 ISO 8601 UTC。
+fn import_prompts(conn: &Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note FROM pm_import.prompts",
+    )?;
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        Option<String>,
+        i64,
+        i64,
+        String,
+    )> = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+                r.get(8)?,
+                r.get(9)?,
+                r.get(10)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut insert = conn.prepare(
+        "INSERT INTO prompts (id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+    )?;
+    for (id, title, content, ct, ca, ua, del, da, fav, safe, note) in rows {
+        insert.execute(rusqlite::params![
+            id,
+            title,
+            content,
+            ct,
+            normalize_ts(&ca),
+            normalize_ts(&ua),
+            del,
+            da,
+            fav,
+            safe,
+            note
+        ])?;
+    }
+    Ok(())
+}
+
+/// 从 pm_import 灌入 images，并把 created_at/updated_at 规整为 ISO 8601 UTC。
+fn import_images(conn: &Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note FROM pm_import.images",
+    )?;
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        String,
+        i64,
+        Option<String>,
+        i64,
+        i64,
+        String,
+        String,
+        String,
+    )> = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+                r.get(8)?,
+                r.get(9)?,
+                r.get(10)?,
+                r.get(11)?,
+                r.get(12)?,
+                r.get(13)?,
+                r.get(14)?,
+                r.get(15)?,
+                r.get(16)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut insert = conn.prepare(
+        "INSERT INTO images (id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+    )?;
+    for (
+        id,
+        file_name,
+        stored_name,
+        relative_path,
+        thumb,
+        md5,
+        width,
+        height,
+        file_size,
+        gen,
+        del,
+        da,
+        fav,
+        safe,
+        ca,
+        ua,
+        note,
+    ) in rows
+    {
+        insert.execute(rusqlite::params![
+            id,
+            file_name,
+            stored_name,
+            relative_path,
+            thumb,
+            md5,
+            width.unwrap_or(0),
+            height.unwrap_or(0),
+            file_size.unwrap_or(0),
+            gen,
+            del,
+            da,
+            fav,
+            safe,
+            normalize_ts(&ca),
+            normalize_ts(&ua),
+            note
+        ])?;
+    }
+    Ok(())
+}
 
 /// 全量重建缩略图：转调 thumbnail_service（补缺失语义与 pm 一致），
 /// 进度映射到导入进度事件的 thumbnails 阶段，返回失败数。

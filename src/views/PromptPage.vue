@@ -169,18 +169,25 @@ const sortedPrompts = computed(() => {
   }
   if (!arr.length) return arr;
   let cmp: (a: Prompt, b: Prompt) => number;
+  // 时间类排序须按时间戳比较：updated_at/created_at 库中可能并存 ISO 8601（paim 原生 / pm 新版）
+  // 与本地斜杠（pm 早期备份）两种格式，直接字符串 localeCompare 会因格式前缀（'-' < '/'）切成两个
+  // 互不相交的区间导致排序错乱；统一转成时间戳再比较可跨格式正确排序。
+  const ts = (s: string) => {
+    const t = new Date(s).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  };
   switch (sortBy.value) {
     case "createdAt":
-      cmp = (a, b) => a.created_at.localeCompare(b.created_at);
+      cmp = (a, b) => ts(a.created_at) - ts(b.created_at);
       break;
     case "title":
       cmp = (a, b) => a.title.localeCompare(b.title);
       break;
     default:
-      cmp = (a, b) => a.updated_at.localeCompare(b.updated_at);
+      cmp = (a, b) => ts(a.updated_at) - ts(b.updated_at);
   }
   arr.sort(cmp);
-  return sortDesc.value ? arr.reverse() : arr;
+  return sortDesc.value ? arr.slice().reverse() : arr;
 });
 
 // 空态与 pm 对齐：搜索无结果 / 标签筛选无结果 / 暂无数据（附上手引导）三态
