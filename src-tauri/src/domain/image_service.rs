@@ -290,9 +290,11 @@ pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
 }
 
 /// 软删除：标记为已删除，保留文件以便恢复。
-/// 软删除是明显的更新操作，同步刷新 updated_at。
+/// 软删除是明显的更新操作，同步刷新 updated_at；关联提示词的「关联图像」列表会因
+/// is_deleted 过滤少一条（隐式解绑，与 purge 语义一致），同步刷对方 updated_at。
 pub fn soft_delete(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "UPDATE images
          SET is_deleted = 1,
              deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
@@ -300,18 +302,32 @@ pub fn soft_delete(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image
          WHERE id = ?1",
         rusqlite::params![id],
     )?;
+    tx.execute(
+        "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id IN (SELECT prompt_id FROM prompt_image_relations WHERE image_id = ?1)",
+        rusqlite::params![id],
+    )?;
+    tx.commit()?;
     get_by_id(conn, id)
 }
 
-/// 恢复软删除的图像。恢复是明显的更新操作，同步刷新 updated_at。
+/// 恢复软删除的图像。恢复是明显的更新操作，同步刷新 updated_at；
+/// 关联提示词视为隐式重新关联，一并刷新对方 updated_at。
 pub fn restore(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "UPDATE images
          SET is_deleted = 0, deleted_at = NULL,
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
          WHERE id = ?1",
         rusqlite::params![id],
     )?;
+    tx.execute(
+        "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id IN (SELECT prompt_id FROM prompt_image_relations WHERE image_id = ?1)",
+        rusqlite::params![id],
+    )?;
+    tx.commit()?;
     get_by_id(conn, id)
 }
 
@@ -322,15 +338,26 @@ pub struct TrashBatchResult {
     pub failures: usize,
 }
 
-/// 恢复全部回收站图像，返回恢复数量。恢复是明显的更新操作，同步刷新 updated_at。
+/// 恢复全部回收站图像，返回恢复数量。恢复是明显的更新操作，同步刷新 updated_at；
+/// 关联提示词视为隐式重新关联，一并刷新对方 updated_at。
+/// 先刷后恢复：恢复完成后无法区分哪些图像刚被恢复，会误刷无关提示词。
 pub fn restore_all(conn: &Connection) -> rusqlite::Result<usize> {
-    Ok(conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id IN (SELECT pir.prompt_id FROM prompt_image_relations pir
+                      JOIN images i ON i.id = pir.image_id WHERE i.is_deleted = 1)",
+        [],
+    )?;
+    let count = tx.execute(
         "UPDATE images
          SET is_deleted = 0, deleted_at = NULL,
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
          WHERE is_deleted = 1",
         [],
-    )?)
+    )?;
+    tx.commit()?;
+    Ok(count)
 }
 
 /// 清空回收站：逐项彻底删除（含磁盘原图与缩略图），逐项容错。

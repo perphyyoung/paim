@@ -398,3 +398,100 @@ fn list_related_images_groups_tags_per_image_without_crosstalk() {
         "src 由注入的数据目录拼接相对路径"
     );
 }
+
+#[test]
+fn soft_delete_restore_restore_all_touch_related_images() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES ('i1', 'a.png', 's.png', 'x')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', 'i1')",
+        [],
+    )
+    .unwrap();
+
+    // 软删除：关联图像 updated_at 刷新
+    conn.execute(
+        "UPDATE images SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'i1'",
+        [],
+    )
+    .unwrap();
+    super::remove(&conn, "p1").unwrap();
+    let image_at: String = conn
+        .query_row("SELECT updated_at FROM images WHERE id = 'i1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        image_at, "2000-01-01T00:00:00.000Z",
+        "软删除提示词应刷新关联图像 updated_at"
+    );
+
+    // 恢复：关联图像 updated_at 再次刷新
+    conn.execute(
+        "UPDATE images SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'i1'",
+        [],
+    )
+    .unwrap();
+    super::restore(&conn, "p1").unwrap();
+    let image_at2: String = conn
+        .query_row("SELECT updated_at FROM images WHERE id = 'i1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        image_at2, "2000-01-01T00:00:00.000Z",
+        "恢复提示词应刷新关联图像 updated_at"
+    );
+
+    // restore_all：只刷回收站提示词的关联图像，不误刷在册提示词的关联图像
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p2', 't2', 'c2')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES ('i2', 'b.png', 's2.png', 'y')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p2', 'i2')",
+        [],
+    )
+    .unwrap();
+    super::remove(&conn, "p1").unwrap();
+    conn.execute(
+        "UPDATE images SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id IN ('i1','i2')",
+        [],
+    )
+    .unwrap();
+    super::restore_all(&conn).unwrap();
+    let i1_at: String = conn
+        .query_row("SELECT updated_at FROM images WHERE id = 'i1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let i2_at: String = conn
+        .query_row("SELECT updated_at FROM images WHERE id = 'i2'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        i1_at, "2000-01-01T00:00:00.000Z",
+        "restore_all 应刷新回收站提示词的关联图像 updated_at"
+    );
+    assert_eq!(
+        i2_at, "2000-01-01T00:00:00.000Z",
+        "restore_all 不应误刷在册提示词的关联图像 updated_at"
+    );
+}

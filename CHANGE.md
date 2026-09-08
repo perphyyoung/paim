@@ -12,6 +12,16 @@
 - 前端（加固）：时间类排序统一改用 `utils/date.ts::toTimestamp`（转数值时间戳比较，跨格式正确）：`PromptPage.vue`、`ImagePage.vue`（updatedAt/createdAt）、`ImagePickerModal.vue`（updatedAt/createdAt）三处，杜绝未来再混入非规范格式时复发。其余排序依据（title/fileName 字符串、fileSize/width/height 数值、标签 name/sort_order/count）与时间格式无关，无影响。
 - 测试：`infra/time.test.rs` 新增 `normalize_ts_canonicalizes_iso_and_slash`（ISO 原样规整、斜杠转合法 RFC3339 且以 `Z` 结尾、无法识别保留原值）；`pm_backup_service.test.rs` 种子数据的回收站 `deleted_at` 改为斜杠格式，集成断言导入后被规整为 ISO。
 
+### 修复：软删除/恢复提示词或图像时刷新关联对方 updated_at
+
+- 现状：`purge`/`empty_trash`（级联解绑）已刷关联对方 `updated_at`，但软删除与恢复路径漏了。而回收站中的提示词/图像会从对方的关联列表消失（`is_deleted` 过滤），语义同为隐式解绑/重挂，对方的「更新时间」排序应感知。
+- 改动（单事务 + 子查询，软删除不清 relation 行故无需先收集 id）：
+  - `prompt_service::remove`/`restore`：刷关联图像 `WHERE id IN (SELECT image_id FROM prompt_image_relations WHERE prompt_id=?)`；
+  - `prompt_service::restore_all`：先刷后恢复——只刷「回收站提示词的关联图像」，避免恢复后无法区分刚恢复者而误刷无关图像；
+  - `image_service::soft_delete`/`restore`/`restore_all`：镜像对称。
+- 前端无需改动：删/恢复/清空各入口已 `markPageStale` 对侧页面。
+- 测试：两侧各新增 `soft_delete_restore_restore_all_touch_related_prompts(/images)`，覆盖软删/恢复刷新 + `restore_all` 不误刷在册关联。
+
 ## v0.2.15
 
 ### 重构：后端目录即层名

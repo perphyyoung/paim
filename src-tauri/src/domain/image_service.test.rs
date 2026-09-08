@@ -460,3 +460,102 @@ fn list_related_prompts_groups_tags_per_prompt_without_crosstalk() {
         "标签必须归属各自的提示词，不能串到邻居"
     );
 }
+
+#[test]
+fn soft_delete_restore_restore_all_touch_related_prompts() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    conn
+        .execute(
+            "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES ('i1', 'a.png', 's.png', 'x')",
+            [],
+        )
+        .unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', 'i1')",
+        [],
+    )
+    .unwrap();
+
+    // 软删除：关联提示词 updated_at 刷新
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
+        [],
+    )
+    .unwrap();
+    super::soft_delete(&conn, "i1").unwrap();
+    let prompt_at: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        prompt_at, "2000-01-01T00:00:00.000Z",
+        "软删除图像应刷新关联提示词 updated_at"
+    );
+
+    // 恢复：关联提示词 updated_at 再次刷新
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'p1'",
+        [],
+    )
+    .unwrap();
+    super::restore(&conn, "i1").unwrap();
+    let prompt_at2: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        prompt_at2, "2000-01-01T00:00:00.000Z",
+        "恢复图像应刷新关联提示词 updated_at"
+    );
+
+    // restore_all：只刷回收站图像的关联提示词，不误刷在册图像的关联提示词
+    conn
+        .execute(
+            "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES ('i2', 'b.png', 's2.png', 'y')",
+            [],
+        )
+        .unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p2', 't2', 'c2')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p2', 'i2')",
+        [],
+    )
+    .unwrap();
+    super::soft_delete(&conn, "i1").unwrap();
+    conn.execute(
+        "UPDATE prompts SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id IN ('p1','p2')",
+        [],
+    )
+    .unwrap();
+    super::restore_all(&conn).unwrap();
+    let p1_at: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let p2_at: String = conn
+        .query_row("SELECT updated_at FROM prompts WHERE id = 'p2'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(
+        p1_at, "2000-01-01T00:00:00.000Z",
+        "restore_all 应刷新回收站图像的关联提示词 updated_at"
+    );
+    assert_eq!(
+        p2_at, "2000-01-01T00:00:00.000Z",
+        "restore_all 不应误刷在册图像的关联提示词 updated_at"
+    );
+}

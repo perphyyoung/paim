@@ -72,9 +72,11 @@ pub fn list(conn: &Connection) -> Result<Vec<Prompt>> {
 }
 
 /// 软删除：标记为已删除（与图像回收站机制一致）。
-/// 软删除是明显的更新操作，同步刷新 updated_at。
+/// 软删除是明显的更新操作，同步刷新 updated_at；关联图像的「关联提示词」列表会因
+/// is_deleted 过滤少一条（隐式解绑，与 purge 语义一致），同步刷对方 updated_at。
 pub fn remove(conn: &Connection, id: &str) -> Result<()> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "UPDATE prompts
          SET is_deleted = 1,
              deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
@@ -82,6 +84,12 @@ pub fn remove(conn: &Connection, id: &str) -> Result<()> {
          WHERE id = ?1",
         rusqlite::params![id],
     )?;
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id IN (SELECT image_id FROM prompt_image_relations WHERE prompt_id = ?1)",
+        rusqlite::params![id],
+    )?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -95,15 +103,23 @@ pub fn list_trashed(conn: &Connection) -> Result<Vec<Prompt>> {
     rows.collect()
 }
 
-/// 恢复软删除的提示词。恢复是明显的更新操作，同步刷新 updated_at。
+/// 恢复软删除的提示词。恢复是明显的更新操作，同步刷新 updated_at；
+/// 关联图像视为隐式重新关联，一并刷新对方 updated_at。
 pub fn restore(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "UPDATE prompts
          SET is_deleted = 0, deleted_at = NULL,
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
          WHERE id = ?1",
         rusqlite::params![id],
     )?;
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id IN (SELECT image_id FROM prompt_image_relations WHERE prompt_id = ?1)",
+        rusqlite::params![id],
+    )?;
+    tx.commit()?;
     get_by_id(conn, id)
 }
 
@@ -132,15 +148,26 @@ pub fn purge(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-/// 恢复全部回收站提示词，返回恢复数量。恢复是明显的更新操作，同步刷新 updated_at。
+/// 恢复全部回收站提示词，返回恢复数量。恢复是明显的更新操作，同步刷新 updated_at；
+/// 关联图像视为隐式重新关联，一并刷新对方 updated_at。
+/// 先刷后恢复：恢复完成后无法区分哪些提示词刚被恢复，会误刷无关图像。
 pub fn restore_all(conn: &Connection) -> Result<usize> {
-    Ok(conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id IN (SELECT pir.image_id FROM prompt_image_relations pir
+                      JOIN prompts p ON p.id = pir.prompt_id WHERE p.is_deleted = 1)",
+        [],
+    )?;
+    let count = tx.execute(
         "UPDATE prompts
          SET is_deleted = 0, deleted_at = NULL,
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
          WHERE is_deleted = 1",
         [],
-    )?)
+    )?;
+    tx.commit()?;
+    Ok(count)
 }
 
 /// 清空回收站提示词（关联关系随外键级联删除），返回清理数量。
