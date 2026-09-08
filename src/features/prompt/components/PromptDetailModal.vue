@@ -19,6 +19,11 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
 import { markPageStale } from "@/utils/crossPageCache";
+import {
+  fetchRelatedImages,
+  getCachedRelatedImages,
+  invalidateRelatedImages,
+} from "@/features/prompt/api/relatedImagesCache";
 
 interface Prompt {
   id: string;
@@ -94,14 +99,39 @@ function loadTags() {
 async function loadRelatedImages() {
   const p = current.value;
   if (!p) return;
+  // 命中缓存直接渲染：不进 loading，避免切换时闪一下「加载中...」
+  const cached = getCachedRelatedImages(p.id);
+  if (cached) {
+    relatedImages.value = cached;
+    prefetchNeighbors();
+    return;
+  }
   imagesLoading.value = true;
   try {
-    relatedImages.value = await commands.getPromptRelatedImages(p.id);
+    relatedImages.value = await fetchRelatedImages(p.id);
+    prefetchNeighbors();
   } catch {
     relatedImages.value = [];
   } finally {
     imagesLoading.value = false;
   }
+}
+
+/** 预取相邻提示词的关联图像（只补未缓存的），连续翻页时几乎全部命中 */
+function prefetchNeighbors() {
+  const i = currentIndex.value;
+  if (i < 0) return;
+  for (const idx of [i - 1, i + 1]) {
+    const id = props.order[idx];
+    if (id && !getCachedRelatedImages(id)) void fetchRelatedImages(id).catch(() => []);
+  }
+}
+
+/** 关联关系已变化：丢掉缓存再重载，避免读到旧数据 */
+async function reloadRelatedImages() {
+  const p = current.value;
+  if (p) invalidateRelatedImages(p.id);
+  await loadRelatedImages();
 }
 
 function syncFields() {
@@ -168,9 +198,10 @@ function onNestedImageSafeSynced(isSafe: boolean) {
 
 // 嵌套图像详情内替换图像后：原位换入新图（图像详情的 current 依赖 imgDetailImages），
 // 重载关联图像条使缩略图立即反映新图；并通知主页刷新（卡片缩略图/图像页列表已变化）
-function onNestedImageReplaced({ oldId, image }: { oldId: string; image: FullImage }) {
+async function onNestedImageReplaced({ oldId, image }: { oldId: string; image: FullImage }) {
   imgDetailImages.value = imgDetailImages.value.map((i) => (i.id === oldId ? image : i));
-  loadRelatedImages();
+  // 换图后旧缓存里的 id/src 已失效
+  await reloadRelatedImages();
   emit("updated");
 }
 
@@ -300,6 +331,7 @@ async function setAsFirst() {
   try {
     await commands.setPromptFirstImage(p.id, img.id);
     relatedImages.value = [img, ...relatedImages.value.filter((i) => i.id !== img.id)];
+    invalidateRelatedImages(p.id); // 排序已变，缓存作废
     emit("updated"); // 列表卡片封面已变化
   } catch (e) {
     showToast(`设为首图失败：${e}`, "error");
@@ -316,6 +348,8 @@ async function removeImage(img: RelatedImage) {
   if (!p) return;
   await commands.removeImageFromPrompt(p.id, img.id);
   relatedImages.value = relatedImages.value.filter((i) => i.id !== img.id);
+  // 本地已同步，只需丢弃缓存，不必重读
+  invalidateRelatedImages(p.id);
   // 关联关系变化影响图像主页卡片的关联提示词文案
   markPageStale("images");
   emit("updated");
@@ -396,7 +430,7 @@ async function importFromExternal() {
   importLoading.value = true;
   try {
     const res = await commands.addImagesToPrompt(p.id, paths);
-    await loadRelatedImages();
+    await reloadRelatedImages();
     emit("updated");
     if (res.errors.length > 0) {
       showToast(`导入 ${res.results.length} 张，失败 ${res.errors.length} 张`, "warning");
@@ -418,7 +452,7 @@ function importFromPicker() {
 }
 async function onPickerImported() {
   pickerOpen.value = false;
-  await loadRelatedImages();
+  await reloadRelatedImages();
   emit("updated");
   showToast("已关联所选图像", "success");
 }

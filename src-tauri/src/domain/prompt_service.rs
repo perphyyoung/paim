@@ -4,6 +4,7 @@
 
 use crate::infra::error::AppError;
 use rusqlite::{Connection, OptionalExtension, Result};
+use std::collections::HashMap;
 
 use serde::Serialize;
 
@@ -228,7 +229,15 @@ pub fn list_related_images(
     app: &tauri::AppHandle,
     prompt_id: &str,
 ) -> Result<Vec<RelatedImage>> {
-    let data_dir = crate::infra::db::data_dir(app);
+    list_related_images_with(conn, &crate::infra::db::data_dir(app), prompt_id)
+}
+
+/// 与 `list_related_images` 相同，但数据目录由调用方注入（便于脱离 Tauri 单测）。
+pub fn list_related_images_with(
+    conn: &Connection,
+    data_dir: &std::path::Path,
+    prompt_id: &str,
+) -> Result<Vec<RelatedImage>> {
     let mut stmt = conn.prepare(
         "SELECT img.id, img.file_name, img.relative_path
          FROM prompt_image_relations pir
@@ -246,30 +255,49 @@ pub fn list_related_images(
     let mut out = Vec::new();
     for row in rows {
         let (id, file_name, src_rel) = row?;
-        let mut tags = Vec::new();
-        {
-            let mut ts = conn.prepare(
-                "SELECT pt.name
-                 FROM image_tag_relations itr
-                 JOIN image_tags pt ON pt.id = itr.tag_id
-                 WHERE itr.image_id = ?1
-                 ORDER BY pt.name",
-            )?;
-            let rows = ts.query_map(rusqlite::params![id], |r| r.get::<_, String>(0))?;
-            for t in rows {
-                tags.push(t?);
-            }
-        }
         out.push(RelatedImage {
             id,
             file_name,
             src: src_rel
                 .map(|rel| data_dir.join(&rel).to_string_lossy().into_owned())
                 .unwrap_or_default(),
-            tags,
+            tags: Vec::new(),
         });
     }
+    fill_related_image_tags(conn, &mut out)?;
     Ok(out)
+}
+
+/// 批量查标签并原地回填：一次查询覆盖全部图像，避免循环内 prepare 的 N+1。
+fn fill_related_image_tags(conn: &Connection, images: &mut [RelatedImage]) -> Result<()> {
+    if images.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<&str> = images.iter().map(|i| i.id.as_str()).collect();
+    let placeholders = std::iter::repeat("?")
+        .take(ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT itr.image_id, pt.name
+         FROM image_tag_relations itr
+         JOIN image_tags pt ON pt.id = itr.tag_id
+         WHERE itr.image_id IN ({placeholders})
+         ORDER BY pt.name"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(ids), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut tags: HashMap<String, Vec<String>> = HashMap::new();
+    for row in rows {
+        let (image_id, name) = row?;
+        tags.entry(image_id).or_default().push(name);
+    }
+    for img in images.iter_mut() {
+        img.tags = tags.remove(&img.id).unwrap_or_default();
+    }
+    Ok(())
 }
 
 /// 设为首图：将关联行的 sort_order 置为当前最小值 - 1（借鉴标签组固定首位的模式）。

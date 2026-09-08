@@ -7,6 +7,7 @@ use crate::infra::error::AppError;
 use image::GenericImageView;
 use rusqlite::{Connection, OptionalExtension, Result};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -747,6 +748,65 @@ pub fn relate_image_to_prompt(
     }
     tx.commit()?;
     Ok(inserted)
+}
+
+/// 返回单张图像关联的提示词列表（含标题/内容/翻译/备注/标签），供详情页左侧展示。
+/// 标签走一次批量查询后按 prompt_id 分组回填，避免每条提示词各查一次的 N+1。
+pub fn list_related_prompts(conn: &Connection, image_id: &str) -> Result<Vec<LinkedPrompt>> {
+    let mut stmt = conn.prepare(
+        "SELECT pr.id, pr.title, pr.content, pr.content_translate, pr.note, pr.is_favorite, pr.is_safe
+         FROM prompt_image_relations pir
+         JOIN prompts pr ON pr.id = pir.prompt_id
+         WHERE pir.image_id = ?1 AND pr.is_deleted = 0
+         ORDER BY pr.created_at",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![image_id], |r| {
+        Ok(LinkedPrompt {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            content: r.get(2)?,
+            content_translate: r.get(3)?,
+            note: r.get(4)?,
+            is_favorite: r.get(5)?,
+            is_safe: r.get(6)?,
+            tags: Vec::new(),
+        })
+    })?;
+    let mut list: Vec<LinkedPrompt> = rows.collect::<Result<_>>()?;
+    fill_related_prompt_tags(conn, &mut list)?;
+    Ok(list)
+}
+
+/// 批量查标签并原地回填：一次查询覆盖全部提示词，避免循环内 prepare 的 N+1。
+fn fill_related_prompt_tags(conn: &Connection, prompts: &mut [LinkedPrompt]) -> Result<()> {
+    if prompts.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<&str> = prompts.iter().map(|p| p.id.as_str()).collect();
+    let placeholders = std::iter::repeat("?")
+        .take(ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT ptr.prompt_id, pt.name
+         FROM prompt_tag_relations ptr
+         JOIN prompt_tags pt ON pt.id = ptr.tag_id
+         WHERE ptr.prompt_id IN ({placeholders})
+         ORDER BY pt.name"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(ids), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut tags: HashMap<String, Vec<String>> = HashMap::new();
+    for row in rows {
+        let (prompt_id, name) = row?;
+        tags.entry(prompt_id).or_default().push(name);
+    }
+    for p in prompts.iter_mut() {
+        p.tags = tags.remove(&p.id).unwrap_or_default();
+    }
+    Ok(())
 }
 
 #[cfg(test)]

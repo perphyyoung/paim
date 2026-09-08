@@ -1,6 +1,6 @@
 //! 提示词领域服务单元测试：详情更新（只写传入字段，未传字段保持不变）。
 
-use super::{set_prompt_first_image, update_detail};
+use super::{list_related_images_with, set_prompt_first_image, update_detail};
 use crate::infra::db;
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
@@ -344,4 +344,57 @@ fn unlink_and_purge_prompt_refresh_related_image_updated_at() {
         })
         .unwrap();
     assert_eq!(prompt_gone, 0);
+}
+
+#[test]
+fn list_related_images_groups_tags_per_image_without_crosstalk() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    for id in ["i1", "i2"] {
+        conn.execute(
+            "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES (?1, 'a.png', 's.png', 'x')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', ?1)",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO image_tags(id, name) VALUES (1, 'b'), (2, 'a')",
+        [],
+    )
+    .unwrap();
+    // i1 两个标签，i2 一个，另有一张无标签的图不参与
+    conn.execute(
+        "INSERT INTO image_tag_relations(image_id, tag_id) VALUES ('i1', 1), ('i1', 2), ('i2', 1)",
+        [],
+    )
+    .unwrap();
+
+    let out = list_related_images_with(&conn, std::path::Path::new("/data"), "p1").unwrap();
+    assert_eq!(out.len(), 2, "两张关联图像都要返回");
+    assert_eq!(out[0].id, "i1");
+    assert_eq!(
+        out[0].tags,
+        vec!["a".to_string(), "b".to_string()],
+        "单张图的标签按名称升序"
+    );
+    assert_eq!(
+        out[1].tags,
+        vec!["b".to_string()],
+        "标签必须归属各自的图像，不能串到邻居"
+    );
+    assert_eq!(
+        out[0].src,
+        format!("/data{}x", std::path::MAIN_SEPARATOR),
+        "src 由注入的数据目录拼接相对路径"
+    );
 }

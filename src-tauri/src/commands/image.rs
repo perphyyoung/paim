@@ -507,51 +507,7 @@ pub fn get_image_related_prompts(
     id: String,
 ) -> Result<Vec<LinkedPrompt>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT pr.id, pr.title, pr.content, pr.content_translate, pr.note, pr.is_favorite, pr.is_safe
-             FROM prompt_image_relations pir
-             JOIN prompts pr ON pr.id = pir.prompt_id
-             WHERE pir.image_id = ?1 AND pr.is_deleted = 0
-             ORDER BY pr.created_at",
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let rows = stmt
-        .query_map(rusqlite::params![id], |r| {
-            Ok(LinkedPrompt {
-                id: r.get(0)?,
-                title: r.get(1)?,
-                content: r.get(2)?,
-                content_translate: r.get(3)?,
-                note: r.get(4)?,
-                is_favorite: r.get(5)?,
-                is_safe: r.get(6)?,
-                tags: Vec::new(),
-            })
-        })
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut list: Vec<LinkedPrompt> = rows
-        .collect::<Result<_, _>>()
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    // 补充分组查询每条提示词的标签
-    for p in list.iter_mut() {
-        let mut t = conn
-            .prepare(
-                "SELECT pt.name
-                 FROM prompt_tag_relations ptr
-                 JOIN prompt_tags pt ON pt.id = ptr.tag_id
-                 WHERE ptr.prompt_id = ?1
-                 ORDER BY pt.name",
-            )
-            .map_err(|e| AppError::Message(e.to_string()))?;
-        let names = t
-            .query_map(rusqlite::params![p.id], |r| r.get::<_, String>(0))
-            .map_err(|e| AppError::Message(e.to_string()))?;
-        p.tags = names
-            .collect::<Result<_, _>>()
-            .map_err(|e| AppError::Message(e.to_string()))?;
-    }
-    Ok(list)
+    image_service::list_related_prompts(&conn, &id).map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 为指定图像新建提示词并关联（复用 create_prompt + relate），供图像详情「新建提示词」。

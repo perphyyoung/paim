@@ -18,6 +18,17 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import { formatLocalTime } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
+import {
+  fetchImageSrc,
+  fetchImageTags,
+  fetchRelatedPrompts,
+  getCachedImageSrc,
+  getCachedImageTags,
+  getCachedRelatedPrompts,
+  invalidateImageSrc,
+  invalidateImageTags,
+  invalidateRelatedPrompts,
+} from "@/features/image/api/detailCache";
 
 interface Image {
   id: string;
@@ -180,7 +191,7 @@ function onNestedPromptSafeSynced(isSafe: boolean) {
 // 嵌套提示词详情内数据变化（含设为首图改封面）：刷新关联提示词缓存，并标记提示词页过期，
 // 否则 KeepAlive 的提示词主页不重拉、卡片缩略图不更新
 function onNestedPromptUpdated() {
-  loadRelatedPrompts();
+  void reloadRelatedPrompts();
   markPageStale("prompts");
 }
 
@@ -228,7 +239,7 @@ async function doCreatePrompt() {
     showToast("提示词已创建并关联", "success");
     createPromptOpen.value = false;
     emit("update", img);
-    await loadRelatedPrompts();
+    await reloadRelatedPrompts();
   } catch (e) {
     showToast(`新建失败：${e}`, "error");
   } finally {
@@ -240,10 +251,14 @@ async function doCreatePrompt() {
 async function loadOrig() {
   const img = current.value;
   if (!img) return;
+  const cached = getCachedImageSrc(img.id);
+  if (cached) {
+    origSrc.value = convertFileSrc(cached);
+    return;
+  }
   origSrc.value = "";
   try {
-    const p = await commands.getImageSrc(img.id);
-    origSrc.value = convertFileSrc(p);
+    origSrc.value = convertFileSrc(await fetchImageSrc(img.id));
   } catch {
     origSrc.value = "";
   }
@@ -275,8 +290,13 @@ async function resolveFullscreenMeta(id: string) {
 async function loadTags() {
   const img = current.value;
   if (!img) return;
+  const cached = getCachedImageTags(img.id);
+  if (cached) {
+    tags.value = cached;
+    return;
+  }
   try {
-    tags.value = await commands.getImageTags(img.id);
+    tags.value = await fetchImageTags(img.id);
   } catch {
     tags.value = [];
   }
@@ -287,6 +307,10 @@ const { tagInput, addTag } = useTagAdd({
   getItemId: () => current.value?.id,
   tags,
   showToast,
+  onAdded: () => {
+    const img = current.value;
+    if (img) invalidateImageTags(img.id);
+  },
 });
 // 复制提示词字段内容（图像详情为纯展示，无编辑态）
 function copyPromptField(text: string, label: string) {
@@ -311,6 +335,7 @@ async function removeTag(tagId: number) {
   if (!img) return;
   await commands.removeImageTag(img.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
+  invalidateImageTags(img.id);
   emit("update", img);
 }
 
@@ -341,7 +366,7 @@ async function unlinkPrompt(p: LinkedPrompt) {
     markPageStale("prompts");
     showToast("已解除与提示词的关联", "success");
     emit("update", img);
-    await loadRelatedPrompts();
+    await reloadRelatedPrompts();
   } catch (e) {
     showToast(`解除关联失败：${e}`, "error");
   }
@@ -358,13 +383,25 @@ function requestUnlink(p: LinkedPrompt) {
 async function loadRelatedPrompts() {
   const img = current.value;
   if (!img) return;
-  try {
-    relatedPrompts.value = await commands.getImageRelatedPrompts(img.id);
-  } catch {
-    relatedPrompts.value = [];
+  const cached = getCachedRelatedPrompts(img.id);
+  if (cached) {
+    relatedPrompts.value = cached;
+  } else {
+    try {
+      relatedPrompts.value = await fetchRelatedPrompts(img.id);
+    } catch {
+      relatedPrompts.value = [];
+    }
   }
   // 切换图像后复位选中下标，并处理越界兜底
   if (promptIndex.value >= relatedPrompts.value.length) promptIndex.value = 0;
+}
+
+/** 关联提示词已变化（解除关联/新建/嵌套编辑/安全联动）：丢缓存再读，避免读到旧数据 */
+async function reloadRelatedPrompts() {
+  const img = current.value;
+  if (img) invalidateRelatedPrompts(img.id);
+  await loadRelatedPrompts();
 }
 
 // 打开时跳转到初始图并同步编辑字段
@@ -424,7 +461,7 @@ async function toggleSafe() {
   try {
     await commands.syncImageSafeToPrompts(img.id, v);
     // 刷新关联提示词缓存，保证「编辑」弹窗立即读到同步后的安全评级
-    await loadRelatedPrompts();
+    await reloadRelatedPrompts();
     emit("safe-synced", v);
   } catch (e) {
     showToast(`同步关联提示词安全评级失败：${e}`, "error");
@@ -876,7 +913,7 @@ const fmtSize = (bytes: number) => {
     is-nested
     @close="
       editPromptOpen = false;
-      loadRelatedPrompts();
+      reloadRelatedPrompts();
     "
     @updated="onNestedPromptUpdated"
     @safe-synced="onNestedPromptSafeSynced"

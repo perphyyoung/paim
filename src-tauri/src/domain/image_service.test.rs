@@ -1,8 +1,8 @@
 //! 图像领域服务单元测试：搜索/标签 WHERE 子句拼接（filter_sql）。
 
 use super::{
-    add_image_tag, batch_add_image_tag, filter_sql, import_with, replace_image_with, update_detail,
-    ImageReplaceOutcome,
+    add_image_tag, batch_add_image_tag, filter_sql, import_with, list_related_prompts,
+    replace_image_with, update_detail, ImageReplaceOutcome,
 };
 use crate::infra::db;
 
@@ -404,5 +404,59 @@ fn purge_image_refreshes_related_prompt_updated_at() {
     assert_ne!(
         prompt_at, "2000-01-01T00:00:00.000Z",
         "purge 图像应刷新关联提示词 updated_at"
+    );
+}
+
+#[test]
+fn list_related_prompts_groups_tags_per_prompt_without_crosstalk() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    conn
+        .execute(
+            "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES ('i1', 'a.png', 's.png', 'x')",
+            [],
+        )
+        .unwrap();
+    // created_at 显式错开，保证 ORDER BY 结果确定
+    for (id, at) in [
+        ("p1", "2024-01-01T00:00:00.000Z"),
+        ("p2", "2024-01-02T00:00:00.000Z"),
+    ] {
+        conn.execute(
+            "INSERT INTO prompts(id, title, content, created_at) VALUES (?1, ?1, 'c', ?2)",
+            rusqlite::params![id, at],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES (?1, 'i1')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO prompt_tags(id, name) VALUES (1, 'b'), (2, 'a')",
+        [],
+    )
+    .unwrap();
+    // p1 两个标签，p2 一个
+    conn
+        .execute(
+            "INSERT INTO prompt_tag_relations(prompt_id, tag_id) VALUES ('p1', 1), ('p1', 2), ('p2', 1)",
+            [],
+        )
+        .unwrap();
+
+    let out = list_related_prompts(&conn, "i1").unwrap();
+    assert_eq!(out.len(), 2, "两条关联提示词都要返回");
+    assert_eq!(out[0].id, "p1", "按 created_at 升序");
+    assert_eq!(
+        out[0].tags,
+        vec!["a".to_string(), "b".to_string()],
+        "单条提示词的标签按名称升序"
+    );
+    assert_eq!(
+        out[1].tags,
+        vec!["b".to_string()],
+        "标签必须归属各自的提示词，不能串到邻居"
     );
 }
