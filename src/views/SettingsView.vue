@@ -270,50 +270,36 @@ onMounted(loadDataDir);
 
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
-          <dt class="text-gray-400">导出备份</dt>
+          <dt class="text-gray-400">完整备份</dt>
           <dd class="text-sm text-gray-500">
-            导出全部数据（提示词、图像文件与数据库）为 ZIP 备份包
+            备份或恢复所有数据（提示词、图像、标签等），导入时原数据整体备份后替换，缩略图自动重建
           </dd>
         </div>
-        <button
-          type="button"
-          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-          @click="pickExportPath"
-        >
-          导出
-        </button>
-      </div>
-
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">paim 备份导入</dt>
-          <dd class="text-sm text-gray-500">导入 paim 导出的全量备份，当前数据将被替换</dd>
+        <div class="flex shrink-0 gap-2">
+          <button
+            type="button"
+            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+            @click="pickExportPath"
+          >
+            导出
+          </button>
+          <button
+            type="button"
+            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="paimInspecting"
+            @click="pickPaimBackup"
+          >
+            {{ paimInspecting ? "检查中..." : "导入" }}
+          </button>
+          <button
+            type="button"
+            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="inspecting"
+            @click="pickBackup"
+          >
+            {{ inspecting ? "检查中..." : "导入pm" }}
+          </button>
         </div>
-        <button
-          type="button"
-          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="paimInspecting"
-          @click="pickPaimBackup"
-        >
-          {{ paimInspecting ? "检查备份..." : "导入 paim 备份" }}
-        </button>
-      </div>
-
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">pm 备份导入</dt>
-          <dd class="text-sm text-gray-500">
-            导入 prompt-manager 导出的全量备份，当前数据将被替换
-          </dd>
-        </div>
-        <button
-          type="button"
-          class="shrink-0 rounded-lg bg-blue-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="inspecting"
-          @click="pickBackup"
-        >
-          {{ inspecting ? "检查备份..." : "导入 pm 备份" }}
-        </button>
       </div>
 
       <p v-if="openError" class="py-2 text-sm text-red-400">{{ openError }}</p>
