@@ -7,6 +7,7 @@
  * - fav/copy/delete/check/cardClick：交互事件（父在 v-for 闭包绑定对象）
  */
 import CardTagRow from "@/components/CardTagRow.vue";
+import { cardInfoVisible } from "@/utils/cardInfo";
 import { nextTick, onMounted, onUpdated, ref, watch } from "vue";
 
 interface MediaItem {
@@ -185,8 +186,10 @@ onUpdated(scheduleMeasure);
         </div>
       </div>
 
-      <!-- row2 内容行（容得下居中 / 溢出时开头对齐保证可读；content 为空时保留占位高度） -->
+      <!-- row2 内容行（容得下居中 / 溢出时开头对齐保证可读；content 为空时保留占位高度）；
+           卡片信息关闭时隐藏（仅剩背景图，对齐 pm 信息开关） -->
       <div
+        v-if="cardInfoVisible"
         ref="contentRowRef"
         class="relative flex flex-1 overflow-hidden px-1.5 pt-1"
         :class="isContentFit ? 'items-center' : 'items-start'"
@@ -197,10 +200,10 @@ onUpdated(scheduleMeasure);
       </div>
 
       <!-- row3 标签（组件内截断，剩余显示 +n） -->
-      <CardTagRow v-if="tags.length" :tags="tags" :card-size="cardSize" />
+      <CardTagRow v-if="cardInfoVisible && tags.length" :tags="tags" :card-size="cardSize" />
 
       <!-- row4 排序字段 -->
-      <div class="px-1.5 py-0.5 text-center">
+      <div v-if="cardInfoVisible" class="px-1.5 py-0.5 text-center">
         <p
           class="truncate text-[length:var(--fs-11)] text-white"
           :title="`${sortInfo.label}：${sortInfo.value}`"

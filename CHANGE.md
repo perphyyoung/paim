@@ -13,6 +13,13 @@
 - 前端：新增 `src/components/StatsModal.vue`（Teleport 弹窗，关闭按钮 + 点遮罩关闭，风格对齐 ConfirmDialog）；`App.vue` 侧栏加按钮与开关。
 - 测试：`statistics_service` 单测覆盖 12 项口径（回收站收藏不计、双向引用过滤、未分组标签计入）与空库全 0。
 
+### 新增：侧栏「信息」卡片信息开关（对齐 pm）
+
+- 入口：左侧栏底部按钮组「刷新缓存」与「统计」之间新增信息按钮（眼睛图标）。显示态常态灰色，隐藏态加深底色，title 动态「显示/隐藏卡片信息」。
+- 行为与 pm 一致：关闭后卡片仅剩背景图/占位图与悬浮按钮行，隐藏 row2 内容预览、row3 标签、row4 排序字段；row1 悬浮按钮保留。
+- 状态：新增 `src/utils/cardInfo.ts`——模块级 ref + localStorage `cardInfoVisible`（默认显示），提示词页/图像页/侧栏全局共享，KeepAlive 切页即时同步。
+- 刻意差异：pm 用 `Ctrl+I`，与 paim 的「切换图像页」冲突，改用 `Alt+I`（App.vue 全局监听，侧栏按钮 title 同步标注）。
+
 ## v0.2.16
 
 ### 修复：提示词/图像主页按更新时间排序错乱

@@ -6,6 +6,7 @@ import { initFontScale } from "@/utils/font";
 import SettingsView from "@/views/SettingsView.vue";
 import StatsModal from "@/components/StatsModal.vue";
 import ToastHost from "@/components/ToastHost.vue";
+import { cardInfoVisible, toggleCardInfo } from "@/utils/cardInfo";
 
 // 应用启动即应用持久化的全局字体缩放
 initFontScale();
@@ -13,12 +14,20 @@ initFontScale();
 // 全局快捷键（系统级，Rust 侧 tauri-plugin-global-shortcut 注册 Ctrl+,）：
 // 收到事件即切换设置面板开关
 let unlistenGlobalShortcut: (() => void) | undefined;
+function onCardInfoKeydown(e: KeyboardEvent) {
+  if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyI") {
+    e.preventDefault();
+    toggleCardInfo();
+  }
+}
 onMounted(async () => {
+  document.addEventListener("keydown", onCardInfoKeydown);
   unlistenGlobalShortcut = await events.globalShortcut.listen(() => {
     settingsOpen.value = !settingsOpen.value;
   });
 });
 onUnmounted(() => {
+  document.removeEventListener("keydown", onCardInfoKeydown);
   unlistenGlobalShortcut?.();
 });
 
@@ -79,7 +88,7 @@ function reloadAll() {
         </svg>
       </RouterLink>
 
-      <!-- 底部固定：刷新缓存 / 统计 / 设置（mt-auto 把首个按钮及之后全部压到底部） -->
+      <!-- 底部固定：刷新缓存 / 信息(卡片内容开关) / 统计 / 设置（mt-auto 把首个按钮及之后全部压到底部） -->
       <button
         type="button"
         title="刷新缓存 (F5)"
@@ -98,6 +107,38 @@ function reloadAll() {
             stroke-linecap="round"
             stroke-linejoin="round"
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+      </button>
+      <!-- 卡片信息开关：关闭后卡片仅剩背景图（对齐 pm 的「信息」按钮，Alt+I） -->
+      <button
+        type="button"
+        :title="`${cardInfoVisible ? '隐藏' : '显示'}卡片信息 (Alt+I)`"
+        class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
+        :class="
+          cardInfoVisible
+            ? 'text-gray-300 hover:bg-gray-700'
+            : 'bg-gray-700 text-gray-500 hover:bg-gray-600'
+        "
+        @click="toggleCardInfo"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+          />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
           />
         </svg>
       </button>
