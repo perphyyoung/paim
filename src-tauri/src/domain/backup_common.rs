@@ -13,8 +13,10 @@ use crate::infra::db;
 pub(crate) const MANIFEST_ENTRY: &str = "manifest.json";
 
 /// 备份内容概览（inspect 返回，供确认弹窗展示；pm/paim 共用）。
+/// `app` 为归一化来源标识：`"paim"` 或 `"pm"`（由 manifest appName 探测）。
 #[derive(Debug, Serialize, specta::Type)]
 pub struct BackupInfo {
+    pub app: String,
     pub exported_at: String,
     pub prompt_count: i64,
     pub image_count: i64,
@@ -216,4 +218,25 @@ pub(crate) fn open_app_db(path: &Path) -> Result<Connection, String> {
         .0
         .into_inner()
         .map_err(|_| "数据库句柄已损坏".to_string())
+}
+
+/// 探测备份包来源：读 manifest appName，归一化为 `"paim"` / `"pm"`。
+/// 仅识别来源；版本与完整性校验仍由对应 service 的 inspect/import 负责。
+pub(crate) fn detect_app(zip_path: &str) -> Result<String, String> {
+    let file = std::fs::File::open(zip_path).map_err(|e| format!("无法打开备份文件: {e}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|e| format!("备份文件不是有效的 ZIP: {e}"))?;
+    let root = locate_root(&mut archive)?;
+    let content = read_entry_to_string(&mut archive, &format!("{root}{MANIFEST_ENTRY}"))?;
+    #[derive(Deserialize)]
+    struct AppName {
+        #[serde(rename = "appName")]
+        app_name: String,
+    }
+    let m: AppName =
+        serde_json::from_str(&content).map_err(|_| "manifest.json 格式无效".to_string())?;
+    match m.app_name.as_str() {
+        "paim" => Ok("paim".into()),
+        "prompt-manager" => Ok("pm".into()),
+        other => Err(format!("无法识别的备份来源: {other}")),
+    }
 }

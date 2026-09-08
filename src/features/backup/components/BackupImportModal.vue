@@ -1,17 +1,18 @@
 <script setup lang="ts">
-// 导出 paim 备份的进度/结果弹窗：open 时开始导出，监听后端进度事件，完成后展示摘要。
+// 导入备份的进度/结果弹窗（paim/pm 自动识别，标题由 prop 传入）：
+// open 时开始导入，监听后端进度事件，完成或失败后展示摘要。
 import { onUnmounted, ref, watch } from "vue";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { events } from "@/bindings";
-import { exportPaimBackup, type BackupExportSummary, type BackupProgress } from "../api/paimBackup";
+import { importBackup, type BackupImportSummary, type BackupProgress } from "../api/backup";
 
-const props = defineProps<{ open: boolean; exportPath: string }>();
-const emit = defineEmits<{ close: []; exported: [] }>();
+const props = defineProps<{ open: boolean; zipPath: string; title: string }>();
+const emit = defineEmits<{ close: []; imported: [] }>();
 
 type Phase = "progress" | "done" | "error";
 const phase = ref<Phase>("progress");
 const progress = ref<BackupProgress | null>(null);
-const summary = ref<BackupExportSummary | null>(null);
+const summary = ref<BackupImportSummary | null>(null);
 const error = ref("");
 
 let unlisten: UnlistenFn | null = null;
@@ -25,7 +26,7 @@ watch(
   () => props.open,
   async (open) => {
     if (!open) return;
-    // 重置状态并先订阅进度事件，再发起导出，保证不丢事件
+    // 重置状态并先订阅进度事件，再发起导入，保证不丢事件
     phase.value = "progress";
     progress.value = null;
     summary.value = null;
@@ -35,9 +36,9 @@ watch(
       progress.value = e.payload;
     });
     try {
-      summary.value = await exportPaimBackup(props.exportPath);
+      summary.value = await importBackup(props.zipPath);
       phase.value = "done";
-      emit("exported");
+      emit("imported");
     } catch (e) {
       error.value = String(e);
       phase.value = "error";
@@ -46,11 +47,11 @@ watch(
       unlisten = null;
     }
   },
-  { immediate: true },
+  { immediate: true }, // 父级可能在挂载前就置 open，需要立即触发首次导入
 );
 
 function close() {
-  if (phase.value === "progress") return; // 导出进行中不允许中断
+  if (phase.value === "progress") return; // 导入进行中不允许中断
   emit("close");
 }
 </script>
@@ -63,7 +64,7 @@ function close() {
       @click.self="close"
     >
       <div class="w-96 max-w-[90vw] rounded-lg border p-5 shadow-sm border-gray-700 bg-gray-800">
-        <h3 class="text-center text-base font-semibold text-gray-100">导出备份</h3>
+        <h3 class="text-center text-base font-semibold text-gray-100">{{ title }}</h3>
 
         <div v-if="phase === 'progress' && progress" class="mt-4">
           <div class="h-2 overflow-hidden rounded-full bg-gray-700">
@@ -80,13 +81,20 @@ function close() {
 
         <div v-else-if="phase === 'done' && summary" class="mt-4 text-sm">
           <p class="text-gray-200">
-            已导出 {{ summary.prompts }} 条提示词、{{ summary.images }} 张图像。
+            已导入 {{ summary.prompts }} 条提示词、{{ summary.images }} 张图像。
           </p>
-          <p class="mt-2 break-all text-xs text-gray-500">备份文件：{{ summary.file_path }}</p>
+          <p v-if="summary.thumbnail_failures > 0" class="mt-1 text-red-400">
+            {{ summary.thumbnail_failures }}
+            张图像缩略图生成失败（不影响数据，可在设置里重建缩略图修复）。
+          </p>
+          <p v-if="summary.backup_dir" class="mt-3 break-all text-xs text-gray-500">
+            原数据目录已整体备份至 {{ summary.backup_dir }}，改名为设置里的数据目录即可切回。
+          </p>
         </div>
 
         <div v-else-if="phase === 'error'" class="mt-4 text-sm">
           <p class="text-red-400">{{ error }}</p>
+          <p class="mt-2 text-xs text-gray-500">导入已中止，原数据已回滚（目录整体归位）。</p>
         </div>
 
         <div class="mt-4">

@@ -61,6 +61,7 @@ pub fn inspect(zip_path: &str) -> Result<BackupInfo, String> {
                 .map_err(|e| format!("统计备份数据失败: {e}"))
         };
         Ok(BackupInfo {
+            app: "pm".into(),
             exported_at: manifest.exported_at.clone(),
             prompt_count: count("SELECT COUNT(*) FROM prompts")?,
             image_count: count("SELECT COUNT(*) FROM images")?,

@@ -162,16 +162,12 @@ export const commands = {
 	syncPromptSafeToImages: (promptId: string, isSafe: boolean) => __TAURI_INVOKE<number>("sync_prompt_safe_to_images", { promptId, isSafe }),
 	/**  同步图像的安全评级到其关联提示词（修改图像安全评级时联动一层，参考 pm 的双向联动）。 */
 	syncImageSafeToPrompts: (imageId: string, isSafe: boolean) => __TAURI_INVOKE<number>("sync_image_safe_to_prompts", { imageId, isSafe }),
-	/**  解析 pm 备份包，返回内容概览（不改动本地数据）。 */
-	inspectPmBackup: (zipPath: string) => __TAURI_INVOKE<BackupInfo>("inspect_pm_backup", { zipPath }),
-	/**  导入 pm 全量备份（整体替换当前数据），进度经 backup-progress 事件推送。 */
-	importPmBackup: (zipPath: string) => __TAURI_INVOKE<BackupImportSummary>("import_pm_backup", { zipPath }),
-	/**  解析 paim 备份包，返回内容概览（不改动本地数据）。 */
-	inspectPaimBackup: (zipPath: string) => __TAURI_INVOKE<BackupInfo>("inspect_paim_backup", { zipPath }),
+	/**  解析备份包（自动识别 paim/pm），返回内容概览（不改动本地数据）。 */
+	inspectBackup: (zipPath: string) => __TAURI_INVOKE<BackupInfo>("inspect_backup", { zipPath }),
 	/**  导出 paim 全量备份到指定 ZIP 路径，进度经 backup-progress 事件推送。 */
-	exportPaimBackup: (exportPath: string) => __TAURI_INVOKE<BackupExportSummary>("export_paim_backup", { exportPath }),
-	/**  导入 paim 全量备份（整体替换当前数据），进度经 backup-progress 事件推送。 */
-	importPaimBackup: (zipPath: string) => __TAURI_INVOKE<BackupImportSummary>("import_paim_backup", { zipPath }),
+	exportBackup: (exportPath: string) => __TAURI_INVOKE<BackupExportSummary>("export_backup", { exportPath }),
+	/**  导入全量备份（自动识别 paim/pm；整体替换当前数据），进度经 backup-progress 事件推送。 */
+	importBackup: (zipPath: string) => __TAURI_INVOKE<BackupImportSummary>("import_backup", { zipPath }),
 	/**  返回全局数据统计（12 项，与 pm 统计弹窗对齐），每次调用实时查询。 */
 	getStatistics: () => __TAURI_INVOKE<Statistics>("get_statistics"),
 };
@@ -200,8 +196,12 @@ export type BackupImportSummary = {
 	backup_dir: string,
 };
 
-/**  备份内容概览（inspect 返回，供确认弹窗展示；pm/paim 共用）。 */
+/**
+ *  备份内容概览（inspect 返回，供确认弹窗展示；pm/paim 共用）。
+ *  `app` 为归一化来源标识：`"paim"` 或 `"pm"`（由 manifest appName 探测）。
+ */
 export type BackupInfo = {
+	app: string,
 	exported_at: string,
 	prompt_count: number,
 	image_count: number,

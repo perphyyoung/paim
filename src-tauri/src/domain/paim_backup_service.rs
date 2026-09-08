@@ -62,6 +62,7 @@ pub fn inspect(zip_path: &str) -> Result<BackupInfo, String> {
             Connection::open_with_flags(&db_file, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(|e| format!("打开备份数据库失败: {e}"))?;
         Ok(BackupInfo {
+            app: "paim".into(),
             exported_at: manifest.exported_at.clone(),
             prompt_count: count(&conn, "SELECT COUNT(*) FROM prompts")?,
             image_count: count(&conn, "SELECT COUNT(*) FROM images")?,

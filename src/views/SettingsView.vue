@@ -7,11 +7,9 @@ import { useFontScale, useDetailFontScale, FONT_SCALE_LIMITS } from "@/utils/fon
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { useToast } from "@/components/useToast";
 import { markPageStale } from "@/utils/crossPageCache";
-import { inspectPmBackup } from "@/features/backup/api/pmBackup";
-import PmBackupImportModal from "@/features/backup/components/PmBackupImportModal.vue";
-import { inspectPaimBackup, type BackupInfo } from "@/features/backup/api/paimBackup";
-import PaimBackupImportModal from "@/features/backup/components/PaimBackupImportModal.vue";
-import PaimBackupExportModal from "@/features/backup/components/PaimBackupExportModal.vue";
+import { inspectBackup, type BackupInfo } from "@/features/backup/api/backup";
+import BackupImportModal from "@/features/backup/components/BackupImportModal.vue";
+import BackupExportModal from "@/features/backup/components/BackupExportModal.vue";
 import ThumbnailRebuildModal from "@/features/image/components/ThumbnailRebuildModal.vue";
 
 const { showToast } = useToast();
@@ -44,7 +42,7 @@ async function openDir() {
   }
 }
 
-// —— pm 备份导入 ——
+// —— 备份导入（自动识别 paim/pm）——
 const inspecting = ref(false);
 const importError = ref("");
 const importZipPath = ref("");
@@ -53,10 +51,15 @@ const confirmOpen = ref(false);
 const modalOpen = ref(false);
 const importSucceeded = ref(false);
 
+const importTitle = computed(() =>
+  importInfo.value?.app === "pm" ? "导入 pm 备份" : "导入 paim 备份",
+);
+
 const confirmMessage = computed(() => {
   const info = importInfo.value;
   if (!info) return "";
   return (
+    `识别为 ${info.app === "pm" ? "prompt-manager" : "paim"} 备份，` +
     `将导入 ${info.prompt_count} 条提示词、${info.image_count} 张图像` +
     `（回收站：提示词 ${info.trashed_prompt_count} 条、图像 ${info.trashed_image_count} 张）。` +
     "原数据目录将整体备份（含缩略图）后替换。"
@@ -67,13 +70,13 @@ async function pickBackup() {
   importError.value = "";
   const selected = await openFileDialog({
     multiple: false,
-    filters: [{ name: "pm 备份文件", extensions: ["zip"] }],
+    filters: [{ name: "备份文件（paim / pm）", extensions: ["zip"] }],
   });
   if (!selected) return;
   inspecting.value = true;
   try {
     importZipPath.value = selected as string;
-    importInfo.value = await inspectPmBackup(selected);
+    importInfo.value = await inspectBackup(selected);
     confirmOpen.value = true;
   } catch (e) {
     importError.value = String(e);
@@ -124,62 +127,6 @@ async function pickExportPath() {
   if (!target) return;
   exportZipPath.value = target;
   exportModalOpen.value = true;
-}
-
-// —— paim 备份导入 ——
-const paimInspecting = ref(false);
-const paimImportError = ref("");
-const paimImportZipPath = ref("");
-const paimImportInfo = ref<BackupInfo | null>(null);
-const paimConfirmOpen = ref(false);
-const paimModalOpen = ref(false);
-const paimImportSucceeded = ref(false);
-
-const paimConfirmMessage = computed(() => {
-  const info = paimImportInfo.value;
-  if (!info) return "";
-  return (
-    `将导入 ${info.prompt_count} 条提示词、${info.image_count} 张图像` +
-    `（回收站：提示词 ${info.trashed_prompt_count} 条、图像 ${info.trashed_image_count} 张）。` +
-    "原数据目录将整体备份（含缩略图）后替换。"
-  );
-});
-
-async function pickPaimBackup() {
-  paimImportError.value = "";
-  const selected = await openFileDialog({
-    multiple: false,
-    filters: [{ name: "paim 备份文件", extensions: ["zip"] }],
-  });
-  if (!selected) return;
-  paimInspecting.value = true;
-  try {
-    paimImportZipPath.value = selected as string;
-    paimImportInfo.value = await inspectPaimBackup(selected);
-    paimConfirmOpen.value = true;
-  } catch (e) {
-    paimImportError.value = String(e);
-  } finally {
-    paimInspecting.value = false;
-  }
-}
-
-function startPaimImport() {
-  paimConfirmOpen.value = false;
-  paimImportSucceeded.value = false;
-  paimModalOpen.value = true;
-}
-
-function onPaimImported() {
-  paimImportSucceeded.value = true;
-}
-
-function onPaimModalClose() {
-  paimModalOpen.value = false;
-  if (paimImportSucceeded.value) {
-    // 数据已整体替换，整页刷新以加载新数据
-    window.location.reload();
-  }
 }
 
 // —— 重建缩略图 ——
@@ -272,7 +219,8 @@ onMounted(loadDataDir);
         <div class="min-w-0">
           <dt class="text-gray-400">完整备份</dt>
           <dd class="text-sm text-gray-500">
-            备份或恢复所有数据（提示词、图像、标签等），导入时原数据整体备份后替换，缩略图自动重建
+            导出或导入所有数据（提示词、图像、标签等，支持导入
+            pm），导入时原数据整体备份后替换，缩略图自动重建
           </dd>
         </div>
         <div class="flex shrink-0 gap-2">
@@ -286,58 +234,24 @@ onMounted(loadDataDir);
           <button
             type="button"
             class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="paimInspecting"
-            @click="pickPaimBackup"
-          >
-            {{ paimInspecting ? "检查中..." : "导入" }}
-          </button>
-          <button
-            type="button"
-            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="inspecting"
             @click="pickBackup"
           >
-            {{ inspecting ? "检查中..." : "导入pm" }}
+            {{ inspecting ? "检查中..." : "导入" }}
           </button>
         </div>
       </div>
 
       <p v-if="openError" class="py-2 text-sm text-red-400">{{ openError }}</p>
       <p v-if="exportError" class="py-2 text-sm text-red-400">{{ exportError }}</p>
-      <p v-if="paimImportError" class="py-2 text-sm text-red-400">
-        {{ paimImportError }}
-      </p>
       <p v-if="importError" class="py-2 text-sm text-red-400">
         {{ importError }}
       </p>
     </dl>
 
     <ConfirmDialog
-      :open="paimConfirmOpen"
-      title="导入 paim 备份"
-      :message="paimConfirmMessage"
-      confirm-text="替换导入"
-      danger
-      @confirm="startPaimImport"
-      @cancel="paimConfirmOpen = false"
-    />
-
-    <PaimBackupImportModal
-      :open="paimModalOpen"
-      :zip-path="paimImportZipPath"
-      @close="onPaimModalClose"
-      @imported="onPaimImported"
-    />
-
-    <PaimBackupExportModal
-      :open="exportModalOpen"
-      :export-path="exportZipPath"
-      @close="exportModalOpen = false"
-    />
-
-    <ConfirmDialog
       :open="confirmOpen"
-      title="导入 pm 备份"
+      :title="importTitle"
       :message="confirmMessage"
       confirm-text="替换导入"
       danger
@@ -345,11 +259,18 @@ onMounted(loadDataDir);
       @cancel="confirmOpen = false"
     />
 
-    <PmBackupImportModal
+    <BackupImportModal
       :open="modalOpen"
       :zip-path="importZipPath"
+      :title="importTitle"
       @close="onModalClose"
       @imported="onImported"
+    />
+
+    <BackupExportModal
+      :open="exportModalOpen"
+      :export-path="exportZipPath"
+      @close="exportModalOpen = false"
     />
 
     <!-- 重建回写 thumbnail_path 后，图像主页与提示词主页（卡片背景图）下次激活时刷新 -->

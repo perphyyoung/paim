@@ -109,13 +109,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             db::batch_toggle_prompt_favorite,
             commands::prompt::sync_prompt_safe_to_images,
             commands::image::sync_image_safe_to_prompts,
-            // —— pm 备份导入 ——
-            commands::pm_backup::inspect_pm_backup,
-            commands::pm_backup::import_pm_backup,
-            // —— paim 备份导出/导入 ——
-            commands::paim_backup::inspect_paim_backup,
-            commands::paim_backup::export_paim_backup,
-            commands::paim_backup::import_paim_backup,
+            // —— 完整备份（导入自动识别 paim/pm）——
+            commands::backup::inspect_backup,
+            commands::backup::export_backup,
+            commands::backup::import_backup,
             // —— 数据统计 ——
             commands::stats::get_statistics,
         ])
