@@ -166,6 +166,8 @@ export const commands = {
 	inspectPmBackup: (zipPath: string) => __TAURI_INVOKE<PmBackupInfo>("inspect_pm_backup", { zipPath }),
 	/**  导入 pm 全量备份（整体替换当前数据），进度经 pm-import-progress 事件推送。 */
 	importPmBackup: (zipPath: string) => __TAURI_INVOKE<PmImportSummary>("import_pm_backup", { zipPath }),
+	/**  返回全局数据统计（12 项，与 pm 统计弹窗对齐），每次调用实时查询。 */
+	getStatistics: () => __TAURI_INVOKE<Statistics>("get_statistics"),
 };
 
 /** Events */
@@ -315,6 +317,34 @@ export type RelatedImage = {
 	/**  原图像绝对路径（前端配合 convertFileSrc 加载）。 */
 	src: string,
 	tags: string[],
+};
+
+/**  统计结果（12 项，与 pm 统计弹窗一一对应）。 */
+export type Statistics = {
+	/**  提示词总数（含回收站） */
+	total_prompts: number,
+	/**  回收站中的提示词数 */
+	deleted_prompts: number,
+	/**  已收藏（不含回收站） */
+	favorite_prompts: number,
+	/**  含图像：有关联图像（且图像未删除）的活跃提示词数 */
+	prompts_with_images: number,
+	/**  提示词标签组数 */
+	prompt_tag_groups: number,
+	/**  提示词标签总数（含未分组标签，pm 只数组内标签，paim 允许无组故取全量） */
+	total_prompt_tags: number,
+	/**  图像总数（含回收站） */
+	total_images: number,
+	/**  回收站中的图像数 */
+	deleted_images: number,
+	/**  已收藏（不含回收站） */
+	favorite_images: number,
+	/**  有引用：被活跃提示词关联的未删除图像数 */
+	referenced_images: number,
+	/**  图像标签组数 */
+	image_tag_groups: number,
+	/**  图像标签总数（含未分组标签） */
+	total_image_tags: number,
 };
 
 /**  标签管理页中的标签组（含排序序号，首位组即 sort_order 最小者）。 */

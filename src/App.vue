@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { events } from "@/bindings";
 import { initFontScale } from "@/utils/font";
 import SettingsView from "@/views/SettingsView.vue";
+import StatsModal from "@/components/StatsModal.vue";
 import ToastHost from "@/components/ToastHost.vue";
 
 // 应用启动即应用持久化的全局字体缩放
@@ -42,6 +43,9 @@ const isActive = (path: string) => computed(() => route.path === path);
 // 设置悬浮面板开关
 const settingsOpen = ref(false);
 
+// 统计弹窗开关
+const statsOpen = ref(false);
+
 // 刷新所有缓存：整页重载，KeepAlive 页面实例、跨页脏标记、滚动状态全部重建
 function reloadAll() {
   window.location.reload();
@@ -75,7 +79,7 @@ function reloadAll() {
         </svg>
       </RouterLink>
 
-      <!-- 底部固定：刷新缓存 / 设置 -->
+      <!-- 底部固定：刷新缓存 / 统计 / 设置（mt-auto 把首个按钮及之后全部压到底部） -->
       <button
         type="button"
         title="刷新缓存 (F5)"
@@ -95,6 +99,23 @@ function reloadAll() {
             stroke-linejoin="round"
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
           />
+        </svg>
+      </button>
+      <button
+        type="button"
+        title="统计"
+        class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
+        @click="statsOpen = true"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18 20V10M12 20V4M6 20v-6" />
         </svg>
       </button>
       <button
@@ -137,6 +158,8 @@ function reloadAll() {
     </main>
 
     <ToastHost />
+
+    <StatsModal :open="statsOpen" @close="statsOpen = false" />
 
     <!-- 设置悬浮面板 -->
     <Teleport to="body">

@@ -6,3 +6,4 @@ pub mod image_tag;
 pub mod pm_backup;
 pub mod prompt;
 pub mod prompt_tag;
+pub mod stats;

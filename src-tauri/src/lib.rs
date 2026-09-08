@@ -112,6 +112,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // —— pm 备份导入 ——
             commands::pm_backup::inspect_pm_backup,
             commands::pm_backup::import_pm_backup,
+            // —— 数据统计 ——
+            commands::stats::get_statistics,
         ])
 }
 
