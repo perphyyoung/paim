@@ -7,9 +7,9 @@ import { useFontScale, useDetailFontScale, FONT_SCALE_LIMITS } from "@/utils/fon
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { useToast } from "@/components/useToast";
 import { markPageStale } from "@/utils/crossPageCache";
-import { inspectPmBackup, type PmBackupInfo } from "@/features/backup/api/pmBackup";
+import { inspectPmBackup } from "@/features/backup/api/pmBackup";
 import PmBackupImportModal from "@/features/backup/components/PmBackupImportModal.vue";
-import { inspectPaimBackup, type PaimBackupInfo } from "@/features/backup/api/paimBackup";
+import { inspectPaimBackup, type BackupInfo } from "@/features/backup/api/paimBackup";
 import PaimBackupImportModal from "@/features/backup/components/PaimBackupImportModal.vue";
 import PaimBackupExportModal from "@/features/backup/components/PaimBackupExportModal.vue";
 import ThumbnailRebuildModal from "@/features/image/components/ThumbnailRebuildModal.vue";
@@ -48,7 +48,7 @@ async function openDir() {
 const inspecting = ref(false);
 const importError = ref("");
 const importZipPath = ref("");
-const importInfo = ref<PmBackupInfo | null>(null);
+const importInfo = ref<BackupInfo | null>(null);
 const confirmOpen = ref(false);
 const modalOpen = ref(false);
 const importSucceeded = ref(false);
@@ -58,7 +58,7 @@ const confirmMessage = computed(() => {
   if (!info) return "";
   return (
     `将导入 ${info.prompt_count} 条提示词、${info.image_count} 张图像` +
-    `（含回收站 ${info.trashed_image_count} 张）。` +
+    `（回收站：提示词 ${info.trashed_prompt_count} 条、图像 ${info.trashed_image_count} 张）。` +
     "原数据目录将整体备份（含缩略图）后替换。"
   );
 });
@@ -130,7 +130,7 @@ async function pickExportPath() {
 const paimInspecting = ref(false);
 const paimImportError = ref("");
 const paimImportZipPath = ref("");
-const paimImportInfo = ref<PaimBackupInfo | null>(null);
+const paimImportInfo = ref<BackupInfo | null>(null);
 const paimConfirmOpen = ref(false);
 const paimModalOpen = ref(false);
 const paimImportSucceeded = ref(false);

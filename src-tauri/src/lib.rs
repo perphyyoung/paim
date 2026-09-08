@@ -27,8 +27,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .events(tauri_specta::collect_events![
             GlobalShortcutEvent,
             domain::thumbnail_service::ThumbnailRebuildProgress,
-            domain::pm_backup_service::PmImportProgress,
-            domain::paim_backup_service::PaimBackupProgress,
+            domain::backup_common::BackupProgress,
         ])
         .commands(tauri_specta::collect_commands![
             // —— 提示词通用 ——

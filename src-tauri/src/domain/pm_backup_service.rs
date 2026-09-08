@@ -7,13 +7,14 @@
 //! 目录与数据。应用数据库连接经内存占位连接换绑（见 import 注释）。
 
 use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::Path;
 use zip::ZipArchive;
 
 use crate::domain::backup_common::{
     count_image_entries, create_temp_dir, extract_entry, io_err, is_safe_rel_path, locate_root,
-    open_app_db, read_entry_to_string, MANIFEST_ENTRY,
+    open_app_db, read_entry_to_string, BackupImportSummary, BackupInfo, BackupProgress,
+    MANIFEST_ENTRY,
 };
 use crate::infra::db::{self, BkDb};
 use crate::infra::time::normalize_ts;
@@ -38,39 +39,10 @@ struct BackupManifest {
     data_version: Option<i64>,
 }
 
-/// 备份内容概览（供确认弹窗展示）。
-#[derive(Debug, Serialize, specta::Type)]
-pub struct PmBackupInfo {
-    pub exported_at: String,
-    pub prompt_count: i64,
-    pub image_count: i64,
-    pub trashed_image_count: i64,
-    pub prompt_tag_count: i64,
-    pub image_tag_count: i64,
-}
-
-/// 导入结果摘要。
-#[derive(Debug, Serialize, specta::Type)]
-pub struct PmImportSummary {
-    pub prompts: i64,
-    pub images: i64,
-    pub thumbnail_failures: usize,
-    /// 原数据目录的备份位置（整体改名让位）；无原数据时为空串。
-    pub backup_dir: String,
-}
-
-/// 导入进度推送载荷（事件名固定为 pm-import-progress）。
-#[derive(Debug, Serialize, Deserialize, Clone, specta::Type, tauri_specta::Event)]
-#[tauri_specta(event_name = "pm-import-progress")]
-pub struct PmImportProgress {
-    pub stage: String,
-    pub percent: u32,
-    pub status: String,
-    pub detail: Option<String>,
-}
+/// 备份内容概览、导入摘要与进度事件复用 backup_common 的共享类型（pm/paim 同构）。
 
 /// 解析备份包，返回内容概览（不改动任何本地数据）。
-pub fn inspect(zip_path: &str) -> Result<PmBackupInfo, String> {
+pub fn inspect(zip_path: &str) -> Result<BackupInfo, String> {
     let file = std::fs::File::open(zip_path).map_err(|e| format!("无法打开备份文件: {e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("备份文件不是有效的 ZIP: {e}"))?;
 
@@ -88,10 +60,11 @@ pub fn inspect(zip_path: &str) -> Result<PmBackupInfo, String> {
             conn.query_row(sql, [], |r| r.get(0))
                 .map_err(|e| format!("统计备份数据失败: {e}"))
         };
-        Ok(PmBackupInfo {
+        Ok(BackupInfo {
             exported_at: manifest.exported_at.clone(),
             prompt_count: count("SELECT COUNT(*) FROM prompts")?,
             image_count: count("SELECT COUNT(*) FROM images")?,
+            trashed_prompt_count: count("SELECT COUNT(*) FROM prompts WHERE is_deleted = 1")?,
             trashed_image_count: count("SELECT COUNT(*) FROM images WHERE is_deleted = 1")?,
             prompt_tag_count: count("SELECT COUNT(*) FROM prompt_tags")?,
             image_tag_count: count("SELECT COUNT(*) FROM image_tags")?,
@@ -109,11 +82,11 @@ pub fn import<F>(
     bk: &BkDb,
     zip_path: &str,
     emit: F,
-) -> Result<PmImportSummary, String>
+) -> Result<BackupImportSummary, String>
 where
-    F: Fn(PmImportProgress) + Sync,
+    F: Fn(BackupProgress) + Sync,
 {
-    emit(PmImportProgress {
+    emit(BackupProgress {
         stage: "start".into(),
         percent: 0,
         status: "准备导入...".into(),
@@ -124,7 +97,7 @@ where
     let file = std::fs::File::open(zip_path).map_err(|e| format!("无法打开备份文件: {e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("备份文件不是有效的 ZIP: {e}"))?;
 
-    emit(PmImportProgress {
+    emit(BackupProgress {
         stage: "manifest".into(),
         percent: 3,
         status: "正在解析备份文件...".into(),
@@ -165,7 +138,7 @@ where
         log_info!("导入: 让位改名完成");
     }
 
-    let mut run = || -> Result<PmImportSummary, String> {
+    let mut run = || -> Result<BackupImportSummary, String> {
         std::fs::create_dir_all(&data_dir).map_err(|e| format!("创建数据目录失败: {e}"))?;
         *guard = open_app_db(&db_path)?;
         let images_dir = db::images_dir(app);
@@ -175,13 +148,13 @@ where
         let _ = std::fs::remove_dir_all(&tmp);
         let (prompts, images, thumbnail_failures) = result?;
         log_info!("导入: 完成 prompts={prompts} images={images} 缩略图失败={thumbnail_failures}");
-        emit(PmImportProgress {
+        emit(BackupProgress {
             stage: "complete".into(),
             percent: 100,
             status: "导入完成！".into(),
             detail: None,
         });
-        Ok(PmImportSummary {
+        Ok(BackupImportSummary {
             prompts,
             images,
             thumbnail_failures,
@@ -237,7 +210,7 @@ fn import_inner<F>(
     emit: &F,
 ) -> Result<(i64, i64, usize), String>
 where
-    F: Fn(PmImportProgress) + Sync,
+    F: Fn(BackupProgress) + Sync,
 {
     let image_prefix = format!("{root}{IMAGES_ENTRY_PREFIX}");
     let total_images = count_image_entries(archive, &image_prefix);
@@ -274,7 +247,7 @@ where
         let mut out = std::fs::File::create(&dest).map_err(io_err)?;
         std::io::copy(&mut entry, &mut out).map_err(io_err)?;
         copied += 1;
-        emit(PmImportProgress {
+        emit(BackupProgress {
             stage: "images".into(),
             percent: 8 + (copied * 47 / total_images.max(1)) as u32,
             status: format!("正在恢复图像文件... ({copied}/{total_images})"),
@@ -286,7 +259,7 @@ where
     }
 
     // 数据整体替换（55% -> 65%）
-    emit(PmImportProgress {
+    emit(BackupProgress {
         stage: "database".into(),
         percent: 60,
         status: "正在写入数据...".into(),
@@ -295,7 +268,7 @@ where
     let (prompts, images) = replace_tables(conn, &pm_db)?;
 
     // 缩略图全量重建（65% -> 98%）
-    emit(PmImportProgress {
+    emit(BackupProgress {
         stage: "thumbnails".into(),
         percent: 65,
         status: "正在重建缩略图...".into(),
@@ -531,7 +504,7 @@ fn regenerate_thumbnails<F>(
     emit: &F,
 ) -> Result<usize, String>
 where
-    F: Fn(PmImportProgress) + Sync,
+    F: Fn(BackupProgress) + Sync,
 {
     let data_dir = db::data_dir(app);
     let thumbs_root = db::thumbnails_dir(app);
@@ -540,7 +513,7 @@ where
         &thumbs_root,
         conn,
         |done, total, file_name| {
-            emit(PmImportProgress {
+            emit(BackupProgress {
                 stage: "thumbnails".into(),
                 percent: 65 + (done * 33 / total.max(1)) as u32,
                 status: format!("正在重建缩略图... ({done}/{total})"),

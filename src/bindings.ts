@@ -163,28 +163,65 @@ export const commands = {
 	/**  同步图像的安全评级到其关联提示词（修改图像安全评级时联动一层，参考 pm 的双向联动）。 */
 	syncImageSafeToPrompts: (imageId: string, isSafe: boolean) => __TAURI_INVOKE<number>("sync_image_safe_to_prompts", { imageId, isSafe }),
 	/**  解析 pm 备份包，返回内容概览（不改动本地数据）。 */
-	inspectPmBackup: (zipPath: string) => __TAURI_INVOKE<PmBackupInfo>("inspect_pm_backup", { zipPath }),
-	/**  导入 pm 全量备份（整体替换当前数据），进度经 pm-import-progress 事件推送。 */
-	importPmBackup: (zipPath: string) => __TAURI_INVOKE<PmImportSummary>("import_pm_backup", { zipPath }),
+	inspectPmBackup: (zipPath: string) => __TAURI_INVOKE<BackupInfo>("inspect_pm_backup", { zipPath }),
+	/**  导入 pm 全量备份（整体替换当前数据），进度经 backup-progress 事件推送。 */
+	importPmBackup: (zipPath: string) => __TAURI_INVOKE<BackupImportSummary>("import_pm_backup", { zipPath }),
 	/**  解析 paim 备份包，返回内容概览（不改动本地数据）。 */
-	inspectPaimBackup: (zipPath: string) => __TAURI_INVOKE<PaimBackupInfo>("inspect_paim_backup", { zipPath }),
-	/**  导出 paim 全量备份到指定 ZIP 路径，进度经 paim-backup-progress 事件推送。 */
-	exportPaimBackup: (exportPath: string) => __TAURI_INVOKE<PaimExportSummary>("export_paim_backup", { exportPath }),
-	/**  导入 paim 全量备份（整体替换当前数据），进度经 paim-backup-progress 事件推送。 */
-	importPaimBackup: (zipPath: string) => __TAURI_INVOKE<PaimImportSummary>("import_paim_backup", { zipPath }),
+	inspectPaimBackup: (zipPath: string) => __TAURI_INVOKE<BackupInfo>("inspect_paim_backup", { zipPath }),
+	/**  导出 paim 全量备份到指定 ZIP 路径，进度经 backup-progress 事件推送。 */
+	exportPaimBackup: (exportPath: string) => __TAURI_INVOKE<BackupExportSummary>("export_paim_backup", { exportPath }),
+	/**  导入 paim 全量备份（整体替换当前数据），进度经 backup-progress 事件推送。 */
+	importPaimBackup: (zipPath: string) => __TAURI_INVOKE<BackupImportSummary>("import_paim_backup", { zipPath }),
 	/**  返回全局数据统计（12 项，与 pm 统计弹窗对齐），每次调用实时查询。 */
 	getStatistics: () => __TAURI_INVOKE<Statistics>("get_statistics"),
 };
 
 /** Events */
 export const events = {
+	backupProgress: makeEvent<BackupProgress>("backup-progress"),
 	globalShortcut: makeEvent<GlobalShortcutEvent>("global-shortcut"),
-	paimBackupProgress: makeEvent<PaimBackupProgress>("paim-backup-progress"),
-	pmImportProgress: makeEvent<PmImportProgress>("pm-import-progress"),
 	thumbnailRebuildProgress: makeEvent<ThumbnailRebuildProgress>("thumbnail-rebuild-progress"),
 };
 
 /* Types */
+/**  备份导出结果摘要。 */
+export type BackupExportSummary = {
+	prompts: number,
+	images: number,
+	file_path: string,
+};
+
+/**  备份导入结果摘要（pm/paim 共用）。 */
+export type BackupImportSummary = {
+	prompts: number,
+	images: number,
+	thumbnail_failures: number,
+	/**  原数据目录的备份位置（整体改名让位）；无原数据时为空串。 */
+	backup_dir: string,
+};
+
+/**  备份内容概览（inspect 返回，供确认弹窗展示；pm/paim 共用）。 */
+export type BackupInfo = {
+	exported_at: string,
+	prompt_count: number,
+	image_count: number,
+	trashed_prompt_count: number,
+	trashed_image_count: number,
+	prompt_tag_count: number,
+	image_tag_count: number,
+};
+
+/**
+ *  备份导出/导入进度推送载荷（pm 与 paim 备份共用同一事件通道 backup-progress；
+ *  两类操作互斥于设置页且监听只在各自命令执行期间挂载，单通道无串扰）。
+ */
+export type BackupProgress = {
+	stage: string,
+	percent: number,
+	status: string,
+	detail: string | null,
+};
+
 export type CreatePromptWithImagesResult = {
 	prompt: Prompt,
 	results: ImageImportResult[],
@@ -256,68 +293,6 @@ export type LinkedPrompt = {
 export type PaginatedImages = {
 	items: Image[],
 	total: number,
-};
-
-/**  备份内容概览（供确认弹窗展示）。 */
-export type PaimBackupInfo = {
-	exported_at: string,
-	prompt_count: number,
-	image_count: number,
-	trashed_prompt_count: number,
-	trashed_image_count: number,
-	prompt_tag_count: number,
-	image_tag_count: number,
-};
-
-/**  导出/导入进度推送载荷（事件名固定为 paim-backup-progress）。 */
-export type PaimBackupProgress = {
-	stage: string,
-	percent: number,
-	status: string,
-	detail: string | null,
-};
-
-/**  导出结果摘要。 */
-export type PaimExportSummary = {
-	prompts: number,
-	images: number,
-	file_path: string,
-};
-
-/**  导入结果摘要。 */
-export type PaimImportSummary = {
-	prompts: number,
-	images: number,
-	thumbnail_failures: number,
-	/**  原数据目录的备份位置（整体改名让位）；无原数据时为空串。 */
-	backup_dir: string,
-};
-
-/**  备份内容概览（供确认弹窗展示）。 */
-export type PmBackupInfo = {
-	exported_at: string,
-	prompt_count: number,
-	image_count: number,
-	trashed_image_count: number,
-	prompt_tag_count: number,
-	image_tag_count: number,
-};
-
-/**  导入进度推送载荷（事件名固定为 pm-import-progress）。 */
-export type PmImportProgress = {
-	stage: string,
-	percent: number,
-	status: string,
-	detail: string | null,
-};
-
-/**  导入结果摘要。 */
-export type PmImportSummary = {
-	prompts: number,
-	images: number,
-	thumbnail_failures: number,
-	/**  原数据目录的备份位置（整体改名让位）；无原数据时为空串。 */
-	backup_dir: string,
 };
 
 export type Prompt = {

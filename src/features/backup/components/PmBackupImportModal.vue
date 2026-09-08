@@ -3,15 +3,15 @@
 import { onUnmounted, ref, watch } from "vue";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { events } from "@/bindings";
-import { importPmBackup, type PmImportProgress, type PmImportSummary } from "../api/pmBackup";
+import { importPmBackup, type BackupProgress, type BackupImportSummary } from "../api/pmBackup";
 
 const props = defineProps<{ open: boolean; zipPath: string }>();
 const emit = defineEmits<{ close: []; imported: [] }>();
 
 type Phase = "progress" | "done" | "error";
 const phase = ref<Phase>("progress");
-const progress = ref<PmImportProgress | null>(null);
-const summary = ref<PmImportSummary | null>(null);
+const progress = ref<BackupProgress | null>(null);
+const summary = ref<BackupImportSummary | null>(null);
 const error = ref("");
 
 let unlisten: UnlistenFn | null = null;
@@ -31,7 +31,7 @@ watch(
     summary.value = null;
     error.value = "";
     unlisten?.();
-    unlisten = await events.pmImportProgress.listen((e) => {
+    unlisten = await events.backupProgress.listen((e) => {
       progress.value = e.payload;
     });
     try {

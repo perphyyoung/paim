@@ -8,7 +8,7 @@
 
 - 备份包结构（对齐 pm）：`manifest.json + database/paim.db + files/images/**`；缩略图不导出，导入端重建。
 - 后端：新增 `domain/paim_backup_service.rs(+test)` 与 `commands/paim_backup.rs`（`inspect/export/import_paim_backup` 三命令）。导出用 `VACUUM INTO` 生成库快照（原子、自动合并 WAL，不断库）+ 图像目录复制 + ZipWriter 压缩；导入与 pm 同构——内存占位连接换绑 → 数据目录整目录让位（`paim-data_{时间戳}`）→ 解包换库文件 → `db::init` 重开（自动迁移旧版本备份）→ 重建缩略图 → 失败自动回滚。校验：manifest 存在、`appName == "paim"`、`dataVersion ≤ 1`。
-- 重构：ZIP 条目读取/安全路径/临时目录/递归复制/`open_app_db` 等从 `pm_backup_service` 抽到 `domain/backup_common.rs`，pm 与 paim 备份服务共用。
+- 重构：ZIP 条目读取/安全路径/临时目录/递归复制/`open_app_db` 等从 `pm_backup_service` 抽到 `domain/backup_common.rs`，pm 与 paim 备份服务共用。备份对外类型同轨合一：`BackupInfo`/`BackupExportSummary`/`BackupImportSummary`/`BackupProgress`（事件统一为 `backup-progress`），净减 3 个重复类型；`BackupManifest`/校验规则保持各自独立（appName 区分来源）。pm 概览补 `trashed_prompt_count`。
 - 前端：新增 `features/backup/api/paimBackup.ts`、`PaimBackupImportModal.vue`/`PaimBackupExportModal.vue`（进度事件 `paim-backup-progress`）；设置页「数据」区「完整备份」单行三按钮（导出/导入/导入pm，对齐 pm 的完整备份行，outline 样式统一）。
 - 测试：`paim_backup_service.test.rs` 覆盖导出→恢复往返（逐表一致、图像文件落位、包内条目齐备）、manifest 校验（appName/版本）、缺库文件报错。
 - 压缩体验优化：压缩阶段逐条目量化进度（80→99，含文件名 detail）；jpg/jpeg/png/webp/gif 按 Stored 直存（deflate 对已压缩格式收益 <1% 却耗 CPU），manifest/db 维持 deflate；大文件改 BufReader 流式写入避免整读进内存。

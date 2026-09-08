@@ -32,7 +32,7 @@ fn seed_app_db(dir: &Path, db_name: &str) -> PathBuf {
     db_path
 }
 
-fn no_progress(_: PaimBackupProgress) {}
+fn no_progress(_: BackupProgress) {}
 
 /// 往返测试：种库+图像 → export_core 出包 → 解包换库恢复 → 逐表与文件数一致。
 #[test]

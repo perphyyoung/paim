@@ -2,6 +2,7 @@
 //! pm 备份导入（pm_backup_service）与 paim 自有备份导出/导入（paim_backup_service）共用。
 
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
@@ -10,6 +11,47 @@ use crate::infra::db;
 
 /// 备份包内 manifest 的固定条目名（两种备份包布局一致）。
 pub(crate) const MANIFEST_ENTRY: &str = "manifest.json";
+
+/// 备份内容概览（inspect 返回，供确认弹窗展示；pm/paim 共用）。
+#[derive(Debug, Serialize, specta::Type)]
+pub struct BackupInfo {
+    pub exported_at: String,
+    pub prompt_count: i64,
+    pub image_count: i64,
+    pub trashed_prompt_count: i64,
+    pub trashed_image_count: i64,
+    pub prompt_tag_count: i64,
+    pub image_tag_count: i64,
+}
+
+/// 备份导出结果摘要。
+#[derive(Debug, Serialize, specta::Type)]
+pub struct BackupExportSummary {
+    pub prompts: i64,
+    pub images: i64,
+    pub file_path: String,
+}
+
+/// 备份导入结果摘要（pm/paim 共用）。
+#[derive(Debug, Serialize, specta::Type)]
+pub struct BackupImportSummary {
+    pub prompts: i64,
+    pub images: i64,
+    pub thumbnail_failures: usize,
+    /// 原数据目录的备份位置（整体改名让位）；无原数据时为空串。
+    pub backup_dir: String,
+}
+
+/// 备份导出/导入进度推送载荷（pm 与 paim 备份共用同一事件通道 backup-progress；
+/// 两类操作互斥于设置页且监听只在各自命令执行期间挂载，单通道无串扰）。
+#[derive(Debug, Serialize, Deserialize, Clone, specta::Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "backup-progress")]
+pub struct BackupProgress {
+    pub stage: String,
+    pub percent: u32,
+    pub status: String,
+    pub detail: Option<String>,
+}
 
 /// 条目相对路径是否安全（拒绝空段/./.. /盘符），防 zip-slip。
 pub(crate) fn is_safe_rel_path(rel: &str) -> bool {

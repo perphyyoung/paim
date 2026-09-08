@@ -8,13 +8,14 @@
 //!   再重建缩略图；失败自动回滚（删半成品、备份目录归位、重开原库）。
 
 use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::Path;
 use zip::ZipArchive;
 
 use crate::domain::backup_common::{
     collect_files, copy_dir_with_progress, count_image_entries, create_temp_dir, extract_entry,
-    io_err, is_safe_rel_path, locate_root, open_app_db, read_entry_to_string, MANIFEST_ENTRY,
+    io_err, is_safe_rel_path, locate_root, open_app_db, read_entry_to_string, BackupExportSummary,
+    BackupImportSummary, BackupInfo, BackupProgress, MANIFEST_ENTRY,
 };
 use crate::infra::db::{self, BkDb};
 use crate::{log_error, log_info};
@@ -37,45 +38,7 @@ struct BackupManifest {
     data_version: Option<i64>,
 }
 
-/// 备份内容概览（供确认弹窗展示）。
-#[derive(Debug, Serialize, specta::Type)]
-pub struct PaimBackupInfo {
-    pub exported_at: String,
-    pub prompt_count: i64,
-    pub image_count: i64,
-    pub trashed_prompt_count: i64,
-    pub trashed_image_count: i64,
-    pub prompt_tag_count: i64,
-    pub image_tag_count: i64,
-}
-
-/// 导出结果摘要。
-#[derive(Debug, Serialize, specta::Type)]
-pub struct PaimExportSummary {
-    pub prompts: i64,
-    pub images: i64,
-    pub file_path: String,
-}
-
-/// 导入结果摘要。
-#[derive(Debug, Serialize, specta::Type)]
-pub struct PaimImportSummary {
-    pub prompts: i64,
-    pub images: i64,
-    pub thumbnail_failures: usize,
-    /// 原数据目录的备份位置（整体改名让位）；无原数据时为空串。
-    pub backup_dir: String,
-}
-
-/// 导出/导入进度推送载荷（事件名固定为 paim-backup-progress）。
-#[derive(Debug, Serialize, Deserialize, Clone, specta::Type, tauri_specta::Event)]
-#[tauri_specta(event_name = "paim-backup-progress")]
-pub struct PaimBackupProgress {
-    pub stage: String,
-    pub percent: u32,
-    pub status: String,
-    pub detail: Option<String>,
-}
+/// 概览/摘要/进度事件复用 backup_common 的共享类型（pm/paim 同构）；导出走 BackupExportSummary。
 
 fn count(conn: &Connection, sql: &str) -> Result<i64, String> {
     conn.query_row(sql, [], |r| r.get(0))
@@ -83,7 +46,7 @@ fn count(conn: &Connection, sql: &str) -> Result<i64, String> {
 }
 
 /// 解析备份包，返回内容概览（不改动任何本地数据）。
-pub fn inspect(zip_path: &str) -> Result<PaimBackupInfo, String> {
+pub fn inspect(zip_path: &str) -> Result<BackupInfo, String> {
     let file = std::fs::File::open(zip_path).map_err(|e| format!("无法打开备份文件: {e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("备份文件不是有效的 ZIP: {e}"))?;
 
@@ -98,7 +61,7 @@ pub fn inspect(zip_path: &str) -> Result<PaimBackupInfo, String> {
         let conn =
             Connection::open_with_flags(&db_file, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(|e| format!("打开备份数据库失败: {e}"))?;
-        Ok(PaimBackupInfo {
+        Ok(BackupInfo {
             exported_at: manifest.exported_at.clone(),
             prompt_count: count(&conn, "SELECT COUNT(*) FROM prompts")?,
             image_count: count(&conn, "SELECT COUNT(*) FROM images")?,
@@ -122,11 +85,11 @@ pub fn export<F>(
     bk: &BkDb,
     export_path: &str,
     emit: F,
-) -> Result<PaimExportSummary, String>
+) -> Result<BackupExportSummary, String>
 where
-    F: Fn(PaimBackupProgress) + Sync,
+    F: Fn(BackupProgress) + Sync,
 {
-    emit(PaimBackupProgress {
+    emit(BackupProgress {
         stage: "start".into(),
         percent: 0,
         status: "准备导出...".into(),
@@ -155,17 +118,17 @@ fn export_core<F>(
     images_dir: &Path,
     export_path: &Path,
     emit: &F,
-) -> Result<PaimExportSummary, String>
+) -> Result<BackupExportSummary, String>
 where
-    F: Fn(PaimBackupProgress) + Sync,
+    F: Fn(BackupProgress) + Sync,
 {
     let prompts = count(conn, "SELECT COUNT(*) FROM prompts")?;
     let images = count(conn, "SELECT COUNT(*) FROM images")?;
 
     let tmp = create_temp_dir("paim-backup-export")?;
-    let result = (|| -> Result<PaimExportSummary, String> {
+    let result = (|| -> Result<BackupExportSummary, String> {
         // 1. manifest（5%）
-        emit(PaimBackupProgress {
+        emit(BackupProgress {
             stage: "manifest".into(),
             percent: 5,
             status: "正在生成备份清单...".into(),
@@ -185,7 +148,7 @@ where
         .map_err(io_err)?;
 
         // 2. 库快照 VACUUM INTO（原子、自动合并 WAL；目标文件须不存在）（5% -> 15%）
-        emit(PaimBackupProgress {
+        emit(BackupProgress {
             stage: "database".into(),
             percent: 10,
             status: "正在导出数据库...".into(),
@@ -203,7 +166,7 @@ where
         // 3. 复制图像（15% -> 80%）
         let files_dst = tmp.join("files").join("images");
         copy_dir_with_progress(images_dir, &files_dst, |done, total, name| {
-            emit(PaimBackupProgress {
+            emit(BackupProgress {
                 stage: "images".into(),
                 percent: 15 + (done * 65 / total.max(1)) as u32,
                 status: format!("正在复制图像文件... ({done}/{total})"),
@@ -212,7 +175,7 @@ where
         })?;
 
         // 4. 压缩 ZIP（80% -> 99%，逐条目量化进度）
-        emit(PaimBackupProgress {
+        emit(BackupProgress {
             stage: "compress".into(),
             percent: 80,
             status: "正在压缩备份文件...".into(),
@@ -220,13 +183,13 @@ where
         });
         write_zip(&tmp, export_path, emit)?;
 
-        emit(PaimBackupProgress {
+        emit(BackupProgress {
             stage: "complete".into(),
             percent: 100,
             status: "备份完成！".into(),
             detail: None,
         });
-        Ok(PaimExportSummary {
+        Ok(BackupExportSummary {
             prompts,
             images,
             file_path: export_path.to_string_lossy().into_owned(),
@@ -241,7 +204,7 @@ where
 /// 收益 <1% 却耗掉绝大部分 CPU；manifest/db 维持 deflate（文本与库文件压缩比可观）。
 fn write_zip<F>(staging: &Path, out_path: &Path, emit: &F) -> Result<(), String>
 where
-    F: Fn(PaimBackupProgress) + Sync,
+    F: Fn(BackupProgress) + Sync,
 {
     let file = std::fs::File::create(out_path).map_err(|e| format!("创建备份文件失败: {e}"))?;
     let mut zw = zip::ZipWriter::new(file);
@@ -266,7 +229,7 @@ where
         let mut reader = std::io::BufReader::new(src);
         std::io::copy(&mut reader, &mut zw)
             .map_err(|e| format!("写入 ZIP 条目 {rel} 失败: {e}"))?;
-        emit(PaimBackupProgress {
+        emit(BackupProgress {
             stage: "compress".into(),
             percent: 80 + ((done + 1) * 19 / total.max(1)) as u32,
             status: format!("正在压缩备份文件... ({}/{total})", done + 1),
@@ -289,11 +252,11 @@ pub fn import<F>(
     bk: &BkDb,
     zip_path: &str,
     emit: F,
-) -> Result<PaimImportSummary, String>
+) -> Result<BackupImportSummary, String>
 where
-    F: Fn(PaimBackupProgress) + Sync,
+    F: Fn(BackupProgress) + Sync,
 {
-    emit(PaimBackupProgress {
+    emit(BackupProgress {
         stage: "start".into(),
         percent: 0,
         status: "准备导入...".into(),
@@ -304,7 +267,7 @@ where
     let file = std::fs::File::open(zip_path).map_err(|e| format!("无法打开备份文件: {e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("备份文件不是有效的 ZIP: {e}"))?;
 
-    emit(PaimBackupProgress {
+    emit(BackupProgress {
         stage: "manifest".into(),
         percent: 3,
         status: "正在解析备份文件...".into(),
@@ -344,7 +307,7 @@ where
         log_info!("备份导入: 让位改名完成");
     }
 
-    let mut run = || -> Result<PaimImportSummary, String> {
+    let mut run = || -> Result<BackupImportSummary, String> {
         std::fs::create_dir_all(&data_dir).map_err(|e| format!("创建数据目录失败: {e}"))?;
         let images_dir = db::images_dir(app);
         std::fs::create_dir_all(&images_dir).map_err(|e| format!("创建图像目录失败: {e}"))?;
@@ -364,13 +327,13 @@ where
         log_info!(
             "备份导入: 完成 prompts={prompts} images={images} 缩略图失败={thumbnail_failures}"
         );
-        emit(PaimBackupProgress {
+        emit(BackupProgress {
             stage: "complete".into(),
             percent: 100,
             status: "导入完成！".into(),
             detail: None,
         });
-        Ok(PaimImportSummary {
+        Ok(BackupImportSummary {
             prompts,
             images,
             thumbnail_failures,
@@ -428,7 +391,7 @@ fn import_inner<F>(
     emit: &F,
 ) -> Result<(i64, i64, usize), String>
 where
-    F: Fn(PaimBackupProgress) + Sync,
+    F: Fn(BackupProgress) + Sync,
 {
     let image_prefix = format!("{root}{IMAGES_ENTRY_PREFIX}");
     let total_images = count_image_entries(archive, &image_prefix);
@@ -465,7 +428,7 @@ where
         let mut out = std::fs::File::create(&dest).map_err(io_err)?;
         std::io::copy(&mut entry, &mut out).map_err(io_err)?;
         copied += 1;
-        emit(PaimBackupProgress {
+        emit(BackupProgress {
             stage: "images".into(),
             percent: 8 + (copied * 47 / total_images.max(1)) as u32,
             status: format!("正在恢复图像文件... ({copied}/{total_images})"),
@@ -478,7 +441,7 @@ where
 
     // 换库文件并重开（55% -> 65%）：VACUUM INTO 产物是独立主库文件（无 WAL 伴生），
     // 直接覆盖 db_path；db::init 打开时自动跑迁移升级旧备份。
-    emit(PaimBackupProgress {
+    emit(BackupProgress {
         stage: "database".into(),
         percent: 60,
         status: "正在写入数据...".into(),
@@ -491,7 +454,7 @@ where
     let images = count(guard, "SELECT COUNT(*) FROM images")?;
 
     // 缩略图全量重建（65% -> 98%）；thumbnails 目录约定为数据目录下的 thumbnails/
-    emit(PaimBackupProgress {
+    emit(BackupProgress {
         stage: "thumbnails".into(),
         percent: 65,
         status: "正在重建缩略图...".into(),
@@ -503,7 +466,7 @@ where
         &thumbs_root,
         guard,
         |done, total, file_name| {
-            emit(PaimBackupProgress {
+            emit(BackupProgress {
                 stage: "thumbnails".into(),
                 percent: 65 + (done * 33 / total.max(1)) as u32,
                 status: format!("正在重建缩略图... ({done}/{total})"),
