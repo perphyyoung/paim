@@ -103,13 +103,14 @@
 
 ### 场景映射
 
-| 场景                        | 用法                                                               |
-| --------------------------- | ------------------------------------------------------------------ |
-| 标签筛选区                  | `interactive` + `count`，未选中 `checked` / 选中 `solid`           |
-| 标签管理页                  | `count` + `dimOnHover`，编辑（铅笔）/删除（✕）角按钮由外层容器提供 |
-| 提示词/图像详情标签         | `removable`（✕ 右上角 hover 显示），其余只读                       |
-| 卡片行                      | `size="sm"`，由 CardTagRow 接管测量与「+n」汇聚                    |
-| 全屏查看器 / 图像左下角覆盖 | `size="sm"` 只读                                                   |
+| 场景                        | 用法                                                                                                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 标签筛选区                  | `interactive` + `count`，未选中 `checked` / 选中 `solid`                                                                                             |
+| 标签管理页                  | `count` + `dimOnHover`，编辑（铅笔）/删除（✕）角按钮由外层容器提供                                                                                   |
+| 提示词/图像详情标签         | `removable`（✕ 右上角 hover 显示），其余只读                                                                                                         |
+| 卡片行                      | `size="sm"`，由 CardTagRow 接管测量与「+n」汇聚                                                                                                      |
+| 全屏查看器 / 图像左下角覆盖 | `size="sm"` 只读                                                                                                                                     |
+| 添加标签输入框              | 自动完成下拉 `TagAutocompleteInput`：前缀匹配、匹配片段加粗、↑↓ 导航、Enter 提交、Esc 只关下拉；`z-[125]`，配色同 bg-gray-800 / border-gray-700 浮层 |
 
 ## 四、Toast（全局提示）
 
@@ -164,6 +165,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | 100 | 批量操作工具条        | BatchActionBar                                                                                                               | 悬浮工具条，不挡操作                                         |
 | 110 | 确认弹窗              | ConfirmDialog / BatchActionBar 内确认                                                                                        | 最高确认层                                                   |
 | 120 | 备份导入 / 缩略图重建 | PmBackupImportModal / ThumbnailRebuildModal                                                                                  | 顶层模态                                                     |
+| 125 | 标签自动完成下拉      | TagAutocompleteInput（图像/提示词详情、BatchActionBar）                                                                      | Teleport + fixed 定位，须高于 z-120 顶层模态，低于 Toast     |
 | 130 | Toast                 | ToastHost                                                                                                                    | 永驻最高层；画面正中心；容器不拦截点击，toast 本体可点击关闭 |
 
 ### 组件内局部层级（非全屏，仅作用于自身 stacking context）
@@ -180,3 +182,4 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 ### 关联关系与注意
 
 - **同一层内场景互斥**时可共用 z 值（如 z-60 设置弹窗与右键遮罩、z-50 各业务弹窗），互不叠加出现，DOM 顺序即决定谁在上。
+- **弹窗内的浮层（如下拉候选）必须 Teleport 到 body 并用 fixed**：详情弹窗本体是滚动容器，绝对定位会被 `overflow` 裁剪；z 取 120 与 130 之间的空档，保证盖住顶层模态、又不遮 Toast。

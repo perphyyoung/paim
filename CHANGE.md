@@ -4,6 +4,17 @@
 
 ## v0.2.19
 
+### 新增：添加标签入口支持标签自动完成（对齐 pm）
+
+- 覆盖全部三处输入入口：图像详情 / 提示词详情的标签输入框、主页批量添加标签弹窗（`BatchActionBar`）。
+- 候选**不区分域**：图像域 + 提示词域标签合并去重后作为同一份候选（对齐 pm 行为）。新增模块级单例候选仓库 `src/features/tag/useTagCandidates.ts`（`mergeTagNames` / `ensureTagCandidates` / `addTagName` / `invalidateTagCandidates`）：主页 `loadTagFilter` 后并入本域数据零额外请求，缺失域按需惰性拉取（Promise 去重防并发），两域合并后按 `localeCompare("zh")` 升序；添加成功本地补名，标签管理保存 / 数据导入后整体失效。
+- 新增 `TagAutocompleteInput.vue`：下拉 `Teleport` 到 body + `fixed` 定位（z-[125]，规避弹窗 overflow 裁剪）；前缀匹配（大小写不敏感）+ 匹配片段加粗；↑↓ 导航（高亮滚动跟随）、Enter 命中候选即提交、未命中提交原输入、Esc 仅关下拉并阻断冒泡（不连带关详情）；blur 延迟 200ms + 复核焦点；候选项 `mousedown.prevent` 防 blur 抢先。输入值以组件内部镜像 ref 驱动（props 回传有重渲染延迟，直接依赖会首字符丢候选——排查修复过）。
+- 详情入口 `exclude` 排除当前条目已有标签；批量入口不排除（多条目标签状态不一）。`BatchActionBar` 新增可选 `suggestions` prop，通用组件不依赖业务；选中候选填入即提交，失败弹窗保持打开。`useTagAdd` / `useBatchTagAdd` / `useTagDragToCard` 添加成功后候选即时补名。缓存与加载路径详见 `缓存及加载优化设计.md` §1.5。
+
+### 重构：标签测试迁移
+
+- 标签用例从 `image_service.test.rs` / `prompt_service.test.rs` 迁至新建 `domain/tag_service.test.rs`（拒绝缺失实体、批量整批回滚、updated_at 刷新），并新增 count / tags_map 忽略回收站条目的用例。
+
 ### 重构：标签命令图像域/提示词域合一
 
 - 背景：写侧（标签管理）早已按 `TagDomain` 参数化统一，读侧仍散落在 `commands/image.rs` / `commands/prompt.rs` 手写 SQL，导致 `list_all_image_tags`（无 count）与 `get_prompt_tag_data`（groups + tags + count）命名/结构不对称，类型长出 `ImageTag` / `PromptTagItem` / `TagItem` 三套，前端两主页取数方式也不同构（图像侧前端自算计数）。

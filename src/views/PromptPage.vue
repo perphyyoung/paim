@@ -26,6 +26,12 @@ import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
+import {
+  ensureTagCandidates,
+  invalidateTagCandidates,
+  mergeTagNames,
+  tagCandidates,
+} from "@/features/tag/useTagCandidates";
 
 const { showToast } = useToast();
 
@@ -358,6 +364,12 @@ async function loadTagFilter() {
     tagGroups.value = data.groups ?? [];
     allTags.value = data.tags ?? [];
     tagNames.value = map;
+    // 候选仓库：并入本域数据 + 后台补齐另一域（自动完成的下拉数据源）
+    mergeTagNames(
+      "prompt",
+      allTags.value.map((t) => t.name),
+    );
+    void ensureTagCandidates();
   } catch {
     tagGroups.value = [];
     allTags.value = [];
@@ -379,6 +391,8 @@ function openTagManager() {
   tagManagerOpen.value = true;
 }
 function onTagManagerSaved() {
+  // 标签增删改名后候选整体失效，随 loadTagFilter 重建
+  invalidateTagCandidates();
   loadTagFilter();
 }
 
@@ -669,6 +683,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       ref="batchBarRef"
       :open="batchOpen"
       :count="selectedIds.size"
+      :suggestions="tagCandidates"
       @select-all="batchSelectAll"
       @invert="batchInvert"
       @add-tag="onBatchAddTag"

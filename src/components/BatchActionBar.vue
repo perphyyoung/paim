@@ -5,6 +5,7 @@
  * 仅负责 UI 展示与事件派发，业务逻辑由父组件处理；添加标签弹窗内置于此。
  */
 import { nextTick, ref, watch } from "vue";
+import TagAutocompleteInput from "@/features/tag/components/TagAutocompleteInput.vue";
 
 export type BatchAction = "selectAll" | "invert" | "addTag" | "favorite" | "delete" | "cancel";
 
@@ -14,9 +15,12 @@ const props = withDefaults(
     count: number;
     /** 需要显示的按钮，按此处顺序排列 */
     buttons?: BatchAction[];
+    /** 标签自动完成候选（两域合并去重，由父页注入；不传则退化为普通输入框） */
+    suggestions?: string[];
   }>(),
   {
     buttons: () => ["selectAll", "invert", "addTag", "favorite", "delete", "cancel"],
+    suggestions: () => [],
   },
 );
 
@@ -36,7 +40,7 @@ function has(action: BatchAction): boolean {
 // ---- 添加标签弹窗 ----
 const tagDlgOpen = ref(false);
 const tagInput = ref("");
-const tagInputEl = ref<HTMLInputElement | null>(null);
+const tagInputEl = ref<InstanceType<typeof TagAutocompleteInput> | null>(null);
 
 // 弹窗打开时自动聚焦输入框
 watch(tagDlgOpen, async (v) => {
@@ -59,6 +63,12 @@ function submitAddTag() {
     return;
   }
   emit("add-tag", tag);
+}
+
+// 自动完成选中候选：填入输入框并立即提交（复用父级流程，失败时弹窗保持打开）
+function pickTag(name: string) {
+  tagInput.value = name;
+  submitAddTag();
 }
 
 // 供父组件成功后关闭弹窗并清空输入
@@ -138,13 +148,14 @@ defineExpose({ closeTagDialog });
     >
       <div class="w-80 max-w-[90vw] rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800">
         <h3 class="text-center text-base font-semibold text-gray-100">批量添加标签</h3>
-        <input
+        <TagAutocompleteInput
           ref="tagInputEl"
           v-model="tagInput"
-          type="text"
+          :candidates="suggestions"
+          input-class="mt-3 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
           placeholder="标签名"
-          class="mt-3 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
-          @keydown.enter="submitAddTag"
+          @select="pickTag"
+          @submit="submitAddTag"
         />
         <div class="mt-3 grid grid-cols-2 gap-2">
           <button

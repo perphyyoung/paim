@@ -2,17 +2,25 @@
 
 ## 进行中
 
-### 1. 添加标签入口支持标签自动完成（对齐 pm）
+### 1. 添加标签入口支持标签自动完成（对齐 pm）—— 已实现，待人工验证
 
 **目标**：三处「添加标签」输入框支持候选下拉；候选不区分图像/提示词域，两域合并去重后共用。
 
+**实施结果**
+
+- [x] 新增 `src/features/tag/useTagCandidates.ts`：模块级单例候选仓库（`tagCandidates` / `mergeTagNames` / `ensureTagCandidates` / `addTagName` / `invalidateTagCandidates`），两域合并去重 + `localeCompare("zh")` 升序；主页 `loadTagFilter` 并入本域数据零额外请求，缺的域惰性拉取（Promise 去重）。
+- [x] 新增 `src/features/tag/components/TagAutocompleteInput.vue`：Teleport + fixed 定位（z-[125]）；前缀匹配（大小写不敏感）+ 匹配片段加粗；↑↓ 导航（滚动跟随）、Enter 命中→`select`（先同步 modelValue 再触发，父级提交）、未命中→`submit`、Esc 关下拉并阻断冒泡；blur 延迟 200ms + 复核焦点；候选 `mousedown.prevent` 防 blur 抢先；`focus` 事件供父级预热；`expose focus()` 供弹窗自动聚焦。
+- [x] 三入口接入：`ImageDetailModal` / `PromptDetailModal`（`exclude` 排除当前已有标签，选中/回车即 `addTag`）；`BatchActionBar` 新增可选 `suggestions` prop（通用组件不依赖业务），选中候选填入即提交，失败弹窗保持打开；批量不传 `exclude`。
+- [x] 候选刷新闭环：两主页 `loadTagFilter` → `mergeTagNames` + `ensureTagCandidates`；标签管理 `@saved` → `invalidateTagCandidates`；`useTagAdd` / `useBatchTagAdd` / `useTagDragToCard` 成功后 `addTagName` 本地补名。
+- [x] `vue-tsc` 通过；`pnpm format:ui` 已格式化。待人工验证交互。
+
 **现状入口（3 个）**
 
-| # | 入口 | 文件 | 现有实现 | 候选数据 |
-|---|---|---|---|---|
-| 1 | 图像详情·图像标签 | `ImageDetailModal.vue:764` | 裸 input + 添加按钮（`useTagAdd`） | 无，需惰性拉取 |
-| 2 | 提示词详情·提示词标签 | `PromptDetailModal.vue:742` | 同上 | `props.allTags`（仅本域，不够用） |
-| 3 | 批量添加标签弹窗 | `BatchActionBar.vue:139`（两主页共用） | 裸 input + 确定/取消，emit `add-tag` | 组件通用、无域信息 |
+| #   | 入口                  | 文件                                   | 现有实现                             | 候选数据                          |
+| --- | --------------------- | -------------------------------------- | ------------------------------------ | --------------------------------- |
+| 1   | 图像详情·图像标签     | `ImageDetailModal.vue:764`             | 裸 input + 添加按钮（`useTagAdd`）   | 无，需惰性拉取                    |
+| 2   | 提示词详情·提示词标签 | `PromptDetailModal.vue:742`            | 同上                                 | `props.allTags`（仅本域，不够用） |
+| 3   | 批量添加标签弹窗      | `BatchActionBar.vue:139`（两主页共用） | 裸 input + 确定/取消，emit `add-tag` | 组件通用、无域信息                |
 
 **新增文件**
 
@@ -51,14 +59,14 @@
 
 **背景（不对称现状）**
 
-| 能力 | 图像域 | 提示词域 | 对称 |
-|---|---|---|---|
-| 全量标签 | `list_all_image_tags` → `Vec<ImageTag>`（无 count） | `get_prompt_tag_data` → `{groups, tags[count]}` | ❌ |
-| 标签组 | `list_image_tag_groups` | `list_prompt_tag_groups` + `get_prompt_tag_data` 重复返回 | ❌ |
-| 单条目标签 | `get_image_tags(id)` | 无（前端用 map 反查） | ❌ |
-| 全量映射 | `get_image_tags_map` | `get_prompt_tags_map` | 重复 SQL |
-| 添加标签 | `add_image_tag` → `Vec<ImageTag>` | `add_prompt_tag` → `Vec<PromptTagItem>`（假值 group_id/count） | ❌ |
-| 标签管理 CRUD | `commands/image_tag.rs` → `tag_manager` | `commands/prompt_tag.rs` → `tag_manager` | ✅ 已对称 |
+| 能力          | 图像域                                              | 提示词域                                                       | 对称     |
+| ------------- | --------------------------------------------------- | -------------------------------------------------------------- | -------- |
+| 全量标签      | `list_all_image_tags` → `Vec<ImageTag>`（无 count） | `get_prompt_tag_data` → `{groups, tags[count]}`                | ❌        |
+| 标签组        | `list_image_tag_groups`                             | `list_prompt_tag_groups` + `get_prompt_tag_data` 重复返回      | ❌        |
+| 单条目标签    | `get_image_tags(id)`                                | 无（前端用 map 反查）                                          | ❌        |
+| 全量映射      | `get_image_tags_map`                                | `get_prompt_tags_map`                                          | 重复 SQL |
+| 添加标签      | `add_image_tag` → `Vec<ImageTag>`                   | `add_prompt_tag` → `Vec<PromptTagItem>`（假值 group_id/count） | ❌        |
+| 标签管理 CRUD | `commands/image_tag.rs` → `tag_manager`             | `commands/prompt_tag.rs` → `tag_manager`                       | ✅ 已对称 |
 
 根因：写侧（标签管理）已按 `TagDomain` 参数化统一，读侧仍散落在 `commands/image.rs` / `commands/prompt.rs` 手写 SQL；类型就近定义长出 `ImageTag` / `PromptTagItem` / `TagItem` 三套。
 
@@ -71,22 +79,22 @@
 
 **新命令清单（`src-tauri/src/commands/tag.rs`，14 个）**
 
-| 命令 | 取代 |
-|---|---|
-| `get_tag_data(domain)` → `TagData` | `get_prompt_tag_data`、`list_all_image_tags`、`list_image_tag_groups`、`list_prompt_tag_groups` |
-| `get_tags_map(domain)` → `Record<string, string[]>` | `get_image_tags_map`、`get_prompt_tags_map` |
-| `get_item_tags(domain, id)` → `TagLite[]` | `get_image_tags`（并补齐提示词侧） |
-| `add_tag(domain, id, name)` → `TagLite[]` | `add_image_tag`、`add_prompt_tag` |
-| `batch_add_tag(domain, ids, name)` | `batch_add_image_tag`、`batch_add_prompt_tag` |
-| `remove_tag(domain, id, tag_id)` | `remove_image_tag`、`remove_prompt_tag` |
-| `create_tag_group(domain, name, sort_order)` | `create_image_tag_group`、`create_prompt_tag_group` |
-| `update_tag_group(domain, id, name, sort_order)` | `update_*_tag_group` |
-| `delete_tag_group(domain, id)` | `delete_*_tag_group` |
-| `create_tag(domain, name, group_id)` | `create_image_tag`、`create_prompt_tag` |
-| `rename_tag(domain, id, name)` | `rename_image_tag`、`rename_prompt_tag` |
-| `delete_tag(domain, id)` | `delete_image_tag`、`delete_prompt_tag` |
-| `move_tag_to_group(domain, id, group_id)` | `move_*_tag_to_group` |
-| `pin_tag_group_to_top(domain, id)` | `pin_*_tag_group_to_top` |
+| 命令                                                | 取代                                                                                            |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `get_tag_data(domain)` → `TagData`                  | `get_prompt_tag_data`、`list_all_image_tags`、`list_image_tag_groups`、`list_prompt_tag_groups` |
+| `get_tags_map(domain)` → `Record<string, string[]>` | `get_image_tags_map`、`get_prompt_tags_map`                                                     |
+| `get_item_tags(domain, id)` → `TagLite[]`           | `get_image_tags`（并补齐提示词侧）                                                              |
+| `add_tag(domain, id, name)` → `TagLite[]`           | `add_image_tag`、`add_prompt_tag`                                                               |
+| `batch_add_tag(domain, ids, name)`                  | `batch_add_image_tag`、`batch_add_prompt_tag`                                                   |
+| `remove_tag(domain, id, tag_id)`                    | `remove_image_tag`、`remove_prompt_tag`                                                         |
+| `create_tag_group(domain, name, sort_order)`        | `create_image_tag_group`、`create_prompt_tag_group`                                             |
+| `update_tag_group(domain, id, name, sort_order)`    | `update_*_tag_group`                                                                            |
+| `delete_tag_group(domain, id)`                      | `delete_*_tag_group`                                                                            |
+| `create_tag(domain, name, group_id)`                | `create_image_tag`、`create_prompt_tag`                                                         |
+| `rename_tag(domain, id, name)`                      | `rename_image_tag`、`rename_prompt_tag`                                                         |
+| `delete_tag(domain, id)`                            | `delete_image_tag`、`delete_prompt_tag`                                                         |
+| `move_tag_to_group(domain, id, group_id)`           | `move_*_tag_to_group`                                                                           |
+| `pin_tag_group_to_top(domain, id)`                  | `pin_*_tag_group_to_top`                                                                        |
 
 **类型合一**
 

@@ -7,6 +7,7 @@
 import type { Ref } from "vue";
 import { commands } from "@/bindings";
 import { isSpecialTag } from "./specialTags";
+import { addTagName } from "./useTagCandidates";
 import type { ToastType } from "@/components/useToast";
 
 export interface UseBatchTagAddOptions {
@@ -35,6 +36,8 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
     }
     try {
       await commands.batchAddTag(domain, ids, name);
+      // 候选即时补名
+      addTagName(name);
       showToast(`已为 ${ids.length} ${noun}添加标签`, "success");
       exitBatch();
       await loadTagFilter();

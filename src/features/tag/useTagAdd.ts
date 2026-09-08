@@ -7,6 +7,7 @@
 import { ref, type Ref } from "vue";
 import type { TagLite } from "@/bindings";
 import { isSpecialTag } from "./specialTags";
+import { addTagName } from "./useTagCandidates";
 import type { ToastType } from "@/components/useToast";
 
 export interface UseTagAddOptions {
@@ -42,6 +43,8 @@ export function useTagAdd(options: UseTagAddOptions) {
       for (const t of added) {
         if (!tags.value.some((x) => x.id === t.id)) tags.value.push(t);
       }
+      // 候选即时补名：下次输入无需重新拉取即可提示新标签
+      addTagName(name);
       showToast(`已添加 ${added.length} 个标签`, "success");
       onAdded?.(added.length);
       return added.length;

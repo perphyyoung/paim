@@ -11,6 +11,7 @@
  */
 import { ref } from "vue";
 import { commands } from "@/bindings";
+import { addTagName } from "./useTagCandidates";
 import type { Ref } from "vue";
 import type { ToastType } from "@/components/useToast";
 
@@ -126,6 +127,8 @@ export function useCardTagAdd(options: UseCardTagAddOptions) {
     }
     try {
       await commands.addTag(domain, cardId, tagName);
+      // 候选即时补名
+      addTagName(tagName);
       tagNames.value = { ...tagNames.value, [cardId]: [...(existing ?? []), tagName] };
       showToast(`已添加标签「${tagName}」`, "success");
       await loadTagFilter();

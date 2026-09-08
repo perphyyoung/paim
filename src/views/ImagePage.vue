@@ -29,6 +29,12 @@ import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridS
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import type { ThumbnailEnsureFixed } from "@/features/image/api/thumbnails";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
+import {
+  ensureTagCandidates,
+  invalidateTagCandidates,
+  mergeTagNames,
+  tagCandidates,
+} from "@/features/tag/useTagCandidates";
 
 const { showToast } = useToast();
 const { openImageLocation } = useOpenImageLocation();
@@ -220,6 +226,8 @@ function openTagManager() {
   tagManagerOpen.value = true;
 }
 function onTagManagerSaved() {
+  // 标签增删改名后候选整体失效，随 loadTagFilter 重建
+  invalidateTagCandidates();
   loadTagFilter();
 }
 
@@ -239,6 +247,12 @@ async function loadTagFilter() {
     allTags.value = data.tags ?? [];
     tagGroups.value = data.groups ?? [];
     tagNames.value = map;
+    // 候选仓库：并入本域数据 + 后台补齐另一域（自动完成的下拉数据源）
+    mergeTagNames(
+      "image",
+      allTags.value.map((t) => t.name),
+    );
+    void ensureTagCandidates();
   } catch {
     allTags.value = [];
     tagGroups.value = [];
@@ -710,6 +724,7 @@ function onUploadDone() {
       ref="batchBarRef"
       :open="batchOpen"
       :count="selectedIds.size"
+      :suggestions="tagCandidates"
       @select-all="batchSelectAll"
       @invert="batchInvert"
       @add-tag="onBatchAddTag"

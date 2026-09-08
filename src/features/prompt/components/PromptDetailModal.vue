@@ -7,6 +7,8 @@ import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useItemToggle } from "@/composables/useItemToggle";
 import { useTagAdd } from "@/features/tag/useTagAdd";
+import TagAutocompleteInput from "@/features/tag/components/TagAutocompleteInput.vue";
+import { ensureTagCandidates, tagCandidates } from "@/features/tag/useTagCandidates";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import NavAndIndex from "@/components/NavAndIndex.vue";
@@ -739,11 +741,15 @@ async function onPickerImported() {
               </div>
               <div v-else class="mb-1 text-sm text-gray-500">暂无标签</div>
               <div class="flex gap-1">
-                <input
+                <TagAutocompleteInput
                   v-model="tagInput"
-                  class="min-w-0 flex-1 rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
+                  :candidates="tagCandidates"
+                  :exclude="tags.map((t) => t.name)"
+                  input-class="min-w-0 flex-1 rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
                   placeholder="回车添加单个标签"
-                  @keydown.enter.prevent="addTag"
+                  @focus="ensureTagCandidates"
+                  @select="addTag"
+                  @submit="addTag"
                 />
                 <button
                   type="button"
