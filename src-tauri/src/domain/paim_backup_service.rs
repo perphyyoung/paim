@@ -9,7 +9,6 @@
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
 use std::path::Path;
 use zip::ZipArchive;
 
@@ -212,14 +211,14 @@ where
             });
         })?;
 
-        // 4. 压缩 ZIP（80% -> 100%）
+        // 4. 压缩 ZIP（80% -> 99%，逐条目量化进度）
         emit(PaimBackupProgress {
             stage: "compress".into(),
             percent: 80,
             status: "正在压缩备份文件...".into(),
             detail: None,
         });
-        write_zip(&tmp, export_path)?;
+        write_zip(&tmp, export_path, emit)?;
 
         emit(PaimBackupProgress {
             stage: "complete".into(),
@@ -238,23 +237,50 @@ where
 }
 
 /// 把暂存目录压缩为 ZIP（条目名用正斜杠相对路径）。
-fn write_zip(staging: &Path, out_path: &Path) -> Result<(), String> {
+/// 进度逐条目量化（80 -> 99）；图像等已压缩格式用 Stored 直存——deflate 对它们
+/// 收益 <1% 却耗掉绝大部分 CPU；manifest/db 维持 deflate（文本与库文件压缩比可观）。
+fn write_zip<F>(staging: &Path, out_path: &Path, emit: &F) -> Result<(), String>
+where
+    F: Fn(PaimBackupProgress) + Sync,
+{
     let file = std::fs::File::create(out_path).map_err(|e| format!("创建备份文件失败: {e}"))?;
     let mut zw = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
+    let deflate = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
+    let store =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
     let mut files = Vec::new();
     collect_files(staging, staging, &mut files).map_err(|e| format!("扫描暂存目录失败: {e}"))?;
-    for (path, rel) in &files {
-        zw.start_file(rel.as_str(), options)
+    let total = files.len();
+    for (done, (path, rel)) in files.iter().enumerate() {
+        let options = if is_precompressed(rel) {
+            &store
+        } else {
+            &deflate
+        };
+        zw.start_file(rel.as_str(), *options)
             .map_err(|e| format!("写入 ZIP 条目 {rel} 失败: {e}"))?;
-        let data = std::fs::read(path).map_err(|e| format!("读取 {rel} 失败: {e}"))?;
-        zw.write_all(&data)
+        // 流式写入，避免单文件整读进内存
+        let src = std::fs::File::open(path).map_err(|e| format!("读取 {rel} 失败: {e}"))?;
+        let mut reader = std::io::BufReader::new(src);
+        std::io::copy(&mut reader, &mut zw)
             .map_err(|e| format!("写入 ZIP 条目 {rel} 失败: {e}"))?;
+        emit(PaimBackupProgress {
+            stage: "compress".into(),
+            percent: 80 + ((done + 1) * 19 / total.max(1)) as u32,
+            status: format!("正在压缩备份文件... ({}/{total})", done + 1),
+            detail: Some(rel.clone()),
+        });
     }
     zw.finish().map_err(|e| format!("完成 ZIP 写入失败: {e}"))?;
     Ok(())
+}
+
+/// 扩展名是否属于已压缩格式（再 deflate 无收益）。
+fn is_precompressed(name: &str) -> bool {
+    let lower = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    matches!(lower.as_str(), "jpg" | "jpeg" | "png" | "webp" | "gif")
 }
 
 /// 执行导入：整体替换当前数据（整目录让位 + 换库文件）。与 pm 导入同构。

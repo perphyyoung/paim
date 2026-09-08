@@ -1,4 +1,5 @@
 use super::*;
+use std::io::Write;
 use std::path::PathBuf;
 
 /// 建一个 paim 应用库（db::init 建 schema），灌入样例数据并 checkpoint 落盘。

@@ -11,6 +11,7 @@
 - 重构：ZIP 条目读取/安全路径/临时目录/递归复制/`open_app_db` 等从 `pm_backup_service` 抽到 `domain/backup_common.rs`，pm 与 paim 备份服务共用。
 - 前端：新增 `features/backup/api/paimBackup.ts`、`PaimBackupImportModal.vue`/`PaimBackupExportModal.vue`（进度事件 `paim-backup-progress`）；设置页「数据」区新增「导出备份」「paim 备份导入」两行（保存/打开对话框 + 确认弹窗，与 pm 导入同款交互）。
 - 测试：`paim_backup_service.test.rs` 覆盖导出→恢复往返（逐表一致、图像文件落位、包内条目齐备）、manifest 校验（appName/版本）、缺库文件报错。
+- 压缩体验优化：压缩阶段逐条目量化进度（80→99，含文件名 detail）；jpg/jpeg/png/webp/gif 按 Stored 直存（deflate 对已压缩格式收益 <1% 却耗 CPU），manifest/db 维持 deflate；大文件改 BufReader 流式写入避免整读进内存。
 
 ## v0.2.17
 
