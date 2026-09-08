@@ -81,7 +81,7 @@ fn import_with_rejects_undecodable_content() {
 }
 
 #[test]
-fn update_detail_rejects_empty_file_name() {
+fn update_detail_writes_file_name() {
     let (_dir, db) = setup_image_db();
     let conn = db.0.lock().unwrap();
     conn.execute(
@@ -91,18 +91,7 @@ fn update_detail_rejects_empty_file_name() {
     )
     .unwrap();
 
-    let err = update_detail(&conn, "i1", Some("   "), None, None, None).unwrap_err();
-    assert!(err.to_string().contains("文件名不能为空"), "实际：{err}");
-
-    // 校验失败不落库，原值保持
-    let name: String = conn
-        .query_row("SELECT file_name FROM images WHERE id = 'i1'", [], |r| {
-            r.get(0)
-        })
-        .unwrap();
-    assert_eq!(name, "a.png");
-
-    // 正常更新
+    // 文件名随传入更新；非空校验已上移前端，后端只负责写
     let upd = update_detail(&conn, "i1", Some("b.png"), None, None, None)
         .unwrap()
         .expect("row must exist");

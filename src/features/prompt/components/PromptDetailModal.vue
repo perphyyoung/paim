@@ -186,14 +186,14 @@ async function saveFields() {
     showToast("内容不能为空", "warning");
     return;
   }
-  // 变更检测：与后端 update_detail 的逐字段比较对齐（后端对标题/内容做 trim）
-  // 无改动直接退出编辑态，不发起命令——避免空保存写库并把该提示词顶到列表最前
-  const unchanged =
-    title.value.trim() === (p.title ?? "") &&
-    content.value.trim() === (p.content ?? "") &&
-    contentTranslate.value === (p.content_translate ?? "") &&
-    note.value === (p.note ?? "");
-  if (unchanged) {
+  // 逐字段脏检查：只把真正变化的字段传给后端，未变化的传 null（后端不写）
+  // 注意用 === null 判断，不能用真值判断：清空备注/翻译时传的是 ""，是有意要写的
+  const nextTitle = title.value.trim() === (p.title ?? "") ? null : title.value;
+  const nextContent = content.value.trim() === (p.content ?? "") ? null : content.value;
+  const nextTranslate =
+    contentTranslate.value === (p.content_translate ?? "") ? null : contentTranslate.value;
+  const nextNote = note.value === (p.note ?? "") ? null : note.value;
+  if (nextTitle === null && nextContent === null && nextTranslate === null && nextNote === null) {
     edit.value = false;
     showToast("没有改动", "info");
     return;
@@ -201,10 +201,10 @@ async function saveFields() {
   try {
     const upd = await commands.updatePromptDetail(
       p.id,
-      title.value,
-      content.value,
-      contentTranslate.value,
-      note.value,
+      nextTitle,
+      nextContent,
+      nextTranslate,
+      nextNote,
       null,
       null,
     );

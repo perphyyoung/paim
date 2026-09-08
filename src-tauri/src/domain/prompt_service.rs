@@ -157,13 +157,9 @@ pub fn empty_trash(conn: &Connection) -> Result<usize> {
     Ok(count)
 }
 
-/// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。仅更新传入 Some 的值；
-/// 标题/内容必填（修改不能为空；新建时标题隐式取 id，见 create），
-/// 翻译/备注允许清空；校验失败返回明确错误，不再静默跳过。
-///
-/// **变更检测**（2026-09-07）：先读当前行逐字段比较，只为真正变化的字段写库，全部相等则
-/// 完全不写。原因：SQLite 对同值 UPDATE 不跳过（仍重写行），而 `prompts` 列表按
-/// `updated_at DESC` 排序（见 list），空保存会把记录顶到最前。
+/// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。仅更新传入 `Some` 的字段，未传的字段不动。
+/// 非空校验（标题/内容必填）与逐字段脏检查由前端负责，前端只把真正变化的字段传进来；后端不再校验、不再比较。
+/// `Some("")` 表示显式清空（翻译/备注允许），与「不更新」的 `None` 语义区分。
 pub fn update_detail(
     conn: &Connection,
     id: &str,
@@ -174,66 +170,36 @@ pub fn update_detail(
     is_favorite: Option<bool>,
     is_safe: Option<bool>,
 ) -> std::result::Result<Option<Prompt>, AppError> {
-    if let Some(v) = &title {
-        if v.trim().is_empty() {
-            return Err(AppError::Message("标题不能为空".into()));
-        }
-    }
-    if let Some(v) = &content {
-        if v.trim().is_empty() {
-            return Err(AppError::Message("内容不能为空".into()));
-        }
-    }
-
-    // 当前行：既用于比较，也是「无变化」时直接返回的基线（替代原先结尾那次读）
-    let Some(cur) = get_by_id(conn, id)? else {
-        return Ok(None);
-    };
-
     let mut sets: Vec<String> = Vec::new();
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     if let Some(v) = title {
-        let v = v.trim().to_string();
-        if v != cur.title {
-            sets.push("title = ?".into());
-            params.push(Box::new(v));
-        }
+        sets.push("title = ?".into());
+        params.push(Box::new(v.trim().to_string()));
     }
     if let Some(v) = content {
-        let v = v.trim().to_string();
-        if v != cur.content {
-            sets.push("content = ?".into());
-            params.push(Box::new(v));
-        }
+        sets.push("content = ?".into());
+        params.push(Box::new(v.trim().to_string()));
     }
     if let Some(v) = content_translate {
-        if v != cur.content_translate {
-            sets.push("content_translate = ?".into());
-            params.push(Box::new(v));
-        }
+        sets.push("content_translate = ?".into());
+        params.push(Box::new(v));
     }
     if let Some(v) = note {
-        if v != cur.note {
-            sets.push("note = ?".into());
-            params.push(Box::new(v));
-        }
+        sets.push("note = ?".into());
+        params.push(Box::new(v));
     }
     if let Some(v) = is_favorite {
-        if v != cur.is_favorite {
-            sets.push("is_favorite = ?".into());
-            params.push(Box::new(v as i64));
-        }
+        sets.push("is_favorite = ?".into());
+        params.push(Box::new(v as i64));
     }
     if let Some(v) = is_safe {
-        if v != cur.is_safe {
-            sets.push("is_safe = ?".into());
-            params.push(Box::new(v as i64));
-        }
+        sets.push("is_safe = ?".into());
+        params.push(Box::new(v as i64));
     }
 
-    // 无任何变化：一次写都不做，updated_at 保持不变
+    // 没有任何字段需要更新：不写库，updated_at 保持不变
     if sets.is_empty() {
-        return Ok(Some(cur));
+        return Ok(get_by_id(conn, id)?);
     }
 
     sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')".into());

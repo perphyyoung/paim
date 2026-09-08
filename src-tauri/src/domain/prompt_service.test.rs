@@ -1,4 +1,4 @@
-//! 提示词领域服务单元测试：详情编辑校验（标题/内容必填，不允许置空）。
+//! 提示词领域服务单元测试：详情更新（只写传入字段，未传字段保持不变）。
 
 use super::{set_prompt_first_image, update_detail};
 use crate::infra::db;
@@ -8,44 +8,6 @@ fn setup() -> (std::path::PathBuf, db::BkDb) {
     let dir = db::test_temp_dir("prompt-service");
     let db = db::init(dir.join("paim.db")).expect("init test db");
     (dir, db)
-}
-
-#[test]
-fn update_detail_rejects_empty_title_and_content() {
-    let (_dir, db) = setup();
-    let conn = db.0.lock().unwrap();
-    conn.execute(
-        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
-        [],
-    )
-    .unwrap();
-
-    let err = update_detail(
-        &conn,
-        "p1",
-        Some("   ".into()),
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap_err();
-    assert!(err.to_string().contains("标题不能为空"), "实际：{err}");
-
-    let err =
-        update_detail(&conn, "p1", None, Some("  ".into()), None, None, None, None).unwrap_err();
-    assert!(err.to_string().contains("内容不能为空"), "实际：{err}");
-
-    // 校验失败不落库，原值保持
-    let (title, content): (String, String) = conn
-        .query_row(
-            "SELECT title, content FROM prompts WHERE id = 'p1'",
-            [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .unwrap();
-    assert_eq!((title.as_str(), content.as_str()), ("t", "c"));
 }
 
 #[test]
@@ -79,7 +41,7 @@ fn update_detail_writes_fields_and_allows_clearing_translate_note() {
 }
 
 #[test]
-fn update_detail_no_change_does_not_write() {
+fn update_detail_only_writes_provided_fields() {
     let (_dir, db) = setup();
     let conn = db.0.lock().unwrap();
     conn.execute(
@@ -88,25 +50,45 @@ fn update_detail_no_change_does_not_write() {
         [],
     )
     .unwrap();
-    let before = super::get_by_id(&conn, "p1")
-        .unwrap()
-        .expect("row must exist")
-        .updated_at;
 
-    // 完全相同的字段：不应写库，updated_at 保持不变（否则列表排序会被顶到最前）
+    // 只传标题：其余字段必须原样保留（未传 = 不更新）
     let upd = update_detail(
         &conn,
         "p1",
-        Some("t".into()),
-        Some("c".into()),
-        Some("tr".into()),
-        Some("n".into()),
+        Some("新标题".into()),
+        None,
+        None,
+        None,
         None,
         None,
     )
     .unwrap()
     .expect("row must exist");
-    assert_eq!(upd.updated_at, before, "未改动不应刷新 updated_at");
+    assert_eq!(upd.title, "新标题");
+    assert_eq!(upd.content, "c", "未传的 content 不应被改动");
+    assert_eq!(upd.content_translate, "tr", "未传的翻译不应被改动");
+    assert_eq!(upd.note, "n", "未传的备注不应被改动");
+}
+
+#[test]
+fn update_detail_all_none_does_not_write() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    let before = super::get_by_id(&conn, "p1")
+        .unwrap()
+        .expect("row must exist")
+        .updated_at;
+
+    // 全 None：不写库，updated_at 保持不变
+    let upd = update_detail(&conn, "p1", None, None, None, None, None, None)
+        .unwrap()
+        .expect("row must exist");
+    assert_eq!(upd.updated_at, before, "全 None 不应刷新 updated_at");
 }
 
 use super::{add_prompt_tag, batch_add_prompt_tag};

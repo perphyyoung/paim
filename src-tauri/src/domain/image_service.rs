@@ -458,11 +458,9 @@ pub fn remove_image_tag(conn: &Connection, id: &str, tag_id: i64) -> Result<()> 
     Ok(())
 }
 
-/// 更新图像详情字段（文件名、备注、收藏、安全评级）。仅更新传入非默认值的字段。
-/// 文件名必填（修改不能为空，与提示词标题/内容规则一致），备注允许清空；校验失败返回明确错误，不再静默跳过。
-///
-/// **变更检测**（2026-09-07）：先读当前行逐字段比较，只为真正变化的字段写库，全部相等则完全不写
-/// （含 `updated_at`）。此前即使所有字段都传 None 也会执行一次 UPDATE 刷新 updated_at。
+/// 更新图像详情字段（文件名、备注、收藏、安全评级）。仅更新传入 `Some` 的字段，未传的字段不动。
+/// 非空校验（文件名必填）与逐字段脏检查由前端负责，前端只把真正变化的字段传进来；后端不再校验、不再比较。
+/// `Some("")` 表示显式清空（备注允许），与「不更新」的 `None` 语义区分。
 pub fn update_detail(
     conn: &Connection,
     id: &str,
@@ -471,48 +469,28 @@ pub fn update_detail(
     is_favorite: Option<bool>,
     is_safe: Option<bool>,
 ) -> std::result::Result<Option<Image>, AppError> {
-    if let Some(v) = file_name {
-        if v.trim().is_empty() {
-            return Err(AppError::Message("文件名不能为空".into()));
-        }
-    }
-
-    // 当前行：既用于比较，也是「无变化」时直接返回的基线
-    let Some(cur) = get_by_id(conn, id)? else {
-        return Ok(None);
-    };
-
     let mut sets: Vec<String> = Vec::new();
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     if let Some(v) = file_name {
-        let v = v.trim();
-        if v != cur.file_name {
-            sets.push("file_name = ?".into());
-            params.push(Box::new(v.to_string()));
-        }
+        sets.push("file_name = ?".into());
+        params.push(Box::new(v.trim().to_string()));
     }
     if let Some(v) = note {
-        if v != cur.note {
-            sets.push("note = ?".into());
-            params.push(Box::new(v.to_string()));
-        }
+        sets.push("note = ?".into());
+        params.push(Box::new(v.to_string()));
     }
     if let Some(v) = is_favorite {
-        if v != cur.is_favorite {
-            sets.push("is_favorite = ?".into());
-            params.push(Box::new(if v { 1 } else { 0 }));
-        }
+        sets.push("is_favorite = ?".into());
+        params.push(Box::new(if v { 1 } else { 0 }));
     }
     if let Some(v) = is_safe {
-        if v != cur.is_safe {
-            sets.push("is_safe = ?".into());
-            params.push(Box::new(if v { 1 } else { 0 }));
-        }
+        sets.push("is_safe = ?".into());
+        params.push(Box::new(if v { 1 } else { 0 }));
     }
 
-    // 无任何变化：一次写都不做，updated_at 保持不变
+    // 没有任何字段需要更新：不写库，updated_at 保持不变
     if sets.is_empty() {
-        return Ok(Some(cur));
+        return Ok(get_by_id(conn, id)?);
     }
 
     sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')".into());

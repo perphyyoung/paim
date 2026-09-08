@@ -19,11 +19,11 @@
 ### 修复：详情弹窗「未改动也写库」
 
 - 现象：详情弹窗进入编辑态后未改动直接保存，仍会写库；`prompts` 列表按 `updated_at DESC` 排序，导致该记录被顶到最前。
-- 前端（A）：`PromptDetailModal.vue` / `ImageDetailModal.vue` 的 `saveFields()` 增加变更检测，与后端逐字段比较（后端对标题/内容/文件名做 trim），无改动则直接退出编辑态并提示「没有改动」，不发起命令。
-- 后端（B）：`prompt_service::update_detail` 与 `image_service::update_detail` 先读当前行逐字段比较，只为真正变化的字段拼**一条** UPDATE，`updated_at` 随变化写入；全部相等则一次都不写（此前 `image_service` 即使所有字段传 None 也会写 `updated_at`）。
-  - `prompt_service` 顺带把「每字段一条 UPDATE + 一条 updated_at」合并为单条语句，去掉了 `unchecked_transaction`（单语句自带原子性）。
-- 净效果：提示词空保存由 5 次 UPDATE 降为 0 次；改动 1 个字段由 5 次 UPDATE 降为 1 次（多一次主键读用于比较，远低于写成本）。
-- 测试：`prompt_service.test.rs` 新增 `update_detail_no_change_does_not_write`，断言未改动时 `updated_at` 不变。
+- 前端：`PromptDetailModal.vue` / `ImageDetailModal.vue` 的 `saveFields()` 做**逐字段**脏检查（标题/内容/文件名按 trim 后比对），只把真正变化的字段传给后端，未变化的传 `null`；全部未变则直接退出编辑态并提示「没有改动」，不发起命令。非空校验也保留在前端（标题/内容/文件名必填）。
+- 后端：`prompt_service::update_detail` 与 `image_service::update_detail` 只按传入的 `Some` 字段拼**一条** UPDATE，未传的字段不动；去掉了「先读当前行再逐字段比较」的逻辑与后端非空校验，改为「前端判定、后端直写」。全部字段传 `None` 时不写库、`updated_at` 不变。
+  - `Some("")` 表示显式清空（翻译/备注允许），与「不更新」的 `None` 语义区分；因此前端判定必须用 `=== null`，不能用真值判断，否则清空备注会被误判为无改动。
+- 净效果：提示词空保存 0 次写、0 次读；改动 1 个字段由 5 次 UPDATE 降为 1 次 UPDATE + 1 次回读（省掉比较用的预读）。
+- 测试：`prompt_service.test.rs` 以 `update_detail_only_writes_provided_fields`（只传标题则其余字段不变）与 `update_detail_all_none_does_not_write`（全 `None` 不刷新 `updated_at`）取代原 `update_detail_no_change_does_not_write`；删除依赖后端校验的 `update_detail_rejects_empty_title_and_content` 与 `update_detail_rejects_empty_file_name`。
 
 ## v0.2.14
 
