@@ -336,7 +336,7 @@ fn replace_tables(conn: &Connection, pm_db: &Path) -> Result<(i64, i64), String>
              DELETE FROM db_version;",
         )?;
         // prompts / images 是 relations 的父表；foreign_keys=ON 下必须先插入父表，
-        // 故在 REPLACE_SQL 之前写入。其 created_at/updated_at 经 normalize_ts 规整为 ISO 8601 UTC，
+        // 故在 REPLACE_SQL 之前写入。其 created_at/updated_at/deleted_at 经 normalize_ts 规整为 ISO 8601 UTC，
         // 故不走整表拷贝，改为 Rust 侧逐行读取转换后写入（pm_import 此时仍挂载）
         import_prompts(conn)?;
         import_images(conn)?;
@@ -361,7 +361,7 @@ fn replace_tables(conn: &Connection, pm_db: &Path) -> Result<(i64, i64), String>
 }
 
 /// 从 pm_import 灌入全部业务表（显式列名；两边列结构一致）。
-/// 注意：prompts / images 的时间字段在此不走整表拷贝——它们的 created_at/updated_at 可能为非规范的
+/// 注意：prompts / images 的时间字段在此不走整表拷贝——它们的 created_at/updated_at/deleted_at 可能为非规范的
 /// 斜杠本地格式（pm 早期备份），需经 `normalize_ts` 规整为 ISO 8601 UTC 后再写入，故由
 /// `import_prompts` / `import_images` 在 Rust 侧逐行转换，不在此批量 INSERT...SELECT 中处理。
 const REPLACE_SQL: &str = "
@@ -383,7 +383,7 @@ INSERT INTO db_version (version, applied_at)
   SELECT version, applied_at FROM pm_import.db_version;
 ";
 
-/// 从 pm_import 灌入 prompts，并把 created_at/updated_at 规整为 ISO 8601 UTC。
+/// 从 pm_import 灌入 prompts，并把 created_at/updated_at/deleted_at 规整为 ISO 8601 UTC。
 fn import_prompts(conn: &Connection) -> rusqlite::Result<()> {
     let mut stmt = conn.prepare(
         "SELECT id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note FROM pm_import.prompts",
@@ -429,7 +429,7 @@ fn import_prompts(conn: &Connection) -> rusqlite::Result<()> {
             normalize_ts(&ca),
             normalize_ts(&ua),
             del,
-            da,
+            da.as_deref().map(normalize_ts),
             fav,
             safe,
             note
@@ -438,7 +438,7 @@ fn import_prompts(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// 从 pm_import 灌入 images，并把 created_at/updated_at 规整为 ISO 8601 UTC。
+/// 从 pm_import 灌入 images，并把 created_at/updated_at/deleted_at 规整为 ISO 8601 UTC。
 fn import_images(conn: &Connection) -> rusqlite::Result<()> {
     let mut stmt = conn.prepare(
         "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note FROM pm_import.images",
@@ -519,7 +519,7 @@ fn import_images(conn: &Connection) -> rusqlite::Result<()> {
             file_size.unwrap_or(0),
             gen,
             del,
-            da,
+            da.as_deref().map(normalize_ts),
             fav,
             safe,
             normalize_ts(&ca),

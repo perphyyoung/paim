@@ -3,6 +3,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, type Image } from "@/bindings";
+import { toTimestamp } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
 
 const props = defineProps<{
@@ -40,7 +41,7 @@ const sortedImages = computed(() => {
   let cmp: (a: Image, b: Image) => number;
   switch (sortBy.value) {
     case "createdAt":
-      cmp = (a, b) => a.created_at.localeCompare(b.created_at);
+      cmp = (a, b) => toTimestamp(a.created_at) - toTimestamp(b.created_at);
       break;
     case "fileName":
       cmp = (a, b) => a.file_name.localeCompare(b.file_name);
@@ -55,7 +56,7 @@ const sortedImages = computed(() => {
       cmp = (a, b) => (a.height ?? 0) - (b.height ?? 0);
       break;
     default:
-      cmp = (a, b) => a.updated_at.localeCompare(b.updated_at);
+      cmp = (a, b) => toTimestamp(a.updated_at) - toTimestamp(b.updated_at);
   }
   arr.sort(cmp);
   return sortDesc.value ? arr.reverse() : arr;

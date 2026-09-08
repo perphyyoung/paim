@@ -4,7 +4,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, type Image, type ImageTag, type TagGroup } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
-import { formatLocalTime } from "@/utils/date";
+import { formatLocalTime, toTimestamp } from "@/utils/date";
 import { matchesKeyword } from "@/utils/keywordMatch";
 import { useGridColumns } from "@/utils/gridColumns";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
@@ -101,10 +101,10 @@ const sortedImages = computed(() => {
       cmp = (a, b) => (a.height ?? 0) - (b.height ?? 0);
       break;
     case "updatedAt":
-      cmp = (a, b) => a.updated_at.localeCompare(b.updated_at);
+      cmp = (a, b) => toTimestamp(a.updated_at) - toTimestamp(b.updated_at);
       break;
     default: // createdAt
-      cmp = (a, b) => a.created_at.localeCompare(b.created_at);
+      cmp = (a, b) => toTimestamp(a.created_at) - toTimestamp(b.created_at);
   }
   arr.sort(cmp);
   return sortDesc.value ? arr.reverse() : arr;

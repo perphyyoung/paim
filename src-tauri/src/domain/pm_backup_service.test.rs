@@ -49,7 +49,7 @@ fn build_pm_db_bytes(dir: &Path) -> Vec<u8> {
             "INSERT INTO prompts (id, title, content, created_at, updated_at, is_favorite)
              VALUES ('pmt_20260607003952_2cj6k', 't1', 'c1', '2026-06-07T00:39:52.000Z', '2026-06-07T00:39:52.000Z', 1),
                     ('pmt_trash_1', 't2', 'c2', '2026-06-08T00:00:00.000Z', '2026-06-08T00:00:00.000Z', 0);
-             UPDATE prompts SET is_deleted = 1, deleted_at = '2026-06-09T00:00:00.000Z' WHERE id = 'pmt_trash_1';
+             UPDATE prompts SET is_deleted = 1, deleted_at = '2026/6/9 08:00:00' WHERE id = 'pmt_trash_1';
              INSERT INTO images (id, file_name, stored_name, relative_path, md5, width, height, file_size)
              VALUES ('img_20260607003952_2cj6k', 'a.png', 'img_20260607003952_2cj6k.png',
                      'images/202606/img_20260607003952_2cj6k.png', 'abc123', 10, 10, 100);
@@ -154,6 +154,17 @@ fn replace_tables_copies_all_rows_and_wipes_old() {
         count("SELECT COUNT(*) FROM prompts WHERE is_deleted = 1"),
         1,
         "回收站数据应一并导入"
+    );
+    let deleted_at: String = conn
+        .query_row(
+            "SELECT deleted_at FROM prompts WHERE id = 'pmt_trash_1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        deleted_at.starts_with("2026-06-09T") && deleted_at.ends_with('Z'),
+        "deleted_at 斜杠格式应在导入时规整为 ISO 8601 UTC（回收站按它排序）: {deleted_at}"
     );
     assert_eq!(
         count("SELECT COUNT(*) FROM prompt_tag_relations WHERE tag_id = 1"),

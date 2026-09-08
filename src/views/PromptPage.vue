@@ -3,7 +3,7 @@ import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, type Prompt, type PromptTagItem, type TagGroup } from "@/bindings";
 import { useToast } from "@/components/useToast";
-import { formatLocalTime } from "@/utils/date";
+import { formatLocalTime, toTimestamp } from "@/utils/date";
 import { matchesKeyword } from "@/utils/keywordMatch";
 import { useGridColumns } from "@/utils/gridColumns";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
@@ -169,22 +169,18 @@ const sortedPrompts = computed(() => {
   }
   if (!arr.length) return arr;
   let cmp: (a: Prompt, b: Prompt) => number;
-  // 时间类排序须按时间戳比较：updated_at/created_at 库中可能并存 ISO 8601（paim 原生 / pm 新版）
-  // 与本地斜杠（pm 早期备份）两种格式，直接字符串 localeCompare 会因格式前缀（'-' < '/'）切成两个
-  // 互不相交的区间导致排序错乱；统一转成时间戳再比较可跨格式正确排序。
-  const ts = (s: string) => {
-    const t = new Date(s).getTime();
-    return Number.isNaN(t) ? 0 : t;
-  };
+  // 时间类排序须按时间戳比较（toTimestamp）：updated_at/created_at 库中可能并存
+  // ISO 8601（paim 原生 / pm 新版）与本地斜杠（pm 早期备份）两种格式，
+  // 直接字符串 localeCompare 会因格式前缀（'-' < '/'）切成两个互不相交的区间导致排序错乱。
   switch (sortBy.value) {
     case "createdAt":
-      cmp = (a, b) => ts(a.created_at) - ts(b.created_at);
+      cmp = (a, b) => toTimestamp(a.created_at) - toTimestamp(b.created_at);
       break;
     case "title":
       cmp = (a, b) => a.title.localeCompare(b.title);
       break;
     default:
-      cmp = (a, b) => ts(a.updated_at) - ts(b.updated_at);
+      cmp = (a, b) => toTimestamp(a.updated_at) - toTimestamp(b.updated_at);
   }
   arr.sort(cmp);
   return sortDesc.value ? arr.slice().reverse() : arr;
