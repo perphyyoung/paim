@@ -3,11 +3,11 @@
 //! 命令层见 `commands::image`。
 
 use crate::domain::image_ops::{make_center_thumb, open_image};
+use crate::domain::tag_manager::{tags_by_owner, TagDomain};
 use crate::infra::error::AppError;
 use image::GenericImageView;
 use rusqlite::{Connection, OptionalExtension, Result};
 use serde::Serialize;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -773,40 +773,12 @@ pub fn list_related_prompts(conn: &Connection, image_id: &str) -> Result<Vec<Lin
         })
     })?;
     let mut list: Vec<LinkedPrompt> = rows.collect::<Result<_>>()?;
-    fill_related_prompt_tags(conn, &mut list)?;
-    Ok(list)
-}
-
-/// 批量查标签并原地回填：一次查询覆盖全部提示词，避免循环内 prepare 的 N+1。
-fn fill_related_prompt_tags(conn: &Connection, prompts: &mut [LinkedPrompt]) -> Result<()> {
-    if prompts.is_empty() {
-        return Ok(());
-    }
-    let ids: Vec<&str> = prompts.iter().map(|p| p.id.as_str()).collect();
-    let placeholders = std::iter::repeat("?")
-        .take(ids.len())
-        .collect::<Vec<_>>()
-        .join(",");
-    let sql = format!(
-        "SELECT ptr.prompt_id, pt.name
-         FROM prompt_tag_relations ptr
-         JOIN prompt_tags pt ON pt.id = ptr.tag_id
-         WHERE ptr.prompt_id IN ({placeholders})
-         ORDER BY pt.name"
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(ids), |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-    })?;
-    let mut tags: HashMap<String, Vec<String>> = HashMap::new();
-    for row in rows {
-        let (prompt_id, name) = row?;
-        tags.entry(prompt_id).or_default().push(name);
-    }
-    for p in prompts.iter_mut() {
+    let ids: Vec<&str> = list.iter().map(|p| p.id.as_str()).collect();
+    let mut tags = tags_by_owner(conn, TagDomain::Prompt, &ids)?;
+    for p in list.iter_mut() {
         p.tags = tags.remove(&p.id).unwrap_or_default();
     }
-    Ok(())
+    Ok(list)
 }
 
 #[cfg(test)]

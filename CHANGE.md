@@ -29,8 +29,9 @@
 
 - 现象：切换提示词详情条目时，左栏关联图像每次都重新读库；后端取关联数据还在循环里逐条查标签，关联 N 项就是 N+1 次查询。
 - 前端：新增实体级缓存 `features/prompt/api/relatedImagesCache.ts`（关联图像）与 `features/image/api/detailCache.ts`（关联提示词 / 原图路径 / 标签），挂在模块作用域——详情弹窗被父级 `v-if` 强制卸载，组件内 ref 存不住。命中缓存直接渲染、不进 loading；切换后预取相邻项，连续翻页几乎全命中。失效只在数据真的变化时做：关联增删、设为首图、替换图像、标签增删、安全评级联动。
-- 后端：`prompt_service::list_related_images` 与新增的 `image_service::list_related_prompts` 把标签查询移出循环，改一次 `IN (...)` 批量查后按 id 分组回填（N+1 条 SQL 降为 2 条）；`get_image_related_prompts` 的查询逻辑随之从命令层下沉到领域层，命令层只留薄壳。
+- 后端：`prompt_service::list_related_images` 与 `image_service::list_related_prompts` 把标签查询移出循环，统一走 `domain/tag_manager.rs::tags_by_owner`（一次 `IN (...)` 批量查后按 id 分组回填，N+1 条 SQL 降为 2 条）；`get_image_related_prompts` 的查询逻辑随之从命令层下沉到领域层，命令层只留薄壳。
 - `list_related_images` 拆出 `list_related_images_with`（数据目录由调用方注入），便于脱离 Tauri 单测。
+- 前端两处缓存逻辑抽成 `src/utils/entityCache.ts` 的 `createEntityCache` 工厂（模块级 Map + in-flight 去重），`relatedImagesCache` 与 `detailCache` 的三个缓存只是一行实例化。
 - 测试：两侧各补一条「多项关联 + 不同标签」用例，断言标签按名称升序且归属各自条目、不串到邻居。
 
 ## v0.2.14

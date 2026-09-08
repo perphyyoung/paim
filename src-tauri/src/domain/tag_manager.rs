@@ -2,8 +2,9 @@
 //! 表名前缀由 TagDomain 决定（白名单映射，非外部输入，无注入风险），
 //! 供图像标签管理与提示词标签管理共用。
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, Result as RusqliteResult};
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// 标签所属域：决定表名前缀（image_/prompt_）与文案。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +80,13 @@ impl TagDomain {
             TagDomain::Prompt => "prompt_tag_relations",
         }
     }
+    /// 关联表中指向实体 id 的列名（image_id / prompt_id）。
+    fn owner_column(self) -> &'static str {
+        match self {
+            TagDomain::Image => "image_id",
+            TagDomain::Prompt => "prompt_id",
+        }
+    }
     /// 面向用户的对象名，用于文案（如「图像标签管理」）。
     pub fn label(self) -> &'static str {
         match self {
@@ -86,6 +94,42 @@ impl TagDomain {
             TagDomain::Prompt => "提示词",
         }
     }
+}
+
+/// 批量查询一批实体的标签，按实体 id 分组返回（各组按标签名升序）。
+/// 一次 `IN (...)` 覆盖全部 id，供详情类列表回填使用，避免循环内 prepare 的 N+1。
+pub fn tags_by_owner(
+    conn: &Connection,
+    domain: TagDomain,
+    ids: &[&str],
+) -> RusqliteResult<HashMap<String, Vec<String>>> {
+    let mut out: HashMap<String, Vec<String>> = HashMap::new();
+    if ids.is_empty() {
+        return Ok(out);
+    }
+    let owner = domain.owner_column();
+    let placeholders = std::iter::repeat("?")
+        .take(ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT r.{owner}, t.name
+         FROM {rel} r
+         JOIN {tags} t ON t.id = r.tag_id
+         WHERE r.{owner} IN ({placeholders})
+         ORDER BY t.name",
+        rel = domain.relations_table(),
+        tags = domain.tags_table(),
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (owner_id, name) = row?;
+        out.entry(owner_id).or_default().push(name);
+    }
+    Ok(out)
 }
 
 /// 标签管理页中的标签（含所属组与关联对象数）。

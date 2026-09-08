@@ -19,11 +19,7 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
 import { markPageStale } from "@/utils/crossPageCache";
-import {
-  fetchRelatedImages,
-  getCachedRelatedImages,
-  invalidateRelatedImages,
-} from "@/features/prompt/api/relatedImagesCache";
+import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
 
 interface Prompt {
   id: string;
@@ -100,7 +96,7 @@ async function loadRelatedImages() {
   const p = current.value;
   if (!p) return;
   // 命中缓存直接渲染：不进 loading，避免切换时闪一下「加载中...」
-  const cached = getCachedRelatedImages(p.id);
+  const cached = relatedImagesCache.get(p.id);
   if (cached) {
     relatedImages.value = cached;
     prefetchNeighbors();
@@ -108,7 +104,7 @@ async function loadRelatedImages() {
   }
   imagesLoading.value = true;
   try {
-    relatedImages.value = await fetchRelatedImages(p.id);
+    relatedImages.value = await relatedImagesCache.fetch(p.id);
     prefetchNeighbors();
   } catch {
     relatedImages.value = [];
@@ -123,14 +119,14 @@ function prefetchNeighbors() {
   if (i < 0) return;
   for (const idx of [i - 1, i + 1]) {
     const id = props.order[idx];
-    if (id && !getCachedRelatedImages(id)) void fetchRelatedImages(id).catch(() => []);
+    if (id && !relatedImagesCache.get(id)) void relatedImagesCache.fetch(id).catch(() => []);
   }
 }
 
 /** 关联关系已变化：丢掉缓存再重载，避免读到旧数据 */
 async function reloadRelatedImages() {
   const p = current.value;
-  if (p) invalidateRelatedImages(p.id);
+  if (p) relatedImagesCache.invalidate(p.id);
   await loadRelatedImages();
 }
 
@@ -331,7 +327,7 @@ async function setAsFirst() {
   try {
     await commands.setPromptFirstImage(p.id, img.id);
     relatedImages.value = [img, ...relatedImages.value.filter((i) => i.id !== img.id)];
-    invalidateRelatedImages(p.id); // 排序已变，缓存作废
+    relatedImagesCache.invalidate(p.id); // 排序已变，缓存作废
     emit("updated"); // 列表卡片封面已变化
   } catch (e) {
     showToast(`设为首图失败：${e}`, "error");
@@ -349,7 +345,7 @@ async function removeImage(img: RelatedImage) {
   await commands.removeImageFromPrompt(p.id, img.id);
   relatedImages.value = relatedImages.value.filter((i) => i.id !== img.id);
   // 本地已同步，只需丢弃缓存，不必重读
-  invalidateRelatedImages(p.id);
+  relatedImagesCache.invalidate(p.id);
   // 关联关系变化影响图像主页卡片的关联提示词文案
   markPageStale("images");
   emit("updated");

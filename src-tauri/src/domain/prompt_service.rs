@@ -2,9 +2,9 @@
 //! 领域层不感知 Tauri，通过注入的事务获取连接访问数据。
 //! 表结构与字段名与 prompt-manager 一致。
 
+use crate::domain::tag_manager::{tags_by_owner, TagDomain};
 use crate::infra::error::AppError;
 use rusqlite::{Connection, OptionalExtension, Result};
-use std::collections::HashMap;
 
 use serde::Serialize;
 
@@ -264,40 +264,12 @@ pub fn list_related_images_with(
             tags: Vec::new(),
         });
     }
-    fill_related_image_tags(conn, &mut out)?;
-    Ok(out)
-}
-
-/// 批量查标签并原地回填：一次查询覆盖全部图像，避免循环内 prepare 的 N+1。
-fn fill_related_image_tags(conn: &Connection, images: &mut [RelatedImage]) -> Result<()> {
-    if images.is_empty() {
-        return Ok(());
-    }
-    let ids: Vec<&str> = images.iter().map(|i| i.id.as_str()).collect();
-    let placeholders = std::iter::repeat("?")
-        .take(ids.len())
-        .collect::<Vec<_>>()
-        .join(",");
-    let sql = format!(
-        "SELECT itr.image_id, pt.name
-         FROM image_tag_relations itr
-         JOIN image_tags pt ON pt.id = itr.tag_id
-         WHERE itr.image_id IN ({placeholders})
-         ORDER BY pt.name"
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(ids), |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-    })?;
-    let mut tags: HashMap<String, Vec<String>> = HashMap::new();
-    for row in rows {
-        let (image_id, name) = row?;
-        tags.entry(image_id).or_default().push(name);
-    }
-    for img in images.iter_mut() {
+    let ids: Vec<&str> = out.iter().map(|i| i.id.as_str()).collect();
+    let mut tags = tags_by_owner(conn, TagDomain::Image, &ids)?;
+    for img in out.iter_mut() {
         img.tags = tags.remove(&img.id).unwrap_or_default();
     }
-    Ok(())
+    Ok(out)
 }
 
 /// 设为首图：将关联行的 sort_order 置为当前最小值 - 1（借鉴标签组固定首位的模式）。

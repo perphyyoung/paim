@@ -19,15 +19,9 @@ import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vu
 import { formatLocalTime } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
 import {
-  fetchImageSrc,
-  fetchImageTags,
-  fetchRelatedPrompts,
-  getCachedImageSrc,
-  getCachedImageTags,
-  getCachedRelatedPrompts,
-  invalidateImageSrc,
-  invalidateImageTags,
-  invalidateRelatedPrompts,
+  imageSrcCache,
+  imageTagsCache,
+  relatedPromptsCache,
 } from "@/features/image/api/detailCache";
 
 interface Image {
@@ -251,14 +245,14 @@ async function doCreatePrompt() {
 async function loadOrig() {
   const img = current.value;
   if (!img) return;
-  const cached = getCachedImageSrc(img.id);
+  const cached = imageSrcCache.get(img.id);
   if (cached) {
     origSrc.value = convertFileSrc(cached);
     return;
   }
   origSrc.value = "";
   try {
-    origSrc.value = convertFileSrc(await fetchImageSrc(img.id));
+    origSrc.value = convertFileSrc(await imageSrcCache.fetch(img.id));
   } catch {
     origSrc.value = "";
   }
@@ -290,13 +284,13 @@ async function resolveFullscreenMeta(id: string) {
 async function loadTags() {
   const img = current.value;
   if (!img) return;
-  const cached = getCachedImageTags(img.id);
+  const cached = imageTagsCache.get(img.id);
   if (cached) {
     tags.value = cached;
     return;
   }
   try {
-    tags.value = await fetchImageTags(img.id);
+    tags.value = await imageTagsCache.fetch(img.id);
   } catch {
     tags.value = [];
   }
@@ -309,7 +303,7 @@ const { tagInput, addTag } = useTagAdd({
   showToast,
   onAdded: () => {
     const img = current.value;
-    if (img) invalidateImageTags(img.id);
+    if (img) imageTagsCache.invalidate(img.id);
   },
 });
 // 复制提示词字段内容（图像详情为纯展示，无编辑态）
@@ -335,7 +329,7 @@ async function removeTag(tagId: number) {
   if (!img) return;
   await commands.removeImageTag(img.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
-  invalidateImageTags(img.id);
+  imageTagsCache.invalidate(img.id);
   emit("update", img);
 }
 
@@ -383,12 +377,12 @@ function requestUnlink(p: LinkedPrompt) {
 async function loadRelatedPrompts() {
   const img = current.value;
   if (!img) return;
-  const cached = getCachedRelatedPrompts(img.id);
+  const cached = relatedPromptsCache.get(img.id);
   if (cached) {
     relatedPrompts.value = cached;
   } else {
     try {
-      relatedPrompts.value = await fetchRelatedPrompts(img.id);
+      relatedPrompts.value = await relatedPromptsCache.fetch(img.id);
     } catch {
       relatedPrompts.value = [];
     }
@@ -400,7 +394,7 @@ async function loadRelatedPrompts() {
 /** 关联提示词已变化（解除关联/新建/嵌套编辑/安全联动）：丢缓存再读，避免读到旧数据 */
 async function reloadRelatedPrompts() {
   const img = current.value;
-  if (img) invalidateRelatedPrompts(img.id);
+  if (img) relatedPromptsCache.invalidate(img.id);
   await loadRelatedPrompts();
 }
 
