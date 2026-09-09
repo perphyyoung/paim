@@ -170,6 +170,72 @@ pub fn run() {
         )?;
       }
 
+      // 托盘常驻：点 X 隐藏到托盘（任务栏消失、进程常驻），托盘左键单击切换显示/隐藏，
+      // 右键菜单「显示主窗口 / 退出」。e2e 实例（PAIM_DATA_DIR）跳过：
+      // 假关窗口会让 taskkill teardown 行为不可控，e2e 也不依赖托盘。
+      #[cfg(desktop)]
+      if std::env::var("PAIM_DATA_DIR").is_err() {
+        use tauri::{
+          menu::{Menu, MenuItem},
+          tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+        };
+
+        let main_window = app
+          .get_webview_window("main")
+          .expect("主窗口不存在");
+        let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+        let menu = Menu::with_items(app, &[&show, &quit])?;
+
+        TrayIconBuilder::with_id("paim-tray")
+          .icon(app.default_window_icon().expect("缺少应用图标").clone())
+          .tooltip("paim")
+          .menu(&menu)
+          .show_menu_on_left_click(false)
+          .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => {
+              if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+              }
+            }
+            "quit" => app.exit(0),
+            _ => {}
+          })
+          .on_tray_icon_event(|tray, event| {
+            // 左键单击按可见性 toggle：隐藏 → 显示并聚焦；可见 → 隐藏。
+            // 不能用 is_focused 参与判断：点击托盘时主窗口已先失焦，恒走显示分支导致无法隐藏
+            if let TrayIconEvent::Click {
+              button: MouseButton::Left,
+              button_state: MouseButtonState::Up,
+              ..
+            } = event
+            {
+              let app = tray.app_handle();
+              if let Some(w) = app.get_webview_window("main") {
+                if w.is_visible().unwrap_or(false) {
+                  let _ = w.hide();
+                } else {
+                  let _ = w.show();
+                  let _ = w.unminimize();
+                  let _ = w.set_focus();
+                }
+              }
+            }
+          })
+          .build(app)?;
+
+        // 拦截 X 关闭：转为隐藏到托盘；最小化按钮行为不变
+        let close_window = main_window.clone();
+        main_window.on_window_event(move |event| {
+          if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = close_window.hide();
+          }
+        });
+      }
+
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
