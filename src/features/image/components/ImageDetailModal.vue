@@ -602,10 +602,8 @@ const fmtSize = (bytes: number) => {
         ref="rootEl"
         class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] overflow-hidden rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
-        <!-- 左：提示词相关信息 -->
-        <div
-          class="flex w-[320px] shrink-0 flex-col gap-4 overflow-auto border-r p-4 border-gray-700"
-        >
+        <!-- 左：提示词相关信息（占 1/4） -->
+        <div class="flex min-w-0 flex-1 flex-col gap-4 overflow-auto border-r p-4 border-gray-700">
           <div>
             <div class="flex items-center justify-between">
               <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
@@ -748,9 +746,9 @@ const fmtSize = (bytes: number) => {
           </div>
         </div>
 
-        <!-- 中：图像显示（右键弹出「打开本地保存位置」菜单） -->
+        <!-- 中：图像显示（右键弹出「打开本地保存位置」菜单）；占 1/2，左右各 1/4 -->
         <div
-          class="relative flex min-w-0 flex-1 items-center justify-center bg-gray-900"
+          class="relative flex min-w-0 flex-[2_1_0%] items-center justify-center bg-gray-900"
           @contextmenu.prevent="openCtxMenu"
         >
           <img
@@ -781,9 +779,9 @@ const fmtSize = (bytes: number) => {
           </div>
         </div>
 
-        <!-- 右：图像相关信息 -->
+        <!-- 右：图像相关信息（占 1/4） -->
         <div
-          class="relative flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l p-4 border-gray-700"
+          class="relative flex min-w-0 flex-1 flex-col gap-4 overflow-auto border-l p-4 border-gray-700"
         >
           <div class="flex items-center justify-between">
             <!-- 顶部操作栏：查找 / 收藏 / 安全 / 编辑 / 关闭，五组两端对齐、间隔均分 -->
