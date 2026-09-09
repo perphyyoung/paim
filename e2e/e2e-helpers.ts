@@ -132,6 +132,24 @@ async function closeApp(app: AppHandle): Promise<void> {
   }
 }
 
+/// 崩溃恢复：先 reload；renderer 崩溃后 CDP 宿主（浏览器进程）通常仍存活，
+/// reload 即可重载页面。reload 也失败再试 goto 应用内嵌地址，仍失败则放弃
+/// （记 error，由用例自身超时暴露——此时只能重 spawn 实例，暂不自动重建）。
+async function recoverPage(app: AppHandle): Promise<void> {
+  try {
+    await app.page.reload({ timeout: 15_000 });
+    e2eLog.info("[diag] 崩溃页面已 reload 恢复");
+  } catch (reloadErr) {
+    e2eLog.error(`[diag] 崩溃后 reload 失败，尝试 goto：${reloadErr}`);
+    try {
+      await app.page.goto("http://tauri.localhost", { timeout: 15_000 });
+      e2eLog.info("[diag] 崩溃页面已 goto 恢复");
+    } catch (gotoErr) {
+      e2eLog.error(`[diag] 崩溃页面无法恢复（需人工排查）：${gotoErr}`);
+    }
+  }
+}
+
 /// worker 级 fixture：每个 worker spawn 一个应用实例并 CDP 连接，
 /// 该 worker 的全部用例共享；teardown（Playwright 保证执行，用例失败/超时也算）
 /// 优雅关闭实例。测试通过本文件的 test 拿到 app/page。
@@ -154,6 +172,13 @@ const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandl
       });
       app.page.on("response", (res) => {
         if (res.status() >= 400) e2eLog.error(`[http-error] ${res.status()} ${res.url()}`);
+      });
+      // WebView2 renderer 偶发崩溃（多 worker 高负载下页面销毁但应用主进程存活，
+      // 见 2026-09-09 用例 5 的 [diag] 证据）。崩溃自动恢复：数据都在库里，
+      // reload/goto 后 UI 重新加载，当前用例的断言在剩余超时内重试即可继续。
+      app.page.on("crash", () => {
+        e2eLog.error("[diag] webview 页面崩溃（renderer crash），尝试自动恢复");
+        void recoverPage(app);
       });
       await use(app);
       await closeApp(app);
