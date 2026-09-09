@@ -92,6 +92,8 @@ const specialCounts = computed<Record<string, number>>(() => {
 });
 
 const selectedTags = ref<string[]>([]);
+// 标签筛选反选（不持久化：与 pm 一致，避免下次打开莫名筛掉内容）
+const invertedTagFilter = ref(false);
 
 // —— 虚拟网格 + 自定义滚动条 ——
 const {
@@ -105,7 +107,7 @@ const {
 } = useGridScrollSync(() => sortedPrompts.value.length);
 
 // 筛选/排序变化后回到顶部
-watch([keyword, sortBy, sortDesc, selectedTags], backToTop);
+watch([keyword, sortBy, sortDesc, selectedTags, invertedTagFilter], backToTop);
 
 // 懒自愈：可见窗口稳定后批量校验缩略图文件（缺失且原图存在时后端按需生成）；
 // 提示词卡片背景经 thumbs 映射加载，修复后整体重拉该映射即可
@@ -166,14 +168,16 @@ const sortedPrompts = computed(() => {
       )
     : [...prompts.value];
   if (selectedTags.value.length > 0) {
-    arr = arr.filter((p) =>
-      selectedTags.value.every((t) => {
+    // 反选（对齐 pm 的 invertedFilter）：多标签是 AND 组合，反选即排除同时命中全部所选标签的条目
+    arr = arr.filter((p) => {
+      const hit = selectedTags.value.every((t) => {
         const s = SPECIAL_TAGS.find((x) => x.name === t);
         if (s) return s.check(p);
         const tags = tagNames.value[p.id];
         return !!tags && tags.includes(t);
-      }),
-    );
+      });
+      return invertedTagFilter.value ? !hit : hit;
+    });
   }
   if (!arr.length) return arr;
   let cmp: (a: Prompt, b: Prompt) => number;
@@ -576,6 +580,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         ref="tagFilterRef"
         :domain="'prompt'"
         v-model="selectedTags"
+        v-model:inverted="invertedTagFilter"
         :special-tags="SPECIAL_TAGS"
         :special-counts="specialCounts"
         :tag-groups="tagGroups"

@@ -55,16 +55,21 @@ const props = withDefaults(
     /** 用于 localStorage 键前缀，如 "image"/"prompt" */
     domain: "image" | "prompt";
     modelValue: string[];
+    /** 反选模式：选中标签表示「排除」（对齐 pm 的 invertedFilter，前端取反命中结果） */
+    inverted: boolean;
     specialTags: SpecialTag[];
     specialCounts: Record<string, number>;
     tagGroups: TagGroupData[];
     allTags: TagRef[];
     tagCounts: Record<string, number>;
   }>(),
-  { specialCounts: () => ({}) },
+  { specialCounts: () => ({}), inverted: false },
 );
 
-const emit = defineEmits<{ (e: "update:modelValue", v: string[]): void }>();
+const emit = defineEmits<{
+  (e: "update:modelValue", v: string[]): void;
+  (e: "update:inverted", v: boolean): void;
+}>();
 
 const selectedTags = ref<string[]>(props.modelValue);
 function sync(value: string[]) {
@@ -77,6 +82,8 @@ function isSpecialTag(name: string): boolean {
 }
 
 function toggleTag(tag: string, e: MouseEvent) {
+  // 重新选择标签即退出反选（对齐 pm：避免“改了选中集合却仍在反选”的困惑）
+  if (props.inverted) emit("update:inverted", false);
   const isCtrl = e.ctrlKey || e.metaKey;
   const i = selectedTags.value.indexOf(tag);
   if (!isCtrl) sync(i >= 0 ? [] : [tag]);
@@ -90,6 +97,8 @@ function toggleTag(tag: string, e: MouseEvent) {
 }
 function clearTags() {
   sync([]);
+  // 清除筛选同时复位反选（对齐 pm 的 clearTagFilter）
+  if (props.inverted) emit("update:inverted", false);
 }
 
 // 收起/展开（持久化）
@@ -218,6 +227,24 @@ const tagSections = computed<TagSection[]>(() => {
         @click="clearTags"
       >
         清除
+      </button>
+      <button
+        type="button"
+        class="rounded border px-1.5 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+        :class="
+          inverted
+            ? 'border-blue-500 bg-blue-600 text-white'
+            : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+        "
+        :disabled="selectedTags.length === 0"
+        :title="
+          inverted
+            ? '当前反选（排除含所选标签的条目），点击转为正选'
+            : '反选：排除含所选标签的条目（需先选标签）'
+        "
+        @click="emit('update:inverted', !inverted)"
+      >
+        {{ inverted ? "正选" : "反选" }}
       </button>
       <select
         v-model="tagSortBy"

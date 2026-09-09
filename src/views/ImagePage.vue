@@ -80,16 +80,18 @@ const sortedImages = computed(() => {
   let arr = kw
     ? images.value.filter((i) => matchesKeyword(kw, [i.file_name, i.note], tagNames.value[i.id]))
     : [...images.value];
-  // 标签筛选（AND）：特殊标签走专用判定，其余要求图像标签包含
+  // 标签筛选（AND）：特殊标签走专用判定，其余要求图像标签包含；
+  // 反选（对齐 pm 的 invertedFilter）即排除同时命中全部所选标签的条目
   if (selectedTags.value.length > 0) {
-    arr = arr.filter((img) =>
-      selectedTags.value.every((t) => {
+    arr = arr.filter((img) => {
+      const hit = selectedTags.value.every((t) => {
         const s = SPECIAL_TAGS.find((x) => x.name === t);
         if (s) return s.check(img);
         const tags = tagNames.value[img.id];
         return !!tags && tags.includes(t);
-      }),
-    );
+      });
+      return invertedTagFilter.value ? !hit : hit;
+    });
   }
   if (!arr.length) return arr;
   let cmp: (a: Image, b: Image) => number;
@@ -174,6 +176,8 @@ function handleGridScroll(p: GridScrollPayload) {
 const allTags = ref<TagItem[]>([]);
 const tagNames = shallowRef<Record<string, string[]>>({});
 const selectedTags = ref<string[]>([]);
+// 标签筛选反选（不持久化：与 pm 一致，避免下次打开莫名筛掉内容）
+const invertedTagFilter = ref(false);
 
 // —— 虚拟网格 + 自定义滚动条 ——
 const {
@@ -187,7 +191,7 @@ const {
 } = useGridScrollSync(() => sortedImages.value.length);
 
 // 筛选/排序变化后回到顶部
-watch([keyword, sortBy, sortDesc, selectedTags], backToTop);
+watch([keyword, sortBy, sortDesc, selectedTags, invertedTagFilter], backToTop);
 const tagGroups = ref<TagGroup[]>([]);
 
 // —— 特殊标签（虚拟筛选，参考 pm）——
@@ -649,6 +653,7 @@ function onUploadDone() {
         ref="tagFilterRef"
         :domain="'image'"
         v-model="selectedTags"
+        v-model:inverted="invertedTagFilter"
         :special-tags="SPECIAL_TAGS"
         :special-counts="specialCounts"
         :tag-groups="tagGroups"
