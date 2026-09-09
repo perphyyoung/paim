@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 提示词详情弹窗：展示/编辑标题、内容、翻译、备注，标签增删，关联图像网格查看/移除。
-import { computed, nextTick, onUnmounted, ref, toRef, watch } from "vue";
+import { computed, ref, toRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands } from "@/bindings";
 import { useToast } from "@/components/useToast";
@@ -11,6 +11,8 @@ import TagAutocompleteInput from "@/features/tag/components/TagAutocompleteInput
 import { ensureTagCandidates, tagCandidates } from "@/features/tag/useTagCandidates";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
+import { useDetailSearch } from "@/composables/useDetailSearch";
+import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
@@ -142,39 +144,18 @@ function syncFields() {
 }
 
 // ---- 详情内查找（Ctrl+F 或主页搜索词联动）：标题/内容/翻译/备注 高亮 + 计数 + 跳转 ----
-// 注意：本块必须在下方 open watch（immediate: true）之前声明——父级 v-if 挂载时
-// open 已为 true，watch 回调在 setup 阶段同步执行并写入 searchQuery 等引用，
-// 若声明在 watch 之后会命中 TDZ（ReferenceError）导致组件挂载失败、详情打不开。
-type FieldKey = "title" | "content" | "content_translate" | "note";
-const FIELD_ORDER: FieldKey[] = ["title", "content", "content_translate", "note"];
-
-const searchOpen = ref(false);
-const searchQuery = ref("");
-const searchInputEl = ref<HTMLInputElement | null>(null);
-const activeMatch = ref(0); // 当前命中序号（跨字段统一编号，标题→内容→翻译→备注）
+// 复用 useDetailSearch（与图像详情共用）。注意：必须在下方 open watch（immediate: true）
+// 之前初始化——父级 v-if 挂载时 open 已为 true，watch 回调在 setup 阶段同步执行并写入
+// searchQuery 等引用，声明在 watch 之后会命中 TDZ（ReferenceError）导致详情打不开。
 const rootEl = ref<HTMLElement | null>(null);
-
 // 编辑态字段元素引用：textarea/input 内部无法高亮（浏览器限制），跳转退化为选中命中
 const titleEditEl = ref<HTMLInputElement | null>(null);
 const contentEditEl = ref<HTMLTextAreaElement | null>(null);
 const translateEditEl = ref<HTMLTextAreaElement | null>(null);
 const noteEditEl = ref<HTMLTextAreaElement | null>(null);
-const fieldEditEls = computed(() => ({
-  title: titleEditEl.value,
-  content: contentEditEl.value,
-  content_translate: translateEditEl.value,
-  note: noteEditEl.value,
-}));
-
-interface Seg {
-  text: string;
-  hit: boolean;
-  /** 全局命中序号（非命中段为 -1），供 data-hit 定位滚动 */
-  index: number;
-}
 
 // 查找作用文本：展示态取 current，编辑态取编辑缓冲（与界面显示的文本一致）
-const fieldTexts = computed<Record<FieldKey, string>>(() =>
+const fieldTexts = computed<Record<string, string>>(() =>
   edit.value
     ? {
         title: title.value,
@@ -190,106 +171,35 @@ const fieldTexts = computed<Record<FieldKey, string>>(() =>
       },
 );
 
-// 一次算出各字段分段（展示态渲染用）与命中位置表（编辑态选中/滚动定位用）
-const searchResult = computed(() => {
-  const kw = searchQuery.value.trim();
-  const segs = { title: [], content: [], content_translate: [], note: [] } as Record<
-    FieldKey,
-    Seg[]
-  >;
-  const locs: Array<{ field: FieldKey; start: number; end: number }> = [];
-  if (!kw) {
-    for (const f of FIELD_ORDER) {
-      const t = fieldTexts.value[f];
-      segs[f] = t ? [{ text: t, hit: false, index: -1 }] : [];
-    }
-    return { segs, locs };
-  }
-  const k = kw.toLowerCase();
-  let seq = 0;
-  for (const f of FIELD_ORDER) {
-    const text = fieldTexts.value[f];
-    const out: Seg[] = [];
-    if (text) {
-      const lower = text.toLowerCase();
-      let pos = 0;
-      for (;;) {
-        const i = lower.indexOf(k, pos);
-        if (i === -1) {
-          if (pos < text.length) out.push({ text: text.slice(pos), hit: false, index: -1 });
-          break;
-        }
-        if (i > pos) out.push({ text: text.slice(pos, i), hit: false, index: -1 });
-        locs.push({ field: f, start: i, end: i + kw.length });
-        out.push({ text: text.slice(i, i + kw.length), hit: true, index: seq++ });
-        pos = i + kw.length;
-      }
-    }
-    segs[f] = out;
-  }
-  return { segs, locs };
-});
-const fieldSegs = computed(() => searchResult.value.segs);
-const matchCount = computed(() => searchResult.value.locs.length);
-
-async function locateActive() {
-  await nextTick();
-  const loc = searchResult.value.locs[activeMatch.value];
-  if (!loc) return;
-  if (edit.value) {
-    const el = fieldEditEls.value[loc.field];
-    if (el) {
-      el.focus();
-      el.setSelectionRange(loc.start, loc.end); // 聚焦后浏览器自动把选区滚入视野
-    }
-    return;
-  }
-  rootEl.value
-    ?.querySelector(`[data-hit="${activeMatch.value}"]`)
-    ?.scrollIntoView({ block: "nearest" });
-}
-
-function gotoMatch(delta: number) {
-  const n = matchCount.value;
-  if (!n) return;
-  activeMatch.value = (activeMatch.value + delta + n) % n;
-  void locateActive();
-}
-
-function toggleSearch() {
-  searchOpen.value = !searchOpen.value;
-  if (searchOpen.value) {
-    void nextTick(() => searchInputEl.value?.focus());
-  } else {
-    searchQuery.value = "";
-  }
-}
-
-// Ctrl+F 打开查找条并聚焦/全选。capture + stopPropagation 抢在主页快捷键
-// （聚焦主页搜索框）之前消费；上层弹窗（图像详情/全屏/导入/确认框）打开时放行
-function onDetailKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.code === "KeyF") {
-    if (!props.open) return;
-    if (imgDetailOpen.value || fullscreenOpen.value || pickerOpen.value || confirmOpen.value)
-      return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (!searchOpen.value) toggleSearch();
-    else void nextTick(() => searchInputEl.value?.select());
-  }
-}
-watch(
-  () => props.open,
-  (open) => {
-    if (open) document.addEventListener("keydown", onDetailKeydown, true);
-    else document.removeEventListener("keydown", onDetailKeydown, true);
-  },
-  { immediate: true },
-);
-onUnmounted(() => document.removeEventListener("keydown", onDetailKeydown, true));
-watch(searchQuery, () => {
-  activeMatch.value = 0;
-  void locateActive();
+const {
+  searchOpen,
+  searchQuery,
+  searchInputEl,
+  activeMatch,
+  fieldSegs,
+  matchCount,
+  gotoMatch,
+  toggleSearch,
+  syncFromKeyword,
+  resetToFirst,
+} = useDetailSearch({
+  open: toRef(props, "open"),
+  initialKeyword: () => props.initialKeyword?.trim() ?? "",
+  getTexts: () => fieldTexts.value,
+  getEditEl: (f) =>
+    f === "title"
+      ? titleEditEl.value
+      : f === "content"
+        ? contentEditEl.value
+        : f === "content_translate"
+          ? translateEditEl.value
+          : f === "note"
+            ? noteEditEl.value
+            : null,
+  getContainer: () => rootEl.value,
+  // 上层弹窗打开时放行 Ctrl+F：图像详情/全屏查看/图像导入/确认框
+  guard: () =>
+    !(imgDetailOpen.value || fullscreenOpen.value || pickerOpen.value || confirmOpen.value),
 });
 
 watch(
@@ -303,11 +213,7 @@ watch(
       loadTags();
       loadRelatedImages();
       // 主页搜索词联动：带入查找条并高亮命中
-      const kw = props.initialKeyword?.trim() ?? "";
-      searchQuery.value = kw;
-      searchOpen.value = !!kw;
-      activeMatch.value = 0;
-      void locateActive();
+      syncFromKeyword(props.initialKeyword?.trim() ?? "");
     }
   },
   { immediate: true }, // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
@@ -320,8 +226,7 @@ watch(
     loadTags();
     loadRelatedImages();
     // 切换提示词后重置到第一个命中并滚动定位
-    activeMatch.value = 0;
-    void locateActive();
+    resetToFirst();
   },
 );
 
@@ -884,21 +789,7 @@ async function onPickerImported() {
                 class="w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
               />
               <div v-else class="break-all text-[length:var(--fs-detail)] text-gray-200">
-                <template v-for="(seg, si) in fieldSegs.title" :key="si">
-                  <mark
-                    v-if="seg.hit"
-                    :data-hit="seg.index"
-                    class="rounded-sm px-0.5"
-                    :class="
-                      seg.index === activeMatch
-                        ? 'bg-amber-400 text-gray-900'
-                        : 'bg-blue-900/70 text-gray-100'
-                    "
-                    >{{ seg.text }}</mark
-                  >
-                  <template v-else>{{ seg.text }}</template>
-                </template>
-                <span v-if="!fieldSegs.title.length">—</span>
+                <HighlightText :segments="fieldSegs.title" :active-index="activeMatch" />
               </div>
             </div>
 
@@ -927,21 +818,7 @@ async function onPickerImported() {
                 v-else
                 class="whitespace-pre-wrap text-[length:var(--fs-detail)] leading-relaxed text-gray-200"
               >
-                <template v-for="(seg, si) in fieldSegs.content" :key="si">
-                  <mark
-                    v-if="seg.hit"
-                    :data-hit="seg.index"
-                    class="rounded-sm px-0.5"
-                    :class="
-                      seg.index === activeMatch
-                        ? 'bg-amber-400 text-gray-900'
-                        : 'bg-blue-900/70 text-gray-100'
-                    "
-                    >{{ seg.text }}</mark
-                  >
-                  <template v-else>{{ seg.text }}</template>
-                </template>
-                <span v-if="!fieldSegs.content.length">—</span>
+                <HighlightText :segments="fieldSegs.content" :active-index="activeMatch" />
               </div>
             </div>
 
@@ -967,21 +844,10 @@ async function onPickerImported() {
                 class="w-full resize-y rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
               ></textarea>
               <div v-else class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
-                <template v-for="(seg, si) in fieldSegs.content_translate" :key="si">
-                  <mark
-                    v-if="seg.hit"
-                    :data-hit="seg.index"
-                    class="rounded-sm px-0.5"
-                    :class="
-                      seg.index === activeMatch
-                        ? 'bg-amber-400 text-gray-900'
-                        : 'bg-blue-900/70 text-gray-100'
-                    "
-                    >{{ seg.text }}</mark
-                  >
-                  <template v-else>{{ seg.text }}</template>
-                </template>
-                <span v-if="!fieldSegs.content_translate.length">—</span>
+                <HighlightText
+                  :segments="fieldSegs.content_translate"
+                  :active-index="activeMatch"
+                />
               </div>
             </div>
 
@@ -999,21 +865,7 @@ async function onPickerImported() {
                 placeholder="输入备注..."
               ></textarea>
               <div v-else class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
-                <template v-for="(seg, si) in fieldSegs.note" :key="si">
-                  <mark
-                    v-if="seg.hit"
-                    :data-hit="seg.index"
-                    class="rounded-sm px-0.5"
-                    :class="
-                      seg.index === activeMatch
-                        ? 'bg-amber-400 text-gray-900'
-                        : 'bg-blue-900/70 text-gray-100'
-                    "
-                    >{{ seg.text }}</mark
-                  >
-                  <template v-else>{{ seg.text }}</template>
-                </template>
-                <span v-if="!fieldSegs.note.length">—</span>
+                <HighlightText :segments="fieldSegs.note" :active-index="activeMatch" />
               </div>
             </div>
 

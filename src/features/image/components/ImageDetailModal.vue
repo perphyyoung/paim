@@ -12,6 +12,8 @@ import TagAutocompleteInput from "@/features/tag/components/TagAutocompleteInput
 import { ensureTagCandidates, tagCandidates } from "@/features/tag/useTagCandidates";
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
+import { useDetailSearch } from "@/composables/useDetailSearch";
+import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
@@ -55,6 +57,8 @@ const props = defineProps<{
   thumbs: Record<string, string>;
   /** 被提示词详情嵌套打开时为 true，禁用「编辑/新建」入口，禁止二级跳转 */
   isNested?: boolean;
+  /** 主页搜索词：打开详情时自动带入查找条，命中处直接高亮 */
+  initialKeyword?: string;
 }>();
 
 const emit = defineEmits<{
@@ -398,6 +402,45 @@ async function reloadRelatedPrompts() {
   await loadRelatedPrompts();
 }
 
+// ---- 详情内查找（Ctrl+F 或主页搜索词联动）：复用 useDetailSearch（与提示词详情共用）----
+// 范围：文件名/备注 + 当前选中关联提示词的标题/内容/翻译/备注（标签不参与）。
+// 注意：必须在下方 open watch（immediate: true）之前初始化（TDZ，同提示词详情）。
+const rootEl = ref<HTMLElement | null>(null);
+const fileNameEditEl = ref<HTMLInputElement | null>(null);
+const noteEditEl = ref<HTMLTextAreaElement | null>(null);
+
+const {
+  searchOpen,
+  searchQuery,
+  searchInputEl,
+  activeMatch,
+  fieldSegs,
+  matchCount,
+  gotoMatch,
+  toggleSearch,
+  syncFromKeyword,
+  resetToFirst,
+} = useDetailSearch({
+  open: toRef(props, "open"),
+  initialKeyword: () => props.initialKeyword?.trim() ?? "",
+  // 展示态/编辑态文本：文件名与备注随编辑缓冲切换；关联提示词字段只读，恒取 currentPrompt
+  getTexts: () => ({
+    fileName: edit.value ? fileName.value : (current.value?.file_name ?? ""),
+    note: edit.value ? note.value : (current.value?.note ?? ""),
+    prompt_title: currentPrompt.value?.title ?? "",
+    prompt_content: currentPrompt.value?.content ?? "",
+    prompt_translate: currentPrompt.value?.content_translate ?? "",
+    prompt_note: currentPrompt.value?.note ?? "",
+  }),
+  // 关联提示词字段在图像详情内只读（无编辑控件），命中跳转走滚动定位
+  getEditEl: (f) =>
+    f === "fileName" ? fileNameEditEl.value : f === "note" ? noteEditEl.value : null,
+  getContainer: () => rootEl.value,
+  // 上层弹窗打开时放行 Ctrl+F：嵌套提示词详情/全屏查看/新建提示词/确认框
+  guard: () =>
+    !(editPromptOpen.value || fullscreenOpen.value || createPromptOpen.value || confirmOpen.value),
+});
+
 // 打开时跳转到初始图并同步编辑字段
 watch(
   () => [props.open, props.initialIndex] as const,
@@ -410,6 +453,8 @@ watch(
       loadOrig();
       loadTags();
       loadRelatedPrompts();
+      // 主页搜索词联动：带入查找条并高亮命中
+      syncFromKeyword(props.initialKeyword?.trim() ?? "");
     }
   },
   { immediate: true }, // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
@@ -423,8 +468,12 @@ watch(
     loadOrig();
     loadTags();
     loadRelatedPrompts();
+    // 切换图像后重置到第一个命中并滚动定位
+    resetToFirst();
   },
 );
+// 切换选中的关联提示词后，命中间重新编号，重置到第一个
+watch(currentPrompt, resetToFirst);
 
 function syncFields() {
   fileName.value = current.value?.file_name ?? "";
@@ -505,7 +554,52 @@ const fmtSize = (bytes: number) => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       @click.self="close"
     >
+      <!-- 详情内查找条：悬浮在详情弹窗上方（弹窗外部、视口顶部居中），完全不遮挡内容。
+           主页搜索命中打开详情时自动带入关键词并高亮 -->
       <div
+        v-if="searchOpen"
+        class="absolute left-1/2 top-2 z-10 flex w-[min(28rem,90%)] -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-600 bg-gray-800/80 px-3 py-2 shadow-lg backdrop-blur-sm"
+      >
+        <input
+          ref="searchInputEl"
+          v-model="searchQuery"
+          type="text"
+          placeholder="查找（文件名/备注/关联提示词）"
+          class="min-w-0 flex-1 rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
+          @keydown.enter.prevent="gotoMatch($event.shiftKey ? -1 : 1)"
+          @keydown.esc="toggleSearch"
+        />
+        <span class="whitespace-nowrap text-xs text-gray-400">
+          {{ matchCount ? `${activeMatch + 1}/${matchCount}` : "无命中" }}
+        </span>
+        <button
+          type="button"
+          class="rounded px-1.5 py-0.5 text-xs text-gray-400 hover:bg-gray-700"
+          title="上一个 (Shift+Enter)"
+          @click="gotoMatch(-1)"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          class="rounded px-1.5 py-0.5 text-xs text-gray-400 hover:bg-gray-700"
+          title="下一个 (Enter)"
+          @click="gotoMatch(1)"
+        >
+          ↓
+        </button>
+        <button
+          type="button"
+          class="rounded px-1.5 py-0.5 text-xs text-gray-400 hover:bg-gray-700"
+          title="关闭查找"
+          @click="toggleSearch"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div
+        ref="rootEl"
         class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] overflow-hidden rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
         <!-- 左：提示词相关信息 -->
@@ -563,7 +657,16 @@ const fmtSize = (bytes: number) => {
                 @click="promptIndex = i"
               >
                 <span class="shrink-0 text-gray-400">{{ i + 1 }}.</span>
-                <span class="min-w-0 flex-1 truncate">{{ p.title || "未命名" }}</span>
+                <span class="min-w-0 flex-1 truncate">
+                  <!-- 选中行即 currentPrompt，其标题参与查找高亮；未选中行不参与 -->
+                  <HighlightText
+                    v-if="i === promptIndex"
+                    :segments="fieldSegs.prompt_title"
+                    :active-index="activeMatch"
+                    empty="未命名"
+                  />
+                  <template v-else>{{ p.title || "未命名" }}</template>
+                </span>
                 <button
                   type="button"
                   class="shrink-0 rounded px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 text-red-400 hover:bg-red-900/30"
@@ -576,7 +679,13 @@ const fmtSize = (bytes: number) => {
             </div>
             <!-- 单选：单行标题 -->
             <div v-else class="group mt-1 flex items-center gap-1.5 text-sm text-gray-200">
-              <span class="min-w-0 flex-1">{{ currentPrompt?.title || "— 暂无关联提示词 —" }}</span>
+              <span class="min-w-0 flex-1">
+                <HighlightText
+                  :segments="fieldSegs.prompt_title"
+                  :active-index="activeMatch"
+                  empty="— 暂无关联提示词 —"
+                />
+              </span>
               <button
                 v-if="currentPrompt"
                 type="button"
@@ -602,7 +711,7 @@ const fmtSize = (bytes: number) => {
               </button>
             </div>
             <div class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
-              {{ currentPrompt?.content || "—" }}
+              <HighlightText :segments="fieldSegs.prompt_content" :active-index="activeMatch" />
             </div>
           </div>
           <div>
@@ -619,13 +728,13 @@ const fmtSize = (bytes: number) => {
               </button>
             </div>
             <div class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
-              {{ currentPrompt?.content_translate || "—" }}
+              <HighlightText :segments="fieldSegs.prompt_translate" :active-index="activeMatch" />
             </div>
           </div>
           <div>
             <div class="text-xs font-medium uppercase tracking-wide text-gray-500">提示词备注</div>
             <div class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
-              {{ currentPrompt?.note || "—" }}
+              <HighlightText :segments="fieldSegs.prompt_note" :active-index="activeMatch" />
             </div>
           </div>
           <div>
@@ -677,6 +786,28 @@ const fmtSize = (bytes: number) => {
           class="relative flex w-80 shrink-0 flex-col gap-4 overflow-auto border-l p-4 border-gray-700"
         >
           <div class="flex items-center justify-between">
+            <!-- 顶部操作栏：查找 / 收藏 / 安全 / 编辑 / 关闭，五组两端对齐、间隔均分 -->
+            <div class="flex items-center">
+              <button
+                type="button"
+                class="flex h-7 w-7 items-center justify-center rounded transition-colors text-gray-400 hover:bg-gray-700"
+                :class="searchOpen ? 'bg-gray-700 text-gray-200' : ''"
+                title="查找 (Ctrl+F)"
+                @click="toggleSearch"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M21 21l-4.35-4.35" />
+                </svg>
+              </button>
+            </div>
             <div class="flex items-center">
               <button
                 type="button"
@@ -744,11 +875,12 @@ const fmtSize = (bytes: number) => {
             <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">文件名</div>
             <input
               v-if="edit"
+              ref="fileNameEditEl"
               v-model="fileName"
               class="mt-1 w-full rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
             />
             <div v-else class="mt-1 break-all text-[length:var(--fs-detail)] text-gray-200">
-              {{ fileName }}
+              <HighlightText :segments="fieldSegs.fileName" :active-index="activeMatch" empty="" />
             </div>
           </div>
 
@@ -784,6 +916,7 @@ const fmtSize = (bytes: number) => {
             <div class="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">备注</div>
             <textarea
               v-if="edit"
+              ref="noteEditEl"
               v-model="note"
               rows="3"
               class="mt-1 w-full resize-none rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
@@ -792,7 +925,7 @@ const fmtSize = (bytes: number) => {
               v-else
               class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200"
             >
-              {{ note || "—" }}
+              <HighlightText :segments="fieldSegs.note" :active-index="activeMatch" />
             </div>
           </div>
 

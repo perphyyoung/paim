@@ -903,6 +903,7 @@ function onUploadDone() {
       :order="detailOrder"
       :initial-index="detailIndex"
       :thumbs="thumbs"
+      :initial-keyword="keyword"
       @close="closeDetail"
       @update="onDetailUpdate"
       @replaced="onDetailReplaced"
