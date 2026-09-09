@@ -4,7 +4,7 @@
  * 收口两处几乎重复的实现：输入框一次只添加一个标签（不再支持逗号/空格批量），
  * 命令名经 options 注入，命令返回新增的标签列表并合并到本地 tags 快照。
  */
-import { ref, type Ref } from "vue";
+import { computed, ref, type Ref } from "vue";
 import type { TagLite } from "@/bindings";
 import { isSpecialTag } from "./specialTags";
 import { addTagName } from "./useTagCandidates";
@@ -27,6 +27,9 @@ export function useTagAdd(options: UseTagAddOptions) {
   const { addTagCommand, getItemId, tags, showToast, onAdded } = options;
   const tagInput = ref("");
 
+  /** 当前条目已有标签名集合：随 tags 变化重建一次，之后判定为成员判断（不再逐个比对） */
+  const ownedNames = computed(() => new Set(tags.value.map((t) => t.name)));
+
   /** 一次只添加一个标签；返回本次新增数量（0 表示未添加） */
   async function addTag(): Promise<number> {
     const id = getItemId();
@@ -37,20 +40,20 @@ export function useTagAdd(options: UseTagAddOptions) {
       showToast(`「${name}」是系统特殊标签，不能手动添加`, "warning");
       return 0;
     }
-    // 已存在前置拦截：本地快照命中则提示并保持输入（不发命令，避免后端空刷新 updated_at）
-    if (tags.value.some((t) => t.name === name)) {
+    // 已存在前置拦截：命中则提示并保持输入（不发命令，避免后端空刷新 updated_at）
+    if (ownedNames.value.has(name)) {
       showToast(`标签「${name}」已存在`, "warning");
       return 0;
     }
     try {
       const added = await addTagCommand(String(id), name);
       tagInput.value = "";
-      for (const t of added) {
-        if (!tags.value.some((x) => x.id === t.id)) tags.value.push(t);
-      }
+      // 单次只添加一个标签，且提交前已确认不在 tags 中，直接合并无需回查
+      const addedTag = added[0];
+      if (addedTag) tags.value.push(addedTag);
       // 候选即时补名：下次输入无需重新拉取即可提示新标签
       addTagName(name);
-      showToast(`已添加 ${added.length} 个标签`, "success");
+      showToast(`已添加标签「${name}」`, "success");
       onAdded?.(added.length);
       return added.length;
     } catch (e) {
