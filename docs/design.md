@@ -177,9 +177,11 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | 1 / 2 | 计数徽章 / 删除钮                   | TagChip               |
 | 2     | 行内置顶、删除角钮                  | TagManagerModal 行    |
 | 10    | 底部图例条 / 提交条                 | 详情弹窗、全屏查看器  |
+| 10    | 详情内查找条                        | PromptDetailModal / ImageDetailModal（useDetailSearch） |
 | 20    | 全屏右上关闭钮                      | ImageFullscreenViewer |
 
 ### 关联关系与注意
 
 - **同一层内场景互斥**时可共用 z 值（如 z-60 设置弹窗与右键遮罩、z-50 各业务弹窗），互不叠加出现，DOM 顺序即决定谁在上。
+- **详情内查找条**（PromptDetailModal / ImageDetailModal）：位于弹窗 z-50 遮罩层内部的 `absolute top-2 z-10`（视口顶部居中、弹窗上方空隙），不 Teleport。嵌套打开更高层弹窗（如详情内再开图像/提示词详情）时，被上层遮罩整体盖住属预期；Ctrl+F 归属由 useDetailSearch 的 guard 决定（只作用于最上层弹窗）。
 - **弹窗内的浮层（如下拉候选）必须 Teleport 到 body 并用 fixed**：详情弹窗本体是滚动容器，绝对定位会被 `overflow` 裁剪；z 取 120 与 130 之间的空档，保证盖住顶层模态、又不遮 Toast。
