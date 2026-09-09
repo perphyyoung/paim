@@ -14,7 +14,7 @@ import { SPECIAL_TAG_NAMES, defineSpecialTags } from "@/features/tag/specialTags
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
-import GridColumnsControl from "@/components/GridColumnsControl.vue";
+import CardSizeSlider from "@/components/CardSizeSlider.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
@@ -565,8 +565,8 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         >
           {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
         </button>
-        <!-- 调节显示列数（共用控件，见 components/GridColumnsControl.vue） -->
-        <GridColumnsControl :model-value="columns" @update:model-value="setColumns" />
+        <!-- 调节卡片大小（滑杆，底层仍调列数，见 components/CardSizeSlider.vue） -->
+        <CardSizeSlider :model-value="columns" @update:model-value="setColumns" />
       </div>
 
       <!-- 标签筛选区（通用组件，按标签组分段） -->

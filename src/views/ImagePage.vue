@@ -18,7 +18,7 @@ import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
-import GridColumnsControl from "@/components/GridColumnsControl.vue";
+import CardSizeSlider from "@/components/CardSizeSlider.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import BatchActionBar from "@/components/BatchActionBar.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -640,8 +640,8 @@ function onUploadDone() {
         >
           {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
         </button>
-        <!-- 调节显示列数（共用控件，见 components/GridColumnsControl.vue） -->
-        <GridColumnsControl :model-value="columns" @update:model-value="setColumns" />
+        <!-- 调节卡片大小（滑杆，底层仍调列数，见 components/CardSizeSlider.vue） -->
+        <CardSizeSlider :model-value="columns" @update:model-value="setColumns" />
       </div>
 
       <!-- 标签筛选区（通用组件，按标签组分段） -->
