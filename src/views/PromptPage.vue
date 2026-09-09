@@ -80,6 +80,8 @@ const SPECIAL_TAGS = defineSpecialTags<Prompt>([
       return !t || t.length === 0;
     },
   },
+  // 单语：无译文（对齐 pm 的 COALESCE(content_translate,'')=''），只用于提示词域
+  { name: SPECIAL_TAG_NAMES.singleLang, check: (p) => !p.content_translate?.trim() },
   { name: SPECIAL_TAG_NAMES.safe, check: (p) => !!p.is_safe },
   { name: SPECIAL_TAG_NAMES.unsafe, check: (p) => !p.is_safe },
 ]);
