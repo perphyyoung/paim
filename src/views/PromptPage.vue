@@ -660,6 +660,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       :initial-index="detailIndex"
       :tag-names="tagNames"
       :all-tags="allTags"
+      :initial-keyword="keyword"
       @close="closeDetail"
       @updated="onModalUpdated"
     />
