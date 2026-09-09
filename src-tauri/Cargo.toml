@@ -27,6 +27,7 @@ tauri = { version = "2.10.3", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-log = "2"
 rusqlite = { version = "0.34", features = ["bundled"] }
 tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff"] }
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 md-5 = "0.10"

@@ -145,6 +145,22 @@ pub fn run() {
     .invoke_handler(specta_builder.invoke_handler())
     .setup(move |app| {
       specta_builder.mount_events(app);
+
+      // 单例：二次启动不出新实例，唤起已有实例（可能正藏在托盘）。
+      // 官方要求该插件最先注册。e2e 实例（PAIM_DATA_DIR）跳过：4 worker 并行
+      // 各起一个实例，互斥键是应用标识符，不跳过会让第 2 个实例启动即退出并
+      // 「唤醒」第 1 个，e2e 直接全崩（与托盘/全局热键同款判断）。
+      #[cfg(desktop)]
+      if std::env::var("PAIM_DATA_DIR").is_err() {
+        app.handle().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+          if let Some(w) = app.get_webview_window("main") {
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+          }
+        }))?;
+      }
+
       app.handle().plugin(tauri_plugin_dialog::init())?;
 
       // 全局快捷键：Ctrl+Shift+, 切换设置面板（系统级钩子，不受输入法/WebView 焦点影响）
