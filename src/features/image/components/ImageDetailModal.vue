@@ -549,11 +549,8 @@ const fmtSize = (bytes: number) => {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      @click.self="close"
-    >
+    <!-- 详情弹窗：只保留右上 ✕ 关闭，点遮罩不关闭（防误触丢失浏览位置） -->
+    <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <!-- 详情内查找条：悬浮在详情弹窗上方（弹窗外部、视口顶部居中），完全不遮挡内容。
            主页搜索命中打开详情时自动带入关键词并高亮 -->
       <div
