@@ -13,7 +13,7 @@
  */
 import path from "node:path";
 import { expect } from "@playwright/test";
-import { test, writePng } from "./helpers";
+import { getImagePromptsMap, invokeCommand, listPrompts, test, writePng } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
 test("上传图像附带提示词后，图像卡片应关联该提示词", async ({ page, app }) => {
@@ -55,42 +55,20 @@ test("两张图像附带同一提示词，应只创建一个提示词并关联�
   writePng(secondPath);
   const promptContent = `e2e 同一提示词两张图 ${Date.now()}`;
 
-  await page.evaluate(
-    async ({ paths, prompt }) => {
-      return await (
-        window as unknown as {
-          __TAURI_INTERNALS__: {
-            invoke: (cmd: string, args?: unknown) => Promise<unknown>;
-          };
-        }
-      ).__TAURI_INTERNALS__.invoke("import_images", { paths, prompt });
-    },
-    { paths: [firstPath, secondPath], prompt: promptContent },
-  );
+  await invokeCommand(page, "import_images", {
+    paths: [firstPath, secondPath],
+    prompt: promptContent,
+  });
   e2eLog.info("[step] 两张图已导入");
 
   // 回归断言：同一提示词内容只应有一个提示词（bug 下会按图重复创建为两个）
-  const prompts = await page.evaluate(() =>
-    (
-      window as unknown as {
-        __TAURI_INTERNALS__: { invoke: (cmd: string) => Promise<Array<{ content: string }>> };
-      }
-    ).__TAURI_INTERNALS__.invoke("list_prompts"),
-  );
+  const prompts = await listPrompts(page);
   const matched = prompts.filter((p) => p.content === promptContent);
   e2eLog.info(`[step] 内容匹配的提示词数量: ${matched.length}`);
   expect(matched.length, "同一提示词内容应只创建一个提示词").toBe(1);
 
   // 且两张图像都关联到这一个提示词
-  const promptMap = await page.evaluate(() =>
-    (
-      window as unknown as {
-        __TAURI_INTERNALS__: {
-          invoke: (cmd: string) => Promise<Record<string, string[]>>;
-        };
-      }
-    ).__TAURI_INTERNALS__.invoke("get_image_prompts_map"),
-  );
+  const promptMap = await getImagePromptsMap(page);
   const linkedImages = Object.entries(promptMap).filter(([, contents]) =>
     contents.includes(promptContent),
   );

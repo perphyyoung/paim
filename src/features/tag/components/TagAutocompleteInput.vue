@@ -239,6 +239,8 @@ defineExpose({ focus });
     <div
       v-if="open && rect"
       ref="dropdownEl"
+      role="listbox"
+      aria-label="标签候选"
       class="fixed z-[125] overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-lg"
       :style="{
         top: `${rect.top}px`,
@@ -250,6 +252,8 @@ defineExpose({ focus });
       <div
         v-for="(item, i) in filtered"
         :key="item"
+        role="option"
+        :aria-selected="i === activeIndex"
         class="cursor-pointer px-3 py-1.5 text-sm text-gray-200"
         :class="i === activeIndex ? 'bg-gray-700' : 'hover:bg-gray-700'"
         @mousedown.prevent

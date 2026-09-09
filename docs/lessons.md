@@ -128,7 +128,7 @@ worker 内跨用例保留），其全屏遮罩挡住了后续所有点击。
 
 ### 根因与正确做法
 
-worker 级 fixture 的应用实例跨用例共享，UI 状态（打开的弹窗）不会自动复位。复位统一放在 `helpers.ts` 的
+worker 级 fixture 的应用实例跨用例共享，UI 状态（打开的弹窗）不会自动复位。复位统一放在 `e2e-helpers.ts` 的
 test 级 `page` fixture 里：**每个用例开始前 reload 一次**（数据都在库里，重载无副作用），用例内不要自行 reload；
 **worker 首个用例跳过 reload**——全新实例无残留，且 reload 会打断初始加载中的 IPC 请求
 （ERR_ABORTED + 「Couldn't find callback id」回调失联），可能让后续 invoke 挂起。

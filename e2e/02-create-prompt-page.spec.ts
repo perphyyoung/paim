@@ -6,7 +6,7 @@
  */
 import path from "node:path";
 import { expect } from "@playwright/test";
-import { test } from "./helpers";
+import { findPromptIdByContent, getPromptRelatedImages, test } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
 test("新建提示词后，新卡片应置顶显示", async ({ page }) => {
@@ -50,28 +50,8 @@ test("新建提示词并选择图像，图像应关联到新提示词", async ({
   e2eLog.info("[step] 提示词已创建（含选择图像）");
 
   // 图像真实落库且关联到新提示词：mock 图的 file_name 即 mock 路径的基名
-  const prompts = await page.evaluate(() =>
-    (
-      window as unknown as {
-        __TAURI_INTERNALS__: {
-          invoke: (cmd: string) => Promise<Array<{ id: string; content: string }>>;
-        };
-      }
-    ).__TAURI_INTERNALS__.invoke("list_prompts"),
-  );
-  const created = prompts.find((p) => p.content === promptContent);
-  expect(created, "新提示词应存在").toBeTruthy();
-  const related = await page.evaluate(
-    (pid) =>
-      (
-        window as unknown as {
-          __TAURI_INTERNALS__: {
-            invoke: (cmd: string, args?: unknown) => Promise<Array<{ file_name: string }>>;
-          };
-        }
-      ).__TAURI_INTERNALS__.invoke("get_prompt_related_images", { id: pid }),
-    created!.id,
-  );
+  const promptId = await findPromptIdByContent(page, promptContent);
+  const related = await getPromptRelatedImages(page, promptId);
   expect(related.length, "应关联 1 张图像").toBe(1);
   expect(related[0].file_name).toBe(path.basename(app.mockImagePath));
 });

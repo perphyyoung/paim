@@ -4,7 +4,7 @@
  * 并行模型（参考 pm 的 e2e）：globalSetup 构建一次带内嵌前端的调试二进制，
  * 每个 worker spawn 自己的应用实例（独立数据目录/WebView2 目录/CDP 端口），
  * 用例结束优雅关闭自己的实例——worker 之间、与正常开发的 1420 实例之间互不干扰。
- * 对话框 mock 与数据目录隔离见 helpers.ts / docs/e2e测试.md。
+ * 对话框 mock 与数据目录隔离见 e2e-helpers.ts / docs/e2e测试.md。
  *
  * 运行前提：关闭正在运行的 dev 实例（globalSetup 会先清理残留的 paim 进程，
  * teardown 阶段不杀任何进程）。
