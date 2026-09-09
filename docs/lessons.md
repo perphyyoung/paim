@@ -180,3 +180,37 @@ release 没有 vite 进程所以正常；「关编辑器无效」是因为监听
   传函数）比黑名单更省心，新顶层目录自动豁免。
 - pm 备份导入的解压目录在系统临时目录（`create_temp_dir`），与 `db::temp_dir` 无关；
   db.rs 曾有「备份导入解压」的误导注释（已更正），排查前先核对实现而非注释。
+
+## 7. e2e 偶发失败三连：mock 竞态、页面销毁、格式化工具用错
+
+### 现象
+
+`pnpm e2e` 全量跑时 05-tag-autocomplete 间歇失败，且失败点漂移：先是上传弹窗点「确定」后不关（textarea 一直 visible 到用例超时）；改后变为上传成功但打不开图像详情（卡片文字等不到）；单跑失败文件/单用例（`--grep`）却始终通过。
+
+### 排查过程
+
+1. 给 `e2e-helpers.ts` 的共享 helper 加分步 `[step]` 日志（弹窗打开/选中 mock 图/填提示词/点确定/弹窗关闭），失败时把当前 toast 文本与页面可见文本快照 dump 进 paim.log（`[diag]` 行）。
+2. 第一次复现（上传弹窗不关）：对比 01 用例的写法定位——01 点「选择图像」后**等待文件名出现在预览列表**再提交，共享 helper 缺这一步。
+3. 第二次复现（打不开图像详情）：`[diag]` 显示断言在 **0.8s 即失败**（timeout 设了 5s 根本没等）、`page.evaluate` 读 body 失败——页面上下文已不存在。
+4. 先后怀疑 renderer crash 并加了 `page.on("crash")` 自愈监听；再次复现时**无 crash 事件**，判断被推翻。
+
+### 根因与教训
+
+1. **mock 竞态**：`select_images` 测试缝是异步 invoke，helper 点「选择图像」后不等返回就点「确定」→ `files` 仍为空 → 走「请先选择图像」分支 → 弹窗不关。整文件跑时应用负载高、invoke 更慢，所以只在全量跑复现。**测试缝返回后必须等 UI 证据（预览列表出现文件名）再继续**。
+2. **页面销毁 ≠ crash**：断言远小于 timeout 即失败 + evaluate 失败 = 页面上下文没了；但无 crash 事件说明不是 renderer crash（crashed 状态会派发），而是 **wry/WebView2 对渲染进程失败的处理——webview 被销毁重建**，旧 CDP target 直接消失，旧 Page 引用报废。多 worker（4 个 WebView2 并行）高负载下偶发，单 worker 从未复现。reload 旧引用救不了；根治需动态 page 引用（Proxy 转发 + 从 `browser.contexts()` 重找新页面），本次决策不做，接受「全量偶发一红、单跑必绿」。
+3. **格式化工具必须用项目约定的**：`npx prettier` 装了全局版（printWidth 80），把 e2e-helpers 整个重排成无关 diff。e2e 和前端项目用 oxfmt（`pnpm format:ui`）。
+
+### 修复
+
+1. `uploadImageWithPrompt` 补「预览列表出现 `e2e-upload.png`」等待断言（对齐 01 用例写法），消除 mock 竞态。
+2. 失败诊断保留：分步 `[step]` + `[diag]` 现场 dump（e2e 内埋点长期保留，噪声靠 `PAIM_E2E_LOG_LEVEL` 控制）。
+3. crash 监听保留作保险（对真 crashed 且 target 还在的场景有效），已知对销毁重建型无效。
+4. 排查决策沉淀到 `docs/e2e测试.md`「失败排查」：全量失败先单跑失败文件，单跑通过 = 并行环境偶发，不算回归、不追查。
+
+### 后续参考 / 通用约束
+
+- e2e 共享 helper 依赖异步测试缝时，等 UI 证据再走下一步，不要假设 invoke 已返回。
+- 断言立即失败（远小于 timeout）+ evaluate 报错 → 先查页面是否还在，不要先怀疑元素/数据。
+- 无 crash 事件 + 页面立即 closed → 往 webview 被销毁重建方向查；真 crash 会派发 `page.on("crash")`。
+- 「全量失败、单跑通过」先单跑再下结论，判为环境偶发就不改代码（规则见 docs/e2e测试.md）。
+- 前端和 e2e 格式化只用项目 `pnpm format:ui`（oxfmt），不要 npx 其它格式化器。
