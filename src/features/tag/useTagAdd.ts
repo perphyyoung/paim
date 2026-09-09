@@ -37,6 +37,11 @@ export function useTagAdd(options: UseTagAddOptions) {
       showToast(`「${name}」是系统特殊标签，不能手动添加`, "warning");
       return 0;
     }
+    // 已存在前置拦截：本地快照命中则提示并保持输入（不发命令，避免后端空刷新 updated_at）
+    if (tags.value.some((t) => t.name === name)) {
+      showToast(`标签「${name}」已存在`, "warning");
+      return 0;
+    }
     try {
       const added = await addTagCommand(String(id), name);
       tagInput.value = "";

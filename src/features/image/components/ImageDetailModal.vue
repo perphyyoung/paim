@@ -764,7 +764,6 @@ const fmtSize = (bytes: number) => {
               <TagAutocompleteInput
                 v-model="tagInput"
                 :candidates="tagCandidates"
-                :exclude="tags.map((t) => t.name)"
                 input-class="min-w-0 flex-1 rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
                 placeholder="回车添加单个标签"
                 @focus="ensureTagCandidates"

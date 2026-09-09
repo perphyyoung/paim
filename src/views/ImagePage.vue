@@ -549,6 +549,7 @@ async function doBatchDelete() {
 const { batchAddTag } = useBatchTagAdd({
   domain: "image",
   selectedIds,
+  tagNames,
   exitBatch,
   loadTagFilter,
   showToast,

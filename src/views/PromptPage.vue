@@ -285,6 +285,7 @@ const {
 const { batchAddTag } = useBatchTagAdd({
   domain: "prompt",
   selectedIds,
+  tagNames,
   exitBatch,
   loadTagFilter,
   showToast,

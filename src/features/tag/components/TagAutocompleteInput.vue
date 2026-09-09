@@ -18,15 +18,13 @@ const props = withDefaults(
     modelValue: string;
     /** 全量候选标签名 */
     candidates: string[];
-    /** 需要从候选中排除的名字（当前条目已有的标签） */
-    exclude?: string[];
     placeholder?: string;
     /** 最多展示的候选条数 */
     max?: number;
     /** 输入框样式（沿用调用处原 class，保持各入口视觉不变） */
     inputClass?: string;
   }>(),
-  { exclude: () => [], placeholder: "", max: 20, inputClass: "" },
+  { placeholder: "", max: 20, inputClass: "" },
 );
 
 const emit = defineEmits<{
@@ -47,8 +45,6 @@ const activeIndex = ref(-1);
 const rect = ref<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
 
 let blurTimer: ReturnType<typeof setTimeout> | null = null;
-
-const excluded = computed(() => new Set(props.exclude));
 
 /**
  * 内部镜像输入值：过滤、高亮、提交全部以它为准（同步，无渲染延迟）。
@@ -73,7 +69,6 @@ const filtered = computed(() => {
   const out: string[] = [];
   for (const c of props.candidates) {
     if (out.length >= props.max) break;
-    if (excluded.value.has(c)) continue;
     if (c.toLowerCase().startsWith(q)) out.push(c);
   }
   return out;
