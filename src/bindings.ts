@@ -280,32 +280,34 @@ export type RelatedImage = {
 	tags: string[],
 };
 
-/**  统计结果（12 项，与 pm 统计弹窗一一对应）。 */
+/**  单个特殊标签的命中数（只统计未删除条目，与主页筛选区口径一致） */
+export type SpecialTagCount = {
+	name: string,
+	count: number,
+};
+
+/**  统计结果：基础计数 8 项 + 两域特殊标签计数。 */
 export type Statistics = {
 	/**  提示词总数（含回收站） */
 	total_prompts: number,
 	/**  回收站中的提示词数 */
 	deleted_prompts: number,
-	/**  已收藏（不含回收站） */
-	favorite_prompts: number,
-	/**  含图像：有关联图像（且图像未删除）的活跃提示词数 */
-	prompts_with_images: number,
 	/**  提示词标签组数 */
 	prompt_tag_groups: number,
 	/**  提示词标签总数（含未分组标签，pm 只数组内标签，paim 允许无组故取全量） */
 	total_prompt_tags: number,
+	/**  提示词域特殊标签命中数（顺序同主页筛选区） */
+	special_prompt_tags: SpecialTagCount[],
 	/**  图像总数（含回收站） */
 	total_images: number,
 	/**  回收站中的图像数 */
 	deleted_images: number,
-	/**  已收藏（不含回收站） */
-	favorite_images: number,
-	/**  有引用：被活跃提示词关联的未删除图像数 */
-	referenced_images: number,
 	/**  图像标签组数 */
 	image_tag_groups: number,
 	/**  图像标签总数（含未分组标签） */
 	total_image_tags: number,
+	/**  图像域特殊标签命中数（顺序同主页筛选区） */
+	special_image_tags: SpecialTagCount[],
 };
 
 /**  标签数据（标签组 + 全部标签含计数）：标签筛选区与标签管理页共用。 */

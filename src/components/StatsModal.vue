@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * StatsModal - 数据统计弹窗（侧栏左下角「统计」入口）。
- * 对齐 pm 的统计弹窗：左右两栏各 6 项，每次打开实时查询（无缓存）。
+ * 左右两栏各若干项，每次打开实时查询（无缓存）。
  */
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { commands, type Statistics } from "@/bindings";
 
 const props = defineProps<{ open: boolean }>();
@@ -31,23 +31,37 @@ watch(
   { immediate: true },
 );
 
-// 两栏各自的三元组：[标签, 取值字段]（bindings 导出的 Statistics 字段为 snake_case）
+// 两栏统计行：基础 4 项 + 特殊标签计数（与基础项同样式直接罗列，无分组标题）。
+// 与特殊标签语义重复的项（已收藏/含图像/有引用）已移除，由特殊标签计数行呈现。
 const promptRows: Array<[string, keyof Statistics]> = [
   ["总数", "total_prompts"],
   ["已删除", "deleted_prompts"],
-  ["已收藏", "favorite_prompts"],
-  ["含图像", "prompts_with_images"],
   ["标签组数", "prompt_tag_groups"],
   ["标签总数", "total_prompt_tags"],
 ];
 const imageRows: Array<[string, keyof Statistics]> = [
   ["总数", "total_images"],
   ["已删除", "deleted_images"],
-  ["已收藏", "favorite_images"],
-  ["有引用", "referenced_images"],
   ["标签组数", "image_tag_groups"],
   ["标签总数", "total_image_tags"],
 ];
+
+type StatRow = [string, number];
+
+const promptStatRows = computed<StatRow[]>(() => {
+  if (!stats.value) return [];
+  return [
+    ...promptRows.map(([label, key]) => [label, stats.value![key]] as StatRow),
+    ...stats.value.special_prompt_tags.map((c) => [c.name, c.count] as StatRow),
+  ];
+});
+const imageStatRows = computed<StatRow[]>(() => {
+  if (!stats.value) return [];
+  return [
+    ...imageRows.map(([label, key]) => [label, stats.value![key]] as StatRow),
+    ...stats.value.special_image_tags.map((c) => [c.name, c.count] as StatRow),
+  ];
+});
 </script>
 
 <template>
@@ -58,7 +72,7 @@ const imageRows: Array<[string, keyof Statistics]> = [
       @click.self="emit('close')"
     >
       <div
-        class="flex h-[26rem] w-[50vw] max-w-[50vw] flex-col rounded-lg border p-6 shadow-sm border-gray-700 bg-gray-800"
+        class="flex max-h-[80vh] min-w-[36rem] max-w-[90vw] flex-col rounded-lg border p-6 shadow-sm border-gray-700 bg-gray-800"
       >
         <div class="flex items-center justify-between">
           <h3 class="text-base font-semibold text-gray-100">数据统计</h3>
@@ -90,7 +104,7 @@ const imageRows: Array<[string, keyof Statistics]> = [
         >
           正在统计...
         </p>
-        <div v-else-if="stats" class="mt-4 grid flex-1 grid-cols-2 gap-4">
+        <div v-else-if="stats" class="mt-4 grid flex-1 grid-cols-2 gap-4 overflow-y-auto">
           <!-- 提示词统计 -->
           <section class="flex flex-col rounded-lg border border-gray-700 p-5">
             <div class="mx-auto flex w-56 items-center gap-1.5 border-b border-gray-700 pb-2">
@@ -112,13 +126,13 @@ const imageRows: Array<[string, keyof Statistics]> = [
             </div>
             <dl class="mx-auto mt-1 flex w-56 flex-1 flex-col divide-y divide-gray-700">
               <div
-                v-for="[label, key] in promptRows"
-                :key="key"
+                v-for="[label, value] in promptStatRows"
+                :key="label"
                 class="flex flex-1 items-center justify-between"
               >
                 <dt class="text-sm text-gray-400">{{ label }}</dt>
                 <dd class="text-base font-medium tabular-nums text-gray-100">
-                  {{ stats[key] }}
+                  {{ value }}
                 </dd>
               </div>
             </dl>
@@ -145,13 +159,13 @@ const imageRows: Array<[string, keyof Statistics]> = [
             </div>
             <dl class="mx-auto mt-1 flex w-56 flex-1 flex-col divide-y divide-gray-700">
               <div
-                v-for="[label, key] in imageRows"
-                :key="key"
+                v-for="[label, value] in imageStatRows"
+                :key="label"
                 class="flex flex-1 items-center justify-between"
               >
                 <dt class="text-sm text-gray-400">{{ label }}</dt>
                 <dd class="text-base font-medium tabular-nums text-gray-100">
-                  {{ stats[key] }}
+                  {{ value }}
                 </dd>
               </div>
             </dl>
