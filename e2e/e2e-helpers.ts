@@ -58,14 +58,16 @@ function freePort(): Promise<number> {
   });
 }
 
-/// spawn 当前 worker 专属的应用实例并 CDP 连接。
-/// 每实例独立数据目录（temp/e2e-w<n>）、WebView2 目录、CDP 端口，互不冲突；
+/// spawn 一个应用实例并 CDP 连接。
+/// 实例独立于「文件」而非 worker：同一 worker 顺序跑多个 spec 文件时，每文件一个实例
+/// （Playwright 只有 test/worker 两级 fixture scope，没有 file 级，故在 fixture 里自实现，
+/// 见下方 _appPool）。目录/端口按 workerIndex + 本 worker 内实例序号命名，互不冲突；
 /// e2e 实例设置了 PAIM_DATA_DIR，应用侧会跳过全局快捷键注册。
 /// 内嵌前端的页面地址是 http://tauri.localhost（非 dev 模式的 localhost:1420）。
-async function launchApp(workerIndex: number): Promise<AppHandle> {
-  setWorkerTag(workerIndex);
+async function launchApp(workerIndex: number, seq: number): Promise<AppHandle> {
+  setWorkerTag(`w${workerIndex}-${seq}`);
   const root = path.join(import.meta.dirname, "..");
-  const dataDir = path.join(root, "temp", `e2e-w${workerIndex}`);
+  const dataDir = path.join(root, "temp", `e2e-w${workerIndex}-${seq}`);
   // 应用侧 preview 目录 = temp_dir/preview-<PAIM_DATA_DIR 末段>（见 db.rs::preview_dir）
   const previewDir = path.join(root, "temp", `preview-${path.basename(dataDir)}`);
   const mockImagePath = path.join(dataDir, "e2e-upload.png");
@@ -150,63 +152,95 @@ async function recoverPage(app: AppHandle): Promise<void> {
   }
 }
 
-/// worker 级 fixture：每个 worker spawn 一个应用实例并 CDP 连接，
-/// 该 worker 的全部用例共享；teardown（Playwright 保证执行，用例失败/超时也算）
-/// 优雅关闭实例。测试通过本文件的 test 拿到 app/page。
-const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandle }>({
-  _app: [
+/// 优雅关闭实例并删除它的数据目录与预览目录
+/// （进程已退出、句柄已释放后删，对齐 pm 的 _testDataDir 清理）
+async function disposeApp(app: AppHandle): Promise<void> {
+  await closeApp(app);
+  fs.rmSync(app.dataDir, { recursive: true, force: true });
+  fs.rmSync(app.previewDir, { recursive: true, force: true });
+}
+
+/// 页面侧诊断（控制台消息/失败请求/4xx 响应）写入 paim.log，便于失败时定位卡在哪一步
+function bindDiagnostics(app: AppHandle): void {
+  app.page.on("console", (msg) => {
+    const text = `[webview] ${msg.type()} ${msg.text()}`;
+    if (msg.type() === "error") e2eLog.error(text);
+    else e2eLog.info(text);
+  });
+  app.page.on("pageerror", (err) => e2eLog.error(`[pageerror] ${err.message}`));
+  app.page.on("requestfailed", (req) => {
+    const text = `[req-failed] ${req.url()} ${req.failure()?.errorText ?? ""}`;
+    // 导航（如用例间复位 reload）打断在途请求是预期行为，降为 info，避免稀释真异常
+    if (req.failure()?.errorText === "net::ERR_ABORTED") e2eLog.info(text);
+    else e2eLog.error(text);
+  });
+  app.page.on("response", (res) => {
+    if (res.status() >= 400) e2eLog.error(`[http-error] ${res.status()} ${res.url()}`);
+  });
+  // WebView2 renderer 偶发崩溃（多实例高负载下页面销毁但应用主进程存活，
+  // 见 2026-09-09 用例 5 的 [diag] 证据）。崩溃自动恢复：数据都在库里，
+  // reload/goto 后 UI 重新加载，当前用例的断言在剩余超时内重试即可继续。
+  app.page.on("crash", () => {
+    e2eLog.error("[diag] webview 页面崩溃（renderer crash），尝试自动恢复");
+    void recoverPage(app);
+  });
+}
+
+/// 实例池：按 spec 文件取实例。Playwright 只有 test / worker 两级 fixture scope，
+/// **没有 file 级**，而 worker 会顺序跑多个文件——若沿用 worker 级实例，
+/// 多个文件会共用同一个数据库（fixture 只 reload UI，不清库），
+/// 互相污染（workers=1 时可稳定复现：03 上传的 mock 图因 md5 与 02 已导入的相同
+/// 被判重复导入，拿不到新图）。故这里自实现 file 级 scope：
+/// 文件切换时关掉上一个文件的实例（连数据目录一起删），为该文件起一个全新实例。
+interface AppPool {
+  acquire(fileKey: string): Promise<AppHandle>;
+}
+
+const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _appPool: AppPool }>({
+  _appPool: [
     async ({}, use, workerInfo) => {
-      const app = await launchApp(workerInfo.workerIndex);
-      // 页面侧诊断（控制台消息/失败请求/4xx 响应）写入 paim.log，便于失败时定位卡在哪一步
-      app.page.on("console", (msg) => {
-        const text = `[webview] ${msg.type()} ${msg.text()}`;
-        if (msg.type() === "error") e2eLog.error(text);
-        else e2eLog.info(text);
+      let seq = 0;
+      // 用对象包一层：闭包内改写属性，TS 的控制流分析不会把外面的读取窄化成 null
+      const state: { current: { file: string; app: AppHandle } | null } = { current: null };
+      await use({
+        async acquire(file) {
+          if (state.current?.file === file) return state.current.app;
+          if (state.current) await disposeApp(state.current.app);
+          const app = await launchApp(workerInfo.workerIndex, seq++);
+          bindDiagnostics(app);
+          state.current = { file, app };
+          return app;
+        },
       });
-      app.page.on("pageerror", (err) => e2eLog.error(`[pageerror] ${err.message}`));
-      app.page.on("requestfailed", (req) => {
-        const text = `[req-failed] ${req.url()} ${req.failure()?.errorText ?? ""}`;
-        // 导航（如用例间复位 reload）打断在途请求是预期行为，降为 info，避免稀释真异常
-        if (req.failure()?.errorText === "net::ERR_ABORTED") e2eLog.info(text);
-        else e2eLog.error(text);
-      });
-      app.page.on("response", (res) => {
-        if (res.status() >= 400) e2eLog.error(`[http-error] ${res.status()} ${res.url()}`);
-      });
-      // WebView2 renderer 偶发崩溃（多 worker 高负载下页面销毁但应用主进程存活，
-      // 见 2026-09-09 用例 5 的 [diag] 证据）。崩溃自动恢复：数据都在库里，
-      // reload/goto 后 UI 重新加载，当前用例的断言在剩余超时内重试即可继续。
-      app.page.on("crash", () => {
-        e2eLog.error("[diag] webview 页面崩溃（renderer crash），尝试自动恢复");
-        void recoverPage(app);
-      });
-      await use(app);
-      await closeApp(app);
-      // 进程已退出、句柄已释放，删除本轮数据目录与预览目录（对齐 pm 的 _testDataDir 清理）
-      fs.rmSync(app.dataDir, { recursive: true, force: true });
-      fs.rmSync(app.previewDir, { recursive: true, force: true });
+      // worker 结束（Playwright 保证执行，用例失败/超时也算）：关掉最后一个实例
+      if (state.current) await disposeApp(state.current.app);
     },
     { scope: "worker" },
   ],
-  app: async ({ _app }, use) => {
-    await use(_app);
-  },
-  // 每个用例开始前重置 UI：同 worker 的上一用例可能残留打开的弹窗（数据在库里，
+  app: [
+    async ({ _appPool }, use, testInfo) => {
+      await use(await _appPool.acquire(testInfo.file));
+    },
+    // 每文件的首个用例要等应用 spawn + CDP 就绪（2~4s）：给 fixture 单独 30s 超时，
+    // 这段耗时不计入用例自己的 10s，否则首用例容易被启动时间挤爆
+    { scope: "test", timeout: 30_000 },
+  ],
+  // 每个用例开始前重置 UI：同文件里上一用例可能残留打开的弹窗（数据在库里，
   // 重载无副作用）。统一在 fixture 处理，用例内不要自行 reload。
-  // worker 首个用例跳过 reload：全新实例无残留，且 reload 会打断初始加载的
+  // 每个文件的首个用例跳过 reload：全新实例无残留，且 reload 会打断初始加载的
   // IPC 请求（ERR_ABORTED + 回调失联），可能让后续 invoke 挂起。
   page: [
-    async ({ _app }, use) => {
-      if (_app.used) {
+    async ({ app }, use) => {
+      if (app.used) {
         // 超时给 8s（小于用例 10s 超时）：reload 挂住时先记 [diag] 再走崩溃恢复，
         // 否则「页面失联」会表现为用例里某个按钮等不到，难以定位到复位这一步
-        await _app.page.reload({ timeout: 8_000 }).catch(async (e) => {
+        await app.page.reload({ timeout: 8_000 }).catch(async (e) => {
           e2eLog.error(`[diag] 用例间复位 reload 失败：${e}`);
-          await recoverPage(_app);
+          await recoverPage(app);
         });
       }
-      _app.used = true;
-      await use(_app.page);
+      app.used = true;
+      await use(app.page);
     },
     { scope: "test" },
   ],
@@ -323,14 +357,19 @@ export async function openBatchAddTagDialog(page: Page, cardText: string): Promi
 }
 
 /// 经上传弹窗上传一张 mock 图并关联提示词，返回 { 图像 id, 提示词内容 }
-/// mock 文件路径固定（launchApp 已写入实例环境），内容可覆写以区分分支。
+/// mockImagePath 为实例专属 mock 图路径（app.mockImagePath）：每次上传前覆写内容
+/// （颜色取自时间戳 → md5 唯一），否则同实例里先前用例已导入过同路径的图时，
+/// 内容相同会被判重复导入、拿不到新图（多文件共用实例时可稳定复现）。
+/// 需要「同内容」语义的用例（03 的 SameImage 分支）依赖的是上传后不再覆写，与本覆写不冲突。
 /// 每步打 [step] 日志；弹窗未关闭时 dump 页面状态进 paim.log 再抛错——弹窗不关只有三种
 /// 可能：未选中图（「请先选择图像」）、importImages 报错（弹窗内错误面板）、全部重复导入。
 export async function uploadImageWithPrompt(
   page: Page,
   promptContent: string,
+  mockImagePath: string,
 ): Promise<{ imageId: string; promptContent: string }> {
   await gotoImagesPage(page);
+  writePng(mockImagePath);
   await page.getByRole("button", { name: "上传图像" }).click();
   e2eLog.info("[step] 上传弹窗已打开");
   const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");

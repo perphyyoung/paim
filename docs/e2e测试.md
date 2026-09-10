@@ -15,9 +15,14 @@
 - `global-setup.ts`：`pnpm tauri build --debug --no-bundle` 构建一次**带内嵌前端的调试二进制**
   （等价 pm 的 `pnpm build`），运行期不依赖 vite/devServer。
 - `workers: 4` + `fullyParallel: false`：**用例文件间并行、文件内串行**（与 pm 一致）。
-  每个 worker 通过 `e2e-helpers.ts` 的 worker 级 fixture spawn 自己的应用实例：
-  - 数据目录 `temp/e2e-w<n>`、WebView2 目录 `temp/wv2-w<n>`、上传预览目录 `temp/preview-e2e-w<n>`
-    （互不冲突，teardown 时删除数据目录与预览目录）；
+  每个 **spec 文件** 通过 `e2e-helpers.ts` 的 fixture spawn **自己的应用实例**：
+  - **Playwright 只有 test / worker 两级 fixture scope，没有 file 级**，而一个 worker 会顺序跑多个文件——
+    若按 worker 起实例，多个文件会共用同一个数据库（fixture 只 reload UI，不清库）而互相污染
+    （`workers: 1` 时可稳定复现：03 上传的 mock 图 md5 与 02 已导入的相同 → 判重复导入 → 拿不到新图）。
+    因此 fixture 里**自实现 file 级 scope**：按 `testInfo.file` 取实例，文件切换时关掉上一个文件的
+    实例并起新的（含独立数据目录），代价是每文件一次应用启动（约 2–4s）。
+  - 数据目录 `temp/e2e-w<n>-<序号>`、WebView2 目录 `temp/wv2-w<n>`（按 worker，实例顺序创建不冲突）、
+    上传预览目录 `temp/preview-e2e-w<n>-<序号>`（互不冲突，teardown 时删除数据目录与预览目录）；
   - CDP 端口按空闲端口动态分配；
   - teardown 由 Playwright 保证执行（用例失败/超时也算）：优雅关闭**自己 spawn 的进程**（不影响其他
     worker 与 dev 实例）后删除本轮数据目录。
@@ -44,7 +49,7 @@ pnpm e2e --grep 上传  # 单个用例
 - 首次运行 globalSetup 需编译 Rust；globalTimeout 10 分钟。
 - 测试期间会弹出多个应用窗口（每 worker 一个），属正常现象。
 - e2e 实例与正常 dev 实例（1420）互不干扰；若报「paim.db 被占用」，是上一轮异常退出泄漏的实例还开着数据目录，关闭它即可（`paim.log` 有记录）。
-- 应用与测试侧日志统一写在项目根 `paim.log`（测试侧带 `[E2E w<n>]` 前缀），失败排查先看它，控制台只保留 playwright 自身的用例结果输出；
+- 应用与测试侧日志统一写在项目根 `paim.log`（测试侧带 `[E2E w<n>-<序号>]` 前缀，`<序号>` 是该实例在本 worker 内第几个文件，用于区分同一 worker 的多个文件实例），失败排查先看它，控制台只保留 playwright 自身的用例结果输出；
 - 测试侧日志有输出级别阈值，在 `playwright.config.ts` 的 `PAIM_E2E_LOG_LEVEL` 修改：默认 `warn`（跑全量只记 pageerror/失败请求/4xx/`[diag]` 等异常信号）；排查失败时临时改为 `info`/`debug` 重跑，即可看到 `[step]`/`[connect]` 等步骤细节；
 - **e2e 文件夹内的日志埋点（`[step]`/`[diag]` 等）长期保留，不要在排查后删除**——噪声靠级别阈值控制（排查完把 `PAIM_E2E_LOG_LEVEL` 改回 `warn` 即可）。此约定仅限 e2e 目录；应用代码（前端/后端）的临时排查埋点仍按 [日志使用说明.md](./日志使用说明.md) 的建议，定位后清理。
 - `[connect]` 行（fixture 连上应用时记录，含尝试次数）是排查测试超时的边界标记：超时且无该行 → 应用启动/CDP 未就绪（往 webview 启动方向查）；有该行 → 应用正常，问题在用例步骤本身（结合 `[step]` 行定位到具体步骤）。尝试次数也直观反映应用启动耗时。
@@ -79,14 +84,14 @@ pnpm e2e --grep 上传  # 单个用例
 | 打标签 | 两种提交方式都要能用：回车（Enter 命中高亮 → select，未命中 → submit）与点击（点候选项 → select，详情另有「添加」按钮）。候选下拉是 Teleport + fixed `z-[125]`，**会盖住批量弹窗的「确定」按钮**（预期行为，不改布局），所以批量打标签用 `openBatchAddTagDialog` 打开后，一律用回车或点候选项提交，**不要点「确定」** |
 | 进批量模式 | `Ctrl + 点击`卡片（普通点击是打开详情）；可复用 `openBatchAddTagDialog` |
 | 断言 toast | 用 `.first()`——同一 worker 里前一用例的同文案 toast 可能未消失，直接断言会严格模式冲突（resolved to 2 elements）；`expectToast`/`expectToastAndDismiss` 内部已处理 |
-| 用例间状态复位 | page fixture 已内置：**worker 首个用例跳过 reload**（全新实例无残留，且 reload 会打断初始加载的 IPC 请求导致回调失联）；其余用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload`。reload 超时 8s，失败会记 `[diag] 用例间复位 reload 失败` 并走崩溃恢复（reload → goto）——看到该行即说明是页面失联，不是用例步骤的问题 |
+| 用例间状态复位 | page fixture 已内置：**每个文件的首个用例跳过 reload**（该文件实例刚启动、无残留，且 reload 会打断初始加载的 IPC 请求导致回调失联）；同文件其余用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload`。reload 超时 8s，失败会记 `[diag] 用例间复位 reload 失败` 并走崩溃恢复（reload → goto）——看到该行即说明是页面失联，不是用例步骤的问题 |
 | 用新定位 API | 先查类型定义。playwright 1.62 已移除 `getByDisplayValue` 等旧 API；e2e 目录已纳入 `pnpm check` 的类型检查（`tsc --noEmit -p e2e`），方法名写错会在 check 时暴露 |
-| 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每 worker 独立目录；导入会让数据目录改名，不假设旧文件仍在） |
+| 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每文件实例独立目录；导入会让数据目录改名，不假设旧文件仍在）。`uploadImageWithPrompt` 内部每次上传前都会覆写 mock 内容（md5 唯一），避免同实例已导入过同路径图时被判重复导入 |
 | 文件选择 | 复用 `select_images` 测试缝（`launchApp` 已把 mock 路径写入实例环境）；替换图像等单选场景需自行校验返回数量 |
 
 ## 失败排查（按此顺序，agent 可直接执行）
 
-1. **看 `paim.log`**：多 worker 的行由 `[E2E w<n>]` 前缀区分归属，按时间顺序读失败用例所在 worker 的行。
+1. **看 `paim.log`**：多 worker/多文件实例的行由 `[E2E w<n>-<序号>]` 前缀区分归属，按时间顺序读失败用例所在实例的行。
    - `[connect]` 行（fixture 连上应用，含尝试次数）是排查测试超时的边界标记：**超时且无该行** → 应用启动/CDP 未就绪（往 webview 启动方向查）；**有该行** → 应用正常，问题在用例步骤本身（结合 `[step]` 行定位到具体步骤）。尝试次数也直观反映应用启动耗时。
    - `[diag]` 行：helper 断言失败时自动 dump 的现场（当前 toast 文本 + 页面可见文本快照），用于区分「元素没渲染」还是「页面已销毁」等环境问题。
 2. **全量跑失败时，先单跑失败文件再下结论**：

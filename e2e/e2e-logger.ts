@@ -8,11 +8,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/// worker 标识，由 launchApp 按 workerIndex 设置（每个 worker 是独立进程，模块态安全）
+/// 实例标识，由 launchApp 按 workerIndex + 本 worker 内第几个实例设置
+/// （每个 worker 是独立进程，模块态安全）。同一 worker 顺序跑多个 spec 文件，
+/// 每文件一个实例，故标识形如 w0-1（worker 0 的第 2 个文件实例）。
 let workerTag = "";
 
-export function setWorkerTag(workerIndex: number): void {
-  workerTag = ` w${workerIndex}`;
+export function setWorkerTag(tag: string): void {
+  workerTag = ` ${tag}`;
 }
 
 /// 与前端 logger 的 fmt 一致：多参空格拼接，非字符串（含对象）JSON 序列化

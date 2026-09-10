@@ -132,7 +132,7 @@ test("批量点击候选项：命中即提交，成功后关闭弹窗并落库",
   e2eLog.info("[step] 批量点击候选已提交并落库");
 });
 
-test("候选跨域合并：图像详情可提示提示词域标签并点击添加", async ({ page }) => {
+test("候选跨域合并：图像详情可提示提示词域标签并点击添加", async ({ page, app }) => {
   // 先在提示词域创建 TAG：保证跨域候选里有它，本用例可单独跑
   const seed = await newPromptDetail(page, "跨域种子");
   await seed.tagInput.fill(TAG);
@@ -144,6 +144,7 @@ test("候选跨域合并：图像详情可提示提示词域标签并点击添�
   const { promptContent } = await uploadImageWithPrompt(
     page,
     `e2e 标签自动完成 图像 ${Date.now()}`,
+    app.mockImagePath,
   );
   await openImageDetail(page, promptContent);
 

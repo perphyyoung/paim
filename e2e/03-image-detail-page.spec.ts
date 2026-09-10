@@ -36,6 +36,7 @@ test("替换为同内容文件时提示未替换（SameImage 分支）", async (
   const { imageId, promptContent } = await uploadImageWithPrompt(
     page,
     `e2e 替换图像关联 ${Date.now()}`,
+    app.mockImagePath,
   );
 
   // 不覆写 mock 文件：seam 返回的文件与原图内容相同 → md5 一致 → SameImage
@@ -51,6 +52,7 @@ test("替换为不同内容文件时旧图进回收站且关联迁移（Replaced
   const { imageId, promptContent } = await uploadImageWithPrompt(
     page,
     `e2e 替换图像关联 ${Date.now()}`,
+    app.mockImagePath,
   );
 
   // 覆写 mock 文件内容（不同颜色 → 不同 md5），seam 路径不变

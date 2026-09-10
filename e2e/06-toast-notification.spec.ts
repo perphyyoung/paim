@@ -153,9 +153,13 @@ test("toast 离场期间不拦截点击", async ({ page }) => {
 
 // 放最后：本用例会改数据（上传图像 → 移入回收站 → 清空回收站，彻底删除磁盘文件），
 // 按 e2e 约定，涉及数据/目录让位的用例排在文件末尾，避免影响后续用例的复位。
-test("warning toast 停留更久（约 4s）后自动消失", async ({ page }) => {
+test("warning toast 停留更久（约 4s）后自动消失", async ({ page, app }) => {
   // 造一张图并移入回收站，使「清空回收站」可用（回收站为空时该按钮 disabled）
-  const { imageId } = await uploadImageWithPrompt(page, `e2e toast warning ${Date.now()}`);
+  const { imageId } = await uploadImageWithPrompt(
+    page,
+    `e2e toast warning ${Date.now()}`,
+    app.mockImagePath,
+  );
   await invokeCommand(page, "delete_image", { id: imageId });
   await page.getByTitle("回收站").click();
   await page.getByRole("button", { name: "清空回收站" }).click();
