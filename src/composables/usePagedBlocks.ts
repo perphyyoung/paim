@@ -2,7 +2,7 @@
 // 排序 / 搜索 / 标签筛选全部下推到后端后，前端拿不到全量，因此列表改为「按块持有」——
 // 只保留最近用到的若干块（LRU），其余位置用占位对象填充，使虚拟网格的窗口计算、
 // 定位与滚动条保持不变（总条数来自后端 total）。
-import { ref, shallowRef, triggerRef, type Ref } from "vue";
+import { ref, shallowRef, type Ref } from "vue";
 
 /** 未加载 / 加载失败的位置占位；不带 id，避免被批量选择或 key 生成误当成实体 */
 export interface Placeholder {
@@ -68,27 +68,37 @@ export function usePagedBlocks<T extends { id: string }>(options: {
 
   const placeholder = (): Placeholder => ({ __placeholder: true });
 
+  // 注意：items 必须**整体换新数组**，不能原地改。
+  // VirtualGrid 是通过 `props.items` 计算 rowCount / visibleItems 的，而 Vue 对子组件的
+  // 更新判定是「prop 引用是否变化」——沿用同一个数组（哪怕 triggerRef 了）子组件不会重渲染，
+  // 表现为：数据已到位但一张卡片都不渲染、且 totalHeight 恒为 0（滚动条拖不动）。
+  function commit(next: Array<T | Placeholder>) {
+    items.value = next;
+  }
+
   function resize(n: number) {
     const arr = items.value;
     if (arr.length === n) return;
-    if (arr.length > n) arr.length = n;
-    else for (let i = arr.length; i < n; i += 1) arr.push(placeholder());
-    triggerRef(items);
+    const next = arr.length > n ? arr.slice(0, n) : arr.slice();
+    for (let i = next.length; i < n; i += 1) next.push(placeholder());
+    commit(next);
   }
 
   function applyBlock(index: number, list: T[]) {
-    const arr = items.value;
+    const next = items.value.slice();
     const start = index * blockSize;
-    for (let i = 0; i < list.length; i += 1) arr[start + i] = list[i];
-    triggerRef(items);
+    for (let i = 0; i < list.length; i += 1) next[start + i] = list[i];
+    commit(next);
   }
 
   function clearBlockSlots(index: number) {
     const arr = items.value;
     const start = index * blockSize;
     const end = Math.min(arr.length, start + blockSize);
-    for (let i = start; i < end; i += 1) arr[i] = placeholder();
-    triggerRef(items);
+    if (start >= end) return;
+    const next = arr.slice();
+    for (let i = start; i < end; i += 1) next[i] = placeholder();
+    commit(next);
   }
 
   function evict() {
@@ -155,9 +165,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     attempts.clear();
     // 不清零 total、不截断数组：保留占位撑起的旧高度，让 KeepAlive 恢复滚动位置时有高度可落，
     // 否则条件刷新（含跨页脏标记触发的重载）会把滚动位置丢回顶部。新 total 到达后由 loadBlock 校正。
-    const arr = items.value;
-    for (let i = 0; i < arr.length; i += 1) arr[i] = placeholder();
-    triggerRef(items);
+    commit(items.value.map(() => placeholder()));
     loading.value = true;
     try {
       await loadBlock(0);
@@ -171,14 +179,15 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     const arr = items.value;
     const i = arr.findIndex((x) => !isPlaceholder(x) && x.id === id);
     if (i < 0) return;
-    arr[i] = next;
     // 同步已加载块，避免该块被淘汰前后的内容不一致
     const cached = blocks.get(Math.floor(i / blockSize));
     if (cached) {
       const j = cached.findIndex((x) => x.id === id);
       if (j >= 0) cached[j] = next;
     }
-    triggerRef(items);
+    const copy = arr.slice();
+    copy[i] = next;
+    commit(copy);
   }
 
   return { items, total, loading, blockSize, ensureRange, reload, replaceItem };

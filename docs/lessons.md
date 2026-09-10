@@ -214,3 +214,29 @@ release 没有 vite 进程所以正常；「关编辑器无效」是因为监听
 - 无 crash 事件 + 页面立即 closed → 往 webview 被销毁重建方向查；真 crash 会派发 `page.on("crash")`。
 - 「全量失败、单跑通过」先单跑再下结论，判为环境偶发就不改代码（规则见 docs/e2e测试.md）。
 - 前端和 e2e 格式化只用项目 `pnpm format:ui`（oxfmt），不要 npx 其它格式化器。
+
+## 8. 数据到了却一张卡片都不渲染：`shallowRef` 原地改写不触发子组件更新
+
+### 现象
+
+`pnpm dev` 下图像页与提示词页都不出卡片，右侧滚动条也拖不动（不是骨架屏、是彻底空白）。日志显示数据层完全正常：`[list_prompts_page] … items=200 total=525`、`[PagedBlocks:prompt] 块到达 items=200 total=525`、`reload 首屏结束 total=525 items=525 firstItemLoaded=true`；但拖动滚动条只反复出现 `ensureRange {start:0,end:17}`，`start` 恒为 0——说明滚动容器自身高度是 0。
+
+### 根因
+
+`usePagedBlocks` 的 `items` 是 `shallowRef<Array<T | Placeholder>>([])`。原实现把块内容**原地写回同一个数组**（`arr[start+i] = list[i]`、`arr[i] = placeholder()`），随后 `triggerRef(items)`。
+
+`VirtualGrid` 是子组件，`rowCount` / `totalHeight` / `visibleItems` 都由 `props.items` 计算。Vue 判定子组件是否更新看的是 **prop 的引用是否变化**：沿用同一个数组时，即使 `triggerRef` 让父组件重渲染，传下去的还是同一个引用，子组件不会重新计算 → `totalHeight` 恒为 0 → 一张卡片都不渲染、滚动条无可滚动区间。（外层 `watch(pageItems)` 反而会被 `triggerRef` 触发，所以缩略图等副作用照常执行，更容易误判为「数据没问题」。）
+
+### 修复
+
+`usePagedBlocks.ts` 内统一走 `commit(next)`（`items.value = next`）：
+
+- `resize` / `applyBlock` / `clearBlockSlots` / `replaceItem`：先 `items.value.slice()` 造新数组再写，最后 `commit`。
+- `reload`：`commit(items.value.map(() => placeholder()))`，保留旧长度以撑住高度（KeepAlive 恢复滚动位置需要）。
+- 删除已无用的 `triggerRef` 引入。
+
+### 通用约束
+
+- 用 `shallowRef` 持有「要传给子组件做计算的集合」时，**整体换新数组**（`items.value = next`），不要原地改 + `triggerRef`；就地更新只对「本组件模板直接消费」的浅层数据安全。
+- 「数据日志正常但 UI 空白」优先怀疑**引用身份**而非数据内容：对照检查子组件里由 `props.xxx` 派生的计算量（高度、计数、切片）是否恒为初始值。
+- 排查这类问题的顺序：先确认数据到达（后端/组合式函数日志）→ 再确认渲染层输入（`props.items.length`）→ 最后才是模板条件与插槽。
