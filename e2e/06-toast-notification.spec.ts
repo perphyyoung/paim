@@ -64,25 +64,6 @@ test("success toast 停留约 2.5s 后自动消失", async ({ page }) => {
   await waitToastGone(page, "提示词已创建");
 });
 
-test("warning toast 停留更久（约 4s）后自动消失", async ({ page }) => {
-  // 造一张图并移入回收站，使「清空回收站」可用（回收站为空时该按钮 disabled）
-  const { imageId } = await uploadImageWithPrompt(page, `e2e toast warning ${Date.now()}`);
-  await invokeCommand(page, "delete_image", { id: imageId });
-  await page.getByTitle("回收站").click();
-  await page.getByRole("button", { name: "清空回收站" }).click();
-  await page.getByRole("button", { name: "清空", exact: true }).click();
-
-  const toast = page.getByText("回收站已清空").first();
-  await expect(toast).toBeVisible();
-
-  // 3s 时仍应可见（success 此时早已消失），验证 warning 档位更久
-  await page.waitForTimeout(3_000);
-  await expect(toast).toBeVisible();
-  e2eLog.info("[step] warning toast 3s 时仍可见");
-
-  await waitToastGone(page, "回收站已清空");
-});
-
 test("点击 toast 可提前关闭（无需等到停留时长）", async ({ page }) => {
   await createPromptViaDialog(page, `e2e toast 点击 ${Date.now()}`);
   const toast = page.getByText("提示词已创建").first();
@@ -168,4 +149,27 @@ test("toast 离场期间不拦截点击", async ({ page }) => {
   );
   expect(blocked, "离场中的 toast 不应再拦截点击").toBe(false);
   e2eLog.info("[step] 离场中的 toast 已不拦截点击");
+});
+
+// 放最后：本用例会改数据（上传图像 → 移入回收站 → 清空回收站，彻底删除磁盘文件），
+// 按 e2e 约定，涉及数据/目录让位的用例排在文件末尾，避免影响后续用例的复位。
+test("warning toast 停留更久（约 4s）后自动消失", async ({ page }) => {
+  // 造一张图并移入回收站，使「清空回收站」可用（回收站为空时该按钮 disabled）
+  const { imageId } = await uploadImageWithPrompt(page, `e2e toast warning ${Date.now()}`);
+  await invokeCommand(page, "delete_image", { id: imageId });
+  await page.getByTitle("回收站").click();
+  await page.getByRole("button", { name: "清空回收站" }).click();
+  await page.getByRole("button", { name: "清空", exact: true }).click();
+
+  const toast = page.getByText("回收站已清空").first();
+  await expect(toast).toBeVisible();
+
+  // 3s 时仍应可见（success 此时早已消失），验证 warning 档位更久
+  await page.waitForTimeout(3_000);
+  await expect(toast).toBeVisible();
+  e2eLog.info("[step] warning toast 3s 时仍可见");
+
+  await waitToastGone(page, "回收站已清空");
+  // 回收站整页弹层不随清空关闭，显式关闭（避免残留整页层影响下一个用例的复位）
+  await page.getByTitle("关闭").click();
 });

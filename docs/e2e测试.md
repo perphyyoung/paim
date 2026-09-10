@@ -79,7 +79,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 打标签 | 两种提交方式都要能用：回车（Enter 命中高亮 → select，未命中 → submit）与点击（点候选项 → select，详情另有「添加」按钮）。候选下拉是 Teleport + fixed `z-[125]`，**会盖住批量弹窗的「确定」按钮**（预期行为，不改布局），所以批量打标签用 `openBatchAddTagDialog` 打开后，一律用回车或点候选项提交，**不要点「确定」** |
 | 进批量模式 | `Ctrl + 点击`卡片（普通点击是打开详情）；可复用 `openBatchAddTagDialog` |
 | 断言 toast | 用 `.first()`——同一 worker 里前一用例的同文案 toast 可能未消失，直接断言会严格模式冲突（resolved to 2 elements）；`expectToast`/`expectToastAndDismiss` 内部已处理 |
-| 用例间状态复位 | page fixture 已内置：**worker 首个用例跳过 reload**（全新实例无残留，且 reload 会打断初始加载的 IPC 请求导致回调失联）；其余用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload` |
+| 用例间状态复位 | page fixture 已内置：**worker 首个用例跳过 reload**（全新实例无残留，且 reload 会打断初始加载的 IPC 请求导致回调失联）；其余用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload`。reload 超时 8s，失败会记 `[diag] 用例间复位 reload 失败` 并走崩溃恢复（reload → goto）——看到该行即说明是页面失联，不是用例步骤的问题 |
 | 用新定位 API | 先查类型定义。playwright 1.62 已移除 `getByDisplayValue` 等旧 API；e2e 目录已纳入 `pnpm check` 的类型检查（`tsc --noEmit -p e2e`），方法名写错会在 check 时暴露 |
 | 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每 worker 独立目录；导入会让数据目录改名，不假设旧文件仍在） |
 | 文件选择 | 复用 `select_images` 测试缝（`launchApp` 已把 mock 路径写入实例环境）；替换图像等单选场景需自行校验返回数量 |

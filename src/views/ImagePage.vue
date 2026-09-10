@@ -302,11 +302,8 @@ function closeTrash() {
 }
 
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
+// 两个入口在回收站为空时按钮即 disabled（TrashOverlay::canOperate），无需再判空
 async function restoreAllTrash() {
-  if (trashImages.value.length === 0) {
-    showToast("回收站已为空", "warning");
-    return;
-  }
   try {
     const restored = await commands.restoreAllImages();
     await Promise.all([loadTrash(), loadImages()]);
@@ -318,10 +315,6 @@ async function restoreAllTrash() {
 }
 
 function requestEmptyTrash() {
-  if (trashImages.value.length === 0) {
-    showToast("回收站已为空", "warning");
-    return;
-  }
   emptyTrashOpen.value = true;
 }
 

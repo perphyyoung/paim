@@ -24,11 +24,11 @@ const TYPE_CLASSES: Record<ToastType, string> = {
     >
       <!-- 动画参考 cm：入场弹性上滑，出场下滑淡出 -->
       <!-- 出场（离场）期间 pointer-events-none：淡出中的 toast 不再拦截鼠标点击
-             （居中 toast 离场要 300ms，期间挡住底下元素；e2e 06 用例 7 覆盖该行为） -->
+             （居中 toast 离场要 300ms，期间会挡住底下元素；e2e 06 用例覆盖该行为） -->
       <TransitionGroup
         enter-active-class="transition-all duration-[400ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]"
         enter-from-class="opacity-0 translate-y-5 scale-95"
-        leave-active-class="pointer-events-none transition-all duration-300 ease-in"
+        leave-active-class="toast-leave-active transition-all duration-300 ease-in"
         leave-to-class="opacity-0 translate-y-5 scale-95"
       >
         <!-- 样式参考 cm ToastModal：深底 + 按类型换色的描边与内外辉光，点击可提前关闭 -->
@@ -45,3 +45,12 @@ const TYPE_CLASSES: Record<ToastType, string> = {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+/* 离场 300ms 内必须盖过 toast 本体的 pointer-events-auto：两个 Tailwind 工具类
+   特异性相同，胜负取决于生成顺序，故此处用 !important + 自定义类兜底，
+   保证淡出中的 toast 不再拦截鼠标（回归覆盖：e2e 06「离场期间不拦截点击」）。 */
+.toast-leave-active {
+  pointer-events: none !important;
+}
+</style>

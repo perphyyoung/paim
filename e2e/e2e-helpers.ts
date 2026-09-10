@@ -197,7 +197,14 @@ const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _app: AppHandl
   // IPC 请求（ERR_ABORTED + 回调失联），可能让后续 invoke 挂起。
   page: [
     async ({ _app }, use) => {
-      if (_app.used) await _app.page.reload();
+      if (_app.used) {
+        // 超时给 8s（小于用例 10s 超时）：reload 挂住时先记 [diag] 再走崩溃恢复，
+        // 否则「页面失联」会表现为用例里某个按钮等不到，难以定位到复位这一步
+        await _app.page.reload({ timeout: 8_000 }).catch(async (e) => {
+          e2eLog.error(`[diag] 用例间复位 reload 失败：${e}`);
+          await recoverPage(_app);
+        });
+      }
       _app.used = true;
       await use(_app.page);
     },
