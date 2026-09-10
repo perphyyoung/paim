@@ -1,7 +1,7 @@
 {
   "name": "paim",
   "private": true,
-  "version": "0.2.21",
+  "version": "0.2.22",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -16,7 +16,8 @@
     "format:ui": "oxfmt src/ e2e/",
     "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:check": "oxfmt src/ e2e/ --check && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test": "pnpm test:ui && pnpm test:rs",
+    "test:rs": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:ui": "vitest run",
     "e2e": "playwright test --config e2e/playwright.config.ts",
     "check": "pnpm format && pnpm build:rs && pnpm gen:bindings && pnpm typecheck && pnpm build"

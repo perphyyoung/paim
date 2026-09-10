@@ -12,7 +12,7 @@
 ## 项目规则
 
 - 对同一文件的多处修改：合并为一次编辑完成，或分多条消息串行执行；禁止在同一条消息里并行发起多个编辑到同一文件（并行读-改-写会竞态覆盖，仅最后一个编辑生效，其余静默丢失）
-- 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → typecheck → build），通过后再按需跑 `pnpm test` / `pnpm test:ui` / `sentrux check .` / `pnpm e2e`；验证通过才输出简要的一句话 git commit 信息。不要跳过 `pnpm check` 直接跑其它命令
+- 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → typecheck → build），通过后再按需跑 `pnpm test`（全部单元测试，含前后端）/ `sentrux check .` / `pnpm e2e`；验证通过才输出简要的一句话 git commit 信息。不要跳过 `pnpm check` 直接跑其它命令
 - 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
 - 语义搜索优先使用 gitnexus mcp，查询时传 `repo: "paim"` 指定当前仓库
   - 查找某概念的所有相关代码（不看函数怎么命名）：用自然语言查询（中文/英文皆可），走语义向量召回
@@ -42,7 +42,7 @@
 - bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta 版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。
 - vite watch 已改白名单（仅 index.html + src/ + public/）：**package.json 不在监听内**，改版本号（package.json / tauri.conf.json / Cargo.toml）后须重启 vite，否则前端 version 仍显示旧值。原因：此前递归监听项目根会持有 paim-data 目录句柄，挡住 pm 备份导入的整目录改名让位（os error 5），案例见 docs/lessons.md 第 6 条。
-- 测试命令：`pnpm test` Rust 单元测试；`pnpm test:ui` 前端单测（vitest，`src/**/*.test.ts`）；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。
+- 测试命令：`pnpm test` 全部单元测试（= `pnpm test:ui` 前端 vitest + `pnpm test:rs` Rust cargo test，前端在前）；`pnpm test:ui` 仅前端单测（vitest，`src/**/*.test.ts`）；`pnpm test:rs` 仅 Rust 单测；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。
 - 万级压测数据：`node scripts/bench-data.mjs seed --dir <数据目录> [--images N] [--prompts N] [--tags N]`（`--tags` 上限 500，与应用的每域标签上限一致；`clean` 清理；只写已有 paim.db 的目录，写激活中的 paim-data 需 `--force`）。
 
 ## 根目录文档（动手前先看）
@@ -52,6 +52,7 @@
 - CHANGE.md: 逐版本改动记录，不记录当前状态
 - todo.md: 待办与计划（**临时性文件**：内容随时增删，其它文件禁止引用）
 - 缓存及加载优化设计.md: 全盘缓存与加载优化盘点（按页面/场景组织：全局基础设施、各主页、详情弹窗、全屏查看器、选择器、各缓存容量上限、规划未实施、数据规模支持）；姊妹文档 docs/虚拟滚动可选优化.md、docs/导入优化.md
+- 测试体系.md: 三层测试（Rust 单测/前端单测/e2e）各自的适用范围、局限与新增行为的选层流程（写测试前先看）
 - 修/增 .md 后同步其所在索引：docs/ 内改 docs/readme.md；根目录文档互相引用，按「引用 → 被引」倒查一次（本项目尤其注意 项目架构.md ↔ AGENTS.md ↔ README.md）
 
 ## docs 目录说明
