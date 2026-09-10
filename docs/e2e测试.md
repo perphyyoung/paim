@@ -53,6 +53,7 @@ pnpm e2e --grep 上传  # 单个用例
 - e2e 实例与正常 dev 实例（1420）互不干扰；若报「paim.db 被占用」，是上一轮异常退出泄漏的实例还开着数据目录，关闭它即可（`paim.log` 有记录）。
 - 应用与测试侧日志统一写在项目根 `paim.log`（测试侧带 `[E2E w<n>-<序号>]` 前缀，`<序号>` 是该实例在本 worker 内第几个文件，用于区分同一 worker 的多个文件实例），失败排查先看它，控制台只保留 playwright 自身的用例结果输出；
 - 测试侧日志有输出级别阈值，在 `playwright.config.ts` 的 `PAIM_E2E_LOG_LEVEL` 修改：默认 `warn`（跑全量只记 pageerror/失败请求/4xx/`[diag]` 等异常信号）；排查失败时临时改为 `info`/`debug` 重跑，即可看到 `[step]`/`[connect]` 等步骤细节；
+- 每个用例有**分节标记**（`[TEST]` 行，由 `testSection` auto fixture 自动记录，spec 侧无需写）：开始记 `▶ <文件> › <用例标题>`，结束记 `✓ 通过 <耗时>` 或 `✗ <状态> <耗时> — <失败原因首行>`。与业务日志同阈值（`info`）——默认 `warn` 下不写，排查时调到 `info` 就能按用例切段读日志；
 - **e2e 文件夹内的日志埋点（`[step]`/`[diag]` 等）长期保留，不要在排查后删除**——噪声靠级别阈值控制（排查完把 `PAIM_E2E_LOG_LEVEL` 改回 `warn` 即可）。此约定仅限 e2e 目录；应用代码（前端/后端）的临时排查埋点仍按 [日志使用说明.md](./日志使用说明.md) 的建议，定位后清理。
 - `[connect]` 行（fixture 连上应用时记录，含尝试次数）是排查测试超时的边界标记：超时且无该行 → 应用启动/CDP 未就绪（往 webview 启动方向查）；有该行 → 应用正常，问题在用例步骤本身（结合 `[step]` 行定位到具体步骤）。尝试次数也直观反映应用启动耗时。
 
@@ -79,7 +80,7 @@ pnpm e2e --grep 上传  # 单个用例
 | --- | --- |
 | 处理 toast | 业务用例一律 `expectToastAndDismiss(page, 文案)`：**断言可见后直接点掉**（点击本体即 `dismissToast`），不要等它自动消失（success/info 停留 2.5s、error/warning 4s，点多处就是几十秒）。toast 自身行为（停留时长/点击关闭/多条堆叠/层级/离场不拦截）**只在 `06-toast-notification.spec.ts` 覆盖**，业务用例不重复验证；只断言不点掉的场景（用例末步、后面无 UI 点击）用 `expectToast` |
 | 新建用例文件 | **按页面分配、序号命名**（`01-upload-image-page`…）。有独立弹窗即视为独立页面（如「替换图像」在图像详情页，不放上传页文件里）；文件间并行、文件内串行；涉及数据目录让位的用例（如导入）放最后。全局 UI 组件专项没有对应页面，用组件名（`06-toast-notification`） |
-| 打日志 | 用 `e2e-logger.ts` 的 `e2eLog.debug/info/warn/error`（调用方式与前端 logger 一致，自动带 `[E2E w<n>]` 前缀）。**不要**在 e2e 文件里 `console.log` 或另写日志实现 |
+| 打日志 | 用 `e2e-logger.ts` 的 `e2eLog.debug/info/warn/error`（调用方式与前端 logger 一致，自动带 `[E2E w<n>]` 前缀）。**不要**在 e2e 文件里 `console.log` 或另写日志实现。用例分节（`[TEST]` 行）由 fixture 自动记录，spec 不需要也不应该手写 |
 | 页面侧诊断 | fixture 已自动采集 webview 控制台消息、失败请求、≥400 响应（`[webview]`/`[pageerror]`/`[req-failed]`/`[http-error]` 前缀写入 paim.log），无需重复采集。失败请求中导航打断的在途请求（`net::ERR_ABORTED`，如用例间复位 reload 时）记 info 级，其余记 error 级 |
 | 定位元素 | 语义属性优先：`getByRole("button", { name: "上传图像" })`、`getByPlaceholder`、`getByText`；无语义属性才退 `data-testid`。**禁 CSS/XPath 路径选择器优先**（pm 的 `Constants.Ids.*` 是 Electron 时代惯例，Playwright 下不推荐） |
 | 点击卡片 | **点文字层**（`getByText(卡片内容)`），**不要点缩略图 `<img>`**——img 上方盖着文字覆盖层（MediaCard 的 `absolute inset-0`），点 img 会被命中目标检查拦下并重试至超时；点文字会冒泡到卡片根，同样触发打开详情 |
@@ -96,6 +97,7 @@ pnpm e2e --grep 上传  # 单个用例
 1. **看 `paim.log`**：多 worker/多文件实例的行由 `[E2E w<n>-<序号>]` 前缀区分归属，按时间顺序读失败用例所在实例的行。
    - `[connect]` 行（fixture 连上应用，含尝试次数）是排查测试超时的边界标记：**超时且无该行** → 应用启动/CDP 未就绪（往 webview 启动方向查）；**有该行** → 应用正常，问题在用例步骤本身（结合 `[step]` 行定位到具体步骤）。尝试次数也直观反映应用启动耗时。
    - `[diag]` 行：helper 断言失败时自动 dump 的现场（当前 toast 文本 + 页面可见文本快照），用于区分「元素没渲染」还是「页面已销毁」等环境问题。
+   - `[TEST]` 行：用例分节（`▶` 开始 / `✓`、`✗` 结束，失败行带原因首行）。日志级别需为 `info` 或更低才会写入；按 `[TEST]` 找到失败用例的区间，区间内的行（含 `[step]`）即该用例的现场。
 2. **全量跑失败时，先单跑失败文件再下结论**：
    - `pnpm e2e .\e2e\<失败的 spec 文件>`（或 `--grep <用例名>` 单用例）；
    - **单跑通过 → 判定为并行环境相关的偶发失败**（多 worker = 多个 WebView2 实例并行，资源压力下偶发页面销毁/重建，如 2026-09-09 的 05 用例 5），**不算回归：不追查、不改代码**，重跑全量确认即可；

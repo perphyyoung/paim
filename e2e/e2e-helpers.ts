@@ -25,7 +25,7 @@ import {
   type Locator,
   type Page,
 } from "@playwright/test";
-import { e2eLog, setWorkerTag } from "./e2e-logger";
+import { e2eLog, setWorkerTag, testLog } from "./e2e-logger";
 
 export interface AppHandle {
   child: ChildProcess;
@@ -196,7 +196,35 @@ interface AppPool {
   acquire(fileKey: string): Promise<AppHandle>;
 }
 
-const helpersTest = base.extend<{ app: AppHandle; page: Page }, { _appPool: AppPool }>({
+const helpersTest = base.extend<
+  { app: AppHandle; page: Page; testSection: void },
+  { _appPool: AppPool }
+>({
+  // 用例分节日志（[TEST] 行）：开始时记 ▶ + 标题，结束时记结果 + 耗时。
+  // 与业务日志同阈值（INFO）——默认 warn 不写；失败排查时把 PAIM_E2E_LOG_LEVEL 调到 info，
+  // 日志里就能按用例切段，一眼看出失败用例前都发生了什么（标题取 testInfo.titlePath，
+  // 含 describe 层级；worker 号显式传入，见 e2e-logger.testLog 注释）。
+  // 声明为 auto：全部用例自动生效，spec 侧零改动。
+  testSection: [
+    async ({}, use, testInfo) => {
+      const name = `${path.basename(testInfo.file, ".spec.ts")} › ${testInfo.titlePath.slice(1).join(" › ")}`;
+      testLog(testInfo.workerIndex, `▶ ${name}`);
+      const startedAt = Date.now();
+      await use();
+      const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+      if (testInfo.status === "passed") {
+        testLog(testInfo.workerIndex, `✓ 通过 ${seconds}s ${name}`);
+      } else {
+        // 失败原因取首行（超时/断言失败的第一行已足够定位，完整堆栈看 playwright 输出）
+        const reason = testInfo.errors[0]?.message?.split("\n")[0] ?? "";
+        testLog(
+          testInfo.workerIndex,
+          `✗ ${testInfo.status} ${seconds}s ${name}${reason ? ` — ${reason}` : ""}`,
+        );
+      }
+    },
+    { scope: "test", auto: true },
+  ],
   _appPool: [
     async ({}, use, workerInfo) => {
       let seq = 0;

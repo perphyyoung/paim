@@ -48,17 +48,28 @@ const threshold =
   LEVELS[(process.env.PAIM_E2E_LOG_LEVEL as Level | undefined)?.toUpperCase() as Level] ??
   LEVELS.WARN;
 
-function send(level: Level, args: unknown[]): void {
-  if (LEVELS[level] < threshold) return;
+function write(text: string): void {
   try {
-    const tag = workerTag ? ` ${workerTag.trim()}` : "";
-    fs.appendFileSync(
-      path.join(import.meta.dirname, "..", "paim.log"),
-      `${timestamp()} [${level}] [E2E${tag}] ${fmt(args)}\n`,
-    );
+    fs.appendFileSync(path.join(import.meta.dirname, "..", "paim.log"), `${timestamp()} ${text}\n`);
   } catch {
     // 写失败静默
   }
+}
+
+function send(level: Level, args: unknown[]): void {
+  if (LEVELS[level] < threshold) return;
+  const tag = workerTag ? ` ${workerTag.trim()}` : "";
+  write(`[${level}] [E2E${tag}] ${fmt(args)}`);
+}
+
+/// 用例分节标记（形如 `[TEST] [E2E w0] ▶ 06-toast-notification › 点击 toast …`）。
+/// 与业务日志共用阈值（INFO）——默认 warn 下不写（跑全量只看异常信号），
+/// 排查失败时把 PAIM_E2E_LOG_LEVEL 调到 info，即可在日志里看到每个用例的开始/结果分节。
+/// worker 号由调用方传入：用例标题记录发生在应用实例启动之前，
+/// 那时 launchApp 还没设置 workerTag（实例序号此刻也不存在；同 worker 的多个文件由文件名区分）。
+export function testLog(workerIndex: number, ...args: unknown[]): void {
+  if (LEVELS.INFO < threshold) return;
+  write(`[TEST] [E2E w${workerIndex}] ${fmt(args)}`);
 }
 
 export const e2eLog = {

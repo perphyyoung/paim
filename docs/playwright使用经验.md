@@ -134,3 +134,46 @@ error TS2339: Property 'app' does not exist on type 'never'.
 - 同一文案可能有多条（如上一用例残留的 toast 未消失），断言一律 `.first()`，否则严格模式冲突
   （resolved to 2 elements）；已封装进 helper 的场景不要自己再写一遍。
 - 只有第 2 处用到的样板才下沉到 helper；**helper 里只做前置校验断言，不替 spec 做被测行为的断言**。
+
+## 八、把用例标题写进日志：让日志能按用例切段
+
+多 worker、多文件实例的日志是**按时间交错**的：`[E2E w0-1]` 前缀只说明「是谁」，看不出「哪个用例」，
+失败时只能靠时间戳反推。把用例标题与结果也写进日志，日志就自带分节。
+
+**本项目做法**（`e2e/e2e-logger.ts` 的 `testLog` + `e2e-helpers.ts` 的 testSection fixture）：
+
+- 用 test 级 **auto** fixture 自动记录，**spec 侧零改动**；
+- **Node 侧直写**（复用 `e2eLog` 的文件通道），不经过页面，页面挂了照样记；
+- 开始记 `▶`，结束记 `✓ 通过 <耗时>` / `✗ <status> <耗时> — <errors[0] 首行>`——
+  失败原因首行足够定位，完整堆栈仍看 playwright 输出。
+
+```log
+14:33:33.744 [TEST] [E2E w1] ▶ 02-create-prompt-page › 新建提示词后，新卡片应置顶显示
+14:33:36.031 [INFO] [E2E w1-0] [connect] 第 3 次尝试连上应用页面
+14:33:37.572 [TEST] [E2E w1] ✓ 通过 3.8s 02-create-prompt-page › 新建提示词后，新卡片应置顶显示
+```
+
+三个实现要点：
+
+- **worker 号必须显式传 `testInfo.workerIndex`，不要复用业务日志的 `workerTag`**：标题记录发生在
+  应用实例启动**之前**（实跑日志里 `[TEST]` 行稳定排在 `[connect]` 之前——auto fixture 无依赖，
+  先于 `app` fixture setup），那时 `launchApp` 还没设置实例级 tag，复用会串到上一个实例或为空。
+- **级别跟业务日志同一个开关**（INFO）：默认 `warn` 不写（跑全量只看异常信号），排查时
+  `PAIM_E2E_LOG_LEVEL=info` 重跑即可按用例切段读；分节行只在排查时需要，不必常驻。
+- **标题取 `testInfo.titlePath`**：`[0]` 是文件路径，`slice(1)` 之后是 describe 链路 + 用例标题，
+  join 起来就是 `文件 › 用例`——比只用 `title` 多了分组信息，也不用自己拼文件名。
+
+### 跑不了 e2e 时怎么自测基础设施
+
+本项目的 e2e 需要先构建调试二进制（cargo 构建），在受限环境里跑不起来；但**日志这类纯 Node 侧
+的基础设施可以隔离冒烟**：把 `e2e-logger.ts` 连同一个小 `.ts` 脚本拷到 `temp/` 子目录再跑——
+`import.meta.dirname/../paim.log` 随之落在 `temp/` 下，**不污染真正的 `paim.log`**：
+
+```bash
+mkdir -p temp/logger-smoke && cp e2e/e2e-logger.ts temp/logger-smoke/
+# Node 22.18+ 默认支持直接执行 .ts（类型剥离）
+PAIM_E2E_LOG_LEVEL=info node temp/logger-smoke/smoke.ts
+```
+
+info 与 warn 两种阈值都验一遍（前者有 `[TEST]` 行、后者只剩 ERROR），跑完删目录。
+判据：**被测的东西不依赖浏览器/应用进程时，就不要为了验证它去启动整套环境**。

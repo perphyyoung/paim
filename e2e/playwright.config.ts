@@ -15,8 +15,8 @@ import { defineConfig } from "@playwright/test";
 // 默认 warn——跑全量用例只记异常信号（pageerror/失败请求/4xx/[diag] 等）；
 // 排查失败时临时改为 info 或 debug 重跑，即可看到 [step]/[connect] 等步骤细节。
 // 日志埋点本身长期保留（见 docs/e2e测试.md），靠级别控制噪声，排查完记得改回
-// process.env.PAIM_E2E_LOG_LEVEL ??= "warn";
-process.env.PAIM_E2E_LOG_LEVEL ??= "debug";
+process.env.PAIM_E2E_LOG_LEVEL ??= "warn";
+// process.env.PAIM_E2E_LOG_LEVEL ??= "debug";
 
 export default defineConfig({
   testDir: import.meta.dirname,
