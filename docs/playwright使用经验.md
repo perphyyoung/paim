@@ -158,8 +158,9 @@ error TS2339: Property 'app' does not exist on type 'never'.
 - **worker 号必须显式传 `testInfo.workerIndex`，不要复用业务日志的 `workerTag`**：标题记录发生在
   应用实例启动**之前**（实跑日志里 `[TEST]` 行稳定排在 `[connect]` 之前——auto fixture 无依赖，
   先于 `app` fixture setup），那时 `launchApp` 还没设置实例级 tag，复用会串到上一个实例或为空。
-- **级别跟业务日志同一个开关**（INFO）：默认 `warn` 不写（跑全量只看异常信号），排查时
-  `PAIM_E2E_LOG_LEVEL=info` 重跑即可按用例切段读；分节行只在排查时需要，不必常驻。
+- **级别跟业务日志同一个开关**（INFO）：`[TEST]` 分节在默认 `debug` 下会写入；
+  跑全量嫌噪声多时临时 `PAIM_E2E_LOG_LEVEL=warn` 重跑，分节行与步骤日志随之消失，
+  只剩异常信号。
 - **标题取 `testInfo.titlePath`**：`[0]` 是文件路径，`slice(1)` 之后是 describe 链路 + 用例标题，
   join 起来就是 `文件 › 用例`——比只用 `title` 多了分组信息，也不用自己拼文件名。
 

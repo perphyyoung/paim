@@ -17,6 +17,7 @@
     "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:check": "oxfmt src/ e2e/ --check && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:ui": "vitest run",
     "e2e": "playwright test --config e2e/playwright.config.ts",
     "check": "pnpm format && pnpm build:rs && pnpm gen:bindings && pnpm typecheck && pnpm build"
   },
@@ -37,6 +38,7 @@
     "tailwindcss": "^3.4",
     "typescript": "^5.6",
     "vite": "^6",
+    "vitest": "^5.0.0",
     "vue-tsc": "^2"
   }
 }

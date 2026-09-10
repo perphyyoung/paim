@@ -40,13 +40,13 @@ function timestamp(): string {
 }
 
 /// 输出级别阈值：低于阈值的日志不写入。经 playwright.config.ts 设置
-/// （PAIM_E2E_LOG_LEVEL，默认 warn），跑全量用例只记异常信号，
-/// 排查失败时在配置里临时改为 info/debug 后重跑即可看到步骤细节。
+/// （PAIM_E2E_LOG_LEVEL，默认 debug），用例步骤、连接过程等全量落盘，便于排查；
+/// 跑全量嫌噪声多时在配置里临时改为 warn，只记异常信号。
 const LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 } as const;
 type Level = keyof typeof LEVELS;
 const threshold =
   LEVELS[(process.env.PAIM_E2E_LOG_LEVEL as Level | undefined)?.toUpperCase() as Level] ??
-  LEVELS.WARN;
+  LEVELS.DEBUG;
 
 function write(text: string): void {
   try {
@@ -63,8 +63,7 @@ function send(level: Level, args: unknown[]): void {
 }
 
 /// 用例分节标记（形如 `[TEST] [E2E w0] ▶ 06-toast-notification › 点击 toast …`）。
-/// 与业务日志共用阈值（INFO）——默认 warn 下不写（跑全量只看异常信号），
-/// 排查失败时把 PAIM_E2E_LOG_LEVEL 调到 info，即可在日志里看到每个用例的开始/结果分节。
+/// 与业务日志共用阈值（INFO）——默认 debug 下写入；改为 warn 后消失（只记异常信号）。
 /// worker 号由调用方传入：用例标题记录发生在应用实例启动之前，
 /// 那时 launchApp 还没设置 workerTag（实例序号此刻也不存在；同 worker 的多个文件由文件名区分）。
 export function testLog(workerIndex: number, ...args: unknown[]): void {

@@ -12,7 +12,7 @@
 ## 项目规则
 
 - 对同一文件的多处修改：合并为一次编辑完成，或分多条消息串行执行；禁止在同一条消息里并行发起多个编辑到同一文件（并行读-改-写会竞态覆盖，仅最后一个编辑生效，其余静默丢失）
-- 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → typecheck → build），通过后再按需跑 `pnpm test` / `sentrux check .` / `pnpm e2e`；验证通过才输出简要的一句话 git commit 信息。不要跳过 `pnpm check` 直接跑其它命令
+- 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → typecheck → build），通过后再按需跑 `pnpm test` / `pnpm test:ui` / `sentrux check .` / `pnpm e2e`；验证通过才输出简要的一句话 git commit 信息。不要跳过 `pnpm check` 直接跑其它命令
 - 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
 - 语义搜索优先使用 gitnexus mcp，查询时传 `repo: "paim"` 指定当前仓库
   - 查找某概念的所有相关代码（不看函数怎么命名）：用自然语言查询（中文/英文皆可），走语义向量召回
@@ -23,6 +23,7 @@
 - 禁止 mod.rs 命名，直接功能命名
 - 提示词或图像专用的，一律添加 image/prompt 标识，两者保持对称
 - 测试写在独立的 `*.test.rs` 文件（与源文件平铺，如 `db.test.rs`），源文件末尾用 `#[cfg(test)] #[path = "..."] mod tests;` 声明；不内联测试块，也不用同名目录下的 `tests.rs`（同名文件在 grep/编辑器中无法区分）
+- 前端测试同样与源文件平铺，命名为 `*.test.ts`（如 `usePagedBlocks.test.ts`），用 vitest 跑（`pnpm test:ui`，node 环境，配置见 `vitest.config.ts`）；**需要注入失败/延迟的场景一律放前端单测**，不要试图在 e2e 里包装 IPC——真实 Tauri 的 `window.__TAURI_INTERNALS__` 及其成员由注入脚本 `defineProperty` 创建（不可写不可配置），页面侧改不动（依据见 docs/e2e测试.md）
 - 按照暗色主题设计，无需考虑亮色主题和主题切换需求
 - 临时脚本以 tmp-* 方式命名，会被 git 忽略
 - 使用 jj (git 的包装) 检查工作区状态: jj st
@@ -41,7 +42,7 @@
 - bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta 版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。
 - vite watch 已改白名单（仅 index.html + src/ + public/）：**package.json 不在监听内**，改版本号（package.json / tauri.conf.json / Cargo.toml）后须重启 vite，否则前端 version 仍显示旧值。原因：此前递归监听项目根会持有 paim-data 目录句柄，挡住 pm 备份导入的整目录改名让位（os error 5），案例见 docs/lessons.md 第 6 条。
-- 测试命令：`pnpm test` Rust 单元测试；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。
+- 测试命令：`pnpm test` Rust 单元测试；`pnpm test:ui` 前端单测（vitest，`src/**/*.test.ts`）；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。
 - 万级压测数据：`node scripts/bench-data.mjs seed --dir <数据目录> [--images N] [--prompts N] [--tags N]`（`--tags` 上限 500，与应用的每域标签上限一致；`clean` 清理；只写已有 paim.db 的目录，写激活中的 paim-data 需 `--force`）。
 
 ## 根目录文档（动手前先看）

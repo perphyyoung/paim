@@ -12,11 +12,10 @@
 import { defineConfig } from "@playwright/test";
 
 // e2e 测试侧日志的输出级别（写入 paim.log 的阈值）：
-// 默认 warn——跑全量用例只记异常信号（pageerror/失败请求/4xx/[diag] 等）；
-// 排查失败时临时改为 info 或 debug 重跑，即可看到 [step]/[connect] 等步骤细节。
-// 日志埋点本身长期保留（见 docs/e2e测试.md），靠级别控制噪声，排查完记得改回
-process.env.PAIM_E2E_LOG_LEVEL ??= "warn";
-// process.env.PAIM_E2E_LOG_LEVEL ??= "debug";
+// 默认 debug——用例步骤、连接过程、[TEST] 分节等全量落盘，便于排查；
+// 跑全量嫌噪声多时临时改为 warn（只记 pageerror/失败请求/4xx/[diag] 等异常信号）。
+// 日志埋点本身长期保留（见 docs/e2e测试.md），靠级别控制噪声
+process.env.PAIM_E2E_LOG_LEVEL ??= "debug";
 
 export default defineConfig({
   testDir: import.meta.dirname,

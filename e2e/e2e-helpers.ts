@@ -3,7 +3,7 @@
 /// 内容分四块，全部是**与具体测试场景无关的可复用代码**：
 /// 1. 应用实例 fixture（每 worker spawn 独立实例 + CDP 连接）
 /// 2. 页面操作（导航、新建提示词、打开详情、上传图像、toast 断言与点掉）
-/// 3. 后端直查（invoke 封装 + 常用命令的语义化封装）
+/// 3. 后端直查与 IPC 观测（invoke 封装 + 常用命令的语义化封装 + 探针/故障注入）
 /// 4. PNG 生成（mock 图素材）
 ///
 /// 复用约定：**spec 里只写场景步骤与断言**，凡是「怎么点进去 / 怎么查后端」这类
@@ -201,8 +201,8 @@ const helpersTest = base.extend<
   { _appPool: AppPool }
 >({
   // 用例分节日志（[TEST] 行）：开始时记 ▶ + 标题，结束时记结果 + 耗时。
-  // 与业务日志同阈值（INFO）——默认 warn 不写；失败排查时把 PAIM_E2E_LOG_LEVEL 调到 info，
-  // 日志里就能按用例切段，一眼看出失败用例前都发生了什么（标题取 testInfo.titlePath，
+  // 与业务日志同阈值（INFO）——默认 debug 下写入；改为 warn 后消失（只记异常信号）。
+  // 日志里能按用例切段，一眼看出失败用例前都发生了什么（标题取 testInfo.titlePath，
   // 含 describe 层级；worker 号显式传入，见 e2e-logger.testLog 注释）。
   // 声明为 auto：全部用例自动生效，spec 侧零改动。
   testSection: [
@@ -429,6 +429,27 @@ export async function uploadImageWithPrompt(
   return { imageId: imageId as string, promptContent };
 }
 
+/// 提示词主页搜索框（列表就绪的可见标志，也是分页专项切换条件的入口）
+export const PROMPT_SEARCH_PLACEHOLDER = "搜索标题/内容/翻译/备注/标签";
+
+/// 覆盖主页列表的块大小（应用内置测试缝：`localStorage.paim.blockSize`，
+/// 见 `src/composables/usePagedBlocks.ts::BLOCK_SIZE_KEY`）——把块压到 2~5 条即可用
+/// 少量数据造出「多块」场景。块大小只在组件 setup 时读一次，写完必须 reload 才生效。
+/// 先等搜索框出现（应用已挂载、首屏请求已在途）再 reload：文件首个用例面对的是刚启动的
+/// 新实例，启动期 reload 会打断在途 IPC（见下方 page fixture 注释）。
+/// 副作用：写 localStorage——同 worker 的其它 spec 文件共用同一 WebView2 profile，
+/// 用完请调 clearListBlockSize 清掉。
+export async function setListBlockSize(page: Page, size: number): Promise<void> {
+  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER)).toBeVisible();
+  await page.evaluate((s) => localStorage.setItem("paim.blockSize", String(s)), size);
+  await page.reload({ timeout: 8_000 });
+}
+
+/// 清掉块大小覆盖，恢复默认（200）。不改数据、不需要 reload。
+export function clearListBlockSize(page: Page): Promise<void> {
+  return page.evaluate(() => localStorage.removeItem("paim.blockSize"));
+}
+
 /// ---- 后端直查 ----
 
 /// 调用 tauri 命令（统一 __TAURI_INTERNALS__ 访问样板）
@@ -495,6 +516,15 @@ export async function getItemTagNames(
 export async function listTrashedImageIds(page: Page): Promise<string[]> {
   const items = await invokeCommand<Array<{ id: string }>>(page, "list_trashed_images");
   return items.map((t) => t.id);
+}
+
+/// 直连后端批量建提示词（分页专项造数据用，绕过 UI——创建流程本身由 02 覆盖）。
+/// 内容的唯一性由调用方保证（重复内容会命中后端的重名校验）。
+/// 副作用：向当前实例的数据目录写入 contents.length 条提示词。
+export async function seedPrompts(page: Page, contents: string[]): Promise<void> {
+  for (const content of contents) {
+    await invokeCommand(page, "create_prompt", { content, title: null });
+  }
 }
 
 /// ---- PNG 生成 ----
