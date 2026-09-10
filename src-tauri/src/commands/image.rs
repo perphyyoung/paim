@@ -6,6 +6,7 @@ use crate::domain::image_service::{
     self, Image, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome, LinkedPrompt,
     PaginatedImages,
 };
+use crate::domain::list_query::ListQuery;
 use crate::domain::prompt_service;
 use crate::domain::thumbnail_service::{
     self, ThumbnailEnsureResult, ThumbnailRebuildProgress, ThumbnailRebuildSummary,
@@ -170,6 +171,32 @@ pub fn list_images(
     let total = image_service::count(&conn, search.as_deref(), tag.as_deref())
         .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(PaginatedImages { items, total })
+}
+
+/// 主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。
+#[tauri::command]
+#[specta::specta]
+pub fn list_images_page(db: State<BkDb>, query: ListQuery) -> Result<PaginatedImages, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    image_service::list_page(&conn, &query).map_err(|e| AppError::Message(e.to_string()))
+}
+
+/// 同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。
+#[tauri::command]
+#[specta::specta]
+pub fn list_image_ids(db: State<BkDb>, query: ListQuery) -> Result<Vec<String>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    image_service::list_ids(&conn, &query).map_err(|e| AppError::Message(e.to_string()))
+}
+
+/// 特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件）。
+#[tauri::command]
+#[specta::specta]
+pub fn image_special_counts(
+    db: State<BkDb>,
+) -> Result<std::collections::HashMap<String, i64>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    image_service::special_counts(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。

@@ -4,11 +4,11 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, type Image, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
-import { formatLocalTime, toTimestamp } from "@/utils/date";
-import { matchesKeyword } from "@/utils/keywordMatch";
+import { formatLocalTime } from "@/utils/date";
 import { useGridColumns } from "@/utils/gridColumns";
+import { isPlaceholder, usePagedBlocks, type Placeholder } from "@/composables/usePagedBlocks";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
-import { SPECIAL_TAG_NAMES, defineSpecialTags } from "@/features/tag/specialTags";
+import { SPECIAL_TAG_NAMES } from "@/features/tag/specialTags";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
 import { useItemToggle } from "@/composables/useItemToggle";
@@ -38,6 +38,9 @@ import {
 
 const { showToast } = useToast();
 const { openImageLocation } = useOpenImageLocation();
+
+/** 搜索输入防抖：筛选下推后端后，每次输入都会触发一次查询 */
+const KEYWORD_DEBOUNCE_MS = 300;
 
 const SORT_KEY = "image.sortBy";
 const SORT_DESC_KEY = "image.sortDesc";
@@ -73,49 +76,41 @@ function toggleSortDesc() {
   localStorage.setItem(SORT_DESC_KEY, sortDesc.value ? "1" : "0");
 }
 
-// 前端排序：数据量小，内存内排序即可
-const sortedImages = computed(() => {
-  const kw = keyword.value.trim().toLowerCase();
-  // 搜索范围与 pm 对齐：文件名/备注/标签名（用 file_name 原始名，卡片展示的也是它）
-  let arr = kw
-    ? images.value.filter((i) => matchesKeyword(kw, [i.file_name, i.note], tagNames.value[i.id]))
-    : [...images.value];
-  // 标签筛选（AND）：特殊标签走专用判定，其余要求图像标签包含；
-  // 反选（对齐 pm 的 invertedFilter）即排除同时命中全部所选标签的条目
-  if (selectedTags.value.length > 0) {
-    arr = arr.filter((img) => {
-      const hit = selectedTags.value.every((t) => {
-        const s = SPECIAL_TAGS.find((x) => x.name === t);
-        if (s) return s.check(img);
-        const tags = tagNames.value[img.id];
-        return !!tags && tags.includes(t);
-      });
-      return invertedTagFilter.value ? !hit : hit;
-    });
-  }
-  if (!arr.length) return arr;
-  let cmp: (a: Image, b: Image) => number;
-  switch (sortBy.value) {
-    case "fileSize":
-      cmp = (a, b) => a.file_size - b.file_size;
-      break;
-    case "fileName":
-      cmp = (a, b) => a.stored_name.localeCompare(b.stored_name);
-      break;
-    case "width":
-      cmp = (a, b) => (a.width ?? 0) - (b.width ?? 0);
-      break;
-    case "height":
-      cmp = (a, b) => (a.height ?? 0) - (b.height ?? 0);
-      break;
-    case "updatedAt":
-      cmp = (a, b) => toTimestamp(a.updated_at) - toTimestamp(b.updated_at);
-      break;
-    default: // createdAt
-      cmp = (a, b) => toTimestamp(a.created_at) - toTimestamp(b.created_at);
-  }
-  arr.sort(cmp);
-  return sortDesc.value ? arr.reverse() : arr;
+// 搜索关键词防抖：排序/筛选已下推后端，每次输入都会触发一次查询
+const debouncedKeyword = ref("");
+let keywordTimer: ReturnType<typeof setTimeout> | null = null;
+watch(keyword, (v) => {
+  if (keywordTimer) clearTimeout(keywordTimer);
+  keywordTimer = setTimeout(() => {
+    keywordTimer = null;
+    debouncedKeyword.value = v;
+  }, KEYWORD_DEBOUNCE_MS);
+});
+
+/** 当前查询条件（分页与取 id 共用同一份，避免两处漂移） */
+function currentQuery() {
+  return {
+    offset: 0,
+    limit: 0,
+    search: debouncedKeyword.value.trim(),
+    tags: selectedTags.value,
+    inverted: invertedTagFilter.value,
+    sort: sortBy.value,
+    desc: sortDesc.value,
+  };
+}
+
+// 主页列表：排序 / 搜索 / 标签筛选（含特殊标签）全部由后端完成，前端按块持有，
+// 只保留最近用到的块（LRU），未加载位置是占位对象（模板渲染骨架）。
+const {
+  items: pageItems,
+  total,
+  loading: listLoading,
+  ensureRange,
+  reload: reloadBlocks,
+  replaceItem,
+} = usePagedBlocks<Image>({
+  load: (offset, limit) => commands.listImagesPage({ ...currentQuery(), offset, limit }),
 });
 
 // 空态与 pm 对齐：搜索无结果 / 标签筛选无结果 / 暂无数据（附上手引导）三态
@@ -136,32 +131,51 @@ const emptyState = computed(() => {
   return { main: "暂无图像，点击左上角「上传图像」开始添加。", sub: "" };
 });
 
-const images = shallowRef<Image[]>([]);
 const thumbs = shallowRef<Record<string, string>>({});
 const imagePrompts = shallowRef<Record<string, string[]>>({});
 
 // 懒自愈：可见窗口稳定后批量校验缩略图文件（缺失且原图存在时后端按需生成）
 const dataDir = ref("");
 const visibleIds = computed(() => {
-  const list = sortedImages.value;
-  if (list.length === 0) return [];
   const start = Math.max(0, scrollIndex.value);
   const count = Math.max(1, gridPageSize.value);
-  return list.slice(start, start + count).map((i) => i.id);
+  // 未加载的块是占位项，跳过（等它加载完由下一轮窗口变化再校验）
+  return pageItems.value
+    .slice(start, start + count)
+    .filter((x): x is Image => !isPlaceholder(x))
+    .map((i) => i.id);
 });
 const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } = useThumbnailSelfHeal(
   visibleIds,
   onThumbsFixed,
 );
 
+// 缩略图 URL 按块增量构建（行内 thumbnail_path 拼即可，不再逐图 IPC）；
+// 同时丢掉离开已加载块的条目，避免映射随滚动过的条目无限增长
+watch(pageItems, () => {
+  const dir = dataDir.value;
+  if (!dir) return;
+  const map = { ...thumbs.value };
+  let changed = false;
+  const keep = new Set<string>();
+  for (const it of pageItems.value) {
+    if (isPlaceholder(it)) continue;
+    keep.add(it.id);
+    if (!it.thumbnail_path || map[it.id]) continue;
+    map[it.id] = convertFileSrc(`${dir}/${it.thumbnail_path}`);
+    changed = true;
+  }
+  for (const id of Object.keys(map)) {
+    if (keep.has(id)) continue;
+    delete map[id];
+    changed = true;
+  }
+  if (changed) thumbs.value = map;
+});
+
 function onThumbsFixed(fixed: ThumbnailEnsureFixed[]) {
   const dir = dataDir.value;
   if (!dir || fixed.length === 0) return;
-  // 同步记录与缩略图 URL（shallowRef 需整体替换触发更新）
-  const fixedById = new Map(fixed.map((f) => [f.id, f.thumbnail_path]));
-  images.value = images.value.map((i) =>
-    fixedById.has(i.id) ? { ...i, thumbnail_path: fixedById.get(i.id) ?? i.thumbnail_path } : i,
-  );
   const map = { ...thumbs.value };
   for (const f of fixed) map[f.id] = convertFileSrc(`${dir}/${f.thumbnail_path}`);
   thumbs.value = map;
@@ -169,6 +183,8 @@ function onThumbsFixed(fixed: ThumbnailEnsureFixed[]) {
 
 function handleGridScroll(p: GridScrollPayload) {
   onGridScroll(p);
+  // 按可见区间补齐所需块（内部含相邻块预取）
+  ensureRange(scrollIndex.value, scrollIndex.value + Math.max(1, gridPageSize.value) - 1);
   scheduleThumbCheck();
 }
 
@@ -188,41 +204,36 @@ const {
   onScrollbarSeek,
   backToTop,
   restoreSaved,
-} = useGridScrollSync(() => sortedImages.value.length);
+} = useGridScrollSync(() => total.value);
 
-// 筛选/排序变化后回到顶部
-watch([keyword, sortBy, sortDesc, selectedTags, invertedTagFilter], backToTop);
+// 筛选 / 排序 / 搜索变化：数据在后端重排，前端无法增量调整——回到顶部并整体重拉
+watch([debouncedKeyword, sortBy, sortDesc, selectedTags, invertedTagFilter], async () => {
+  backToTop();
+  await reloadBlocks();
+  scheduleThumbCheck();
+});
 const tagGroups = ref<TagGroup[]>([]);
 
 // —— 特殊标签（虚拟筛选，参考 pm）——
-// 未引/多引 依据图像关联的提示词数量（imagePrompts 映射：{imageId: [content,...]}）
-function refLen(img: Image): number {
-  return imagePrompts.value[img.id]?.length ?? 0;
-}
-// 特殊标签（虚拟筛选）：名称来自统一定义 specialTags.ts（唯一名单）
-const SPECIAL_TAGS = defineSpecialTags<Image>([
-  { name: SPECIAL_TAG_NAMES.favorite, check: (img) => !!img.is_favorite },
-  { name: SPECIAL_TAG_NAMES.unreferenced, check: (img) => refLen(img) === 0 },
-  { name: SPECIAL_TAG_NAMES.multiRef, check: (img) => refLen(img) > 1 },
-  {
-    name: SPECIAL_TAG_NAMES.noTag,
-    check: (img) => {
-      const t = tagNames.value[img.id];
-      return !t || t.length === 0;
-    },
-  },
-  { name: SPECIAL_TAG_NAMES.safe, check: (img) => !!img.is_safe },
-  { name: SPECIAL_TAG_NAMES.unsafe, check: (img) => !img.is_safe },
-]);
+// 命中判定已下推后端（domain/list_query.rs 镜像此名单），前端只声明本页启用的名单
+const SPECIAL_TAGS = [
+  SPECIAL_TAG_NAMES.favorite,
+  SPECIAL_TAG_NAMES.unreferenced,
+  SPECIAL_TAG_NAMES.multiRef,
+  SPECIAL_TAG_NAMES.noTag,
+  SPECIAL_TAG_NAMES.safe,
+  SPECIAL_TAG_NAMES.unsafe,
+];
 
-// 特殊标签命中数（基于全部图像）
-const specialCounts = computed<Record<string, number>>(() => {
-  const m: Record<string, number> = {};
-  for (const s of SPECIAL_TAGS) {
-    m[s.name] = images.value.filter((img) => s.check(img)).length;
+// 特殊标签命中数：由后端一次聚合（基于全部未删除图像，与当前筛选无关）
+const specialCounts = ref<Record<string, number>>({});
+async function loadSpecialCounts() {
+  try {
+    specialCounts.value = await commands.imageSpecialCounts();
+  } catch {
+    // 计数失败不影响浏览，保留上次结果
   }
-  return m;
-});
+}
 
 // 标签管理入口
 const tagManagerOpen = ref(false);
@@ -379,22 +390,17 @@ async function purgeImage(img: Image) {
   showToast(`已彻底删除「${img.stored_name}」`, "success");
 }
 
+// 重载：关联映射与 dataDir 并行取（dataDir 先落位，块到达时才能增量拼缩略图 URL），
+// 随后重拉首屏块与特殊标签计数
 async function loadImages() {
-  // 并行拉取;缩略图 URL 直接由行内 thumbnail_path 构建,不再逐图 IPC
-  const [page, promptsMap, dir] = await Promise.all([
-    commands.listImages(null, null, null),
-    commands.getImagePromptsMap().catch(() => ({})),
+  const [promptsMap, dir] = await Promise.all([
+    commands.getImagePromptsMap().catch(() => ({}) as Record<string, string[]>),
     commands.getDataDir(),
   ]);
-  const imgs = page.items;
-  images.value = imgs;
   imagePrompts.value = promptsMap;
   dataDir.value = dir;
-  const map: Record<string, string> = {};
-  for (const img of imgs) {
-    if (img.thumbnail_path) map[img.id] = convertFileSrc(`${dir}/${img.thumbnail_path}`);
-  }
-  thumbs.value = map;
+  await reloadBlocks();
+  await loadSpecialCounts();
   // 数据重载后重置已校验记忆并检查当前可见窗口
   resetThumbChecked();
   scheduleThumbCheck();
@@ -434,12 +440,18 @@ const detailIndex = ref(0);
 // 进入详情时生成「顺序快照」：详情停留期间计数/导航按旧顺序走，编辑只更新数据不做排序重排
 const detailOrder = ref<string[]>([]);
 
+/** 模板用：占位项已由 v-if 排除，这里只做类型收窄 */
+function asCard(x: Image | Placeholder): Image {
+  return x as Image;
+}
+/** 详情弹窗的列表来源：当前已加载项（未加载块是占位，不参与详情翻页） */
+const detailImages = computed(() => pageItems.value.filter((x): x is Image => !isPlaceholder(x)));
+
 function openDetail(img: Image) {
-  detailOrder.value = sortedImages.value.map((i) => i.id);
-  detailIndex.value = Math.max(
-    0,
-    sortedImages.value.findIndex((i) => i.id === img.id),
-  );
+  // 顺序快照取当前已加载项（未加载块是占位），翻到边界时索引自然到头
+  const order = pageItems.value.filter((x): x is Image => !isPlaceholder(x)).map((i) => i.id);
+  detailOrder.value = order;
+  detailIndex.value = Math.max(0, order.indexOf(img.id));
   detailOpen.value = true;
 }
 function closeDetail() {
@@ -449,14 +461,13 @@ function closeDetail() {
   loadTagFilter();
 }
 function onDetailUpdate(updated: Image) {
-  // 同步回主列表（保序替换；shallowRef 需整体替换触发更新）
-  images.value = images.value.map((i) => (i.id === updated.id ? updated : i));
+  // 同步回当前已加载块（占位项不参与）
+  replaceItem(updated.id, updated);
 }
 function onDetailReplaced({ oldId, image }: { oldId: string; image: Image }) {
-  // 主列表移除旧图、加入新图（排序由 sortedImages 按时间自然处理）
-  images.value = [image, ...images.value.filter((i) => i.id !== oldId)];
-  // 详情顺序快照中原位替换，保持导航位置与索引
+  // 替换后排序位置会变，交给重载处理；详情顺序快照先原位替换，保持导航位置
   detailOrder.value = detailOrder.value.map((id) => (id === oldId ? image.id : id));
+  void loadImages();
 }
 
 // ---- 批量选择（与提示词主页共用状态机：普通点击详情 / Ctrl 切换 / Shift 范围 / Ctrl+A 全选）----
@@ -469,9 +480,14 @@ const {
   exitBatch,
   onCheckSelect,
   onCardClick,
-} = useBatchSelection<Image>(
-  () => sortedImages.value,
-  (i) => openDetail(sortedImages.value[i]),
+} = useBatchSelection(
+  () => pageItems.value,
+  (i) => {
+    const it = pageItems.value[i];
+    if (it && !isPlaceholder(it)) openDetail(it);
+  },
+  // 全选 / 反选：分页下前端没有全量，由后端按当前条件返回 id
+  () => commands.listImageIds(currentQuery()),
 );
 
 // ---- 卡片按钮动作 ---- //
@@ -491,16 +507,20 @@ async function copyPrompt(img: Image) {
 }
 
 // 切换收藏（单张/批量，逻辑与提示词页共用）
-const { toggleOne, toggleBatch } = useItemToggle({
+const { toggleOne, toggleBatch } = useItemToggle<Image>({
   domain: "image",
-  list: images,
+  patch: (it) => replaceItem(it.id, it),
   showToast,
 });
 function toggleFavorite(img: Image) {
   toggleOne(img, "is_favorite");
 }
 async function onBatchFavorite() {
-  if (await toggleBatch(Array.from(selectedIds.value))) exitBatch();
+  // 分页下前端没有全量，批量翻转后重载当前条件（若正按收藏筛选，条目会随之进出）
+  if (await toggleBatch(Array.from(selectedIds.value))) {
+    exitBatch();
+    await loadImages();
+  }
 }
 
 // 单张删除（移入回收站，需确认）
@@ -517,8 +537,8 @@ async function doSingleDelete() {
   if (!img) return;
   try {
     await commands.deleteImage(img.id);
-    images.value = images.value.filter((i) => i.id !== img.id);
     delete thumbs.value[img.id];
+    await loadImages();
     markPageStale("prompts");
     showToast(`已删除「${img.stored_name}」到回收站`, "success");
   } catch (e) {
@@ -680,7 +700,7 @@ function onUploadDone() {
     <!-- 卡片滚动区：虚拟网格 + 自定义滚动条 -->
     <div class="flex min-h-0 flex-1 gap-1">
       <div
-        v-if="sortedImages.length === 0"
+        v-if="total === 0 && !listLoading"
         class="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center border-gray-600"
       >
         <p class="text-sm text-gray-400">{{ emptyState.main }}</p>
@@ -690,35 +710,41 @@ function onUploadDone() {
         <VirtualGrid
           ref="gridRef"
           class="min-w-0 flex-1"
-          :items="sortedImages"
+          :items="pageItems"
           :columns="columns"
           :gap="12"
           @scroll="handleGridScroll"
         >
           <template #default="{ item: img, index, width }">
+            <!-- 未加载 / 加载失败的块：占位骨架，位置与真实卡片一致 -->
+            <div
+              v-if="isPlaceholder(img)"
+              class="h-full w-full animate-pulse rounded-lg border border-gray-700 bg-gray-800"
+            />
             <MediaCard
-              :item="img"
+              v-else
+              :item="asCard(img)"
               :index="index"
-              :selected="isSelected(img.id)"
+              :selected="isSelected(asCard(img).id)"
               :batch-open="batchOpen"
-              :thumb="thumbs[img.id] ?? ''"
+              :thumb="thumbs[asCard(img).id] ?? ''"
               copy-title="复制提示词"
-              :content="imagePrompts[img.id]?.[0] ?? ''"
-              :tags="tagNames[img.id] || []"
-              :sort-info="rowInfo(img)"
+              :content="imagePrompts[asCard(img).id]?.[0] ?? ''"
+              :tags="tagNames[asCard(img).id] || []"
+              :sort-info="rowInfo(asCard(img))"
               :card-size="width"
-              @fav="toggleFavorite(img)"
-              @copy="copyPrompt(img)"
-              @delete="requestDelete(img)"
-              @check="onCheckSelect($event, img.id)"
+              @fav="toggleFavorite(asCard(img))"
+              @copy="copyPrompt(asCard(img))"
+              @delete="requestDelete(asCard(img))"
+              @check="onCheckSelect($event, asCard(img).id)"
               @card-click="onCardClick"
-              @contextmenu.prevent="openCtxMenu($event, img)"
+              @contextmenu.prevent="openCtxMenu($event, asCard(img))"
             />
           </template>
         </VirtualGrid>
         <CustomScrollBar
           class="w-4 shrink-0"
-          :total="sortedImages.length"
+          :total="total"
           :page-size="gridPageSize"
           :model-value="scrollIndex"
           @update:model-value="onScrollbarSeek"
@@ -900,7 +926,7 @@ function onUploadDone() {
     <ImageDetailModal
       v-if="detailOpen"
       :open="detailOpen"
-      :images="sortedImages"
+      :images="detailImages"
       :order="detailOrder"
       :initial-index="detailIndex"
       :thumbs="thumbs"

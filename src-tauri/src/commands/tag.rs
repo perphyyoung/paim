@@ -145,7 +145,7 @@ pub fn delete_tag_group(db: State<BkDb>, domain: TagDomain, id: i64) -> Result<(
     tag_manager::delete_group(&conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 新建标签（可指定所属组），返回新标签。
+/// 新建标签（可指定所属组），返回新标签；域内标签数达上限时拒绝。
 #[tauri::command]
 #[specta::specta]
 pub fn create_tag(
@@ -160,6 +160,7 @@ pub fn create_tag(
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     tag_manager::ensure_name_not_dup(&conn, domain, TagNameKind::Tag, &name, None)
         .map_err(AppError::Message)?;
+    tag_manager::ensure_tag_capacity(&conn, domain).map_err(AppError::Message)?;
     tag_manager::create_tag(&conn, domain, &name, group_id)
         .map_err(|e| AppError::Message(e.to_string()))
 }

@@ -4,7 +4,7 @@
 //! 全量标签数据、{实体id: [标签名]} 映射、单条目标签列表、增删标签。
 //! 表名与列名由 TagDomain 决定（白名单映射，非外部输入，无注入风险）。
 
-use crate::domain::tag_manager::{TagData, TagDomain, TagLite};
+use crate::domain::tag_manager::{self, TagData, TagDomain, TagLite};
 use crate::infra::error::AppError;
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -155,12 +155,12 @@ fn ensure_item_exists(
     Ok(())
 }
 
-/// 获取标签 id，不存在则创建（供单条与批量场景复用）。
+/// 获取标签 id，不存在则创建（供单条与批量场景复用）；新建前校验域内标签数上限。
 fn get_or_create_tag(
     tx: &rusqlite::Transaction,
     domain: TagDomain,
     name: &str,
-) -> rusqlite::Result<i64> {
+) -> std::result::Result<i64, AppError> {
     match tx
         .query_row(
             &format!("SELECT id FROM {} WHERE name = ?1", domain.tags_table()),
@@ -171,6 +171,7 @@ fn get_or_create_tag(
     {
         Some(id) => Ok(id),
         None => {
+            tag_manager::ensure_tag_capacity(tx, domain).map_err(AppError::Message)?;
             tx.execute(
                 &format!("INSERT INTO {}(name) VALUES (?1)", domain.tags_table()),
                 rusqlite::params![name],

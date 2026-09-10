@@ -2,9 +2,13 @@
 //! 领域层不感知 Tauri，通过注入的事务获取连接访问数据。
 //! 表结构与字段名与 prompt-manager 一致。
 
+use crate::domain::list_query::{self, ListQuery};
 use crate::domain::tag_manager::{tags_by_owner, TagDomain};
+use crate::domain::thumbnail_service::{self, ThumbnailEnsureFixed};
 use crate::infra::error::AppError;
+use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Result};
+use std::collections::HashMap;
 
 use serde::Serialize;
 
@@ -69,6 +73,160 @@ pub fn list(conn: &Connection) -> Result<Vec<Prompt>> {
     )?;
     let rows = stmt.query_map([], row_to_prompt)?;
     rows.collect()
+}
+
+/// 分页提示词列表：items 为本页，total 为符合条件总数。
+#[derive(Debug, Serialize, Clone, specta::Type)]
+pub struct PaginatedPrompts {
+    pub items: Vec<Prompt>,
+    pub total: i64,
+}
+
+const PROMPT_COLS: &str = "id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note";
+
+/// 提示词关联的「未删除图像」数量（`img.is_deleted = 0`），特殊标签 无图 / 多图 按它判定。
+const IMG_COUNT_SQL: &str = "SELECT COUNT(*) FROM prompt_image_relations pir JOIN images i ON i.id = pir.image_id WHERE pir.prompt_id = prompts.id AND i.is_deleted = 0";
+
+/// 排序键白名单 → 列名（未命中回落 `updated_at`，与旧 `list` 的默认序一致）。
+fn sort_column(sort: &str) -> &'static str {
+    match sort {
+        "createdAt" => "created_at",
+        "title" => "title",
+        _ => "updated_at",
+    }
+}
+
+/// 分页查询的 WHERE 片段与绑定值：search（标题 / 内容 / 译文 / 备注 / 标签名）+ 所选标签（AND）+ 反选。
+/// 搜索范围与前端 `matchesKeyword([title, content, content_translate, note], tagNames)` 对齐。
+fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
+    let mut sql = String::new();
+    let mut params: Vec<Value> = Vec::new();
+
+    let search = q.search.trim();
+    if !search.is_empty() {
+        // ESCAPE '\' 配合 escape_like：否则用户输入单个 % 会匹配全部、_ 匹配任意单字符
+        sql.push_str(
+            " AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR content_translate LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\'
+                   OR EXISTS (SELECT 1 FROM prompt_tag_relations r2 JOIN prompt_tags t2 ON t2.id = r2.tag_id WHERE r2.prompt_id = prompts.id AND t2.name LIKE ? ESCAPE '\\'))",
+        );
+        let like = format!("%{}%", crate::infra::text_utils::escape_like(search));
+        for _ in 0..5 {
+            params.push(Value::Text(like.clone()));
+        }
+    }
+
+    let mut conds: Vec<String> = Vec::new();
+    for raw in &q.tags {
+        let name = raw.trim();
+        if name.is_empty() {
+            continue;
+        }
+        match name {
+            list_query::SP_FAVORITE => conds.push("is_favorite = 1".to_string()),
+            list_query::SP_MULTI_IMAGE => conds.push(format!("({IMG_COUNT_SQL}) > 1")),
+            list_query::SP_NO_IMAGE => conds.push(format!("({IMG_COUNT_SQL}) = 0")),
+            list_query::SP_NO_TAG => conds.push(
+                "NOT EXISTS (SELECT 1 FROM prompt_tag_relations r WHERE r.prompt_id = prompts.id)"
+                    .to_string(),
+            ),
+            list_query::SP_SINGLE_LANG => {
+                conds.push("COALESCE(content_translate, '') = ''".to_string())
+            }
+            list_query::SP_SAFE => conds.push("is_safe = 1".to_string()),
+            list_query::SP_UNSAFE => conds.push("is_safe = 0".to_string()),
+            other => {
+                conds.push(
+                    "EXISTS (SELECT 1 FROM prompt_tag_relations r JOIN prompt_tags t ON t.id = r.tag_id WHERE r.prompt_id = prompts.id AND t.name = ?)"
+                        .to_string(),
+                );
+                params.push(Value::Text(other.to_string()));
+            }
+        }
+    }
+    if !conds.is_empty() {
+        let joined = conds.join(" AND ");
+        if q.inverted {
+            sql.push_str(&format!(" AND NOT ({joined})"));
+        } else {
+            sql.push_str(&format!(" AND {joined}"));
+        }
+    }
+    (sql, params)
+}
+
+/// 主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）全部下推到 SQL，返回本页与总数。
+pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedPrompts> {
+    let (filter, mut params) = page_filter(q);
+    let total: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM prompts WHERE is_deleted = 0{filter}"),
+        rusqlite::params_from_iter(params.iter()),
+        |r| r.get(0),
+    )?;
+
+    let sql = format!(
+        "SELECT {PROMPT_COLS} FROM prompts WHERE is_deleted = 0{filter}
+         ORDER BY {} {} LIMIT ? OFFSET ?",
+        sort_column(&q.sort),
+        list_query::order_dir(q.desc)
+    );
+    params.push(Value::Integer(list_query::clamp_limit(q.limit)));
+    params.push(Value::Integer(list_query::clamp_offset(q.offset)));
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), row_to_prompt)?;
+    Ok(PaginatedPrompts {
+        items: rows.collect::<Result<Vec<_>>>()?,
+        total,
+    })
+}
+
+/// 同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。
+pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
+    let (filter, params) = page_filter(q);
+    let sql = format!(
+        "SELECT id FROM prompts WHERE is_deleted = 0{filter}
+         ORDER BY {} {} LIMIT {} OFFSET 0",
+        sort_column(&q.sort),
+        list_query::order_dir(q.desc),
+        list_query::MAX_IDS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |r| r.get(0))?;
+    rows.collect()
+}
+
+/// 特殊标签命中数（基于全部未删除提示词，不含搜索 / 标签条件，与前端 specialCounts 口径一致）。
+pub fn special_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
+    let sql = format!(
+        "SELECT
+           COUNT(CASE WHEN is_favorite = 1 THEN 1 END),
+           COUNT(CASE WHEN ({IMG_COUNT_SQL}) > 1 THEN 1 END),
+           COUNT(CASE WHEN ({IMG_COUNT_SQL}) = 0 THEN 1 END),
+           COUNT(CASE WHEN is_safe = 1 THEN 1 END),
+           COUNT(CASE WHEN is_safe = 0 THEN 1 END),
+           COUNT(CASE WHEN COALESCE(content_translate, '') = '' THEN 1 END),
+           COUNT(CASE WHEN NOT EXISTS (SELECT 1 FROM prompt_tag_relations r WHERE r.prompt_id = prompts.id) THEN 1 END)
+         FROM prompts WHERE is_deleted = 0"
+    );
+    let (fav, multi, no_img, safe, unsafe_, single, no_tag) = conn.query_row(&sql, [], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, i64>(2)?,
+            r.get::<_, i64>(3)?,
+            r.get::<_, i64>(4)?,
+            r.get::<_, i64>(5)?,
+            r.get::<_, i64>(6)?,
+        ))
+    })?;
+    let mut m = HashMap::new();
+    m.insert(list_query::SP_FAVORITE.to_string(), fav);
+    m.insert(list_query::SP_MULTI_IMAGE.to_string(), multi);
+    m.insert(list_query::SP_NO_IMAGE.to_string(), no_img);
+    m.insert(list_query::SP_SAFE.to_string(), safe);
+    m.insert(list_query::SP_UNSAFE.to_string(), unsafe_);
+    m.insert(list_query::SP_SINGLE_LANG.to_string(), single);
+    m.insert(list_query::SP_NO_TAG.to_string(), no_tag);
+    Ok(m)
 }
 
 /// 软删除：标记为已删除（与图像回收站机制一致）。
@@ -297,6 +455,80 @@ pub fn list_related_images_with(
         img.tags = tags.remove(&img.id).unwrap_or_default();
     }
     Ok(out)
+}
+
+/// 提示词卡片背景缩略图：{promptId: 相对路径}，取每个提示词第一张**有缩略图**的关联（未删除）图像。
+/// 返回 `images.thumbnail_path` 原值（相对数据目录），由调用方拼绝对路径（命令层给前端、
+/// 自愈内部比对都基于它）。thumbnail_path 为 NULL 的记录（如导入时无法解码的文件）自动跳过，
+/// 让位给后续可用图像，且不会因 NULL 阻塞整个映射。
+/// `ids` 为当前已加载块内的提示词（主页按块取，不做全量映射）。
+pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, String>> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = format!(
+        "SELECT prompt_id, thumbnail_path
+         FROM (
+            SELECT pir.prompt_id AS prompt_id, img.thumbnail_path AS thumbnail_path,
+                   ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.sort_order, pir.rowid) AS rn
+            FROM prompt_image_relations pir
+            JOIN images img ON img.id = pir.image_id
+            WHERE img.is_deleted = 0 AND img.thumbnail_path IS NOT NULL
+              AND pir.prompt_id IN ({placeholders})
+         )
+         WHERE rn = 1"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut map: HashMap<String, String> = HashMap::new();
+    for row in rows {
+        let (pid, thumb_rel) = row?;
+        map.insert(pid, thumb_rel);
+    }
+    Ok(map)
+}
+
+/// 提示词卡片背景懒自愈：按提示词取其关联（未删除）图像，缺缩略图的按需生成并回写，
+/// 返回**背景路径发生变化**的提示词（本次新补齐，或首图来源换了一张），
+/// `thumbnail_path` 为相对数据目录的路径（与图像侧 `thumbnail_service::ensure` 同义）。
+/// 调用方为浏览页的可见窗口，顺序执行即可。
+pub fn ensure_thumbnails(
+    conn: &Connection,
+    data_dir: &std::path::Path,
+    thumbs_root: &std::path::Path,
+    ids: &[String],
+) -> std::result::Result<Vec<ThumbnailEnsureFixed>, String> {
+    let before = thumbs_for(conn, ids).map_err(|e| e.to_string())?;
+    let image_ids = related_image_ids(conn, ids).map_err(|e| e.to_string())?;
+    if !image_ids.is_empty() {
+        thumbnail_service::ensure(data_dir, thumbs_root, conn, &image_ids)?;
+    }
+    let after = thumbs_for(conn, ids).map_err(|e| e.to_string())?;
+    Ok(after
+        .into_iter()
+        .filter(|(pid, path)| before.get(pid) != Some(path))
+        .map(|(id, thumbnail_path)| ThumbnailEnsureFixed { id, thumbnail_path })
+        .collect())
+}
+
+/// 这些提示词关联的全部（未删除）图像 id（去重），供缩略图自愈。
+fn related_image_ids(conn: &Connection, prompt_ids: &[String]) -> Result<Vec<String>> {
+    if prompt_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = vec!["?"; prompt_ids.len()].join(",");
+    let sql = format!(
+        "SELECT DISTINCT img.id
+         FROM prompt_image_relations pir
+         JOIN images img ON img.id = pir.image_id
+         WHERE pir.prompt_id IN ({placeholders}) AND img.is_deleted = 0"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(prompt_ids.iter()), |r| r.get(0))?;
+    rows.collect()
 }
 
 /// 设为首图：将关联行的 sort_order 置为当前最小值 - 1（借鉴标签组固定首位的模式）。

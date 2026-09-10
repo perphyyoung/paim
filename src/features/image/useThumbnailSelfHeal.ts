@@ -3,14 +3,18 @@
 // 缺失且原图存在时按需生成并回写。每个 id 只校验一次；修复项非空时
 // 回调 onFixed 让页面重建对应缩略图 URL。
 import { onDeactivated, type Ref } from "vue";
-import { ensureImageThumbnails, type ThumbnailEnsureFixed } from "@/features/image/api/thumbnails";
+import { ensureImageThumbnails, type ThumbnailEnsureResult } from "@/features/image/api/thumbnails";
 
 const DEBOUNCE_MS = 500;
+
+/** 校验实现：默认按图像 id 校验（提示词页传「按提示词 id 校验」的实现） */
+type HealCheck = (ids: string[]) => Promise<ThumbnailEnsureResult>;
 
 /** 取当前可见项的 id 列表；onFixed 收到后端新回写的缩略图路径 */
 export function useThumbnailSelfHeal(
   visibleIds: Ref<string[]>,
-  onFixed: (fixed: ThumbnailEnsureFixed[]) => void,
+  onFixed: (fixed: ThumbnailEnsureResult["fixed"]) => void,
+  check: HealCheck = ensureImageThumbnails,
 ) {
   // 非响应式即可：每个 id 只发一次校验（含已确认无法修复的，避免对损坏原图反复请求）
   let checked = new Set<string>();
@@ -33,7 +37,7 @@ export function useThumbnailSelfHeal(
     pending.forEach((id) => checked.add(id));
     inflight = (async () => {
       try {
-        const result = await ensureImageThumbnails(pending);
+        const result = await check(pending);
         if (result.fixed.length > 0) onFixed(result.fixed);
       } catch {
         // 校验失败不打断浏览，回滚标记让下次再试

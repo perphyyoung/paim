@@ -153,6 +153,12 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
         CREATE INDEX IF NOT EXISTS idx_images_active_updated ON images(updated_at DESC) WHERE is_deleted = 0;
         CREATE INDEX IF NOT EXISTS idx_prompts_active_favorite ON prompts(updated_at DESC) WHERE is_deleted = 0 AND is_favorite = 1;
         CREATE INDEX IF NOT EXISTS idx_images_active_favorite ON images(updated_at DESC) WHERE is_deleted = 0 AND is_favorite = 1;
+        -- 主页排序键（分页后 ORDER BY 走 SQL，万级数据不能 filesort）
+        CREATE INDEX IF NOT EXISTS idx_images_active_file_size ON images(file_size) WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_images_active_stored_name ON images(stored_name) WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_images_active_width ON images(width) WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_images_active_height ON images(height) WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_prompts_active_title ON prompts(title) WHERE is_deleted = 0;
         "#,
     )?;
     Ok(BkDb(std::sync::Mutex::new(conn)))

@@ -3,14 +3,14 @@ import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, type Prompt, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
-import { formatLocalTime, toTimestamp } from "@/utils/date";
-import { matchesKeyword } from "@/utils/keywordMatch";
+import { formatLocalTime } from "@/utils/date";
 import { useGridColumns } from "@/utils/gridColumns";
+import { isPlaceholder, usePagedBlocks, type Placeholder } from "@/composables/usePagedBlocks";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
 import { useItemToggle } from "@/composables/useItemToggle";
-import { SPECIAL_TAG_NAMES, defineSpecialTags } from "@/features/tag/specialTags";
+import { SPECIAL_TAG_NAMES } from "@/features/tag/specialTags";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
@@ -25,6 +25,10 @@ import VirtualGrid from "@/components/VirtualGrid.vue";
 import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
+import {
+  ensurePromptThumbnails,
+  type ThumbnailEnsureFixed,
+} from "@/features/prompt/api/thumbnails";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 import {
   ensureTagCandidates,
@@ -34,6 +38,9 @@ import {
 } from "@/features/tag/useTagCandidates";
 
 const { showToast } = useToast();
+
+/** 搜索输入防抖：筛选下推后端后，每次输入都会触发一次查询 */
+const KEYWORD_DEBOUNCE_MS = 300;
 
 const SORT_KEY = "prompt.sortBy";
 const SORT_DESC_KEY = "prompt.sortDesc";
@@ -63,33 +70,36 @@ function toggleSortDesc() {
   localStorage.setItem(SORT_DESC_KEY, sortDesc.value ? "1" : "0");
 }
 
-const prompts = shallowRef<Prompt[]>([]);
 const tagNames = shallowRef<Record<string, string[]>>({});
-const imgCount = shallowRef<Record<string, number>>({});
+// 卡片背景缩略图 URL：按需取（提示词背景取关联首图，无法随列表行内返回），
+// 只保留已加载块内的条目，规模随块缓存有界
 const thumbs = shallowRef<Record<string, string>>({});
+/** 数据目录：应用运行期不变，取过一次即复用（后端只回相对路径，拼 URL 用） */
+const dataDir = ref("");
+/** 已请求过的提示词 id（含取不到背景的）：块内不重复请求，随块淘汰一并忘记 */
+const thumbTried = new Set<string>();
 
-// —— 特殊标签（虚拟筛选）——名称来自统一定义 specialTags.ts（唯一名单）
-const SPECIAL_TAGS = defineSpecialTags<Prompt>([
-  { name: SPECIAL_TAG_NAMES.favorite, check: (p) => !!p.is_favorite },
-  { name: SPECIAL_TAG_NAMES.multiImage, check: (p) => (imgCount.value[p.id] ?? 0) > 1 },
-  { name: SPECIAL_TAG_NAMES.noImage, check: (p) => (imgCount.value[p.id] ?? 0) === 0 },
-  {
-    name: SPECIAL_TAG_NAMES.noTag,
-    check: (p) => {
-      const t = tagNames.value[p.id];
-      return !t || t.length === 0;
-    },
-  },
-  // 单语：无译文（对齐 pm 的 COALESCE(content_translate,'')=''），只用于提示词域
-  { name: SPECIAL_TAG_NAMES.singleLang, check: (p) => !p.content_translate?.trim() },
-  { name: SPECIAL_TAG_NAMES.safe, check: (p) => !!p.is_safe },
-  { name: SPECIAL_TAG_NAMES.unsafe, check: (p) => !p.is_safe },
-]);
-const specialCounts = computed<Record<string, number>>(() => {
-  const m: Record<string, number> = {};
-  for (const s of SPECIAL_TAGS) m[s.name] = prompts.value.filter((p) => s.check(p)).length;
-  return m;
-});
+// —— 特殊标签（虚拟筛选）——
+// 命中判定已下推后端（domain/list_query.rs 镜像此名单），前端只声明本页启用的名单
+const SPECIAL_TAGS = [
+  SPECIAL_TAG_NAMES.favorite,
+  SPECIAL_TAG_NAMES.multiImage,
+  SPECIAL_TAG_NAMES.noImage,
+  SPECIAL_TAG_NAMES.noTag,
+  SPECIAL_TAG_NAMES.singleLang,
+  SPECIAL_TAG_NAMES.safe,
+  SPECIAL_TAG_NAMES.unsafe,
+];
+
+// 特殊标签命中数：由后端一次聚合（基于全部未删除提示词，与当前筛选无关）
+const specialCounts = ref<Record<string, number>>({});
+async function loadSpecialCounts() {
+  try {
+    specialCounts.value = await commands.promptSpecialCounts();
+  } catch {
+    // 计数失败不影响浏览，保留上次结果
+  }
+}
 
 const selectedTags = ref<string[]>([]);
 // 标签筛选反选（不持久化：与 pm 一致，避免下次打开莫名筛掉内容）
@@ -104,38 +114,86 @@ const {
   onScrollbarSeek,
   backToTop,
   restoreSaved,
-} = useGridScrollSync(() => sortedPrompts.value.length);
+} = useGridScrollSync(() => total.value);
 
-// 筛选/排序变化后回到顶部
-watch([keyword, sortBy, sortDesc, selectedTags, invertedTagFilter], backToTop);
-
-// 懒自愈：可见窗口稳定后批量校验缩略图文件（缺失且原图存在时后端按需生成）；
-// 提示词卡片背景经 thumbs 映射加载，修复后整体重拉该映射即可
+// 懒自愈：可见窗口稳定后按提示词校验其卡片背景（背景取关联首图，后端据此解析到图像），
+// 修复项直接带回新路径，只需刷新这几张卡片
 const visibleIds = computed(() => {
-  const list = sortedPrompts.value;
-  if (list.length === 0) return [];
   const start = Math.max(0, scrollIndex.value);
   const count = Math.max(1, gridPageSize.value);
-  return list.slice(start, start + count).map((p) => p.id);
+  // 未加载的块是占位项，跳过（等它加载完由下一轮窗口变化再校验）
+  return pageItems.value
+    .slice(start, start + count)
+    .filter((x): x is Prompt => !isPlaceholder(x))
+    .map((p) => p.id);
 });
 const { scheduleCheck: scheduleThumbCheck, resetChecked: resetThumbChecked } = useThumbnailSelfHeal(
   visibleIds,
   onThumbsFixed,
+  ensurePromptThumbnails,
 );
 
-async function onThumbsFixed() {
-  try {
-    const raw = await commands.getPromptThumbsMap();
-    const urls: Record<string, string> = {};
-    for (const k of Object.keys(raw)) urls[k] = convertFileSrc(raw[k]);
-    thumbs.value = urls;
-  } catch {
-    // 重拉失败保持现状，下次窗口变化会再试
+/** 已加载（非占位）提示词的 id：缩略图按块取，只在这些 id 上构建映射 */
+function loadedPromptIds(): string[] {
+  return pageItems.value.filter((x): x is Prompt => !isPlaceholder(x)).map((p) => p.id);
+}
+
+/** 与块淘汰同步：丢掉离开已加载块的 URL 与请求记忆，避免映射随滚动过的条目无限增长 */
+function pruneThumbs(keep: Set<string>) {
+  const map = { ...thumbs.value };
+  let changed = false;
+  for (const id of Object.keys(map)) {
+    if (keep.has(id)) continue;
+    delete map[id];
+    thumbTried.delete(id);
+    changed = true;
   }
+  for (const id of Array.from(thumbTried)) if (!keep.has(id)) thumbTried.delete(id);
+  if (changed) thumbs.value = map;
+}
+
+/** 按需取缩略图 URL 并并入映射（已请求过的不重复请求，含取不到背景的） */
+async function loadThumbsFor(ids: string[]) {
+  const need = ids.filter((id) => !thumbTried.has(id));
+  if (need.length === 0) return;
+  let dir: string;
+  try {
+    dir = dataDir.value || (await commands.getDataDir());
+    dataDir.value = dir;
+  } catch {
+    return; // 取不到数据目录不记入 tried，下次窗口变化重试
+  }
+  try {
+    const raw = await commands.getPromptThumbs(need);
+    const map = { ...thumbs.value };
+    for (const k of Object.keys(raw)) map[k] = convertFileSrc(`${dir}/${raw[k]}`);
+    thumbs.value = map;
+  } catch {
+    return; // 失败不记入 tried，下次窗口变化重试
+  }
+  for (const id of need) thumbTried.add(id);
+}
+
+/** 块变化（加载 / 淘汰）后同步缩略图映射 */
+function syncThumbs() {
+  const ids = loadedPromptIds();
+  pruneThumbs(new Set(ids));
+  void loadThumbsFor(ids);
+}
+
+// 自愈后：只把带回新路径的提示词并入映射（后端回相对路径，与前缀拼接方式同 loadThumbsFor）
+function onThumbsFixed(fixed: ThumbnailEnsureFixed[]) {
+  const dir = dataDir.value;
+  if (!dir || fixed.length === 0) return;
+  const map = { ...thumbs.value };
+  for (const f of fixed) map[f.id] = convertFileSrc(`${dir}/${f.thumbnail_path}`);
+  thumbs.value = map;
 }
 
 function handleGridScroll(p: GridScrollPayload) {
   onGridScroll(p);
+  // 按可见区间补齐所需块（内部含相邻块预取）
+  ensureRange(scrollIndex.value, scrollIndex.value + Math.max(1, gridPageSize.value) - 1);
   scheduleThumbCheck();
 }
 
@@ -150,52 +208,61 @@ function onModalUpdated() {
 const tagGroups = ref<TagGroup[]>([]);
 const allTags = ref<TagItem[]>([]);
 
+// 每个标签关联的提示词数：直接取后端 count（只统计未删除提示词）
 const tagCounts = computed(() => {
   const counts: Record<string, number> = {};
-  for (const p of prompts.value) {
-    const tags = tagNames.value[p.id];
-    if (tags) for (const t of tags) counts[t] = (counts[t] ?? 0) + 1;
-  }
+  for (const t of allTags.value) counts[t.name] = t.count;
   return counts;
 });
 
-const sortedPrompts = computed(() => {
-  const kw = keyword.value.trim().toLowerCase();
-  // 搜索范围与 pm 对齐：标题/内容/翻译/备注/标签名（特殊标签为计算条件，不参与）
-  let arr = kw
-    ? prompts.value.filter((p) =>
-        matchesKeyword(kw, [p.title, p.content, p.content_translate, p.note], tagNames.value[p.id]),
-      )
-    : [...prompts.value];
-  if (selectedTags.value.length > 0) {
-    // 反选（对齐 pm 的 invertedFilter）：多标签是 AND 组合，反选即排除同时命中全部所选标签的条目
-    arr = arr.filter((p) => {
-      const hit = selectedTags.value.every((t) => {
-        const s = SPECIAL_TAGS.find((x) => x.name === t);
-        if (s) return s.check(p);
-        const tags = tagNames.value[p.id];
-        return !!tags && tags.includes(t);
-      });
-      return invertedTagFilter.value ? !hit : hit;
-    });
-  }
-  if (!arr.length) return arr;
-  let cmp: (a: Prompt, b: Prompt) => number;
-  // 时间类排序须按时间戳比较（toTimestamp）：updated_at/created_at 库中可能并存
-  // ISO 8601（paim 原生 / pm 新版）与本地斜杠（pm 早期备份）两种格式，
-  // 直接字符串 localeCompare 会因格式前缀（'-' < '/'）切成两个互不相交的区间导致排序错乱。
-  switch (sortBy.value) {
-    case "createdAt":
-      cmp = (a, b) => toTimestamp(a.created_at) - toTimestamp(b.created_at);
-      break;
-    case "title":
-      cmp = (a, b) => a.title.localeCompare(b.title);
-      break;
-    default:
-      cmp = (a, b) => toTimestamp(a.updated_at) - toTimestamp(b.updated_at);
-  }
-  arr.sort(cmp);
-  return sortDesc.value ? arr.slice().reverse() : arr;
+// 搜索关键词防抖：排序/筛选已下推后端，每次输入都会触发一次查询
+const debouncedKeyword = ref("");
+let keywordTimer: ReturnType<typeof setTimeout> | null = null;
+watch(keyword, (v) => {
+  if (keywordTimer) clearTimeout(keywordTimer);
+  keywordTimer = setTimeout(() => {
+    keywordTimer = null;
+    debouncedKeyword.value = v;
+  }, KEYWORD_DEBOUNCE_MS);
+});
+
+/** 当前查询条件（分页与取 id 共用同一份，避免两处漂移） */
+function currentQuery() {
+  return {
+    offset: 0,
+    limit: 0,
+    search: debouncedKeyword.value.trim(),
+    tags: selectedTags.value,
+    inverted: invertedTagFilter.value,
+    sort: sortBy.value,
+    desc: sortDesc.value,
+  };
+}
+
+// 主页列表：排序 / 搜索 / 标签筛选（含特殊标签）全部由后端完成，前端按块持有，
+// 只保留最近用到的块（LRU），未加载位置是占位对象（模板渲染骨架）。
+const {
+  items: pageItems,
+  total,
+  loading: listLoading,
+  ensureRange,
+  reload: reloadBlocks,
+  replaceItem,
+} = usePagedBlocks<Prompt>({
+  load: (offset, limit) => commands.listPromptsPage({ ...currentQuery(), offset, limit }),
+});
+
+// 筛选 / 排序 / 搜索变化：数据在后端重排，前端无法增量调整——回到顶部并整体重拉
+watch([debouncedKeyword, sortBy, sortDesc, selectedTags, invertedTagFilter], async () => {
+  backToTop();
+  await reloadBlocks();
+  scheduleThumbCheck();
+});
+
+// 块加载 / 淘汰后同步缩略图映射，并检查新出现的可见项
+watch(pageItems, () => {
+  syncThumbs();
+  scheduleThumbCheck();
 });
 
 // 空态与 pm 对齐：搜索无结果 / 标签筛选无结果 / 暂无数据（附上手引导）三态
@@ -229,16 +296,20 @@ function rowInfo(p: Prompt): { label: string; value: string } {
 }
 
 // 切换收藏（单张/批量，逻辑与图像页共用）
-const { toggleOne, toggleBatch } = useItemToggle({
+const { toggleOne, toggleBatch } = useItemToggle<Prompt>({
   domain: "prompt",
-  list: prompts,
+  patch: (p) => replaceItem(p.id, p),
   showToast,
 });
 function toggleFavorite(p: Prompt) {
   toggleOne(p, "is_favorite");
 }
 async function onBatchFavorite() {
-  if (await toggleBatch(Array.from(selectedIds.value))) exitBatch();
+  // 分页下前端没有全量，批量翻转后重载当前条件（若正按收藏筛选，条目会随之进出）
+  if (await toggleBatch(Array.from(selectedIds.value))) {
+    exitBatch();
+    await loadPrompts();
+  }
 }
 
 async function copyPrompt(p: Prompt) {
@@ -263,7 +334,7 @@ async function doSingleDelete() {
   if (!p) return;
   try {
     await commands.deletePrompt(p.id);
-    prompts.value = prompts.value.filter((x) => x.id !== p.id);
+    await loadPrompts();
     // 图像主页卡片的关联提示词文案过滤已删除提示词，需重载
     markPageStale("images");
     showToast(`已删除「${p.title}」`, "success");
@@ -282,9 +353,11 @@ const {
   exitBatch,
   onCheckSelect,
   onCardClick,
-} = useBatchSelection<Prompt>(
-  () => sortedPrompts.value,
+} = useBatchSelection(
+  () => pageItems.value,
   (i) => openDetail(i),
+  // 全选 / 反选：分页下前端没有全量，由后端按当前条件返回 id
+  () => commands.listPromptIds(currentQuery()),
 );
 
 // 批量添加标签（与图像主页共用逻辑）
@@ -333,9 +406,22 @@ const detailOpen = ref(false);
 const detailIndex = ref(0);
 // 进入详情时生成「顺序快照」：详情停留期间计数/导航按旧顺序走，保存只更新数据不做排序重排
 const detailOrder = ref<string[]>([]);
+/** 模板用：占位项已由 v-if 排除，这里只做类型收窄 */
+function asCard(x: Prompt | Placeholder): Prompt {
+  return x as Prompt;
+}
+/** 详情弹窗的列表来源：当前已加载项（未加载块是占位，不参与详情翻页） */
+const detailPrompts = computed(() => pageItems.value.filter((x): x is Prompt => !isPlaceholder(x)));
+
 function openDetail(i: number) {
-  detailOrder.value = sortedPrompts.value.map((p) => p.id);
-  detailIndex.value = i;
+  // 顺序快照取当前已加载项（未加载块是占位），翻到边界时索引自然到头
+  const order = detailPrompts.value.map((p) => p.id);
+  detailOrder.value = order;
+  const item = pageItems.value[i];
+  detailIndex.value = Math.max(
+    0,
+    item && !isPlaceholder(item) ? Math.max(0, order.indexOf(item.id)) : i,
+  );
   detailOpen.value = true;
 }
 function closeDetail() {
@@ -344,19 +430,15 @@ function closeDetail() {
   loadPrompts();
   loadTagFilter();
 }
+// 重载：标签映射先取，随后重拉首屏块与特殊标签计数；
+// 缩略图映射不整体重取——清空请求记忆后由 `pageItems` watch 按块补齐（规模随块缓存有界）
 async function loadPrompts() {
-  const [ps, tagMap, countMap, raw] = await Promise.all([
-    commands.listPrompts(),
-    commands.getTagsMap("prompt").catch(() => ({}) as Record<string, string[]>),
-    commands.getPromptImagesCountMap().catch(() => ({}) as Record<string, number>),
-    commands.getPromptThumbsMap().catch(() => ({}) as Record<string, string>),
-  ]);
-  prompts.value = ps;
-  tagNames.value = tagMap;
-  imgCount.value = countMap;
-  const urls: Record<string, string> = {};
-  for (const k of Object.keys(raw)) urls[k] = convertFileSrc(raw[k]);
-  thumbs.value = urls;
+  tagNames.value = await commands
+    .getTagsMap("prompt")
+    .catch(() => ({}) as Record<string, string[]>);
+  thumbTried.clear();
+  await reloadBlocks();
+  await loadSpecialCounts();
   // 数据重载后重置已校验记忆并检查当前可见窗口
   resetThumbChecked();
   scheduleThumbCheck();
@@ -598,7 +680,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
     <!-- 卡片滚动区：虚拟网格 + 自定义滚动条 -->
     <div class="flex min-h-0 flex-1 gap-1">
       <div
-        v-if="sortedPrompts.length === 0"
+        v-if="total === 0 && !listLoading"
         class="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center border-gray-600"
       >
         <p class="text-sm text-gray-400">{{ emptyState.main }}</p>
@@ -608,34 +690,40 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         <VirtualGrid
           ref="gridRef"
           class="min-w-0 flex-1"
-          :items="sortedPrompts"
+          :items="pageItems"
           :columns="columns"
           :gap="12"
           @scroll="handleGridScroll"
         >
           <template #default="{ item: p, index, width }">
+            <!-- 未加载 / 加载失败的块：占位骨架，位置与真实卡片一致 -->
+            <div
+              v-if="isPlaceholder(p)"
+              class="h-full w-full animate-pulse rounded-lg border border-gray-700 bg-gray-800"
+            />
             <MediaCard
-              :item="p"
+              v-else
+              :item="asCard(p)"
               :index="index"
-              :selected="isSelected(p.id)"
+              :selected="isSelected(asCard(p).id)"
               :batch-open="batchOpen"
-              :thumb="thumbs[p.id] ?? ''"
+              :thumb="thumbs[asCard(p).id] ?? ''"
               copy-title="复制内容"
-              :content="p.content"
-              :tags="tagNames[p.id] || []"
-              :sort-info="rowInfo(p)"
+              :content="asCard(p).content"
+              :tags="tagNames[asCard(p).id] || []"
+              :sort-info="rowInfo(asCard(p))"
               :card-size="width"
-              @fav="toggleFavorite(p)"
-              @copy="copyPrompt(p)"
-              @delete="requestDelete(p)"
-              @check="onCheckSelect($event, p.id)"
+              @fav="toggleFavorite(asCard(p))"
+              @copy="copyPrompt(asCard(p))"
+              @delete="requestDelete(asCard(p))"
+              @check="onCheckSelect($event, asCard(p).id)"
               @card-click="onCardClick"
             />
           </template>
         </VirtualGrid>
         <CustomScrollBar
           class="w-4 shrink-0"
-          :total="sortedPrompts.length"
+          :total="total"
           :page-size="gridPageSize"
           :model-value="scrollIndex"
           @update:model-value="onScrollbarSeek"
@@ -650,7 +738,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
     <PromptDetailModal
       v-if="detailOpen"
       :open="detailOpen"
-      :prompts="sortedPrompts"
+      :prompts="detailPrompts"
       :order="detailOrder"
       :initial-index="detailIndex"
       :tag-names="tagNames"

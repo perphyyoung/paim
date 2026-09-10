@@ -6,6 +6,12 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 /** Commands */
 export const commands = {
 	listPrompts: () => __TAURI_INVOKE<Prompt[]>("list_prompts"),
+	/**  主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。 */
+	listPromptsPage: (query: ListQuery) => __TAURI_INVOKE<PaginatedPrompts>("list_prompts_page", { query }),
+	/**  同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。 */
+	listPromptIds: (query: ListQuery) => __TAURI_INVOKE<string[]>("list_prompt_ids", { query }),
+	/**  特殊标签命中数（基于全部未删除提示词，不含搜索 / 标签条件）。 */
+	promptSpecialCounts: () => __TAURI_INVOKE<{ [key in string]: number }>("prompt_special_counts"),
 	createPrompt: (content: string, title: string | null) => __TAURI_INVOKE<Prompt>("create_prompt", { content, title }),
 	deletePrompt: (id: string) => __TAURI_INVOKE<null>("delete_prompt", { id }),
 	/**  更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。 */
@@ -24,10 +30,16 @@ export const commands = {
 	restoreAllPrompts: () => __TAURI_INVOKE<number>("restore_all_prompts"),
 	/**  清空提示词回收站（关联关系级联删除）。 */
 	emptyPromptTrash: () => __TAURI_INVOKE<TrashBatchResult>("empty_prompt_trash"),
-	/**  返回每个提示词关联（未删除）的图像数：{promptId: count}，供「有图」特殊标签与排序。 */
-	getPromptImagesCountMap: () => __TAURI_INVOKE<{ [key in string]: number }>("get_prompt_images_count_map"),
-	/**  返回每个提示词第一张关联（未删除）图像的缩略图磁盘路径：{promptId: absPath}，供卡片背景。 */
-	getPromptThumbsMap: () => __TAURI_INVOKE<{ [key in string]: string }>("get_prompt_thumbs_map"),
+	/**
+	 *  返回给定提示词第一张关联（未删除）图像的缩略图**相对路径**：{promptId: relPath}，供卡片背景。
+	 *  与图像列表明细里的 `thumbnail_path` 同语义，由前端拼数据目录；空列表直接返回空，避免拼出空 IN。
+	 */
+	getPromptThumbs: (ids: string[]) => __TAURI_INVOKE<{ [key in string]: string }>("get_prompt_thumbs", { ids }),
+	/**
+	 *  提示词卡片背景懒自愈：可见窗口稳定后按提示词校验其关联图像的缩略图，缺图按需生成。
+	 *  返回背景路径发生变化的提示词（供前端只刷新这几张卡片），路径为相对数据目录的相对值。
+	 */
+	ensurePromptThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureFixed[]>("ensure_prompt_thumbnails", { ids }),
 	/**  返回一个提示词关联的（未删除）图像列表（含缩略图与标签），供详情页网格展示。 */
 	getPromptRelatedImages: (id: string) => __TAURI_INVOKE<RelatedImage[]>("get_prompt_related_images", { id }),
 	/**  设为首图：提示词详情图像右键，调整关联 sort_order 使该图排首位（对齐 pm）。 */
@@ -54,6 +66,12 @@ export const commands = {
 	/**  为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。 */
 	getSourceThumbnail: (source: string) => __TAURI_INVOKE<string>("get_source_thumbnail", { source }),
 	listImages: (limit: number | null, search: string | null, tag: string | null) => __TAURI_INVOKE<PaginatedImages>("list_images", { limit, search, tag }),
+	/**  主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。 */
+	listImagesPage: (query: ListQuery) => __TAURI_INVOKE<PaginatedImages>("list_images_page", { query }),
+	/**  同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。 */
+	listImageIds: (query: ListQuery) => __TAURI_INVOKE<string[]>("list_image_ids", { query }),
+	/**  特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件）。 */
+	imageSpecialCounts: () => __TAURI_INVOKE<{ [key in string]: number }>("image_special_counts"),
 	/**  返回单张图像详情。 */
 	getImageDetail: (id: string) => __TAURI_INVOKE<Image>("get_image_detail", { id }),
 	/**  返回图像原图磁盘路径，前端配合 convertFileSrc 加载（详情页大图使用）。 */
@@ -107,7 +125,7 @@ export const commands = {
 	updateTagGroup: (domain: TagDomain, id: number, name: string, sortOrder: number | null) => __TAURI_INVOKE<null>("update_tag_group", { domain, id, name, sortOrder }),
 	/**  删除标签组（组内标签交由外键 ON DELETE SET NULL 变为未分组）。 */
 	deleteTagGroup: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("delete_tag_group", { domain, id }),
-	/**  新建标签（可指定所属组），返回新标签。 */
+	/**  新建标签（可指定所属组），返回新标签；域内标签数达上限时拒绝。 */
 	createTag: (domain: TagDomain, name: string, groupId: number | null) => __TAURI_INVOKE<TagItem>("create_tag", { domain, name, groupId }),
 	/**  重命名标签。 */
 	renameTag: (domain: TagDomain, id: number, name: string) => __TAURI_INVOKE<null>("rename_tag", { domain, id, name }),
@@ -251,9 +269,29 @@ export type LinkedPrompt = {
 	tags: string[],
 };
 
+export type ListQuery = {
+	offset: number,
+	limit: number,
+	/**  搜索关键词（空串表示不过滤） */
+	search: string,
+	/**  所选标签（含特殊标签名），多标签为 AND */
+	tags: string[],
+	/**  反选：排除同时命中全部所选标签的条目 */
+	inverted: boolean,
+	/**  排序键（驼峰，与前端 sortBy 一致）；未命中白名单时回落默认键 */
+	sort: string,
+	desc: boolean,
+};
+
 /**  分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。 */
 export type PaginatedImages = {
 	items: Image[],
+	total: number,
+};
+
+/**  分页提示词列表：items 为本页，total 为符合条件总数。 */
+export type PaginatedPrompts = {
+	items: Prompt[],
 	total: number,
 };
 

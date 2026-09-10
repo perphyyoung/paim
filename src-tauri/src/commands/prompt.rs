@@ -2,7 +2,9 @@
 //! 路径 `commands::prompt::`，与图像侧 `commands::image::` 对称。
 
 use crate::domain::image_service;
+use crate::domain::list_query::ListQuery;
 use crate::domain::prompt_service;
+use crate::domain::thumbnail_service;
 use crate::infra::db::BkDb;
 use crate::infra::error::AppError;
 
@@ -16,31 +18,33 @@ pub fn list_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::Prompt>, AppE
     prompt_service::list(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 返回每个提示词关联（未删除）的图像数：{promptId: count}，供「有图」特殊标签与排序。
+/// 主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。
 #[tauri::command]
 #[specta::specta]
-pub fn get_prompt_images_count_map(
+pub fn list_prompts_page(
+    db: State<BkDb>,
+    query: ListQuery,
+) -> Result<prompt_service::PaginatedPrompts, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    prompt_service::list_page(&conn, &query).map_err(|e| AppError::Message(e.to_string()))
+}
+
+/// 同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。
+#[tauri::command]
+#[specta::specta]
+pub fn list_prompt_ids(db: State<BkDb>, query: ListQuery) -> Result<Vec<String>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    prompt_service::list_ids(&conn, &query).map_err(|e| AppError::Message(e.to_string()))
+}
+
+/// 特殊标签命中数（基于全部未删除提示词，不含搜索 / 标签条件）。
+#[tauri::command]
+#[specta::specta]
+pub fn prompt_special_counts(
     db: State<BkDb>,
 ) -> Result<std::collections::HashMap<String, i64>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT pir.prompt_id, COUNT(*)
-             FROM prompt_image_relations pir
-             JOIN images img ON img.id = pir.image_id
-             WHERE img.is_deleted = 0
-             GROUP BY pir.prompt_id",
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let rows = stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    for row in rows {
-        let (pid, count) = row.map_err(|e| AppError::Message(e.to_string()))?;
-        map.insert(pid, count);
-    }
-    Ok(map)
+    prompt_service::special_counts(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -159,46 +163,35 @@ pub fn empty_prompt_trash(db: State<BkDb>) -> Result<image_service::TrashBatchRe
         .map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 返回每个提示词第一张关联（未删除）图像的缩略图磁盘路径：{promptId: absPath}，供卡片背景。
+/// 返回给定提示词第一张关联（未删除）图像的缩略图**相对路径**：{promptId: relPath}，供卡片背景。
+/// 与图像列表明细里的 `thumbnail_path` 同语义，由前端拼数据目录；空列表直接返回空，避免拼出空 IN。
 #[tauri::command]
 #[specta::specta]
-pub fn get_prompt_thumbs_map(
-    app: tauri::AppHandle,
+pub fn get_prompt_thumbs(
     db: State<BkDb>,
+    ids: Vec<String>,
 ) -> Result<std::collections::HashMap<String, String>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    prompt_thumbs_map(&conn, &crate::infra::db::data_dir(&app))
-        .map_err(|e| AppError::Message(e.to_string()))
+    prompt_service::thumbs_for(&conn, &ids).map_err(|e| AppError::Message(e.to_string()))
 }
 
-/// 按关联顺序取每个提示词第一张**有缩略图**的图像：
-/// thumbnail_path 为 NULL 的记录（如导入时无法解码的文件）自动跳过，
-/// 让位给后续可用图像，且不会因 NULL 阻塞整个映射的构建。
-pub(crate) fn prompt_thumbs_map(
-    conn: &rusqlite::Connection,
-    data_dir: &std::path::Path,
-) -> rusqlite::Result<std::collections::HashMap<String, String>> {
-    let mut stmt = conn.prepare(
-        "SELECT prompt_id, thumbnail_path
-         FROM (
-            SELECT pir.prompt_id AS prompt_id, img.thumbnail_path AS thumbnail_path,
-                   ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.sort_order, pir.rowid) AS rn
-            FROM prompt_image_relations pir
-            JOIN images img ON img.id = pir.image_id
-            WHERE img.is_deleted = 0 AND img.thumbnail_path IS NOT NULL
-         )
-         WHERE rn = 1",
-    )?;
-    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-    let mut map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    for row in rows {
-        let (pid, thumb_rel) = row?;
-        map.insert(
-            pid,
-            data_dir.join(&thumb_rel).to_string_lossy().into_owned(),
-        );
-    }
-    Ok(map)
+/// 提示词卡片背景懒自愈：可见窗口稳定后按提示词校验其关联图像的缩略图，缺图按需生成。
+/// 返回背景路径发生变化的提示词（供前端只刷新这几张卡片），路径为相对数据目录的相对值。
+#[tauri::command]
+#[specta::specta]
+pub fn ensure_prompt_thumbnails(
+    app: tauri::AppHandle,
+    db: State<BkDb>,
+    ids: Vec<String>,
+) -> Result<Vec<thumbnail_service::ThumbnailEnsureFixed>, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    prompt_service::ensure_thumbnails(
+        &conn,
+        &crate::infra::db::data_dir(&app),
+        &crate::infra::db::thumbnails_dir(&app),
+        &ids,
+    )
+    .map_err(AppError::Message)
 }
 
 /// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。
@@ -324,7 +317,3 @@ pub fn add_images_to_prompt(
     }
     Ok(crate::domain::image_service::ImageImportBatchResult { results, errors })
 }
-
-#[cfg(test)]
-#[path = "prompt.test.rs"]
-mod tests;

@@ -63,6 +63,29 @@ pub fn ensure_name_not_dup(
     }
 }
 
+/// 单个域的标签数量上限。标签按**小规模**设计（每域 500 条封顶，与图像/提示词条数无关），
+/// 达到上限即拒绝新增，前端直接提示；因此筛选区与管理弹窗都按全量渲染，不做分批/上限渲染。
+pub const MAX_TAGS_PER_DOMAIN: i64 = 500;
+
+/// 校验域内标签数未达上限（新增标签前调用）；已达上限返回中文错误文本。
+pub fn ensure_tag_capacity(conn: &Connection, domain: TagDomain) -> Result<(), String> {
+    let count: i64 = conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {}", domain.tags_table()),
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if count >= MAX_TAGS_PER_DOMAIN {
+        Err(format!(
+            "{}标签已达上限（{MAX_TAGS_PER_DOMAIN} 个），无法新增",
+            domain.label()
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 impl TagDomain {
     pub fn tags_table(self) -> &'static str {
         match self {

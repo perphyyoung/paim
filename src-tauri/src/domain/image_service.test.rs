@@ -1,9 +1,10 @@
 //! 图像领域服务单元测试：搜索 WHERE 子句拼接（filter_sql）、导入、替换图像、详情更新。
 
 use super::{
-    filter_sql, import_with, list_related_prompts, replace_image_with, update_detail,
-    ImageReplaceOutcome,
+    filter_sql, import_with, list_ids, list_page, list_related_prompts, replace_image_with,
+    special_counts, update_detail, ImageReplaceOutcome, PaginatedImages,
 };
+use crate::domain::list_query::ListQuery;
 use crate::infra::db;
 
 /// 生成一张指定颜色的 2×2 png 源图（不同颜色 ⇒ 不同 MD5）。
@@ -503,4 +504,231 @@ fn soft_delete_restore_restore_all_touch_related_prompts() {
         p2_at, "2000-01-01T00:00:00.000Z",
         "restore_all 不应误刷在册图像的关联提示词 updated_at"
     );
+}
+
+// —— 主页分页列表：排序 / 分页 / 标签筛选（含特殊标签）——
+
+/// 直接插入图像行：分页查询只读库，不需要真实文件
+fn insert_image(conn: &rusqlite::Connection, id: &str, size: i64, created: &str, fav: bool) {
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path, file_size, is_favorite, created_at, updated_at)
+         VALUES (?1, ?1, ?1, ?2, ?3, ?4, ?5, ?5)",
+        rusqlite::params![
+            id,
+            format!("images/202601/{id}.png"),
+            size,
+            fav as i64,
+            created
+        ],
+    )
+    .unwrap();
+}
+
+fn tag_image(conn: &rusqlite::Connection, image_id: &str, tag: &str) {
+    conn.execute("INSERT OR IGNORE INTO image_tags(name) VALUES (?1)", [tag])
+        .unwrap();
+    conn.execute(
+        "INSERT INTO image_tag_relations(image_id, tag_id)
+         SELECT ?1, id FROM image_tags WHERE name = ?2",
+        rusqlite::params![image_id, tag],
+    )
+    .unwrap();
+}
+
+fn query(sort: &str, desc: bool) -> ListQuery {
+    ListQuery {
+        offset: 0,
+        limit: 200,
+        search: String::new(),
+        tags: Vec::new(),
+        inverted: false,
+        sort: sort.to_string(),
+        desc,
+    }
+}
+
+fn ids_of(page: &PaginatedImages) -> Vec<String> {
+    page.items.iter().map(|i| i.id.clone()).collect()
+}
+
+#[test]
+fn list_page_sorts_by_whitelist_and_pages_with_total() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    insert_image(&conn, "i1", 300, "2026-01-01T00:00:00.000Z", false);
+    insert_image(&conn, "i2", 100, "2026-01-02T00:00:00.000Z", false);
+    insert_image(&conn, "i3", 200, "2026-01-03T00:00:00.000Z", false);
+
+    let asc = list_page(&conn, &query("fileSize", false)).unwrap();
+    assert_eq!(asc.total, 3);
+    assert_eq!(ids_of(&asc), vec!["i2", "i3", "i1"], "按文件大小升序");
+
+    let desc = list_page(&conn, &query("fileSize", true)).unwrap();
+    assert_eq!(ids_of(&desc), vec!["i1", "i3", "i2"], "desc 只改方向");
+
+    let second = list_page(
+        &conn,
+        &ListQuery {
+            offset: 2,
+            limit: 1,
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(ids_of(&second), vec!["i1"], "offset/limit 生效");
+    assert_eq!(second.total, 3, "total 不随分页变化");
+
+    let beyond = list_page(
+        &conn,
+        &ListQuery {
+            offset: 99,
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert!(beyond.items.is_empty(), "offset 越界返回空页");
+    assert_eq!(beyond.total, 3);
+
+    // 未知排序键回落默认（created_at）
+    let fallback = list_page(&conn, &query("nope", true)).unwrap();
+    assert_eq!(
+        ids_of(&fallback),
+        vec!["i3", "i2", "i1"],
+        "未知键回落 created_at"
+    );
+}
+
+#[test]
+fn list_page_multi_tag_is_and_and_inverted_excludes_all_hits() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    insert_image(&conn, "i1", 1, "2026-01-01T00:00:00.000Z", false);
+    insert_image(&conn, "i2", 2, "2026-01-02T00:00:00.000Z", false);
+    insert_image(&conn, "i3", 3, "2026-01-03T00:00:00.000Z", false);
+    tag_image(&conn, "i1", "甲");
+    tag_image(&conn, "i1", "乙");
+    tag_image(&conn, "i2", "甲");
+
+    let one = list_page(
+        &conn,
+        &ListQuery {
+            tags: vec!["甲".into()],
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(ids_of(&one), vec!["i1", "i2"], "单标签命中");
+
+    let both = list_page(
+        &conn,
+        &ListQuery {
+            tags: vec!["甲".into(), "乙".into()],
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(ids_of(&both), vec!["i1"], "多标签是 AND");
+
+    let inverted = list_page(
+        &conn,
+        &ListQuery {
+            tags: vec!["甲".into(), "乙".into()],
+            inverted: true,
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        ids_of(&inverted),
+        vec!["i2", "i3"],
+        "反选排除同时命中全部所选标签的条目"
+    );
+}
+
+#[test]
+fn list_page_special_tags_hit_sql_conditions() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    insert_image(&conn, "i1", 1, "2026-01-01T00:00:00.000Z", true);
+    insert_image(&conn, "i2", 2, "2026-01-02T00:00:00.000Z", false);
+    insert_image(&conn, "i3", 3, "2026-01-03T00:00:00.000Z", false);
+    tag_image(&conn, "i1", "甲");
+    // i1 关联一个在册提示词 → 不算「未引」；i2 关联一个已删除提示词 → 仍算「未引」
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content, is_deleted) VALUES ('p2', 't', 'c', 1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', 'i1'), ('p2', 'i2')",
+        [],
+    )
+    .unwrap();
+
+    let unreferenced = list_page(
+        &conn,
+        &ListQuery {
+            tags: vec!["未引".into()],
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        ids_of(&unreferenced),
+        vec!["i2", "i3"],
+        "未引需排除「仅关联已删除提示词」之外的在册关联"
+    );
+
+    let no_tag = list_page(
+        &conn,
+        &ListQuery {
+            tags: vec!["无标".into()],
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(ids_of(&no_tag), vec!["i2", "i3"], "无标＝没有任何标签关联");
+
+    let favorite = list_page(
+        &conn,
+        &ListQuery {
+            tags: vec!["收藏".into()],
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(ids_of(&favorite), vec!["i1"]);
+}
+
+#[test]
+fn list_ids_and_special_counts_share_the_same_filter() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    insert_image(&conn, "i1", 1, "2026-01-01T00:00:00.000Z", true);
+    insert_image(&conn, "i2", 2, "2026-01-02T00:00:00.000Z", false);
+    tag_image(&conn, "i1", "甲");
+
+    let all = list_ids(&conn, &query("fileSize", false)).unwrap();
+    assert_eq!(all, vec!["i1", "i2"], "list_ids 与列表同序");
+
+    let filtered = list_ids(
+        &conn,
+        &ListQuery {
+            tags: vec!["无标".into()],
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(filtered, vec!["i2"], "list_ids 走同一套筛选");
+
+    let counts = special_counts(&conn).unwrap();
+    assert_eq!(counts.get("收藏"), Some(&1));
+    assert_eq!(counts.get("无标"), Some(&1));
+    assert_eq!(counts.get("未引"), Some(&2));
+    assert_eq!(counts.get("安全"), Some(&2), "is_safe 默认 1");
 }

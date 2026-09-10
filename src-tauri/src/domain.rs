@@ -3,6 +3,7 @@
 pub mod backup_common;
 pub mod image_ops;
 pub mod image_service;
+pub mod list_query;
 pub mod paim_backup_service;
 pub mod pm_backup_service;
 pub mod prompt_service;

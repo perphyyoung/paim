@@ -1,7 +1,7 @@
 //! 标签领域服务单元测试：按域参数化的查询与关联增删（图像/提示词共用同一套实现）。
 
 use super::{add_tag, batch_add_tag, load_tag_data, load_tags_map, remove_tag};
-use crate::domain::tag_manager::TagDomain;
+use crate::domain::tag_manager::{TagDomain, MAX_TAGS_PER_DOMAIN};
 use crate::infra::db;
 use rusqlite::Connection;
 
@@ -139,6 +139,34 @@ fn add_and_remove_tag_refresh_updated_at() {
         after_remove, "2000-01-01T00:00:00.000Z",
         "移除标签应刷新 updated_at"
     );
+}
+
+/// 域内标签数达上限后：既有标签仍可关联，新建标签（自动创建路径）被拒。
+#[test]
+fn add_tag_refuses_new_tag_when_at_capacity() {
+    let (_dir, db) = setup_db("tag-service-cap");
+    let conn = db.0.lock().unwrap();
+    insert_image(&conn, "i1");
+    // 预填到上限（直接写表，避免走 500 次 add_tag 的开销）
+    for i in 0..MAX_TAGS_PER_DOMAIN {
+        conn.execute(
+            "INSERT INTO image_tags(name) VALUES (?1)",
+            rusqlite::params![format!("t{i}")],
+        )
+        .unwrap();
+    }
+
+    // 已达上限：新标签被拒，且不落库
+    let err = add_tag(&conn, TagDomain::Image, "i1", "overflow").unwrap_err();
+    assert!(err.to_string().contains("上限"), "实际：{err}");
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM image_tags", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(total, MAX_TAGS_PER_DOMAIN, "被拒后不应产生新标签");
+
+    // 既有标签不受上限影响，仍可正常关联
+    let added = add_tag(&conn, TagDomain::Image, "i1", "t0").unwrap();
+    assert_eq!(added[0].name, "t0");
 }
 
 #[test]

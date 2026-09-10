@@ -1,15 +1,24 @@
 import { ref } from "vue";
 
+/** 从列表项安全取 id：分页占位项没有 id，返回 undefined 由调用方跳过 */
+function idOf(x: unknown): string | undefined {
+  if (!x || typeof x !== "object" || !("id" in x)) return undefined;
+  const id = (x as { id?: unknown }).id;
+  return typeof id === "string" ? id : undefined;
+}
+
 /**
  * 主页卡片批量选择状态机（提示词/图像共用，两页对称）。
  * 普通点击打开详情；Ctrl/Cmd 点击切换选中并作为范围锚点；Shift 点击从锚点扩选（对齐 pm rangeSelect）。
  *
- * @param getItems  当前过滤排序后的列表（供全选/反选/范围选择定位）
+ * @param getItems  当前列表（下标与网格一致；分页下未加载位置是占位项，无 id，会被跳过）
  * @param openDetail 普通点击打开详情（接收下标）
+ * @param getAllIds 全量 id（分页下由后端按当前条件返回，供全选/反选；不传时退回 getItems）
  */
-export function useBatchSelection<T extends { id: string }>(
-  getItems: () => T[],
+export function useBatchSelection(
+  getItems: () => readonly unknown[],
   openDetail: (index: number) => void,
+  getAllIds?: () => Promise<string[]>,
 ) {
   const selectedIds = ref<Set<string>>(new Set());
   const batchOpen = ref(false);
@@ -30,13 +39,21 @@ export function useBatchSelection<T extends { id: string }>(
     syncBatch();
   }
 
-  function batchSelectAll() {
-    selectedIds.value = new Set(getItems().map((x) => x.id));
+  /** 全选 / 反选的 id 全集：分页下走后端，否则取当前列表 */
+  async function idsForAll(): Promise<string[]> {
+    if (getAllIds) return getAllIds();
+    return getItems()
+      .map(idOf)
+      .filter((x): x is string => !!x);
+  }
+
+  async function batchSelectAll() {
+    selectedIds.value = new Set(await idsForAll());
     batchOpen.value = true;
   }
 
-  function batchInvert() {
-    const all = new Set(getItems().map((x) => x.id));
+  async function batchInvert() {
+    const all = new Set(await idsForAll());
     const s = new Set(selectedIds.value);
     for (const id of all) {
       if (s.has(id)) s.delete(id);
@@ -64,8 +81,8 @@ export function useBatchSelection<T extends { id: string }>(
       s.add(id);
     } else {
       for (let i = Math.min(from, index); i <= Math.max(from, index); i++) {
-        const item = getItems()[i];
-        if (item) s.add(item.id);
+        const id = idOf(getItems()[i]);
+        if (id) s.add(id); // 未加载的占位项没有 id，跳过
       }
     }
     selectedIds.value = s;

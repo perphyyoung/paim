@@ -44,11 +44,8 @@ interface TagSection {
   isGroup: boolean;
   tags: TagItem[];
 }
-interface SpecialTag {
-  name: string;
-  /** 仅用于 name 判断（isSpecialTag），不被真正调用 */
-  check: (item: never) => boolean;
-}
+/** 特殊标签只用到名称（命中判定与计数都在后端完成） */
+type SpecialTagName = string;
 
 const props = withDefaults(
   defineProps<{
@@ -57,7 +54,7 @@ const props = withDefaults(
     modelValue: string[];
     /** 反选模式：选中标签表示「排除」（对齐 pm 的 invertedFilter，前端取反命中结果） */
     inverted: boolean;
-    specialTags: SpecialTag[];
+    specialTags: SpecialTagName[];
     specialCounts: Record<string, number>;
     tagGroups: TagGroupData[];
     allTags: TagRef[];
@@ -78,7 +75,7 @@ function sync(value: string[]) {
 }
 
 function isSpecialTag(name: string): boolean {
-  return props.specialTags.some((s) => s.name === name);
+  return props.specialTags.includes(name);
 }
 
 function toggleTag(tag: string, e: MouseEvent) {
@@ -132,9 +129,9 @@ function toggleTagSortDesc() {
 const headerTags = computed(() => {
   const selected = new Set(selectedTags.value);
   const special: { name: string; count: number; active: boolean }[] = [];
-  for (const s of props.specialTags) {
-    const cnt = props.specialCounts[s.name] ?? 0;
-    if (cnt > 0) special.push({ name: s.name, count: cnt, active: selected.has(s.name) });
+  for (const name of props.specialTags) {
+    const cnt = props.specialCounts[name] ?? 0;
+    if (cnt > 0) special.push({ name, count: cnt, active: selected.has(name) });
   }
   const normal: { name: string; count: number; isTopGroup: boolean; active: boolean }[] = [];
   if (props.tagGroups.length > 0) {
@@ -309,15 +306,15 @@ const tagSections = computed<TagSection[]>(() => {
       <div
         class="flex shrink-0 flex-col items-center justify-center justify-items-center gap-1.5 self-stretch border-r py-1 pr-3 border-gray-700"
       >
-        <template v-for="s in specialTags" :key="s.name">
+        <template v-for="s in specialTags" :key="s">
           <TagChip
-            v-if="(specialCounts[s.name] ?? 0) > 0"
-            :variant="selectedTags.includes(s.name) ? 'solid' : 'checked'"
-            :count="specialCounts[s.name] ?? 0"
+            v-if="(specialCounts[s] ?? 0) > 0"
+            :variant="selectedTags.includes(s) ? 'solid' : 'checked'"
+            :count="specialCounts[s] ?? 0"
             interactive
-            @click="(e: MouseEvent) => toggleTag(s.name, e)"
+            @click="(e: MouseEvent) => toggleTag(s, e)"
           >
-            {{ s.name }}
+            {{ s }}
           </TagChip>
         </template>
       </div>

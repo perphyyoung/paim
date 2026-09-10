@@ -42,6 +42,7 @@
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。
 - vite watch 已改白名单（仅 index.html + src/ + public/）：**package.json 不在监听内**，改版本号（package.json / tauri.conf.json / Cargo.toml）后须重启 vite，否则前端 version 仍显示旧值。原因：此前递归监听项目根会持有 paim-data 目录句柄，挡住 pm 备份导入的整目录改名让位（os error 5），案例见 docs/lessons.md 第 6 条。
 - 测试命令：`pnpm test` Rust 单元测试；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。
+- 万级压测数据：`node scripts/bench-data.mjs seed --dir <数据目录> [--images N] [--prompts N] [--tags N]`（`--tags` 上限 500，与应用的每域标签上限一致；`clean` 清理；只写已有 paim.db 的目录，写激活中的 paim-data 需 `--force`）。
 
 ## 根目录文档（动手前先看）
 
@@ -49,7 +50,7 @@
 - README.md: 使用与上手（技术栈、快速开始、数据集切换操作、Schema）
 - CHANGE.md: 逐版本改动记录，不记录当前状态
 - todo.md: 待办与计划（**临时性文件**：内容随时增删，其它文件禁止引用）
-- 缓存及加载优化设计.md: 全盘缓存与加载优化盘点（按页面/场景组织：全局基础设施、各主页、详情弹窗、全屏查看器、选择器、各缓存容量上限、规划未实施）；姊妹文档 docs/虚拟滚动可选优化.md、docs/导入优化.md
+- 缓存及加载优化设计.md: 全盘缓存与加载优化盘点（按页面/场景组织：全局基础设施、各主页、详情弹窗、全屏查看器、选择器、各缓存容量上限、规划未实施、数据规模支持）；姊妹文档 docs/虚拟滚动可选优化.md、docs/导入优化.md
 - 修/增 .md 后同步其所在索引：docs/ 内改 docs/readme.md；根目录文档互相引用，按「引用 → 被引」倒查一次（本项目尤其注意 项目架构.md ↔ AGENTS.md ↔ README.md）
 
 ## docs 目录说明

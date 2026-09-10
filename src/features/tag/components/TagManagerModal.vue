@@ -63,7 +63,9 @@ function cmpTags(a: TagItem, b: TagItem): number {
 // 按搜索过滤后的标签（依 cmpTags 排序，供分组展示）
 const filtered = computed(() => {
   const kw = search.value.trim().toLowerCase();
-  let arr = kw ? data.value.tags.filter((t) => t.name.toLowerCase().includes(kw)) : data.value.tags;
+  const arr = kw
+    ? data.value.tags.filter((t) => t.name.toLowerCase().includes(kw))
+    : data.value.tags;
   return [...arr].sort(cmpTags);
 });
 

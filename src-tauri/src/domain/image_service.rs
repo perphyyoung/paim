@@ -3,11 +3,14 @@
 //! 命令层见 `commands::image`。
 
 use crate::domain::image_ops::{make_center_thumb, open_image};
+use crate::domain::list_query::{self, ListQuery};
 use crate::domain::tag_manager::{tags_by_owner, TagDomain};
 use crate::infra::error::AppError;
 use image::GenericImageView;
+use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Result};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -267,6 +270,145 @@ pub fn count(conn: &Connection, search: Option<&str>, tag: Option<&str>) -> rusq
     let (clauses, params) = filter_sql(search, tag);
     let sql = format!("SELECT COUNT(*) FROM images WHERE is_deleted = 0{clauses}");
     conn.query_row(&sql, rusqlite::params_from_iter(params), |r| r.get(0))
+}
+
+const IMAGE_COLS: &str = "id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note";
+
+/// 图像关联的「未删除提示词」数量，与 `get_image_prompts_map` 口径一致
+/// （`img.is_deleted = 0 AND pr.is_deleted = 0`），特殊标签 未引 / 多引 按它判定。
+const REF_COUNT_SQL: &str = "SELECT COUNT(*) FROM prompt_image_relations pir JOIN prompts p ON p.id = pir.prompt_id WHERE pir.image_id = images.id AND p.is_deleted = 0";
+
+/// 排序键白名单 → 列名（未命中回落 `created_at`）。
+/// 时间列按 ISO 8601 UTC 字符串排序：paim 原生与 pm 导入（经 `normalize_ts`）均为该格式，字典序即时间序。
+fn sort_column(sort: &str) -> &'static str {
+    match sort {
+        "updatedAt" => "updated_at",
+        "fileSize" => "file_size",
+        "fileName" => "stored_name",
+        "width" => "COALESCE(width, 0)",
+        "height" => "COALESCE(height, 0)",
+        _ => "created_at",
+    }
+}
+
+/// 分页查询的 WHERE 片段与绑定值：search（file_name / note / 标签名）+ 所选标签（AND）+ 反选。
+/// 特殊标签落成 SQL 条件，普通标签落成 EXISTS 子查询；反选时整体取 NOT。
+fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
+    let mut sql = String::new();
+    let mut params: Vec<Value> = Vec::new();
+
+    // search 复用 filter_sql（已带 ESCAPE '\'）；标签部分由下方 tags 统一处理，故传 None
+    let (search_sql, search_params) = filter_sql(Some(&q.search), None);
+    sql.push_str(&search_sql);
+    params.extend(list_query::to_values(search_params));
+
+    let mut conds: Vec<String> = Vec::new();
+    for raw in &q.tags {
+        let name = raw.trim();
+        if name.is_empty() {
+            continue;
+        }
+        match name {
+            list_query::SP_FAVORITE => conds.push("is_favorite = 1".to_string()),
+            list_query::SP_UNREFERENCED => conds.push(format!("({REF_COUNT_SQL}) = 0")),
+            list_query::SP_MULTI_REF => conds.push(format!("({REF_COUNT_SQL}) > 1")),
+            list_query::SP_NO_TAG => conds.push(
+                "NOT EXISTS (SELECT 1 FROM image_tag_relations r WHERE r.image_id = images.id)"
+                    .to_string(),
+            ),
+            list_query::SP_SAFE => conds.push("is_safe = 1".to_string()),
+            list_query::SP_UNSAFE => conds.push("is_safe = 0".to_string()),
+            other => {
+                conds.push(
+                    "EXISTS (SELECT 1 FROM image_tag_relations r JOIN image_tags t ON t.id = r.tag_id WHERE r.image_id = images.id AND t.name = ?)"
+                        .to_string(),
+                );
+                params.push(Value::Text(other.to_string()));
+            }
+        }
+    }
+    if !conds.is_empty() {
+        let joined = conds.join(" AND ");
+        if q.inverted {
+            sql.push_str(&format!(" AND NOT ({joined})"));
+        } else {
+            sql.push_str(&format!(" AND {joined}"));
+        }
+    }
+    (sql, params)
+}
+
+/// 主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）全部下推到 SQL，返回本页与总数。
+/// 与前端「块拉取」配套：一次只取 `limit` 条，`total` 用来撑起滚动条与占位数量。
+pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
+    let (filter, mut params) = page_filter(q);
+    let total: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM images WHERE is_deleted = 0{filter}"),
+        rusqlite::params_from_iter(params.iter()),
+        |r| r.get(0),
+    )?;
+
+    let sql = format!(
+        "SELECT {IMAGE_COLS} FROM images WHERE is_deleted = 0{filter}
+         ORDER BY {} {} LIMIT ? OFFSET ?",
+        sort_column(&q.sort),
+        list_query::order_dir(q.desc)
+    );
+    params.push(Value::Integer(list_query::clamp_limit(q.limit)));
+    params.push(Value::Integer(list_query::clamp_offset(q.offset)));
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), row_to_image)?;
+    Ok(PaginatedImages {
+        items: rows.collect::<Result<Vec<_>>>()?,
+        total,
+    })
+}
+
+/// 同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。
+pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
+    let (filter, params) = page_filter(q);
+    let sql = format!(
+        "SELECT id FROM images WHERE is_deleted = 0{filter}
+         ORDER BY {} {} LIMIT {} OFFSET 0",
+        sort_column(&q.sort),
+        list_query::order_dir(q.desc),
+        list_query::MAX_IDS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |r| r.get(0))?;
+    rows.collect()
+}
+
+/// 特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件，与前端 specialCounts 口径一致）。
+pub fn special_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
+    let sql = format!(
+        "SELECT
+           COUNT(CASE WHEN is_favorite = 1 THEN 1 END),
+           COUNT(CASE WHEN ({REF_COUNT_SQL}) = 0 THEN 1 END),
+           COUNT(CASE WHEN ({REF_COUNT_SQL}) > 1 THEN 1 END),
+           COUNT(CASE WHEN is_safe = 1 THEN 1 END),
+           COUNT(CASE WHEN is_safe = 0 THEN 1 END),
+           COUNT(CASE WHEN NOT EXISTS (SELECT 1 FROM image_tag_relations r WHERE r.image_id = images.id) THEN 1 END)
+         FROM images WHERE is_deleted = 0"
+    );
+    let (fav, unref, multi, safe, unsafe_, no_tag) = conn.query_row(&sql, [], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, i64>(2)?,
+            r.get::<_, i64>(3)?,
+            r.get::<_, i64>(4)?,
+            r.get::<_, i64>(5)?,
+        ))
+    })?;
+    let mut m = HashMap::new();
+    m.insert(list_query::SP_FAVORITE.to_string(), fav);
+    m.insert(list_query::SP_UNREFERENCED.to_string(), unref);
+    m.insert(list_query::SP_MULTI_REF.to_string(), multi);
+    m.insert(list_query::SP_SAFE.to_string(), safe);
+    m.insert(list_query::SP_UNSAFE.to_string(), unsafe_);
+    m.insert(list_query::SP_NO_TAG.to_string(), no_tag);
+    Ok(m)
 }
 
 /// 回收站列表（软删除的图像）。

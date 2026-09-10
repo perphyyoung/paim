@@ -21,13 +21,13 @@ interface BoolItem {
 interface UseItemToggleOptions<T extends BoolItem> {
   /** "image" | "prompt"，决定命令名与提示文案 */
   domain: "image" | "prompt";
-  /** 主页单张/批量切换后写回的当前列表（详情弹窗可省略） */
-  list?: Ref<T[]>;
+  /** 主页单张切换后写回列表（分页下只更新已加载块中那一项；详情弹窗可省略） */
+  patch?: (item: T) => void;
   showToast: (message: string, type?: ToastType) => void;
 }
 
 export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<T>) {
-  const { domain, list, showToast } = options;
+  const { domain, patch, showToast } = options;
   const noun = domain === "image" ? "张图像" : "个提示词";
 
   // 单条切换的下一个布尔值
@@ -65,30 +65,24 @@ export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<
     }
   }
 
-  // 主页单张切换：后端返回新对象，替换列表对应项
+  // 主页单张切换：后端返回新对象，写回列表对应项
   async function toggleOne(item: T, field: BoolField) {
-    if (!list) return;
     try {
       const updated = await updateDetail(item, field);
-      list.value = list.value.map((x) => (x.id === updated.id ? (updated as T) : x));
+      patch?.(updated as T);
     } catch (e) {
       showToast(`更新失败：${e}`, "error");
     }
   }
 
-  // 主页批量切换收藏：集合级翻转收藏状态，本地同步翻转；返回是否成功（成功后调用方再退出批量模式）
+  // 主页批量切换收藏：集合级翻转；返回是否成功（成功由调用方退出批量模式并重载，
+  // 分页下前端没有全量，无法本地翻转）
   async function toggleBatch(ids: string[]): Promise<boolean> {
     if (ids.length === 0) return false;
     try {
       const n = await (domain === "image"
         ? commands.batchToggleImageFavorite(ids)
         : commands.batchTogglePromptFavorite(ids));
-      const sel = new Set(ids);
-      if (list) {
-        list.value = list.value.map((x) =>
-          sel.has(x.id) ? { ...x, is_favorite: !x.is_favorite } : x,
-        );
-      }
       showToast(`已切换 ${n} ${noun}的收藏状态`, "success");
       return true;
     } catch (e) {
