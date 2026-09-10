@@ -6,7 +6,12 @@
  */
 import path from "node:path";
 import { expect } from "@playwright/test";
-import { findPromptIdByContent, getPromptRelatedImages, test } from "./e2e-helpers";
+import {
+  expectToastAndDismiss,
+  findPromptIdByContent,
+  getPromptRelatedImages,
+  test,
+} from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
 test("新建提示词后，新卡片应置顶显示", async ({ page }) => {
@@ -22,8 +27,8 @@ test("新建提示词后，新卡片应置顶显示", async ({ page }) => {
   // 确定创建：成功则弹窗关闭（失败会因错误保留弹窗）、toast 提示
   await page.getByRole("button", { name: "确定", exact: true }).click();
   await expect(contentInput).toBeHidden();
-  // 同 worker 里前一用例的同文案 toast 可能未消失，用 first() 容忍多元素
-  await expect(page.getByText("提示词已创建").first()).toBeVisible();
+  // toast 居中会挡住后续点击，断言后直接点掉（停留时长由 06-toast-notification 专项覆盖）
+  await expectToastAndDismiss(page, "提示词已创建");
   e2eLog.info("[step] 提示词已创建");
 
   // 新卡片按更新时间排序置顶显示
@@ -45,8 +50,8 @@ test("新建提示词并选择图像，图像应关联到新提示词", async ({
   // 确定创建
   await page.getByRole("button", { name: "确定", exact: true }).click();
   await expect(contentInput).toBeHidden();
-  // 同 worker 里前一用例的同文案 toast 可能未消失，用 first() 容忍多元素
-  await expect(page.getByText("提示词已创建").first()).toBeVisible();
+  // toast 居中会挡住后续点击，断言后直接点掉（停留时长由 06-toast-notification 专项覆盖）
+  await expectToastAndDismiss(page, "提示词已创建");
   e2eLog.info("[step] 提示词已创建（含选择图像）");
 
   // 图像真实落库且关联到新提示词：mock 图的 file_name 即 mock 路径的基名

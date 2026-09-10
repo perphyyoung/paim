@@ -8,6 +8,7 @@ import path from "node:path";
 import { expect } from "@playwright/test";
 import {
   createPromptViaDialog,
+  expectToastAndDismiss,
   findPromptIdByContent,
   getPromptRelatedImages,
   openPromptDetail,
@@ -25,7 +26,7 @@ test("详情页从外界导入图像，应导入落库并关联到当前提示�
 
   // 从外界导入图像（select_images 测试缝返回 mock 图）
   await importBtn.click();
-  await expect(page.getByText("已导入并关联 1 张图像")).toBeVisible();
+  await expectToastAndDismiss(page, "已导入并关联 1 张图像");
   e2eLog.info("[step] 已从外界导入图像");
 
   // 关联断言：提示词详情的关联图像含 mock 图，且真实落库

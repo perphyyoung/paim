@@ -2,7 +2,7 @@
 ///
 /// 内容分四块，全部是**与具体测试场景无关的可复用代码**：
 /// 1. 应用实例 fixture（每 worker spawn 独立实例 + CDP 连接）
-/// 2. 页面操作（导航、新建提示词、打开详情、上传图像、toast 等待）
+/// 2. 页面操作（导航、新建提示词、打开详情、上传图像、toast 断言与点掉）
 /// 3. 后端直查（invoke 封装 + 常用命令的语义化封装）
 /// 4. PNG 生成（mock 图素材）
 ///
@@ -221,6 +221,23 @@ export function expectToast(page: Page, text: string) {
   return expect(page.getByText(text).first()).toBeVisible();
 }
 
+/// 断言 toast 可见并点掉它，用于「toast 之后还要继续操作」的场景（业务用例的默认选择）。
+/// 为什么点掉而不是等它消失：toast 居中且本体 pointer-events-auto（会挡住点击），
+/// 而自动消失要等 2.5s（success/info）或 4s（error/warning）——点击后只剩 300ms 出场动画。
+/// toast 自身的停留时长/点击关闭等行为由 06-toast-notification 专项覆盖，业务用例不重复验证。
+/// 同文案多条（上一用例残留 + 本次新出）逐个点掉；点击瞬间已自行消失不算失败，最后统一校验不可见。
+export async function expectToastAndDismiss(page: Page, text: string): Promise<void> {
+  const toast = page.getByText(text);
+  await expect(toast.first()).toBeVisible();
+  for (let n = await toast.count(); n > 0; n--) {
+    await toast
+      .first()
+      .click({ timeout: 2_000 })
+      .catch(() => {}); // 已自行消失（停留时长窗口边缘）不视为失败
+  }
+  await expect(toast.first()).toBeHidden({ timeout: 2_000 }); // 出场动画 300ms
+}
+
 /// 失败诊断：把当前 toast 文本与页面可见文本快照写进 paim.log（只记录，不改变用例行为）。
 /// 卡片/弹窗等不到时的常见现场：toast 覆盖挡点击、列表未刷新出目标卡片、残留弹窗遮罩。
 async function dumpPageState(page: Page, reason: string): Promise<void> {
@@ -232,11 +249,6 @@ async function dumpPageState(page: Page, reason: string): Promise<void> {
   e2eLog.error(
     `[diag] ${reason}；当前 toast=${JSON.stringify(toasts)}；页面可见文本快照=${JSON.stringify(bodyText.slice(0, 800))}`,
   );
-}
-
-/// 等待 toast 消失：toast 居中且本体 pointer-events-auto，不消失会挡住后续点击
-export async function waitToastGone(page: Page, text: string): Promise<void> {
-  await expect(page.getByText(text).first()).toBeHidden();
 }
 
 /// 走「新建提示词」弹窗建一条提示词，返回内容（卡片按内容定位）
@@ -332,9 +344,7 @@ export async function uploadImageWithPrompt(
       await dumpPageState(page, "上传弹窗未关闭");
       throw err;
     });
-  await expectToast(page, "已上传 1 张图像");
-  // 等 toast 消失：toast 覆盖在首行卡片上方（本体 cursor=pointer），不消失会挡住后续点击
-  await waitToastGone(page, "已上传 1 张图像");
+  await expectToastAndDismiss(page, "已上传 1 张图像");
 
   const promptMap = await getImagePromptsMap(page);
   const imageId = Object.entries(promptMap).find(([, contents]) =>

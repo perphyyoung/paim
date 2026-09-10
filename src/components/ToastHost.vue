@@ -23,10 +23,12 @@ const TYPE_CLASSES: Record<ToastType, string> = {
       class="pointer-events-none fixed inset-0 z-[130] flex flex-col items-center justify-center gap-2"
     >
       <!-- 动画参考 cm：入场弹性上滑，出场下滑淡出 -->
+      <!-- 出场（离场）期间 pointer-events-none：淡出中的 toast 不再拦截鼠标点击
+             （居中 toast 离场要 300ms，期间挡住底下元素；e2e 06 用例 7 覆盖该行为） -->
       <TransitionGroup
         enter-active-class="transition-all duration-[400ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]"
         enter-from-class="opacity-0 translate-y-5 scale-95"
-        leave-active-class="transition-all duration-300 ease-in"
+        leave-active-class="pointer-events-none transition-all duration-300 ease-in"
         leave-to-class="opacity-0 translate-y-5 scale-95"
       >
         <!-- 样式参考 cm ToastModal：深底 + 按类型换色的描边与内外辉光，点击可提前关闭 -->

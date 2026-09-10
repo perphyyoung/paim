@@ -11,6 +11,7 @@
  */
 import { expect, type Page } from "@playwright/test";
 import {
+  expectToastAndDismiss,
   getImagePromptsMap,
   listTrashedImageIds,
   openImageDetail,
@@ -39,7 +40,7 @@ test("替换为同内容文件时提示未替换（SameImage 分支）", async (
 
   // 不覆写 mock 文件：seam 返回的文件与原图内容相同 → md5 一致 → SameImage
   await openReplaceMenu(page, promptContent);
-  await expect(page.getByText("与原图相同，未替换")).toBeVisible();
+  await expectToastAndDismiss(page, "与原图相同，未替换");
   e2eLog.info("[step] SameImage：提示未替换");
 
   // 原图未进回收站
@@ -57,7 +58,7 @@ test("替换为不同内容文件时旧图进回收站且关联迁移（Replaced
   // 卡片内容行只显示第一个关联提示词的内容（此图可能已关联多个），按实际显示文本点击
   const displayed = (await getImagePromptsMap(page))[imageId]?.[0] ?? "";
   await openReplaceMenu(page, displayed);
-  await expect(page.getByText("替换成功")).toBeVisible();
+  await expectToastAndDismiss(page, "替换成功");
   e2eLog.info("[step] Replaced：替换成功");
 
   // 关联迁移到新图：提示词现在关联的图像 id 已变化

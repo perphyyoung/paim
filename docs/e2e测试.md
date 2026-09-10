@@ -58,11 +58,11 @@ pnpm e2e --grep 上传  # 单个用例
 | --- | --- |
 | spec 只写场景 | **spec 文件里只保留「被测场景的步骤与断言」**；与被测功能无关的样板（怎么点进去、怎么查后端、怎么等 toast）一律下沉到 `e2e-helpers.ts` |
 | 下沉判据 | 出现第 2 个用例/文件要用同一段代码 → 下沉。单次使用且紧耦合本场景的步骤（如「右键替换图像」）留在 spec 内 |
-| 命名 | 名字要能自解释、带动作对象：`createPromptViaDialog` / `openPromptDetail` / `getItemTagNames` / `waitToastGone` / `uploadImageWithPrompt`。**不要**用 `helper`、`util`、`doIt` 这类无信息量的名字，也不要用缩写 |
+| 命名 | 名字要能自解释、带动作对象：`createPromptViaDialog` / `openPromptDetail` / `getItemTagNames` / `expectToastAndDismiss` / `uploadImageWithPrompt`。**不要**用 `helper`、`util`、`doIt` 这类无信息量的名字，也不要用缩写 |
 | 内容分块 | ① 应用实例 fixture（`test` / `AppHandle`）② 页面操作（导航、建数据、开弹窗、toast 等待）③ 后端直查（`invokeCommand` + 语义化封装）④ PNG 生成。**新增内容按块归位，不随手追加到文件末尾** |
 | 调后端命令 | 一律走 `invokeCommand<T>(page, cmd, args?)`，不要在 spec 里重复写 `window.__TAURI_INTERNALS__` 访问样板；常用命令再封一层语义化函数（如 `listPrompts` / `getImagePromptsMap` / `getItemTagNames` / `listTrashedImageIds`） |
 | 封装里的断言 | helper 可以做**前置校验断言**（如 `findPromptIdByContent` 找不到就 fail 并带内容），但不要替 spec 做被测行为的断言 |
-| 副作用 | 会改数据的 helper（建提示词/上传图像）在文档注释里写明改了什么；等待类 helper（`waitToastGone`）说明为什么必须等（toast 居中且 `pointer-events-auto`，不消失会挡住点击） |
+| 副作用 | 会改数据的 helper（建提示词/上传图像）在文档注释里写明改了什么；点击类 helper（`expectToastAndDismiss`）说明为什么要点掉（toast 居中且本体 `pointer-events-auto`，不消失会挡住后续点击） |
 
 改动 helper 后跑 `npx tsc --noEmit -p e2e`（已纳入 `pnpm check`）；涉及全部用例的改动需完整跑一次 `pnpm e2e`。
 
@@ -70,14 +70,15 @@ pnpm e2e --grep 上传  # 单个用例
 
 | 场景 | 做法 |
 | --- | --- |
-| 新建用例文件 | **按页面分配、序号命名**（`01-upload-image-page`…）。有独立弹窗即视为独立页面（如「替换图像」在图像详情页，不放上传页文件里）；文件间并行、文件内串行；涉及数据目录让位的用例（如导入）放最后 |
+| 处理 toast | 业务用例一律 `expectToastAndDismiss(page, 文案)`：**断言可见后直接点掉**（点击本体即 `dismissToast`），不要等它自动消失（success/info 停留 2.5s、error/warning 4s，点多处就是几十秒）。toast 自身行为（停留时长/点击关闭/多条堆叠/层级/离场不拦截）**只在 `06-toast-notification.spec.ts` 覆盖**，业务用例不重复验证；只断言不点掉的场景（用例末步、后面无 UI 点击）用 `expectToast` |
+| 新建用例文件 | **按页面分配、序号命名**（`01-upload-image-page`…）。有独立弹窗即视为独立页面（如「替换图像」在图像详情页，不放上传页文件里）；文件间并行、文件内串行；涉及数据目录让位的用例（如导入）放最后。全局 UI 组件专项没有对应页面，用组件名（`06-toast-notification`） |
 | 打日志 | 用 `e2e-logger.ts` 的 `e2eLog.debug/info/warn/error`（调用方式与前端 logger 一致，自动带 `[E2E w<n>]` 前缀）。**不要**在 e2e 文件里 `console.log` 或另写日志实现 |
 | 页面侧诊断 | fixture 已自动采集 webview 控制台消息、失败请求、≥400 响应（`[webview]`/`[pageerror]`/`[req-failed]`/`[http-error]` 前缀写入 paim.log），无需重复采集。失败请求中导航打断的在途请求（`net::ERR_ABORTED`，如用例间复位 reload 时）记 info 级，其余记 error 级 |
 | 定位元素 | 语义属性优先：`getByRole("button", { name: "上传图像" })`、`getByPlaceholder`、`getByText`；无语义属性才退 `data-testid`。**禁 CSS/XPath 路径选择器优先**（pm 的 `Constants.Ids.*` 是 Electron 时代惯例，Playwright 下不推荐） |
 | 点击卡片 | **点文字层**（`getByText(卡片内容)`），**不要点缩略图 `<img>`**——img 上方盖着文字覆盖层（MediaCard 的 `absolute inset-0`），点 img 会被命中目标检查拦下并重试至超时；点文字会冒泡到卡片根，同样触发打开详情 |
 | 打标签 | 两种提交方式都要能用：回车（Enter 命中高亮 → select，未命中 → submit）与点击（点候选项 → select，详情另有「添加」按钮）。候选下拉是 Teleport + fixed `z-[125]`，**会盖住批量弹窗的「确定」按钮**（预期行为，不改布局），所以批量打标签用 `openBatchAddTagDialog` 打开后，一律用回车或点候选项提交，**不要点「确定」** |
 | 进批量模式 | `Ctrl + 点击`卡片（普通点击是打开详情）；可复用 `openBatchAddTagDialog` |
-| 断言 toast | 用 `.first()`——同一 worker 里前一用例的同文案 toast 可能未消失，直接断言会严格模式冲突（resolved to 2 elements） |
+| 断言 toast | 用 `.first()`——同一 worker 里前一用例的同文案 toast 可能未消失，直接断言会严格模式冲突（resolved to 2 elements）；`expectToast`/`expectToastAndDismiss` 内部已处理 |
 | 用例间状态复位 | page fixture 已内置：**worker 首个用例跳过 reload**（全新实例无残留，且 reload 会打断初始加载的 IPC 请求导致回调失联）；其余用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload` |
 | 用新定位 API | 先查类型定义。playwright 1.62 已移除 `getByDisplayValue` 等旧 API；e2e 目录已纳入 `pnpm check` 的类型检查（`tsc --noEmit -p e2e`），方法名写错会在 check 时暴露 |
 | 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每 worker 独立目录；导入会让数据目录改名，不假设旧文件仍在） |

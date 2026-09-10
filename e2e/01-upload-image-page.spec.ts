@@ -13,7 +13,14 @@
  */
 import path from "node:path";
 import { expect } from "@playwright/test";
-import { getImagePromptsMap, invokeCommand, listPrompts, test, writePng } from "./e2e-helpers";
+import {
+  expectToastAndDismiss,
+  getImagePromptsMap,
+  invokeCommand,
+  listPrompts,
+  test,
+  writePng,
+} from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
 test("上传图像附带提示词后，图像卡片应关联该提示词", async ({ page, app }) => {
@@ -40,7 +47,7 @@ test("上传图像附带提示词后，图像卡片应关联该提示词", async
 
   // 上传成功：弹窗关闭（关联失败会因错误保留弹窗）、toast 提示
   await expect(promptInput).toBeHidden();
-  await expect(page.getByText("已上传 1 张图像")).toBeVisible();
+  await expectToastAndDismiss(page, "已上传 1 张图像");
   e2eLog.info("[step] 上传成功");
 
   // 回归断言：卡片内容行显示关联的提示词内容

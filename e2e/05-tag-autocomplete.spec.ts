@@ -21,6 +21,7 @@ import { expect } from "@playwright/test";
 import {
   createPromptViaDialog,
   expectToast,
+  expectToastAndDismiss,
   findPromptIdByContent,
   getItemTagNames,
   openBatchAddTagDialog,
@@ -28,7 +29,6 @@ import {
   openPromptDetail,
   test,
   uploadImageWithPrompt,
-  waitToastGone,
 } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
@@ -41,7 +41,7 @@ const TAG_PREFIX = TAG.slice(0, 4);
 async function newPromptDetail(page: import("@playwright/test").Page, label: string) {
   const content = `e2e 标签自动完成 ${label} ${Date.now()}`;
   await createPromptViaDialog(page, content);
-  await waitToastGone(page, "提示词已创建");
+  await expectToastAndDismiss(page, "提示词已创建");
   await openPromptDetail(page, content);
   e2eLog.info(`[step] 已打开提示词详情：${label}`);
   return { content, tagInput: page.getByPlaceholder("回车添加单个标签") };
@@ -52,8 +52,7 @@ test("详情页首次添加：点「添加」按钮与 ↓/Enter 选候选都能
   const first = await newPromptDetail(page, "P1");
   await first.tagInput.fill(TAG);
   await page.getByRole("button", { name: "添加", exact: true }).click();
-  await expectToast(page, `已添加标签「${TAG}」`);
-  await waitToastGone(page, `已添加标签「${TAG}」`);
+  await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
   const firstId = await findPromptIdByContent(page, first.content);
   expect(await getItemTagNames(page, "prompt", firstId)).toContain(TAG);
   await page.getByTitle("关闭").click();
@@ -65,7 +64,7 @@ test("详情页首次添加：点「添加」按钮与 ↓/Enter 选候选都能
   await expect(option).toBeVisible();
   await second.tagInput.press("ArrowDown");
   await second.tagInput.press("Enter");
-  await expect(page.getByText(`已添加标签「${TAG}」`).first()).toBeVisible();
+  await expectToast(page, `已添加标签「${TAG}」`);
   const secondId = await findPromptIdByContent(page, second.content);
   expect(await getItemTagNames(page, "prompt", secondId)).toContain(TAG);
   e2eLog.info("[step] 详情按钮点击与候选↓/Enter 均已提交");
@@ -77,13 +76,12 @@ test("重复添加已有标签：提示已存在、输入保留、后端不重�
   // 先加一次（成功）
   await tagInput.fill(TAG);
   await tagInput.press("Enter");
-  await expectToast(page, `已添加标签「${TAG}」`);
-  await waitToastGone(page, `已添加标签「${TAG}」`);
+  await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
 
   // 再加同一个：提示已存在，输入保留（不清空），后端仍只有一条关联
   await tagInput.fill(TAG);
   await tagInput.press("Enter");
-  await expect(page.getByText(`标签「${TAG}」已存在`).first()).toBeVisible();
+  await expectToast(page, `标签「${TAG}」已存在`);
   await expect(tagInput).toHaveValue(TAG);
   const tags = await getItemTagNames(page, "prompt", await findPromptIdByContent(page, content));
   expect(tags.filter((t) => t === TAG).length, "不应重复关联").toBe(1);
@@ -94,8 +92,7 @@ test("批量回车提交已存在的标签：提示已存在且弹窗保持打�
   const { content, tagInput } = await newPromptDetail(page, "批量");
   await tagInput.fill(TAG);
   await tagInput.press("Enter");
-  await expectToast(page, `已添加标签「${TAG}」`);
-  await waitToastGone(page, `已添加标签「${TAG}」`);
+  await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
   await page.getByTitle("关闭").click();
 
   // Ctrl 点击卡片进入批量模式（普通点击会打开详情）
@@ -104,7 +101,7 @@ test("批量回车提交已存在的标签：提示已存在且弹窗保持打�
   await dlgInput.fill(TAG);
   await dlgInput.press("Enter");
 
-  await expect(page.getByText(`选中的 1 个提示词已存在该标签`).first()).toBeVisible();
+  await expectToast(page, "选中的 1 个提示词已存在该标签");
   // 全部已存在视为未成功：弹窗保持打开、输入保留
   await expect(dlgInput).toBeVisible();
   await expect(dlgInput).toHaveValue(TAG);
@@ -116,8 +113,7 @@ test("批量点击候选项：命中即提交，成功后关闭弹窗并落库",
   const seed = await newPromptDetail(page, "候选种子");
   await seed.tagInput.fill(TAG);
   await seed.tagInput.press("Enter");
-  await expectToast(page, `已添加标签「${TAG}」`);
-  await waitToastGone(page, `已添加标签「${TAG}」`);
+  await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
   await page.getByTitle("关闭").click();
 
   // 目标提示词本身没有 TAG：输入前缀 → 点候选项提交
@@ -141,8 +137,7 @@ test("候选跨域合并：图像详情可提示提示词域标签并点击添�
   const seed = await newPromptDetail(page, "跨域种子");
   await seed.tagInput.fill(TAG);
   await seed.tagInput.press("Enter");
-  await expectToast(page, `已添加标签「${TAG}」`);
-  await waitToastGone(page, `已添加标签「${TAG}」`);
+  await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
   await page.getByTitle("关闭").click();
 
   // 上传一张图并关联提示词（文件选择走 select_images 测试缝）
@@ -158,6 +153,6 @@ test("候选跨域合并：图像详情可提示提示词域标签并点击添�
   const option = page.getByRole("option", { name: TAG });
   await expect(option).toBeVisible();
   await option.click();
-  await expect(page.getByText(`已添加标签「${TAG}」`).first()).toBeVisible();
+  await expectToast(page, `已添加标签「${TAG}」`);
   e2eLog.info("[step] 图像详情已通过跨域候选添加标签");
 });
