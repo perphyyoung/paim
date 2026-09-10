@@ -12,6 +12,8 @@
 
 ## 并行模型
 
+> Playwright 侧的通用经验（fixture scope 只有两级、自实现 file 级隔离、等待策略、定位坑）见 [playwright使用经验.md](./playwright使用经验.md)，本文只讲本项目的运行方式与约定。
+
 - `global-setup.ts`：`pnpm tauri build --debug --no-bundle` 构建一次**带内嵌前端的调试二进制**
   （等价 pm 的 `pnpm build`），运行期不依赖 vite/devServer。
 - `workers: 4` + `fullyParallel: false`：**用例文件间并行、文件内串行**（与 pm 一致）。
