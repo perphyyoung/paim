@@ -423,6 +423,8 @@ function openTrash() {
 }
 function closeTrash() {
   trashOpen.value = false;
+  // 回收站是随开随用的临时集合，关闭即释放；下次 openTrash 会重新拉取
+  trashPrompts.value = [];
 }
 
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——

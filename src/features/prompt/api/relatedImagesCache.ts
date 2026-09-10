@@ -4,7 +4,8 @@
 import { commands, type RelatedImage } from "@/bindings";
 import { createEntityCache } from "@/utils/entityCache";
 
-/** 提示词 id → 关联图像列表 */
-export const relatedImagesCache = createEntityCache<RelatedImage[]>((id) =>
-  commands.getPromptRelatedImages(id),
+/** 提示词 id → 关联图像列表；单条较大，上限 100（约 1 MB 封顶） */
+export const relatedImagesCache = createEntityCache<RelatedImage[]>(
+  (id) => commands.getPromptRelatedImages(id),
+  100,
 );

@@ -285,7 +285,12 @@ const purgeTarget = ref<Image | null>(null);
 const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
-  const [items, dir] = await Promise.all([commands.listTrashedImages(), commands.getDataDir()]);
+  // dataDir 应用运行期不变，loadImages 已取过则复用，省一次 IPC
+  const [items, dir] = await Promise.all([
+    commands.listTrashedImages(),
+    dataDir.value ? Promise.resolve(dataDir.value) : commands.getDataDir(),
+  ]);
+  dataDir.value = dir;
   trashImages.value = items;
   const map: Record<string, string> = {};
   for (const img of items) {
@@ -299,6 +304,9 @@ function openTrash() {
 }
 function closeTrash() {
   trashOpen.value = false;
+  // 回收站是随开随用的临时集合，关闭即释放；下次 openTrash 会重新拉取
+  trashImages.value = [];
+  trashThumbs.value = {};
 }
 
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
