@@ -44,7 +44,7 @@ mock 是进程级环境变量，生产环境不存在，不影响发布路径。
 前端另有一个非环境变量的测试缝：
 
 - `localStorage.paim.blockSize`（见 `src/composables/usePagedBlocks.ts::BLOCK_SIZE_KEY`）覆盖主页列表的块大小（默认 200）。
-  常规用例的数据量落在单块内、走不到块级分支，`07-paged-blocks` 把它压到 2 条来造多块场景。
+  常规用例的数据量落在单块内、走不到块级分支，`e2e/07` 把它压到 2 条来造多块场景。
   块大小只在页面加载时读一次，写完必须 reload 才生效；localStorage 随同 worker 的其它 spec 文件
   共用同一 WebView2 profile，用完需清理（见该文件的收尾用例）。
 - 块级故障注入（失败重试、慢响应防串台）**不在 e2e 做**：它需要在页面侧包装 IPC，而真实 Tauri 里
@@ -88,12 +88,33 @@ pnpm e2e --grep 上传  # 单个用例
 
 改动 helper 后跑 `npx tsc --noEmit -p e2e`（已纳入 `pnpm check`）；涉及全部用例的改动需完整跑一次 `pnpm e2e`。
 
+## 文件索引与命名
+
+文件名 = `序号-<功能>-<介词>-<作用页面>`（kebab-case，长没关系，精确优先）：
+
+- **功能** token 取按钮 / 命令的真实语义（`upload-image` / `import-external-image` / `replace-image` / `create-prompt`），不写页面名；
+- **介词**区分入口形态：`on` 主页 / 列表页，`in` 弹窗与详情，`across` 多入口，`global` 全局组件；
+- **页面** token 对齐组件名：`image-page`（ImagePage）、`prompt-page`（PromptPage）、`image-detail-modal`、`prompt-detail-modal`、`both-detail-modals`；
+- 序号一旦分配**不复用、不重排**（日志前缀、数据目录、外部引用都依赖它）；
+- **e2e 目录外的文件引用一律只写 `e2e/<序号>`**（文件名会改，序号不会）：序号含义查下表。
+
+| 序号 | 被测功能 | 入口 / 作用页面 |
+| ---- | -------- | --------------- |
+| 01 | 上传图像：附带提示词建关联；一批两张共用同一提示词 | 图像主页 → 上传弹窗 |
+| 02 | 新建提示词：新卡片置顶、弹窗内选图关联 | 提示词主页 → 新建弹窗 |
+| 03 | 替换图像：同内容文件（SameImage）/ 不同内容（Replaced → 旧图进回收站） | 图像详情弹窗 |
+| 04 | 从外界导入图像：落库并关联当前提示词 | 提示词详情弹窗 |
+| 05 | 标签自动补全与提交：详情输入、跨域候选、主页批量 | 提示词详情 + 图像详情 + 主页批量弹窗 |
+| 06 | Toast 组件自身行为：停留时长 / 点击关闭 / 堆叠 / 层级 / 离场 | 全局（触发点跨主页与详情） |
+| 07 | 分块列表：跨块滚动时远端块按需补齐 | 提示词主页 |
+| 08 | 收藏 / 安全评级切换：弹窗即时反馈 + 落库 + 关闭后主页同步 | 图像详情 + 提示词详情 |
+
 ## 约定（速查）
 
 | 场景 | 做法 |
 | --- | --- |
-| 处理 toast | 业务用例一律 `expectToastAndDismiss(page, 文案)`：**断言可见后直接点掉**（点击本体即 `dismissToast`），不要等它自动消失（success/info 停留 2.5s、error/warning 4s，点多处就是几十秒）。toast 自身行为（停留时长/点击关闭/多条堆叠/层级/离场不拦截）**只在 `06-toast-notification.spec.ts` 覆盖**，业务用例不重复验证；只断言不点掉的场景（用例末步、后面无 UI 点击）用 `expectToast` |
-| 新建用例文件 | **按页面分配、序号命名**（`01-upload-image-page`…）。有独立弹窗即视为独立页面（如「替换图像」在图像详情页，不放上传页文件里）；文件间并行、文件内串行；涉及数据目录让位的用例（如导入）放最后。没有对应页面的专项用组件名（`06-toast-notification`），跨页面机制专项同理（`07-paged-blocks`：两主页共用的分块列表） |
+| 处理 toast | 业务用例一律 `expectToastAndDismiss(page, 文案)`：**断言可见后直接点掉**（点击本体即 `dismissToast`），不要等它自动消失（success/info 停留 2.5s、error/warning 4s，点多处就是几十秒）。toast 自身行为（停留时长/点击关闭/多条堆叠/层级/离场不拦截）**只在 `e2e/06` 覆盖**，业务用例不重复验证；只断言不点掉的场景（用例末步、后面无 UI 点击）用 `expectToast` |
+| 新建用例文件 | **按功能分配**：文件名 = `序号-<功能>-<介词>-<作用页面>`，文件序号从上节「文件索引与命名」取下一个号（序号不复用、不重排）。一个文件一个功能；**同一功能的不同入口各自成文件**（上传走图像主页、从外界导入走提示词详情，是两个文件）；文件间并行、文件内串行；涉及数据目录让位的用例（如导入）放最后 |
 | 打日志 | 用 `e2e-logger.ts` 的 `e2eLog.debug/info/warn/error`（调用方式与前端 logger 一致，自动带 `[E2E w<n>]` 前缀）。**不要**在 e2e 文件里 `console.log` 或另写日志实现。用例分节（`[TEST]` 行）由 fixture 自动记录，spec 不需要也不应该手写 |
 | 页面侧诊断 | fixture 已自动采集 webview 控制台消息、失败请求、≥400 响应（`[webview]`/`[pageerror]`/`[req-failed]`/`[http-error]` 前缀写入 paim.log），无需重复采集。失败请求中导航打断的在途请求（`net::ERR_ABORTED`，如用例间复位 reload 时）记 info 级，其余记 error 级 |
 | 定位元素 | 语义属性优先：`getByRole("button", { name: "上传图像" })`、`getByPlaceholder`、`getByText`；无语义属性才退 `data-testid`。**禁 CSS/XPath 路径选择器优先**（pm 的 `Constants.Ids.*` 是 Electron 时代惯例，Playwright 下不推荐） |

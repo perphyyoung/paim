@@ -10,6 +10,6 @@
 | [日志使用说明.md](./日志使用说明.md) | 极简调试日志：后端 4 个宏 + 前端 `log` 对象（仅 DEV 上报），写入 `paim.log` 的格式与位置、使用建议。 |
 | [导入优化.md](./导入优化.md) | pm 备份导入缩略图重建的性能现状（jpeg-encoder SIMD、满核并发）与暂缓的备选方案（turbojpeg / libvips）。 |
 | [虚拟滚动可选优化.md](./虚拟滚动可选优化.md) | VirtualGrid + CustomScrollBar 已落地后的暂缓优化：数据分页演进路径、缩略图缓存穿透、Pinia 引入时机。 |
-| [e2e测试.md](./e2e测试.md) | Playwright e2e（CDP 连真实应用）的运行方式、测试缝与失败排查顺序。 |
+| [e2e测试.md](./e2e测试.md) | Playwright e2e（CDP 连真实应用）的运行方式、测试缝、文件命名与索引、失败排查顺序。 |
 | [playwright使用经验.md](./playwright使用经验.md) | Playwright 使用经验：自实现 file 级实例隔离（fixture 只有 test/worker 两级 scope）、fixture 独立 timeout、素材唯一化、等待策略与定位坑。 |
 | [内置浏览器使用经验.md](./内置浏览器使用经验.md) | 用浏览器访问 Vite dev server 复现/验证 UI 的经验：环境约束（invoke 不可用、file:// 拦截）、evaluate 沙箱技巧、verify/ 验证产物。 |

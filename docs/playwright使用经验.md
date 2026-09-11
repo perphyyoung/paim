@@ -148,9 +148,9 @@ error TS2339: Property 'app' does not exist on type 'never'.
   失败原因首行足够定位，完整堆栈仍看 playwright 输出。
 
 ```log
-14:33:33.744 [TEST] [E2E w1] ▶ 02-create-prompt-page › 新建提示词后，新卡片应置顶显示
+14:33:33.744 [TEST] [E2E w1] ▶ 02 › 新建提示词后，新卡片应置顶显示
 14:33:36.031 [INFO] [E2E w1-0] [connect] 第 3 次尝试连上应用页面
-14:33:37.572 [TEST] [E2E w1] ✓ 通过 3.8s 02-create-prompt-page › 新建提示词后，新卡片应置顶显示
+14:33:37.572 [TEST] [E2E w1] ✓ 通过 3.8s 02 › 新建提示词后，新卡片应置顶显示
 ```
 
 三个实现要点：

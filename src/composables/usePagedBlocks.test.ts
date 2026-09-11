@@ -4,7 +4,7 @@
 // 而真实 Tauri 里 `window.__TAURI_INTERNALS__` 及其成员由注入脚本用 `defineProperty` 创建
 // （不可写也不可配置），页面侧无法包装 IPC 做注入（见 docs/e2e测试.md）。
 // 这里 `load` 是显式注入的依赖，用可控的假后端即可精确编排时序，比 e2e 注入可靠得多。
-// e2e（`07-paged-blocks.spec.ts`）只保留端到端能可靠观察的那条：跨块滚动时远端块按需补齐。
+// e2e（`e2e/07`，序号见 docs/e2e测试.md 的文件索引）只保留端到端能可靠观察的那条：跨块滚动时远端块按需补齐。
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isPlaceholder, usePagedBlocks, type BlockPage } from "./usePagedBlocks";
 

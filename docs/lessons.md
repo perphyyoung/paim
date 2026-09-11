@@ -208,7 +208,7 @@ release 没有 vite 进程所以正常；「关编辑器无效」是因为监听
 
 ### 现象
 
-`pnpm e2e` 全量跑时 05-tag-autocomplete 间歇失败：上传弹窗点「确定」后不关（textarea 一直
+`pnpm e2e` 全量跑时 05 号 spec（标签自动补全）间歇失败：上传弹窗点「确定」后不关（textarea 一直
 visible 到用例超时）；单跑失败文件/单用例（`--grep`）始终通过。
 
 ### 排查过程

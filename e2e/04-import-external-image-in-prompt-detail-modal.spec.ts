@@ -1,5 +1,5 @@
 /**
- * 提示词详情页（PromptDetailModal）e2e 测试（CDP 连接真实应用，走真实后端与数据库）。
+ * 提示词详情弹窗「从外界导入图像」e2e 测试（PromptDetailModal；CDP 连接真实应用，走真实后端与数据库）。
  *
  * 回归场景：「从外界导入图像」（importFromExternal）——文件选择统一走 select_images
  * 测试缝后的行为验证：选择的图像真实导入落库并关联到当前提示词。

@@ -1,5 +1,5 @@
 /**
- * 图像详情页（ImageDetailModal）e2e 测试（CDP 连接真实应用，走真实后端与数据库）。
+ * 图像详情弹窗「替换图像」e2e 测试（ImageDetailModal；CDP 连接真实应用，走真实后端与数据库）。
  *
  * 回归场景：右键「替换图像」（replaceWithPicked）——文件选择统一走 select_images
  * 测试缝后的行为验证：
