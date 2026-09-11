@@ -117,9 +117,6 @@ fn row_to_prompt_card(row: &rusqlite::Row) -> Result<PromptCard> {
     })
 }
 
-/// 提示词关联的「未删除图像」数量（`img.is_deleted = 0`），特殊标签 无图 / 多图 按它判定。
-const IMG_COUNT_SQL: &str = "SELECT COUNT(*) FROM prompt_image_relations pir JOIN images i ON i.id = pir.image_id WHERE pir.prompt_id = prompts.id AND i.is_deleted = 0";
-
 /// 排序键白名单 → 列名（未命中回落 `updated_at`，与旧 `list` 的默认序一致）。
 fn sort_column(sort: &str) -> &'static str {
     match sort {
@@ -156,8 +153,17 @@ fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
         }
         match name {
             list_query::SP_FAVORITE => conds.push("is_favorite = 1".to_string()),
-            list_query::SP_MULTI_IMAGE => conds.push(format!("({IMG_COUNT_SQL}) > 1")),
-            list_query::SP_NO_IMAGE => conds.push(format!("({IMG_COUNT_SQL}) = 0")),
+            list_query::SP_MULTI_IMAGE => conds.push(
+                "id IN (SELECT pir.prompt_id FROM prompt_image_relations pir
+                    JOIN images i ON i.id = pir.image_id AND i.is_deleted = 0
+                    GROUP BY pir.prompt_id HAVING COUNT(*) > 1)"
+                    .to_string(),
+            ),
+            list_query::SP_NO_IMAGE => conds.push(
+                "id NOT IN (SELECT pir.prompt_id FROM prompt_image_relations pir
+                    JOIN images i ON i.id = pir.image_id AND i.is_deleted = 0)"
+                    .to_string(),
+            ),
             list_query::SP_NO_TAG => conds.push(
                 "NOT EXISTS (SELECT 1 FROM prompt_tag_relations r WHERE r.prompt_id = prompts.id)"
                     .to_string(),
@@ -231,19 +237,25 @@ pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
 }
 
 /// 特殊标签命中数（基于全部未删除提示词，不含搜索 / 标签条件，与前端 specialCounts 口径一致）。
+/// 关联计数走派生表聚合（先 GROUP BY 再 LEFT JOIN），避免相关子查询的计划退化（与 image 侧同构）。
 pub fn special_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
-    let sql = format!(
-        "SELECT
-           COUNT(CASE WHEN is_favorite = 1 THEN 1 END),
-           COUNT(CASE WHEN ({IMG_COUNT_SQL}) > 1 THEN 1 END),
-           COUNT(CASE WHEN ({IMG_COUNT_SQL}) = 0 THEN 1 END),
-           COUNT(CASE WHEN is_safe = 1 THEN 1 END),
-           COUNT(CASE WHEN is_safe = 0 THEN 1 END),
-           COUNT(CASE WHEN COALESCE(content_translate, '') = '' THEN 1 END),
-           COUNT(CASE WHEN NOT EXISTS (SELECT 1 FROM prompt_tag_relations r WHERE r.prompt_id = prompts.id) THEN 1 END)
-         FROM prompts WHERE is_deleted = 0"
-    );
-    let (fav, multi, no_img, safe, unsafe_, single, no_tag) = conn.query_row(&sql, [], |r| {
+    let sql = "
+        SELECT
+           COUNT(CASE WHEN p.is_favorite = 1 THEN 1 END),
+           COUNT(CASE WHEN COALESCE(pr.cnt, 0) > 1 THEN 1 END),
+           COUNT(CASE WHEN COALESCE(pr.cnt, 0) = 0 THEN 1 END),
+           COUNT(CASE WHEN p.is_safe = 1 THEN 1 END),
+           COUNT(CASE WHEN p.is_safe = 0 THEN 1 END),
+           COUNT(CASE WHEN COALESCE(p.content_translate, '') = '' THEN 1 END),
+           COUNT(CASE WHEN NOT EXISTS (
+             SELECT 1 FROM prompt_tag_relations r WHERE r.prompt_id = p.id) THEN 1 END)
+         FROM prompts p
+         LEFT JOIN (SELECT pir.prompt_id, COUNT(*) cnt
+                    FROM prompt_image_relations pir
+                    JOIN images i ON i.id = pir.image_id AND i.is_deleted = 0
+                    GROUP BY pir.prompt_id) pr ON pr.prompt_id = p.id
+         WHERE p.is_deleted = 0";
+    let (fav, multi, no_img, safe, unsafe_, single, no_tag) = conn.query_row(sql, [], |r| {
         Ok((
             r.get::<_, i64>(0)?,
             r.get::<_, i64>(1)?,
