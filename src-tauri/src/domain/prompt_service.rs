@@ -238,7 +238,7 @@ pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
 
 /// 特殊标签命中数（基于全部未删除提示词，不含搜索 / 标签条件，与前端 specialCounts 口径一致）。
 /// 关联计数走派生表聚合（先 GROUP BY 再 LEFT JOIN），避免相关子查询的计划退化（与 image 侧同构）。
-pub fn special_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
+pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
     let sql = "
         SELECT
            COUNT(CASE WHEN p.is_favorite = 1 THEN 1 END),

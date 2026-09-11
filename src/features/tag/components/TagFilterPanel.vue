@@ -13,7 +13,7 @@ const dragY = tagDrag.y;
  * TagFilterPanel - 通用标签筛选区（供图像/提示词主页复用）。
  * 内聚：收起状态、标签排序、headerTags / tagSections 计算。
  * 父页通过 v-model:selected 持有选中标签（供列表过滤），
- * 通过 props 注入 specialTags(定义/判断)、specialCounts(命中数)、tagGroups/allTags/tagCounts。
+ * 通过 props 注入 specialTags(定义/判断)、specialTagsCounts(命中数)、tagGroups/allTags/tagCounts。
  */
 interface TagGroupData {
   id: number;
@@ -55,12 +55,12 @@ const props = withDefaults(
     /** 反选模式：选中标签表示「排除」（对齐 pm 的 invertedFilter，前端取反命中结果） */
     inverted: boolean;
     specialTags: SpecialTagName[];
-    specialCounts: Record<string, number>;
+    specialTagsCounts: Record<string, number>;
     tagGroups: TagGroupData[];
     allTags: TagRef[];
     tagCounts: Record<string, number>;
   }>(),
-  { specialCounts: () => ({}), inverted: false },
+  { specialTagsCounts: () => ({}), inverted: false },
 );
 
 const emit = defineEmits<{
@@ -130,7 +130,7 @@ const headerTags = computed(() => {
   const selected = new Set(selectedTags.value);
   const special: { name: string; count: number; active: boolean }[] = [];
   for (const name of props.specialTags) {
-    const cnt = props.specialCounts[name] ?? 0;
+    const cnt = props.specialTagsCounts[name] ?? 0;
     if (cnt > 0) special.push({ name, count: cnt, active: selected.has(name) });
   }
   const normal: { name: string; count: number; isTopGroup: boolean; active: boolean }[] = [];
@@ -308,9 +308,9 @@ const tagSections = computed<TagSection[]>(() => {
       >
         <template v-for="s in specialTags" :key="s">
           <TagChip
-            v-if="(specialCounts[s] ?? 0) > 0"
+            v-if="(specialTagsCounts[s] ?? 0) > 0"
             :variant="selectedTags.includes(s) ? 'solid' : 'checked'"
-            :count="specialCounts[s] ?? 0"
+            :count="specialTagsCounts[s] ?? 0"
             interactive
             @click="(e: MouseEvent) => toggleTag(s, e)"
           >

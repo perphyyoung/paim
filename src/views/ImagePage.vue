@@ -228,10 +228,10 @@ const SPECIAL_TAGS = [
 ];
 
 // 特殊标签命中数：由后端一次聚合（基于全部未删除图像，与当前筛选无关）
-const specialCounts = ref<Record<string, number>>({});
-async function loadSpecialCounts() {
+const specialTagsCounts = ref<Record<string, number>>({});
+async function loadSpecialTagsCounts() {
   try {
-    specialCounts.value = await commands.imageSpecialCounts();
+    specialTagsCounts.value = await commands.imageSpecialTagsCounts();
   } catch {
     // 计数失败不影响浏览，保留上次结果
   }
@@ -406,8 +406,8 @@ async function loadImages() {
   log.info("[ImagePage] 关联映射+dataDir 完成", Math.round(performance.now() - t0), "ms");
   await reloadBlocks();
   log.info("[ImagePage] reloadBlocks 完成", Math.round(performance.now() - t0), "ms");
-  await loadSpecialCounts();
-  log.info("[ImagePage] loadSpecialCounts 完成", Math.round(performance.now() - t0), "ms");
+  await loadSpecialTagsCounts();
+  log.info("[ImagePage] loadSpecialTagsCounts 完成", Math.round(performance.now() - t0), "ms");
   // 数据重载后重置已校验记忆并检查当前可见窗口
   resetThumbChecked();
   scheduleThumbCheck();
@@ -684,7 +684,7 @@ function onUploadDone() {
         v-model="selectedTags"
         v-model:inverted="invertedTagFilter"
         :special-tags="SPECIAL_TAGS"
-        :special-counts="specialCounts"
+        :special-tags-counts="specialTagsCounts"
         :tag-groups="tagGroups"
         :all-tags="allTags"
         :tag-counts="tagCounts"

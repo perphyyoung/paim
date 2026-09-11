@@ -48,11 +48,11 @@ pub async fn list_prompt_ids(
 /// 特殊标签命中数（基于全部未删除提示词，不含搜索 / 标签条件）。
 #[tauri::command]
 #[specta::specta]
-pub async fn prompt_special_counts(
+pub async fn prompt_special_tags_counts(
     db: State<'_, BkDb>,
 ) -> Result<std::collections::HashMap<String, i64>, AppError> {
     db_blocking(&db, move |conn| {
-        prompt_service::special_counts(conn).map_err(|e| AppError::Message(e.to_string()))
+        prompt_service::special_tags_counts(conn).map_err(|e| AppError::Message(e.to_string()))
     })
     .await
 }

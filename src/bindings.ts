@@ -11,7 +11,7 @@ export const commands = {
 	/**  同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。 */
 	listPromptIds: (query: ListQuery) => __TAURI_INVOKE<string[]>("list_prompt_ids", { query }),
 	/**  特殊标签命中数（基于全部未删除提示词，不含搜索 / 标签条件）。 */
-	promptSpecialCounts: () => __TAURI_INVOKE<{ [key in string]: number }>("prompt_special_counts"),
+	promptSpecialTagsCounts: () => __TAURI_INVOKE<{ [key in string]: number }>("prompt_special_tags_counts"),
 	createPrompt: (content: string, title: string | null) => __TAURI_INVOKE<Prompt>("create_prompt", { content, title }),
 	deletePrompt: (id: string) => __TAURI_INVOKE<null>("delete_prompt", { id }),
 	/**  更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。 */
@@ -71,7 +71,7 @@ export const commands = {
 	/**  同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。 */
 	listImageIds: (query: ListQuery) => __TAURI_INVOKE<string[]>("list_image_ids", { query }),
 	/**  特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件）。 */
-	imageSpecialCounts: () => __TAURI_INVOKE<{ [key in string]: number }>("image_special_counts"),
+	imageSpecialTagsCounts: () => __TAURI_INVOKE<{ [key in string]: number }>("image_special_tags_counts"),
 	/**  返回单张图像详情。 */
 	getImageDetail: (id: string) => __TAURI_INVOKE<Image>("get_image_detail", { id }),
 	/**  返回图像原图磁盘路径，前端配合 convertFileSrc 加载（详情页大图使用）。 */

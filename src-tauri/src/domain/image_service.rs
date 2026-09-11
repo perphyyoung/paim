@@ -426,8 +426,8 @@ pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
 
 /// 特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件，与前端 specialCounts 口径一致）。
 /// 引用计数不走逐行相关子查询（含 JOIN prompts 的相关子查询万级数据下退化到分钟级，
-/// 详见 statistics_service::image_special_counts 同款修复），改派生表聚合：10000 图 90ms。
-pub fn special_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
+/// 详见 statistics_service::image_special_tags_counts 同款修复），改派生表聚合：10000 图 90ms。
+pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
     let sql = "SELECT
        COUNT(CASE WHEN i.is_favorite = 1 THEN 1 END),
        COUNT(CASE WHEN COALESCE(pr.cnt, 0) = 0 THEN 1 END),

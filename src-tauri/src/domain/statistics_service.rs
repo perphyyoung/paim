@@ -45,7 +45,7 @@ pub struct Statistics {
 }
 
 /// 提示词域特殊标签：一次扫描出全部命中数（只数未删除提示词）。
-fn prompt_special_counts(conn: &Connection) -> rusqlite::Result<Vec<SpecialTagCount>> {
+fn prompt_special_tags_counts(conn: &Connection) -> rusqlite::Result<Vec<SpecialTagCount>> {
     let row = conn.query_row(
         "SELECT
            COALESCE(SUM(CASE WHEN p.is_favorite = 1 THEN 1 ELSE 0 END), 0),
@@ -92,7 +92,7 @@ fn prompt_special_counts(conn: &Connection) -> rusqlite::Result<Vec<SpecialTagCo
 /// 图像域特殊标签：一次扫描出全部命中数（只数未删除图像）。
 /// 引用计数不走逐行相关子查询（万级数据下 JOIN prompts 的相关子查询会退化到分钟级），
 /// 改为先按 image_id 聚合成派生表再 LEFT JOIN，压测 10000 图 90ms，结果与原写法一致。
-fn image_special_counts(conn: &Connection) -> rusqlite::Result<Vec<SpecialTagCount>> {
+fn image_special_tags_counts(conn: &Connection) -> rusqlite::Result<Vec<SpecialTagCount>> {
     let row = conn.query_row(
         "SELECT
            COALESCE(SUM(CASE WHEN i.is_favorite = 1 THEN 1 ELSE 0 END), 0),
@@ -165,8 +165,8 @@ pub fn get(conn: &Connection) -> rusqlite::Result<Statistics> {
     let total_image_tags: i64 =
         conn.query_row("SELECT COUNT(*) FROM image_tags", [], |r| r.get(0))?;
 
-    let special_prompt_tags = prompt_special_counts(conn)?;
-    let special_image_tags = image_special_counts(conn)?;
+    let special_prompt_tags = prompt_special_tags_counts(conn)?;
+    let special_image_tags = image_special_tags_counts(conn)?;
 
     Ok(Statistics {
         total_prompts,

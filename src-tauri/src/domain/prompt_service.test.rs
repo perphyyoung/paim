@@ -2,7 +2,7 @@
 
 use super::{
     ensure_thumbnails, list_ids, list_page, list_related_images_with, set_prompt_first_image,
-    special_counts, thumbs_for, update_detail,
+    special_tags_counts, thumbs_for, update_detail,
 };
 use crate::domain::list_query::ListQuery;
 use crate::infra::db;
@@ -691,7 +691,7 @@ fn list_page_special_tags_hit_sql_conditions() {
 }
 
 #[test]
-fn list_ids_and_special_counts_share_the_same_filter() {
+fn list_ids_and_special_tags_counts_share_the_same_filter() {
     let (_dir, db) = setup();
     let conn = db.0.lock().unwrap();
     insert_prompt(
@@ -727,7 +727,7 @@ fn list_ids_and_special_counts_share_the_same_filter() {
     .unwrap();
     assert_eq!(filtered, vec!["p2"], "list_ids 走同一套筛选");
 
-    let counts = special_counts(&conn).unwrap();
+    let counts = special_tags_counts(&conn).unwrap();
     assert_eq!(counts.get("收藏"), Some(&1));
     assert_eq!(counts.get("无标"), Some(&1));
     assert_eq!(counts.get("无图"), Some(&2));

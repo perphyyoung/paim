@@ -93,10 +93,10 @@ const SPECIAL_TAGS = [
 ];
 
 // 特殊标签命中数：由后端一次聚合（基于全部未删除提示词，与当前筛选无关）
-const specialCounts = ref<Record<string, number>>({});
-async function loadSpecialCounts() {
+const specialTagsCounts = ref<Record<string, number>>({});
+async function loadSpecialTagsCounts() {
   try {
-    specialCounts.value = await commands.promptSpecialCounts();
+    specialTagsCounts.value = await commands.promptSpecialTagsCounts();
   } catch {
     // 计数失败不影响浏览，保留上次结果
   }
@@ -441,7 +441,7 @@ async function loadPrompts() {
     .catch(() => ({}) as Record<string, string[]>);
   thumbTried.clear();
   await reloadBlocks();
-  await loadSpecialCounts();
+  await loadSpecialTagsCounts();
   // 数据重载后重置已校验记忆并检查当前可见窗口
   resetThumbChecked();
   scheduleThumbCheck();
@@ -664,7 +664,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         v-model="selectedTags"
         v-model:inverted="invertedTagFilter"
         :special-tags="SPECIAL_TAGS"
-        :special-counts="specialCounts"
+        :special-tags-counts="specialTagsCounts"
         :tag-groups="tagGroups"
         :all-tags="allTags"
         :tag-counts="tagCounts"
