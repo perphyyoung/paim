@@ -2,7 +2,8 @@
 //! 服务两类调用方：
 //! - 后端关键路径埋点（log_info!/log_warn!/log_error! 宏）
 //! - 前端通过 tauri 命令 `log_msg` 上报（invoke）
-//! 前后端共用一个全局最低级别开关（MIN_LEVEL）：启动时读环境变量 PAIM_LOG，
+//! 前后端共用一个全局最低级别开关（MIN_LEVEL），启动时按优先级初始化：
+//! PAIM_LOG 环境变量 > paim-config.toml（release/dev 各一键）> 内置默认（release=warn，dev=debug）；
 //! 运行时经 set_log_level 命令热切并 emit 事件同步前端缓存。
 //! 写文件失败时静默，不阻塞业务（调试用途）。
 
@@ -13,7 +14,7 @@ use std::sync::OnceLock;
 use tauri_specta::Event;
 
 /// 日志级别。
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Level {
     Debug,
     Info,
@@ -32,7 +33,8 @@ impl Level {
     }
 }
 
-/// 全局最低输出级别（0=Debug 1=Info 2=Warn 3=Error），默认 Info。
+/// 全局最低输出级别（0=Debug 1=Info 2=Warn 3=Error）的原子存储，初始值无意义
+/// （进程启动后 `init_from_config` 必然先行设置，见 lib.rs `run()`）。
 static MIN_LEVEL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(1);
 
 fn level_num(level: Level) -> u8 {
@@ -45,7 +47,7 @@ fn level_num(level: Level) -> u8 {
 }
 
 fn level_from_str(s: &str) -> Option<Level> {
-    match s {
+    match s.to_ascii_lowercase().as_str() {
         "debug" => Some(Level::Debug),
         "info" => Some(Level::Info),
         "warn" => Some(Level::Warn),
@@ -54,14 +56,74 @@ fn level_from_str(s: &str) -> Option<Level> {
     }
 }
 
-/// 启动初始化：读环境变量 `PAIM_LOG`（debug/info/warn/error，缺省 info）。
-pub fn init_from_env() {
-    if let Some(level) = std::env::var("PAIM_LOG")
-        .ok()
-        .and_then(|s| level_from_str(&s.to_ascii_lowercase()))
-    {
-        set_min_level(level);
+/// 应用配置文件（`<基目录>/paim-config.toml`）的日志级别段，键名 kebab-case。
+#[derive(Deserialize, Default)]
+struct LogConfig {
+    #[serde(rename = "release-log-level")]
+    release_log_level: Option<String>,
+    #[serde(rename = "dev-log-level")]
+    dev_log_level: Option<String>,
+}
+
+/// 启动初始化，优先级从高到低：`PAIM_LOG` 环境变量 > `paim-config.toml` > 内置默认
+/// （release=warn，dev=debug）。配置文件缺失视为未配置（静默用默认）；解析失败或
+/// 级别值非法按 WARN/ERROR 记录（write 直写不受级别过滤影响，保证总能落盘）。
+pub fn init_from_config() {
+    let default = if cfg!(debug_assertions) {
+        Level::Debug
+    } else {
+        Level::Warn
+    };
+    let mut level = default;
+
+    // ① 配置文件
+    let path = config_path();
+    match std::fs::read_to_string(&path) {
+        Ok(text) => match toml::from_str::<LogConfig>(&text) {
+            Ok(cfg) => {
+                let (key_value, key_name) = if cfg!(debug_assertions) {
+                    (cfg.dev_log_level, "dev-log-level")
+                } else {
+                    (cfg.release_log_level, "release-log-level")
+                };
+                if let Some(raw) = key_value {
+                    match level_from_str(&raw) {
+                        Some(l) => level = l,
+                        None => write(
+                            Level::Warn,
+                            format!(
+                                "[log] 配置文件 {} 的 {key_name} 值 \"{raw}\" 无效（可选 debug/info/warn/error），使用默认 {}",
+                                path.display(),
+                                default.as_str()
+                            ),
+                        ),
+                    }
+                }
+            }
+            Err(e) => write(
+                Level::Warn,
+                format!(
+                    "[log] 配置文件 {} 解析失败：{e}；使用默认 {}",
+                    path.display(),
+                    default.as_str()
+                ),
+            ),
+        },
+        Err(_) => {} // 文件不存在：正常，用默认
     }
+
+    // ② 环境变量覆盖（临时调试不改文件）
+    if let Ok(raw) = std::env::var("PAIM_LOG") {
+        match level_from_str(&raw) {
+            Some(l) => level = l,
+            None => write(
+                Level::Warn,
+                format!("[log] 环境变量 PAIM_LOG 值 \"{raw}\" 无效（可选 debug/info/warn/error），已忽略"),
+            ),
+        }
+    }
+
+    set_min_level(level);
 }
 
 pub fn set_min_level(level: Level) {
@@ -87,18 +149,26 @@ pub fn enabled(level: Level) -> bool {
 #[tauri_specta(event_name = "log-level-changed")]
 pub struct LogLevelChanged(pub String);
 
-/// 日志文件路径，惰性计算一次：
-/// - 开发环境（debug）：项目根 / paim.log（e2e/dev 都写这里，便于排查）；
-/// - 部署环境：进程工作目录 / paim.log。
+/// 配置/日志文件的基目录：
+/// - 开发环境（debug）：项目根（e2e/dev 都写这里，便于排查）；
+/// - 部署环境：进程工作目录。
+fn base_dir() -> std::path::PathBuf {
+    if cfg!(debug_assertions) {
+        crate::infra::db::project_root()
+    } else {
+        std::env::current_dir().unwrap_or_default()
+    }
+}
+
+/// 日志文件路径，惰性计算一次：`<基目录>/paim.log`。
 fn log_path() -> &'static std::path::PathBuf {
     static PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
-    PATH.get_or_init(|| {
-        if cfg!(debug_assertions) {
-            crate::infra::db::project_root().join("paim.log")
-        } else {
-            std::env::current_dir().unwrap_or_default().join("paim.log")
-        }
-    })
+    PATH.get_or_init(|| base_dir().join("paim.log"))
+}
+
+/// 应用配置文件路径：`<基目录>/paim-config.toml`。
+fn config_path() -> std::path::PathBuf {
+    base_dir().join("paim-config.toml")
 }
 
 /// 写一行日志：`本地时间 [级别] 消息`。
@@ -183,3 +253,7 @@ fn now_local() -> String {
         .format("%Y-%m-%d %H:%M:%S%.3f")
         .to_string()
 }
+
+#[cfg(test)]
+#[path = "logging.test.rs"]
+mod tests;

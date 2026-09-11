@@ -9,14 +9,14 @@ type Level = "debug" | "info" | "warn" | "error";
 
 const LEVEL_NUM: Record<Level, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
-// 未同步前按默认 info 放行 info+；boot 早期日志（info/error）不丢，debug 略过即可
-let minLevelNum = 1;
+// 未同步前放行全部（后端有级别过滤兜底）；同步后本地预判，被过滤的日志零 IPC
+let minLevelNum = 0;
 let synced = false;
 
 commands
   .getLogLevel()
   .then((l) => {
-    minLevelNum = LEVEL_NUM[l as Level] ?? 1;
+    minLevelNum = LEVEL_NUM[l as Level] ?? 0;
     synced = true;
   })
   .catch(() => {});

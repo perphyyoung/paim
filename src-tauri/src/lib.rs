@@ -150,9 +150,9 @@ pub fn run() {
     #[cfg(debug_assertions)]
     export_bindings(&specta_builder);
 
-    // 日志级别初始化：读 PAIM_LOG 环境变量（debug/info/warn/error，缺省 info），
-    // 前后端共用该全局开关，运行时可经 set_log_level 命令热切。
-    logging::init_from_env();
+    // 日志级别初始化：paim-config.toml（PAIM_LOG 环境变量可覆盖），前后端共用该全局
+    // 开关，运行时可经 set_log_level 命令热切。
+    logging::init_from_config();
 
     tauri::Builder::default()
     .invoke_handler(specta_builder.invoke_handler())

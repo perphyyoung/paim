@@ -1,0 +1,14 @@
+# paim 应用配置
+# 位置：本文件与应用同目录（开发/e2e 为项目根，部署为进程工作目录）。
+# 修改后重启生效；运行时可用 set_log_level 命令热切（优先级最高）。
+# 环境变量 PAIM_LOG 可临时覆盖本文件（不改文件调试）。
+
+# release 构建的最低日志级别：debug / info / warn / error
+# 正常运行只需 warn（info 及以下的埋点仅为排查准备）
+# release-log-level = "debug"
+release-log-level = "warn"
+
+# 开发/e2e（debug 构建）的最低日志级别
+# 排查问题时可临时改为 debug，查看全量埋点
+dev-log-level = "debug"
+# dev-log-level = "warn"
