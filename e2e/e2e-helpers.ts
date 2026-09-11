@@ -352,7 +352,7 @@ export async function openPromptDetail(page: Page, content: string): Promise<voi
       throw err;
     });
   await card.click();
-  await expect(page.getByText("提示词标签"))
+  await expect(detailDialog(page, PROMPT_DETAIL_DIALOG))
     .toBeVisible({ timeout: 5_000 })
     .catch(async (err) => {
       await dumpPageState(page, "打开提示词详情失败：详情弹窗未出现");
@@ -370,7 +370,7 @@ export async function openImageDetail(page: Page, cardText: string): Promise<voi
       throw err;
     });
   await card.click();
-  await expect(page.getByText("图像信息"))
+  await expect(detailDialog(page, IMAGE_DETAIL_DIALOG))
     .toBeVisible({ timeout: 5_000 })
     .catch(async (err) => {
       await dumpPageState(page, "打开图像详情失败：详情弹窗未出现");
@@ -378,17 +378,20 @@ export async function openImageDetail(page: Page, cardText: string): Promise<voi
     });
 }
 
-/// 详情弹窗容器（Teleport 到 body 的遮罩层）：把控件定位限定在弹窗内，
-/// 否则会与主页卡片上的同名控件撞车——卡片收藏按钮的 title 同样是「收藏 / 取消收藏」。
-/// 选择器带 z-50：ToastHost 也是 `fixed inset-0`（z-[130]），不限定层级会先命中它。
-export function detailDialog(page: Page): Locator {
-  return page.locator("div.fixed.inset-0.z-50").first();
+/// 详情弹窗的可访问名（对应组件根节点的 aria-label）
+export const IMAGE_DETAIL_DIALOG = "图像详情";
+export const PROMPT_DETAIL_DIALOG = "提示词详情";
+
+/// 详情弹窗容器：按 `role="dialog"` + aria-label 定位，与样式类名、z-index 完全解耦。
+/// 嵌套场景（图像详情里再开提示词详情）靠名称区分，不像 `.z-50` 那样只能靠 DOM 顺序取 first。
+export function detailDialog(page: Page, name: string): Locator {
+  return page.getByRole("dialog", { name });
 }
 
 /// 点弹窗右上 ✕ 关闭详情，并等弹窗消失（两个详情页的关闭按钮 title 均为「关闭」）
-export async function closeDetailDialog(page: Page): Promise<void> {
-  await detailDialog(page).getByTitle("关闭").click();
-  await expect(detailDialog(page)).toBeHidden({ timeout: 5_000 });
+export async function closeDetailDialog(page: Page, name: string): Promise<void> {
+  await detailDialog(page, name).getByTitle("关闭").click();
+  await expect(detailDialog(page, name)).toBeHidden({ timeout: 5_000 });
 }
 
 /// 筛选区特殊标签 chip（「收藏」「敏感」等）。chip 只在计数 > 0 时渲染，而计数是
