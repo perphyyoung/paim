@@ -104,7 +104,7 @@ export const commands = {
 	rebuildThumbnails: () => __TAURI_INVOKE<ThumbnailRebuildSummary>("rebuild_thumbnails"),
 	/**
 	 *  懒自愈：批量校验指定图像的缩略图文件，缺失且原图存在时按需生成并回写。
-	 *  正常路径仅 N 次文件存在性检查，同步命令即可。
+	 *  正常路径仅 N 次文件存在性检查；与查询命令同走 spawn_blocking，慢盘时不冻结 UI。
 	 */
 	ensureImageThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureResult>("ensure_image_thumbnails", { ids }),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */

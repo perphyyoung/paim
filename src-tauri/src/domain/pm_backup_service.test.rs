@@ -41,11 +41,7 @@ fn manifest_validation() {
 fn build_pm_db_bytes(dir: &Path) -> Vec<u8> {
     let db_path = dir.join("prompt-manager.db");
     {
-        let conn = db::init(db_path.clone())
-            .expect("init pm db")
-            .0
-            .into_inner()
-            .expect("poisoned");
+        let conn = db::open_connection(db_path.clone()).expect("init pm db");
         conn.execute_batch(
             "INSERT INTO prompts (id, title, content, created_at, updated_at, is_favorite)
              VALUES ('pmt_20260607003952_2cj6k', 't1', 'c1', '2026-06-07T00:39:52.000Z', '2026-06-07T00:39:52.000Z', 1),

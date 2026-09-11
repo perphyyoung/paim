@@ -3,6 +3,7 @@
 // 只保留最近用到的若干块（LRU），其余位置用占位对象填充，使虚拟网格的窗口计算、
 // 定位与滚动条保持不变（总条数来自后端 total）。
 import { ref, shallowRef, type Ref } from "vue";
+import { log } from "@/utils/logger";
 
 /** 未加载 / 加载失败的位置占位；不带 id，避免被批量选择或 key 生成误当成实体 */
 export interface Placeholder {
@@ -49,9 +50,12 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   load: (offset: number, limit: number) => Promise<BlockPage<T>>;
   blockSize?: number;
   maxBlocks?: number;
+  // 日志前缀（压测/排查用），如 "prompt" / "image"
+  label?: string;
 }): UsePagedBlocks<T> {
   const blockSize = resolveBlockSize(options.blockSize ?? DEFAULT_BLOCK_SIZE);
   const maxBlocks = options.maxBlocks ?? DEFAULT_MAX_BLOCKS;
+  const tag = options.label ? `[PagedBlocks:${options.label}]` : "[PagedBlocks]";
 
   const total = ref(0);
   const items = shallowRef<Array<T | Placeholder>>([]);
@@ -115,23 +119,34 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     const pending = inflight.get(index);
     if (pending) return pending;
     const mySeq = seq;
+    log.debug(tag, "请求块", index, "offset=", index * blockSize);
     const task = (async () => {
       try {
         const page = await options.load(index * blockSize, blockSize);
-        if (mySeq !== seq) return;
+        if (mySeq !== seq) {
+          log.warn(tag, "丢弃过期响应", index, "seq=", mySeq, "当前=", seq);
+          return;
+        }
         if (page.total !== total.value) {
+          log.info(tag, "total 更新", total.value, "→", page.total);
           total.value = page.total;
           resize(page.total);
         }
         blocks.set(index, page.items);
         applyBlock(index, page.items);
         attempts.delete(index);
+        log.debug(tag, "块完成", index, "items=", page.items.length);
         evict();
-      } catch {
+      } catch (e) {
         const n = (attempts.get(index) ?? 0) + 1;
         attempts.set(index, n);
         // 自动重试 1 次；仍失败则留占位，等下次进入可见区（或条件变化）再试
-        if (n <= 1) queueMicrotask(() => void loadBlock(index));
+        if (n <= 1) {
+          log.error(tag, "块加载失败，将自动重试", index, String(e));
+          queueMicrotask(() => void loadBlock(index));
+        } else {
+          log.error(tag, "块加载失败且已放弃重试", index, String(e));
+        }
       } finally {
         inflight.delete(index);
       }
@@ -141,7 +156,10 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   }
 
   function ensureRange(start: number, end: number) {
-    if (total.value === 0) return;
+    if (total.value === 0) {
+      log.debug(tag, "ensureRange 跳过（total=0）", start, end);
+      return;
+    }
     const lastBlock = Math.max(0, Math.ceil(total.value / blockSize) - 1);
     // 预取相邻块：与 VirtualGrid 的 buffer 配合，跨块滚动不出现空洞
     protectFrom = Math.max(0, Math.floor(Math.max(0, start) / blockSize) - 1);
@@ -160,6 +178,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
 
   async function reload() {
     seq += 1;
+    log.info(tag, "reload 开始", "seq=", seq);
     blocks.clear();
     inflight.clear();
     attempts.clear();
@@ -170,6 +189,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     try {
       await loadBlock(0);
       ensureRange(0, blockSize - 1);
+      log.info(tag, "reload 完成", "total=", total.value, "items=", items.value.length);
     } finally {
       loading.value = false;
     }

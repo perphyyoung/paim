@@ -3,6 +3,7 @@
 // 缺失且原图存在时按需生成并回写。每个 id 只校验一次；修复项非空时
 // 回调 onFixed 让页面重建对应缩略图 URL。
 import { onDeactivated, type Ref } from "vue";
+import { log } from "@/utils/logger";
 import { ensureImageThumbnails, type ThumbnailEnsureResult } from "@/features/image/api/thumbnails";
 
 const DEBOUNCE_MS = 500;
@@ -35,12 +36,23 @@ export function useThumbnailSelfHeal(
     const pending = visibleIds.value.filter((id) => !checked.has(id));
     if (pending.length === 0) return;
     pending.forEach((id) => checked.add(id));
+    const t0 = performance.now();
+    log.info("[SelfHeal] 开始校验", pending.length, "项");
     inflight = (async () => {
       try {
         const result = await check(pending);
+        log.info(
+          "[SelfHeal] 校验完成",
+          Math.round(performance.now() - t0),
+          "ms, fixed=",
+          result.fixed.length,
+          "missing=",
+          result.missing.length,
+        );
         if (result.fixed.length > 0) onFixed(result.fixed);
       } catch {
         // 校验失败不打断浏览，回滚标记让下次再试
+        log.warn("[SelfHeal] 校验失败，回滚标记", pending.length, "项");
         pending.forEach((id) => checked.delete(id));
       } finally {
         inflight = null;

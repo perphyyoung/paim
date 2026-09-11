@@ -17,6 +17,8 @@ const BATCH = 2000;
 const MONTH = "202609";
 /** 单域标签上限，镜像 domain/tag_manager.rs 的 MAX_TAGS_PER_DOMAIN（标签按小规模设计，不做万级） */
 const MAX_TAGS_PER_DOMAIN = 500;
+/** 首位组的标签数上限：筛选区收起后首位组标签仍参与布局，数量过大会把卡片区挤出视口 */
+const FIRST_GROUP_TAG_CAP = 100;
 /** 各域的表名映射（与 infra/db.rs 的 schema 一致） */
 const TABLES = {
   image: {
@@ -128,7 +130,9 @@ function seed({ dir, images, prompts, tags, force }) {
       });
       for (let i = 0; i < tagCount; i += 1) {
         const name = `${MARK}-${domain}-标签-${pad(i)}`;
-        insTag.run(name, groupIds[i % groupIds.length]);
+        // 首位组只放 FIRST_GROUP_TAG_CAP 个，其余全部归第二组（见 FIRST_GROUP_TAG_CAP 注释）
+        const gid = i < FIRST_GROUP_TAG_CAP ? groupIds[0] : groupIds[1];
+        insTag.run(name, gid);
         tagIds[domain].push(selTag.get(name).id);
       }
       console.log(`  ${domain} 标签 ${tagIds[domain].length}`);

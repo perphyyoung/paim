@@ -1,6 +1,7 @@
 //! 图像命令层：薄适配，从 managed state 取连接，转调领域服务。
 //! 路径 `commands::image::`，与提示词侧 `commands::prompt::` 对称。
 
+use crate::commands::db_blocking;
 use crate::domain::image_ops::{make_center_thumb, open_image};
 use crate::domain::image_service::{
     self, Image, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome, LinkedPrompt,
@@ -176,27 +177,39 @@ pub fn list_images(
 /// 主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。
 #[tauri::command]
 #[specta::specta]
-pub fn list_images_page(db: State<BkDb>, query: ListQuery) -> Result<PaginatedImages, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    image_service::list_page(&conn, &query).map_err(|e| AppError::Message(e.to_string()))
+pub async fn list_images_page(
+    db: State<'_, BkDb>,
+    query: ListQuery,
+) -> Result<PaginatedImages, AppError> {
+    db_blocking(&db, move |conn| {
+        image_service::list_page(conn, &query).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。
 #[tauri::command]
 #[specta::specta]
-pub fn list_image_ids(db: State<BkDb>, query: ListQuery) -> Result<Vec<String>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    image_service::list_ids(&conn, &query).map_err(|e| AppError::Message(e.to_string()))
+pub async fn list_image_ids(
+    db: State<'_, BkDb>,
+    query: ListQuery,
+) -> Result<Vec<String>, AppError> {
+    db_blocking(&db, move |conn| {
+        image_service::list_ids(conn, &query).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件）。
 #[tauri::command]
 #[specta::specta]
-pub fn image_special_counts(
-    db: State<BkDb>,
+pub async fn image_special_counts(
+    db: State<'_, BkDb>,
 ) -> Result<std::collections::HashMap<String, i64>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    image_service::special_counts(&conn).map_err(|e| AppError::Message(e.to_string()))
+    db_blocking(&db, move |conn| {
+        image_service::special_counts(conn).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。
@@ -363,29 +376,32 @@ pub fn remove_prompt_from_image(
 /// 返回非删除图像到其关联提示词内容的映射：{imageId: [content,...]}，供卡片 row2 显示。
 #[tauri::command]
 #[specta::specta]
-pub fn get_image_prompts_map(
-    db: State<BkDb>,
+pub async fn get_image_prompts_map(
+    db: State<'_, BkDb>,
 ) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT img.id, pr.content
+    db_blocking(&db, move |conn| {
+        let mut stmt = conn
+            .prepare(
+                "SELECT img.id, pr.content
              FROM images img
              JOIN prompt_image_relations pir ON pir.image_id = img.id
              JOIN prompts pr ON pr.id = pir.prompt_id
              WHERE img.is_deleted = 0 AND pr.is_deleted = 0
              ORDER BY pr.created_at",
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let rows = stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for row in rows {
-        let (img_id, content) = row.map_err(|e| AppError::Message(e.to_string()))?;
-        map.entry(img_id).or_default().push(content);
-    }
-    Ok(map)
+            )
+            .map_err(|e| AppError::Message(e.to_string()))?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| AppError::Message(e.to_string()))?;
+        let mut map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let (img_id, content) = row.map_err(|e| AppError::Message(e.to_string()))?;
+            map.entry(img_id).or_default().push(content);
+        }
+        Ok(map)
+    })
+    .await
 }
 
 /// 返回单张图像关联的提示词列表（含标题/内容/翻译/备注/标签），供详情页左侧展示。
@@ -442,20 +458,22 @@ pub async fn rebuild_thumbnails(
 }
 
 /// 懒自愈：批量校验指定图像的缩略图文件，缺失且原图存在时按需生成并回写。
-/// 正常路径仅 N 次文件存在性检查，同步命令即可。
+/// 正常路径仅 N 次文件存在性检查；与查询命令同走 spawn_blocking，慢盘时不冻结 UI。
 #[tauri::command]
 #[specta::specta]
-pub fn ensure_image_thumbnails(
+pub async fn ensure_image_thumbnails(
     app: tauri::AppHandle,
-    db: State<BkDb>,
+    db: State<'_, BkDb>,
     ids: Vec<String>,
 ) -> Result<ThumbnailEnsureResult, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    thumbnail_service::ensure(
-        &crate::infra::db::data_dir(&app),
-        &crate::infra::db::thumbnails_dir(&app),
-        &conn,
-        &ids,
-    )
-    .map_err(AppError::from)
+    db_blocking(&db, move |conn| {
+        thumbnail_service::ensure(
+            &crate::infra::db::data_dir(&app),
+            &crate::infra::db::thumbnails_dir(&app),
+            conn,
+            &ids,
+        )
+        .map_err(AppError::from)
+    })
+    .await
 }

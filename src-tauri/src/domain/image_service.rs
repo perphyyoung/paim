@@ -274,10 +274,6 @@ pub fn count(conn: &Connection, search: Option<&str>, tag: Option<&str>) -> rusq
 
 const IMAGE_COLS: &str = "id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note";
 
-/// 图像关联的「未删除提示词」数量，与 `get_image_prompts_map` 口径一致
-/// （`img.is_deleted = 0 AND pr.is_deleted = 0`），特殊标签 未引 / 多引 按它判定。
-const REF_COUNT_SQL: &str = "SELECT COUNT(*) FROM prompt_image_relations pir JOIN prompts p ON p.id = pir.prompt_id WHERE pir.image_id = images.id AND p.is_deleted = 0";
-
 /// 排序键白名单 → 列名（未命中回落 `created_at`）。
 /// 时间列按 ISO 8601 UTC 字符串排序：paim 原生与 pm 导入（经 `normalize_ts`）均为该格式，字典序即时间序。
 fn sort_column(sort: &str) -> &'static str {
@@ -310,8 +306,18 @@ fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
         }
         match name {
             list_query::SP_FAVORITE => conds.push("is_favorite = 1".to_string()),
-            list_query::SP_UNREFERENCED => conds.push(format!("({REF_COUNT_SQL}) = 0")),
-            list_query::SP_MULTI_REF => conds.push(format!("({REF_COUNT_SQL}) > 1")),
+            list_query::SP_UNREFERENCED => conds.push(
+                // 不相关子查询：SQLite 只物化一次再逐行查，逐行相关子查询会退化到分钟级
+                "images.id NOT IN (SELECT pir.image_id FROM prompt_image_relations pir \
+                 JOIN prompts p ON p.id = pir.prompt_id AND p.is_deleted = 0)"
+                    .to_string(),
+            ),
+            list_query::SP_MULTI_REF => conds.push(
+                "images.id IN (SELECT pir.image_id FROM prompt_image_relations pir \
+                 JOIN prompts p ON p.id = pir.prompt_id AND p.is_deleted = 0 \
+                 GROUP BY pir.image_id HAVING COUNT(*) > 1)"
+                    .to_string(),
+            ),
             list_query::SP_NO_TAG => conds.push(
                 "NOT EXISTS (SELECT 1 FROM image_tag_relations r WHERE r.image_id = images.id)"
                     .to_string(),
@@ -380,18 +386,26 @@ pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
 }
 
 /// 特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件，与前端 specialCounts 口径一致）。
+/// 引用计数不走逐行相关子查询（含 JOIN prompts 的相关子查询万级数据下退化到分钟级，
+/// 详见 statistics_service::image_special_counts 同款修复），改派生表聚合：10000 图 90ms。
 pub fn special_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
-    let sql = format!(
-        "SELECT
-           COUNT(CASE WHEN is_favorite = 1 THEN 1 END),
-           COUNT(CASE WHEN ({REF_COUNT_SQL}) = 0 THEN 1 END),
-           COUNT(CASE WHEN ({REF_COUNT_SQL}) > 1 THEN 1 END),
-           COUNT(CASE WHEN is_safe = 1 THEN 1 END),
-           COUNT(CASE WHEN is_safe = 0 THEN 1 END),
-           COUNT(CASE WHEN NOT EXISTS (SELECT 1 FROM image_tag_relations r WHERE r.image_id = images.id) THEN 1 END)
-         FROM images WHERE is_deleted = 0"
-    );
-    let (fav, unref, multi, safe, unsafe_, no_tag) = conn.query_row(&sql, [], |r| {
+    let sql = "SELECT
+       COUNT(CASE WHEN i.is_favorite = 1 THEN 1 END),
+       COUNT(CASE WHEN COALESCE(pr.cnt, 0) = 0 THEN 1 END),
+       COUNT(CASE WHEN COALESCE(pr.cnt, 0) > 1 THEN 1 END),
+       COUNT(CASE WHEN i.is_safe = 1 THEN 1 END),
+       COUNT(CASE WHEN i.is_safe = 0 THEN 1 END),
+       COUNT(CASE WHEN COALESCE(tr.cnt, 0) = 0 THEN 1 END)
+     FROM images i
+     LEFT JOIN (SELECT pir.image_id, COUNT(*) cnt
+                FROM prompt_image_relations pir
+                JOIN prompts p ON p.id = pir.prompt_id AND p.is_deleted = 0
+                GROUP BY pir.image_id) pr ON pr.image_id = i.id
+     LEFT JOIN (SELECT itr.image_id, COUNT(*) cnt
+                FROM image_tag_relations itr
+                GROUP BY itr.image_id) tr ON tr.image_id = i.id
+     WHERE i.is_deleted = 0";
+    let (fav, unref, multi, safe, unsafe_, no_tag) = conn.query_row(sql, [], |r| {
         Ok((
             r.get::<_, i64>(0)?,
             r.get::<_, i64>(1)?,

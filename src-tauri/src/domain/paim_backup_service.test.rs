@@ -5,11 +5,7 @@ use std::path::PathBuf;
 /// 建一个 paim 应用库（db::init 建 schema），灌入样例数据并 checkpoint 落盘。
 fn seed_app_db(dir: &Path, db_name: &str) -> PathBuf {
     let db_path = dir.join(db_name);
-    let conn = db::init(db_path.clone())
-        .expect("init db")
-        .0
-        .into_inner()
-        .expect("poisoned");
+    let conn = db::open_connection(db_path.clone()).expect("init db");
     conn.execute_batch(
         "INSERT INTO prompts (id, title, content, created_at, updated_at, is_favorite)
          VALUES ('pmt_1', 't1', 'c1', '2026-09-08T04:00:00.000Z', '2026-09-08T05:00:00.000Z', 1),
@@ -51,7 +47,7 @@ fn export_then_restore_roundtrip() {
     std::fs::write(img_sub.join("img_1.png"), b"fake-png-1").unwrap();
     std::fs::write(src_images.join("loose.png"), b"fake-png-2").unwrap();
 
-    let conn = db::init(src_db).unwrap().0.into_inner().unwrap();
+    let conn = db::open_connection(src_db).unwrap();
     let zip_path = root.join("backup.zip");
     export_core(&conn, &src_images, &zip_path, &no_progress).expect("export");
     assert!(zip_path.exists(), "备份文件应生成");

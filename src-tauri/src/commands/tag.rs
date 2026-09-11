@@ -4,6 +4,7 @@
 //! 转调 `domain::tag_service`（查询与关联）与 `domain::tag_manager`（标签本体/分组 CRUD）。
 //! 取代原先分散在 image.rs / prompt.rs / image_tag.rs / prompt_tag.rs 的四套命令。
 
+use crate::commands::db_blocking;
 use crate::domain::tag_manager::{
     self, TagData, TagDomain, TagGroup, TagItem, TagLite, TagNameKind,
 };
@@ -18,20 +19,24 @@ use tauri::State;
 /// 域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。
 #[tauri::command]
 #[specta::specta]
-pub fn get_tag_data(db: State<BkDb>, domain: TagDomain) -> Result<TagData, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_service::load_tag_data(&conn, domain).map_err(|e| AppError::Message(e.to_string()))
+pub async fn get_tag_data(db: State<'_, BkDb>, domain: TagDomain) -> Result<TagData, AppError> {
+    db_blocking(&db, move |conn| {
+        tag_service::load_tag_data(conn, domain).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。
 #[tauri::command]
 #[specta::specta]
-pub fn get_tags_map(
-    db: State<BkDb>,
+pub async fn get_tags_map(
+    db: State<'_, BkDb>,
     domain: TagDomain,
 ) -> Result<HashMap<String, Vec<String>>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_service::load_tags_map(&conn, domain).map_err(|e| AppError::Message(e.to_string()))
+    db_blocking(&db, move |conn| {
+        tag_service::load_tags_map(conn, domain).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 单个实体的标签列表（按名称升序）。

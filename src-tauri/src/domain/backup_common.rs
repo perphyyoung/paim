@@ -213,11 +213,7 @@ where
 
 /// 在指定路径打开应用数据库（含建表/迁移），返回裸连接供装入 BkDb。
 pub(crate) fn open_app_db(path: &Path) -> Result<Connection, String> {
-    db::init(path.to_path_buf())
-        .map_err(|e| format!("初始化数据库失败: {e}"))?
-        .0
-        .into_inner()
-        .map_err(|_| "数据库句柄已损坏".to_string())
+    db::open_connection(path.to_path_buf()).map_err(|e| format!("初始化数据库失败: {e}"))
 }
 
 /// 探测备份包来源：读 manifest appName，归一化为 `"paim"` / `"pm"`。

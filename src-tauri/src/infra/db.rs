@@ -7,12 +7,21 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 
 /// 应用持有的数据库连接（单连接 + Mutex），通过 Tauri managed state 注入。
-pub struct BkDb(pub std::sync::Mutex<Connection>);
+/// Arc 包装使查询命令能克隆句柄丢进 `spawn_blocking`（见 commands::db_blocking）。
+pub struct BkDb(pub std::sync::Arc<std::sync::Mutex<Connection>>);
 
 /// 打开（必要时创建）数据库并执行 DDL。
 /// 表名与字段名与 prompt-manager 完全一致，便于后续数据导入；
 /// 时间列沿用本项目的 ISO 8601 UTC 约定（详见项目 memory）。
 pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
+    Ok(BkDb(std::sync::Arc::new(std::sync::Mutex::new(
+        open_connection(path)?,
+    ))))
+}
+
+/// 打开（必要时创建）数据库并执行 DDL，返回裸连接。
+/// 供 init 包装与备份导入「换连接」场景（backup_common::open_app_db）。
+pub fn open_connection(path: PathBuf) -> rusqlite::Result<Connection> {
     let conn = Connection::open(&path)?;
     conn.execute_batch(
         r#"
@@ -161,7 +170,7 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
         CREATE INDEX IF NOT EXISTS idx_prompts_active_title ON prompts(title) WHERE is_deleted = 0;
         "#,
     )?;
-    Ok(BkDb(std::sync::Mutex::new(conn)))
+    Ok(conn)
 }
 
 /// 生成与 prompt-manager 同格式的文本主键："{prefix}_{YYYYMMDDHHmmss}_{随机5位base36}"。

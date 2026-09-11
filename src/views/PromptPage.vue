@@ -3,6 +3,7 @@ import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, type Prompt, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
+import { log } from "@/utils/logger";
 import { formatLocalTime } from "@/utils/date";
 import { useGridColumns } from "@/utils/gridColumns";
 import { isPlaceholder, usePagedBlocks, type Placeholder } from "@/composables/usePagedBlocks";
@@ -249,6 +250,7 @@ const {
   reload: reloadBlocks,
   replaceItem,
 } = usePagedBlocks<Prompt>({
+  label: "prompt",
   load: (offset, limit) => commands.listPromptsPage({ ...currentQuery(), offset, limit }),
 });
 
@@ -433,6 +435,7 @@ function closeDetail() {
 // 重载：标签映射先取，随后重拉首屏块与特殊标签计数；
 // 缩略图映射不整体重取——清空请求记忆后由 `pageItems` watch 按块补齐（规模随块缓存有界）
 async function loadPrompts() {
+  log.info("[PromptPage] loadPrompts 开始");
   tagNames.value = await commands
     .getTagsMap("prompt")
     .catch(() => ({}) as Record<string, string[]>);
@@ -442,6 +445,7 @@ async function loadPrompts() {
   // 数据重载后重置已校验记忆并检查当前可见窗口
   resetThumbChecked();
   scheduleThumbCheck();
+  log.info("[PromptPage] loadPrompts 结束", "total=", total.value);
 }
 async function loadTagFilter() {
   try {
@@ -582,6 +586,7 @@ async function purgePrompt(p: Prompt) {
 // KeepAlive:数据仅在首次进入加载;激活时消费脏标记按需重载,并恢复滚动位置
 // (对齐 pm 切页不重载的行为)
 onMounted(() => {
+  log.info("[PromptPage] mounted");
   loadPrompts();
   loadTagFilter();
 });

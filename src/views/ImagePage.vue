@@ -2,6 +2,7 @@
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, type Image, type TagGroup, type TagItem } from "@/bindings";
+import { log } from "@/utils/logger";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime } from "@/utils/date";
@@ -110,6 +111,7 @@ const {
   reload: reloadBlocks,
   replaceItem,
 } = usePagedBlocks<Image>({
+  label: "image",
   load: (offset, limit) => commands.listImagesPage({ ...currentQuery(), offset, limit }),
 });
 
@@ -393,14 +395,19 @@ async function purgeImage(img: Image) {
 // 重载：关联映射与 dataDir 并行取（dataDir 先落位，块到达时才能增量拼缩略图 URL），
 // 随后重拉首屏块与特殊标签计数
 async function loadImages() {
+  log.info("[ImagePage] loadImages 开始");
+  const t0 = performance.now();
   const [promptsMap, dir] = await Promise.all([
     commands.getImagePromptsMap().catch(() => ({}) as Record<string, string[]>),
     commands.getDataDir(),
   ]);
   imagePrompts.value = promptsMap;
   dataDir.value = dir;
+  log.info("[ImagePage] 关联映射+dataDir 完成", Math.round(performance.now() - t0), "ms");
   await reloadBlocks();
+  log.info("[ImagePage] reloadBlocks 完成", Math.round(performance.now() - t0), "ms");
   await loadSpecialCounts();
+  log.info("[ImagePage] loadSpecialCounts 完成", Math.round(performance.now() - t0), "ms");
   // 数据重载后重置已校验记忆并检查当前可见窗口
   resetThumbChecked();
   scheduleThumbCheck();
@@ -587,6 +594,7 @@ async function onBatchAddTag(tag: string) {
 
 // KeepAlive:数据仅在首次进入加载;激活时恢复滚动位置并接管外点关闭,失活时释放监听
 onMounted(() => {
+  log.info("[ImagePage] mounted");
   loadImages();
   loadTagFilter();
 });
