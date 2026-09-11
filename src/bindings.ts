@@ -135,8 +135,15 @@ export const commands = {
 	moveTagToGroup: (domain: TagDomain, id: number, groupId: number | null) => __TAURI_INVOKE<null>("move_tag_to_group", { domain, id, groupId }),
 	/**  将标签组固定到首位（sort_order 设为当前最小值 - 1）。 */
 	pinTagGroupToTop: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("pin_tag_group_to_top", { domain, id }),
-	/**  前端上报日志：`rtk invoke("log_msg", { level, message })`。 */
+	/**
+	 *  前端上报日志：`rtk invoke("log_msg", { level, message })`。
+	 *  经全局级别过滤，被过滤的日志不落盘（前端有本地缓存预判，正常不会走到这）。
+	 */
 	logMsg: (level: string, message: string) => __TAURI_INVOKE<void>("log_msg", { level, message }),
+	/**  查询当前全局最低日志级别（小写字符串，供前端启动时同步缓存）。 */
+	getLogLevel: () => __TAURI_INVOKE<string>("get_log_level"),
+	/**  运行时热切全局最低日志级别，并 emit 事件让前端刷新缓存。 */
+	setLogLevel: (level: string) => __TAURI_INVOKE<null>("set_log_level", { level }),
 	getDataDir: () => __TAURI_INVOKE<string>("get_data_dir"),
 	openDataDir: () => __TAURI_INVOKE<null>("open_data_dir"),
 	/**
@@ -164,6 +171,7 @@ export const commands = {
 export const events = {
 	backupProgress: makeEvent<BackupProgress>("backup-progress"),
 	globalShortcut: makeEvent<GlobalShortcutEvent>("global-shortcut"),
+	logLevelChanged: makeEvent<LogLevelChanged>("log-level-changed"),
 	thumbnailRebuildProgress: makeEvent<ThumbnailRebuildProgress>("thumbnail-rebuild-progress"),
 };
 
@@ -303,6 +311,9 @@ export type ListQuery = {
 	sort: string,
 	desc: boolean,
 };
+
+/**  日志级别变更事件（payload 为新级别小写字符串），前端监听后刷新本地缓存。 */
+export type LogLevelChanged = string;
 
 /**  分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。 */
 export type PaginatedImages = {

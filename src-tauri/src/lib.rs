@@ -28,6 +28,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             GlobalShortcutEvent,
             domain::thumbnail_service::ThumbnailRebuildProgress,
             domain::backup_common::BackupProgress,
+            infra::logging::LogLevelChanged,
         ])
         .commands(tauri_specta::collect_commands![
             // —— 提示词通用 ——
@@ -93,6 +94,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // —— 图像标签管理 ——
             // —— 日志 & 数据目录 ——
             logging::log_msg,
+            logging::get_log_level,
+            logging::set_log_level,
             db::get_data_dir,
             db::open_data_dir,
             db::open_image_location,

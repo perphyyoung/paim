@@ -40,9 +40,10 @@ export interface AppHandle {
 }
 
 /// 调试二进制路径（tauri build --debug --no-bundle 产物，globalSetup 已构建）。
+/// 根目录 Cargo.toml 是 workspace 根，cargo 默认 target-dir 即 <项目根>/target；
+/// 与 scripts/gen-bindings.mjs 保持一致。
 function exePath(): string {
-  const targetDir =
-    process.env.CARGO_TARGET_DIR ?? path.join(import.meta.dirname, "..", "src-tauri", "target");
+  const targetDir = process.env.CARGO_TARGET_DIR ?? path.join(import.meta.dirname, "..", "target");
   return path.join(targetDir, "debug", "paim.exe");
 }
 

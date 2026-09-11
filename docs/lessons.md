@@ -19,6 +19,7 @@
 | 13 | 压测诊断时 paim.log 0 字节 / 修复未生效 | `tauri build --debug` 前端日志全 no-op，诊断必须 `pnpm dev`；是否生效靠日志耗时对账；分步日志「开始无完成即嫌疑」。 |
 | 14 | 特殊标签不显示 + 统计一直转 | 同一逻辑两份实现是「修一份漏一份」的温床；未修的慢命令占单连接锁，把排队的其他命令一起拖死。 |
 | 15 | Arc 化后编译错误分两轮才清完 | 重构后用跨行扫描 + 编译器收尾；同文件编辑必须串行；投影类改造要过「命令签名/事件载荷/局部 interface/排序索引」四检查面。 |
+| 16 | 掉盘后 bindings 静默缺新命令 | 磁盘异常恢复后 cargo 指纹与文件内容都可能部分回滚：`cargo clean -p <主crate>` 强制重编，并用 grep 逐文件核对本轮全部改动；改 tauri-specta 注册后必须 grep 复核 `collect_commands`/`collect_events`。 |
 
 ---
 
@@ -445,3 +446,33 @@ vue-tsc 又报 3 处类型失配。
 - 批量重构的收尾顺序：全局多模式扫描 → cargo check/build（编译器找漏网）→ 全量测试；
   「编译通过」不等于「替换完整」（同类型恰好兼容的调用点编译器不报错）。
 - 改列表投影类结构时，同步列出「命令签名 / 事件载荷 / 局部 interface / 排序索引」四个检查面逐一过。
+
+## 16. 掉盘恢复后 bindings 静默缺新命令（cargo 指纹损坏 + 文件级部分回滚）
+
+### 现象
+
+新增 `get_log_level`/`set_log_level` 命令并完成全部源码改动后，`pnpm gen:bindings`
+成功退出，但 `src/bindings.ts` 里没有新命令，vue-tsc 报 `Property 'getLogLevel' does not exist`；
+删掉整个 `target/` 重跑 `pnpm check` 依旧。期间 D: 盘经历了一次掉线-恢复
+（写入 ENXIO → 重启后变 RAW → chkdsk 修复）。
+
+### 根因（两个独立问题叠加）
+
+1. **cargo 构建指纹损坏**：掉盘时正逢 link 阶段，恢复后文件的 mtime 被 chkdsk 还原，
+   cargo 依据 mtime 误判「产物比源码新」直接复用旧 exe（1.62s 秒过、无 Compiling 行）——
+   exe 实际是改动前的二进制，bindings 自然导不出新命令。`cargo clean -p <主crate>` 强制重编即解。
+2. **文件级部分回滚**：掉盘时段的编辑被 chkdsk 按文件随机回滚——`logging.rs` 的命令定义存活，
+   `lib.rs` 的 `collect_commands`/`collect_events` 注册丢失。编译照常通过（未注册的命令只是
+   无人引用），没有任何报错，只有 bindings 缺失这一个静默信号。
+
+### 教训与修复
+
+- **磁盘异常恢复后，构建产物不可信**：先 `cargo clean -p <主crate>` 再 build；验证靠
+  `grep 新符号 src/bindings.ts` 有输出，不靠「gen:bindings 退出码 0」。
+- **逐文件核对本轮改动**：用 `jj st` / grep 把本轮改过的每个文件过一遍是否仍是预期内容
+  ——回滚是按文件咬的，编译通过不代表改动完整。
+- **改 tauri-specta 注册后必须 grep 复核** `collect_commands`/`collect_events` 里有新条目——
+  注册遗漏是「编译通过但功能不存在」的盲区，与掉盘无关，平时也应作为固定收尾步骤。
+- 辅助链路（`gen-bindings.mjs`、e2e 的 exePath）对 target 位置的假设要与环境一致：
+  本仓 target 在 workspace 根（根目录 Cargo.toml 是 workspace 根），曾依赖
+  `CARGO_TARGET_DIR` 掩盖错误兜底路径，环境变量删除后即暴露。

@@ -22,8 +22,8 @@ commands
   .catch(() => {});
 
 events.logLevelChanged
-  .listen((l) => {
-    minLevelNum = LEVEL_NUM[l as Level] ?? minLevelNum;
+  .listen((e) => {
+    minLevelNum = LEVEL_NUM[e.payload as Level] ?? minLevelNum;
     synced = true;
   })
   .catch(() => {});
@@ -53,7 +53,7 @@ export const log = {
   error: (...args: unknown[]) => send("error", args),
 };
 
-/// 热切全局最低日志级别（后端与前端缓存同时生效）。
+// 热切全局最低日志级别（后端与前端缓存同时生效）。
 export async function setLogLevel(level: Level): Promise<void> {
   await commands.setLogLevel(level);
   // 兜底同步缓存（正常由 log-level-changed 事件驱动）

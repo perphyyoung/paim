@@ -39,7 +39,7 @@
 
 ## 环境要点（防踩坑）
 
-- **target 不在项目内**：`CARGO_TARGET_DIR` 指向共享目录 `D:\cargo-shared-target`，找 exe/产物去那里。**永远不要手动覆盖该变量**（系统环境变量已配好），直接跑 `pnpm check` / `pnpm test` 即可。
+- **target 在项目根**：根目录 Cargo.toml 是 workspace 根，cargo 默认 target-dir 即 `<项目根>/target`（曾用 CARGO_TARGET_DIR 指向共享目录，2026-09-11 已删除该环境变量）；`scripts/gen-bindings.mjs` 与 `e2e/e2e-helpers.ts` 的 exe 兜底路径均为 `<项目根>/target/debug/paim.exe`，找产物去那里。
 - `pnpm check` 链路：format → build:rs → **gen:bindings（自动复写 src/bindings.ts）** → typecheck → build；改了 Rust 命令签名记得跑 pnpm check 或 pnpm dev；验证须 grep warning 和 error 双查。
 - bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta 版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。

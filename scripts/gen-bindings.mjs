@@ -5,9 +5,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.join(import.meta.dirname, "..");
-// 与 e2e/helpers.ts 的 exePath 一致：target 目录可能被 CARGO_TARGET_DIR 重定向到共享目录
-const targetDir =
-  process.env.CARGO_TARGET_DIR ?? path.join(root, "src-tauri", "target");
+// 根目录 Cargo.toml 是 workspace 根，cargo 默认 target-dir 即 <项目根>/target；
+// 兜底只在未设 CARGO_TARGET_DIR 时生效。与 e2e/e2e-helpers.ts 的 exePath 保持一致。
+const targetDir = process.env.CARGO_TARGET_DIR ?? path.join(root, "target");
 const exe = path.join(targetDir, "debug", "paim.exe");
 const out = path.join(root, "src", "bindings.ts");
 
