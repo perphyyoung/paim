@@ -40,8 +40,12 @@ export interface UsePagedBlocks<T> {
   blockSize: number;
   /** 由可见区间驱动：补齐所需块并预取相邻块 */
   ensureRange: (start: number, end: number) => void;
-  /** 条件变化后重拉（清空已加载块） */
-  reload: () => Promise<void>;
+  /**
+   * 条件变化后重拉（清空已加载块）。
+   * `keepContent` 保留旧内容直到新块覆盖（stale-while-revalidate），
+   * 用于「数据小改后的同步」——顺序/结果集变化很小，整列清成骨架反而是白闪。
+   */
+  reload: (options?: { keepContent?: boolean }) => Promise<void>;
   /** 详情编辑后回写单条（仅在已加载块中生效） */
   replaceItem: (id: string, next: T) => void;
 }
@@ -69,6 +73,9 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   // 受保护区间（当前可见块 ±1），淘汰时额外放宽到 ±2
   let protectFrom = 0;
   let protectTo = 0;
+  // 最近一次可见区间：reload 后按它回填（保留旧内容时若只拉块 0，可见区会停在旧数据）
+  let lastStart = 0;
+  let lastEnd = blockSize - 1;
 
   const placeholder = (): Placeholder => ({ __placeholder: true });
 
@@ -161,6 +168,8 @@ export function usePagedBlocks<T extends { id: string }>(options: {
       return;
     }
     const lastBlock = Math.max(0, Math.ceil(total.value / blockSize) - 1);
+    lastStart = Math.max(0, start);
+    lastEnd = Math.min(Math.max(0, total.value - 1), Math.max(0, end));
     // 预取相邻块：与 VirtualGrid 的 buffer 配合，跨块滚动不出现空洞
     protectFrom = Math.max(0, Math.floor(Math.max(0, start) / blockSize) - 1);
     protectTo = Math.min(lastBlock, Math.floor(Math.max(0, end) / blockSize) + 1);
@@ -176,19 +185,21 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     }
   }
 
-  async function reload() {
+  async function reload(options?: { keepContent?: boolean }) {
     seq += 1;
-    log.info(tag, "reload 开始", "seq=", seq);
+    log.info(tag, "reload 开始", "seq=", seq, "keepContent=", !!options?.keepContent);
     blocks.clear();
     inflight.clear();
     attempts.clear();
     // 不清零 total、不截断数组：保留占位撑起的旧高度，让 KeepAlive 恢复滚动位置时有高度可落，
     // 否则条件刷新（含跨页脏标记触发的重载）会把滚动位置丢回顶部。新 total 到达后由 loadBlock 校正。
-    commit(items.value.map(() => placeholder()));
+    // keepContent：连内容一起保留（旧数据留在原地直到新块覆盖），避免整列变骨架的闪烁；
+    // 默认仍清空——搜索/筛选切换后旧内容明显不匹配，留着会误导。
+    if (!options?.keepContent) commit(items.value.map(() => placeholder()));
     loading.value = true;
     try {
       await loadBlock(0);
-      ensureRange(0, blockSize - 1);
+      ensureRange(lastStart, lastEnd);
       log.info(tag, "reload 完成", "total=", total.value, "items=", items.value.length);
     } finally {
       loading.value = false;

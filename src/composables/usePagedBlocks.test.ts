@@ -81,6 +81,43 @@ describe("分块装载", () => {
     expect(p.items.value.slice(3).every(isPlaceholder)).toBe(true);
   });
 
+  it("reload({ keepContent }) 保留旧内容直到新块覆盖（整列不清成骨架）", async () => {
+    const { calls, load } = createLoader();
+    const p = usePagedBlocks<Row>({ load, blockSize: 3 });
+
+    const first = p.reload();
+    calls[0].d.resolve({ items: rows(0, 3), total: 9 });
+    await first;
+    calls[1].d.resolve({ items: rows(3, 3), total: 9 });
+    await flush();
+
+    const second = p.reload({ keepContent: true });
+    expect(
+      p.items.value.slice(0, 6).map((x) => (x as Row).id),
+      "新块未到达时旧内容仍在原地",
+    ).toEqual(["id-0", "id-1", "id-2", "id-3", "id-4", "id-5"]);
+
+    calls[2].d.resolve({ items: rows(0, 3, "new"), total: 9 });
+    await second;
+    expect(p.items.value.slice(0, 3).map((x) => (x as Row).id)).toEqual([
+      "new-0",
+      "new-1",
+      "new-2",
+    ]);
+  });
+
+  it("reload() 默认清空已加载项（筛选切换后旧内容不匹配）", async () => {
+    const { calls, load } = createLoader();
+    const p = usePagedBlocks<Row>({ load, blockSize: 3 });
+
+    const first = p.reload();
+    calls[0].d.resolve({ items: rows(0, 3), total: 9 });
+    await first;
+
+    void p.reload();
+    expect(p.items.value.every(isPlaceholder), "默认应立刻清成占位").toBe(true);
+  });
+
   it("ensureRange 补齐可见块并预取前后各一块，已加载的块不重复请求", async () => {
     const { calls, load } = createLoader();
     const p = usePagedBlocks<Row>({ load, blockSize: 3 });

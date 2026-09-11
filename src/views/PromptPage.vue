@@ -454,19 +454,20 @@ function closeDetail() {
   // 详情期间没有改动就不重拉：reload 会把整列清成占位再重填，纯浏览时是白闪一下
   if (!detailDirty.value) return;
   detailDirty.value = false;
-  // 关闭详情后才重新同步，让更新的 updated_at 等排序生效
-  loadPrompts();
+  // 关闭详情后才重新同步，让更新的 updated_at 等排序生效。
+  // keepContent：数据已由 replaceItem 即时同步，这里只补顺序/结果集，旧内容留到新块覆盖，避免白闪
+  loadPrompts({ keepContent: true });
   loadTagFilter();
 }
 // 重载：标签映射先取，随后重拉首屏块与特殊标签计数；
 // 缩略图映射不整体重取——清空请求记忆后由 `pageItems` watch 按块补齐（规模随块缓存有界）
-async function loadPrompts() {
+async function loadPrompts(options?: { keepContent?: boolean }) {
   log.info("[PromptPage] loadPrompts 开始");
   tagNames.value = await commands
     .getTagsMap("prompt")
     .catch(() => ({}) as Record<string, string[]>);
   thumbTried.clear();
-  await reloadBlocks();
+  await reloadBlocks(options);
   await loadSpecialTagsCounts();
   // 数据重载后重置已校验记忆并检查当前可见窗口
   resetThumbChecked();

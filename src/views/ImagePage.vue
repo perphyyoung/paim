@@ -394,7 +394,7 @@ async function purgeImage(img: ImageCard) {
 
 // 重载：关联映射与 dataDir 并行取（dataDir 先落位，块到达时才能增量拼缩略图 URL），
 // 随后重拉首屏块与特殊标签计数
-async function loadImages() {
+async function loadImages(options?: { keepContent?: boolean }) {
   log.info("[ImagePage] loadImages 开始");
   const t0 = performance.now();
   const [promptsMap, dir] = await Promise.all([
@@ -404,7 +404,7 @@ async function loadImages() {
   imagePrompts.value = promptsMap;
   dataDir.value = dir;
   log.info("[ImagePage] 关联映射+dataDir 完成", Math.round(performance.now() - t0), "ms");
-  await reloadBlocks();
+  await reloadBlocks(options);
   log.info("[ImagePage] reloadBlocks 完成", Math.round(performance.now() - t0), "ms");
   await loadSpecialTagsCounts();
   log.info("[ImagePage] loadSpecialTagsCounts 完成", Math.round(performance.now() - t0), "ms");
@@ -486,8 +486,9 @@ function closeDetail() {
   // 详情期间没有改动就不重拉：reload 会把整列清成占位再重填，纯浏览时是白闪一下
   if (!detailDirty.value) return;
   detailDirty.value = false;
-  // 关闭详情后才重新同步排序与标签筛选（更新的 updated_at/文件名排序此时生效）
-  loadImages();
+  // 关闭详情后才重新同步排序与标签筛选（更新的 updated_at/文件名排序此时生效）。
+  // keepContent：数据已由 replaceItem 即时同步，这里只补顺序/结果集，旧内容留到新块覆盖，避免白闪
+  loadImages({ keepContent: true });
   loadTagFilter();
 }
 function onDetailUpdate(updated: ImageCard) {
