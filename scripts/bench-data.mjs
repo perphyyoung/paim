@@ -15,9 +15,9 @@ import path from "node:path";
 const MARK = "bench";
 const BATCH = 2000;
 const MONTH = "202609";
-/** 单域标签上限，镜像 domain/tag_manager.rs 的 MAX_TAGS_PER_DOMAIN（标签按小规模设计，不做万级） */
+/** 单域标签上限，镜像 domain/tag_manager.rs 的 MAX_TAGS_PER_DOMAIN（约束见根目录 readme.md） */
 const MAX_TAGS_PER_DOMAIN = 500;
-/** 首位组的标签数上限：筛选区收起后首位组标签仍参与布局，数量过大会把卡片区挤出视口 */
+/** 首位组标签数上限，镜像 domain/tag_manager.rs 的 MAX_TAGS_IN_TOP_GROUP（约束见根目录 readme.md） */
 const FIRST_GROUP_TAG_CAP = 100;
 /** 各域的表名映射（与 infra/db.rs 的 schema 一致） */
 const TABLES = {

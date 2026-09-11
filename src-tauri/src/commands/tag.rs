@@ -138,6 +138,10 @@ pub fn update_tag_group(
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     tag_manager::ensure_name_not_dup(&conn, domain, TagNameKind::Group, &name, Some(id))
         .map_err(AppError::Message)?;
+    if let Some(so) = sort_order {
+        tag_manager::ensure_group_resort_capacity(&conn, domain, id, so)
+            .map_err(AppError::Message)?;
+    }
     tag_manager::update_group(&conn, domain, id, &name, sort_order)
         .map_err(|e| AppError::Message(e.to_string()))
 }
@@ -166,6 +170,10 @@ pub fn create_tag(
     tag_manager::ensure_name_not_dup(&conn, domain, TagNameKind::Tag, &name, None)
         .map_err(AppError::Message)?;
     tag_manager::ensure_tag_capacity(&conn, domain).map_err(AppError::Message)?;
+    if let Some(gid) = group_id {
+        tag_manager::ensure_top_group_capacity(&conn, domain, gid, None)
+            .map_err(AppError::Message)?;
+    }
     tag_manager::create_tag(&conn, domain, &name, group_id)
         .map_err(|e| AppError::Message(e.to_string()))
 }
@@ -206,6 +214,10 @@ pub fn move_tag_to_group(
     group_id: Option<i64>,
 ) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    if let Some(gid) = group_id {
+        tag_manager::ensure_top_group_capacity(&conn, domain, gid, Some(id))
+            .map_err(AppError::Message)?;
+    }
     tag_manager::move_tag(&conn, domain, id, group_id).map_err(|e| AppError::Message(e.to_string()))
 }
 
@@ -214,5 +226,6 @@ pub fn move_tag_to_group(
 #[specta::specta]
 pub fn pin_tag_group_to_top(db: State<BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    tag_manager::ensure_group_as_top_capacity(&conn, domain, id).map_err(AppError::Message)?;
     tag_manager::pin_group_to_top(&conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
 }

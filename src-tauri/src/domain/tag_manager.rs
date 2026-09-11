@@ -86,6 +86,117 @@ pub fn ensure_tag_capacity(conn: &Connection, domain: TagDomain) -> Result<(), S
     }
 }
 
+/// 首位组（sort_order 最小的标签组）的标签数上限：首位组在筛选区收起后仍参与布局，
+/// 过多会把卡片区挤出视口（约束说明见根目录 readme.md「标签按小规模设计」）。
+pub const MAX_TAGS_IN_TOP_GROUP: i64 = 100;
+
+/// 当前首位组 id（无任何组时为 None）。
+fn top_group_id(conn: &Connection, domain: TagDomain) -> RusqliteResult<Option<i64>> {
+    conn.query_row(
+        &format!(
+            "SELECT id FROM {} ORDER BY sort_order ASC, id ASC LIMIT 1",
+            domain.groups_table()
+        ),
+        [],
+        |r| r.get(0),
+    )
+    .optional()
+}
+
+/// 组内标签数（exclude_tag 用于移动场景排除被移动标签自身，避免同名组内移动误判）。
+fn group_tag_count(
+    conn: &Connection,
+    domain: TagDomain,
+    group_id: i64,
+    exclude_tag: Option<i64>,
+) -> RusqliteResult<i64> {
+    match exclude_tag {
+        Some(id) => conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM {} WHERE group_id = ?1 AND id != ?2",
+                domain.tags_table()
+            ),
+            rusqlite::params![group_id, id],
+            |r| r.get(0),
+        ),
+        None => conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM {} WHERE group_id = ?1",
+                domain.tags_table()
+            ),
+            rusqlite::params![group_id],
+            |r| r.get(0),
+        ),
+    }
+}
+
+/// 校验标签加入 group_id 后首位组不超上限（仅当目标组是首位组时约束）；
+/// 已达上限返回中文错误文本。
+pub fn ensure_top_group_capacity(
+    conn: &Connection,
+    domain: TagDomain,
+    group_id: i64,
+    exclude_tag: Option<i64>,
+) -> Result<(), String> {
+    if top_group_id(conn, domain).map_err(|e| e.to_string())? != Some(group_id) {
+        return Ok(());
+    }
+    if group_tag_count(conn, domain, group_id, exclude_tag).map_err(|e| e.to_string())?
+        >= MAX_TAGS_IN_TOP_GROUP
+    {
+        Err(format!(
+            "首位组最多 {MAX_TAGS_IN_TOP_GROUP} 个标签，无法再加入"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// 校验 group_id 即将成为首位组（置顶 / 改 sort_order）时不超上限；已是首位组则跳过。
+pub fn ensure_group_as_top_capacity(
+    conn: &Connection,
+    domain: TagDomain,
+    group_id: i64,
+) -> Result<(), String> {
+    if top_group_id(conn, domain).map_err(|e| e.to_string())? == Some(group_id) {
+        return Ok(());
+    }
+    // 加入路径满 100 即拒（>=），置顶路径允许恰好 100（>100 才拒），两处口径均为「首位组最多 100 个」
+    if group_tag_count(conn, domain, group_id, None).map_err(|e| e.to_string())?
+        > MAX_TAGS_IN_TOP_GROUP
+    {
+        Err(format!(
+            "该组标签超过 {MAX_TAGS_IN_TOP_GROUP} 个，不能固定到首位"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// 校验修改组排序（update_group 的 sort_order）后首位组不超上限；
+/// 仅当新 sort_order 会使该组成为首位组时约束。
+pub fn ensure_group_resort_capacity(
+    conn: &Connection,
+    domain: TagDomain,
+    group_id: i64,
+    new_sort_order: i64,
+) -> Result<(), String> {
+    let min_others: i64 = conn
+        .query_row(
+            &format!(
+                "SELECT COALESCE(MIN(sort_order), 0) FROM {} WHERE id != ?1",
+                domain.groups_table()
+            ),
+            rusqlite::params![group_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if new_sort_order > min_others {
+        return Ok(());
+    }
+    ensure_group_as_top_capacity(conn, domain, group_id)
+}
+
 impl TagDomain {
     pub fn tags_table(self) -> &'static str {
         match self {
@@ -376,3 +487,7 @@ pub fn pin_group_to_top(conn: &Connection, domain: TagDomain, id: i64) -> rusqli
     conn.execute(&sql, rusqlite::params![first - 1, id])?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tag_manager.test.rs"]
+mod tests;
