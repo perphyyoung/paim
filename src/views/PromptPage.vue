@@ -200,8 +200,11 @@ function handleGridScroll(p: GridScrollPayload) {
 
 // 详情弹窗内的编辑就地改原始对象（shallowRef 下需整表重拉触发更新）；
 // 同时内容/关联变化会影响图像主页
-function onModalUpdated() {
-  loadPrompts();
+function onModalUpdated(updated: PromptCard | null) {
+  // 详情开着时不重拉：列表被遮挡，且重载会把整列清成占位（关闭时统一按需重拉一次）
+  detailDirty.value = true;
+  // 原地换一条（数组引用换新即触发重渲染），收藏/安全等即时反馈无需重拉
+  if (updated) replaceItem(updated.id, updated);
   markPageStale("images");
 }
 
@@ -408,6 +411,8 @@ const detailOpen = ref(false);
 const detailIndex = ref(0);
 // 进入详情时生成「顺序快照」：详情停留期间计数/导航按旧顺序走，保存只更新数据不做排序重排
 const detailOrder = ref<string[]>([]);
+/** 详情期间的改动标记：关闭时按需重拉，无改动则不重载（避免整列被清成占位再重填的闪烁） */
+const detailDirty = ref(false);
 /** 模板用：占位项已由 v-if 排除，这里只做类型收窄 */
 function asCard(x: PromptCard | Placeholder): PromptCard {
   return x as Prompt;
@@ -419,6 +424,7 @@ function openDetail(i: number) {
   // 顺序快照先用当前已加载项即时打开，随后异步补全为全量 id
   const order = detailPrompts.value.map((p) => p.id);
   detailOrder.value = order;
+  detailDirty.value = false;
   const item = pageItems.value[i];
   detailIndex.value = Math.max(
     0,
@@ -445,6 +451,9 @@ function ensureDetailIndex(index: number) {
 }
 function closeDetail() {
   detailOpen.value = false;
+  // 详情期间没有改动就不重拉：reload 会把整列清成占位再重填，纯浏览时是白闪一下
+  if (!detailDirty.value) return;
+  detailDirty.value = false;
   // 关闭详情后才重新同步，让更新的 updated_at 等排序生效
   loadPrompts();
   loadTagFilter();

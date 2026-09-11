@@ -54,7 +54,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "updated"): void;
+  /** 数据变化：带上当前项，父级可原地替换（避免整列重拉造成的闪烁）；无可换项时传 null */
+  (e: "updated", item: PromptCard | null): void;
   /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
   (e: "safe-synced", isSafe: boolean): void;
   /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
@@ -236,18 +237,23 @@ function close() {
   emit("close");
 }
 
+/** 通知主页数据已变：带上当前项，父级 replaceItem 原地换一条即可（与图像详情的 update 对称） */
+function notifyUpdated() {
+  emit("updated", current.value);
+}
+
 // 切换收藏/安全（与图像详情共用逻辑，原地更新 current 并通知父级）
 const { toggleCurrent } = useItemToggle<PromptCard>({ domain: "prompt", showToast });
 function toggleFavorite() {
   const p = current.value;
   if (!p) return;
-  toggleCurrent(current, "is_favorite", () => emit("updated"));
+  toggleCurrent(current, "is_favorite", notifyUpdated);
 }
 async function toggleSafe() {
   const p = current.value;
   if (!p) return;
   const v = !p.is_safe;
-  await toggleCurrent(current, "is_safe", () => emit("updated"));
+  await toggleCurrent(current, "is_safe", notifyUpdated);
   // 安全评级联动一层：同步到该提示词关联的图像
   try {
     await commands.syncPromptSafeToImages(p.id, v);
@@ -269,7 +275,7 @@ async function onNestedImageReplaced({ oldId, image }: { oldId: string; image: F
   imgDetailImages.value = imgDetailImages.value.map((i) => (i.id === oldId ? image : i));
   // 换图后旧缓存里的 id/src 已失效
   await reloadRelatedImages();
-  emit("updated");
+  notifyUpdated();
 }
 
 async function saveFields() {
@@ -314,7 +320,7 @@ async function saveFields() {
     edit.value = false;
     // 内容会显示在图像主页卡片的关联提示词文案里
     markPageStale("images");
-    emit("updated");
+    notifyUpdated();
     showToast("已保存", "success");
   } catch (e) {
     showToast(`保存失败：${e}`, "error");
@@ -327,7 +333,7 @@ const { tagInput, addTag } = useTagAdd({
   getItemId: () => current.value?.id,
   tags,
   showToast,
-  onAdded: () => emit("updated"),
+  onAdded: notifyUpdated,
 });
 
 // 复制字段内容（编辑态取输入框值，展示态取 current 值）
@@ -352,7 +358,7 @@ async function removeTag(tagId: number) {
   if (!p) return;
   await commands.removeTag("prompt", p.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
-  emit("updated");
+  notifyUpdated();
 }
 
 // ---- 全屏查看（双击关联图像直接进入，对齐 pm） ----
@@ -399,7 +405,7 @@ async function setAsFirst() {
     await commands.setPromptFirstImage(p.id, img.id);
     relatedImages.value = [img, ...relatedImages.value.filter((i) => i.id !== img.id)];
     relatedImagesCache.invalidate(p.id); // 排序已变，缓存作废
-    emit("updated"); // 列表卡片封面已变化
+    notifyUpdated(); // 列表卡片封面已变化
   } catch (e) {
     showToast(`设为首图失败：${e}`, "error");
   }
@@ -419,7 +425,7 @@ async function removeImage(img: RelatedImage) {
   relatedImagesCache.invalidate(p.id);
   // 关联关系变化影响图像主页卡片的关联提示词文案
   markPageStale("images");
-  emit("updated");
+  notifyUpdated();
   showToast("已移除关联图像", "success");
 }
 
@@ -498,7 +504,7 @@ async function importFromExternal() {
   try {
     const res = await commands.addImagesToPrompt(p.id, paths);
     await reloadRelatedImages();
-    emit("updated");
+    notifyUpdated();
     if (res.errors.length > 0) {
       showToast(`导入 ${res.results.length} 张，失败 ${res.errors.length} 张`, "warning");
     } else {
@@ -520,7 +526,7 @@ function importFromPicker() {
 async function onPickerImported() {
   pickerOpen.value = false;
   await reloadRelatedImages();
-  emit("updated");
+  notifyUpdated();
   showToast("已关联所选图像", "success");
 }
 </script>

@@ -160,6 +160,8 @@ function onNestedPromptSafeSynced(isSafe: boolean) {
 function onNestedPromptUpdated() {
   void reloadRelatedPrompts();
   markPageStale("prompts");
+  // 图像主页卡片的关联提示词文案已变，关闭详情时统一重拉
+  if (current.value) emit("update", current.value);
 }
 
 async function loadPromptTagData() {
@@ -284,7 +286,10 @@ const { tagInput, addTag } = useTagAdd({
   showToast,
   onAdded: () => {
     const img = current.value;
-    if (img) imageTagsCache.invalidate(img.id);
+    if (!img) return;
+    imageTagsCache.invalidate(img.id);
+    // 通知主页：卡片标签与标签筛选计数已变化（删除标签走 removeTag，同样 emit）
+    emit("update", img);
   },
 });
 // 复制提示词字段内容（图像详情为纯展示，无编辑态）

@@ -446,6 +446,8 @@ const detailOpen = ref(false);
 const detailIndex = ref(0);
 // 进入详情时生成「顺序快照」：详情停留期间计数/导航按旧顺序走，编辑只更新数据不做排序重排
 const detailOrder = ref<string[]>([]);
+/** 详情期间的改动标记：关闭时按需重拉，无改动则不重载（避免整列被清成占位再重填的闪烁） */
+const detailDirty = ref(false);
 
 /** 模板用：占位项已由 v-if 排除，这里只做类型收窄 */
 function asCard(x: ImageCard | Placeholder): ImageCard {
@@ -458,6 +460,7 @@ function openDetail(img: ImageCard) {
   // 顺序快照先用当前已加载项即时打开，随后异步补全为全量 id
   const order = pageItems.value.filter((x): x is Image => !isPlaceholder(x)).map((i) => i.id);
   detailOrder.value = order;
+  detailDirty.value = false;
   detailIndex.value = Math.max(0, order.indexOf(img.id));
   detailOpen.value = true;
   void loadDetailOrder();
@@ -480,11 +483,15 @@ function ensureDetailIndex(index: number) {
 }
 function closeDetail() {
   detailOpen.value = false;
+  // 详情期间没有改动就不重拉：reload 会把整列清成占位再重填，纯浏览时是白闪一下
+  if (!detailDirty.value) return;
+  detailDirty.value = false;
   // 关闭详情后才重新同步排序与标签筛选（更新的 updated_at/文件名排序此时生效）
   loadImages();
   loadTagFilter();
 }
 function onDetailUpdate(updated: ImageCard) {
+  detailDirty.value = true;
   // 同步回当前已加载块（占位项不参与）
   replaceItem(updated.id, updated);
 }
