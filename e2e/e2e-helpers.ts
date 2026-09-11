@@ -279,6 +279,15 @@ export const test = helpersTest;
 
 /// ---- 页面操作 ----
 
+/// 点侧边栏导航切回提示词主页。用例间复位只 reload、不重置路由——应用会停在上一用例
+/// 离开时的页面（如图像主页），因此依赖提示词主页的用例必须显式切回来
+/// （08 的提示词用例紧跟图像用例时就栽在这里）。
+export async function gotoPromptsPage(page: Page): Promise<void> {
+  const nav = page.getByRole("link", { name: "提示词" });
+  await expect(nav).toBeVisible();
+  await nav.click();
+}
+
 /// 点侧边栏导航切到图像主页（应用默认停在提示词主页）
 export async function gotoImagesPage(page: Page): Promise<void> {
   const nav = page.getByRole("link", { name: "图像" });
@@ -367,6 +376,27 @@ export async function openImageDetail(page: Page, cardText: string): Promise<voi
       await dumpPageState(page, "打开图像详情失败：详情弹窗未出现");
       throw err;
     });
+}
+
+/// 详情弹窗容器（Teleport 到 body 的遮罩层）：把控件定位限定在弹窗内，
+/// 否则会与主页卡片上的同名控件撞车——卡片收藏按钮的 title 同样是「收藏 / 取消收藏」。
+/// 选择器带 z-50：ToastHost 也是 `fixed inset-0`（z-[130]），不限定层级会先命中它。
+export function detailDialog(page: Page): Locator {
+  return page.locator("div.fixed.inset-0.z-50").first();
+}
+
+/// 点弹窗右上 ✕ 关闭详情，并等弹窗消失（两个详情页的关闭按钮 title 均为「关闭」）
+export async function closeDetailDialog(page: Page): Promise<void> {
+  await detailDialog(page).getByTitle("关闭").click();
+  await expect(detailDialog(page)).toBeHidden({ timeout: 5_000 });
+}
+
+/// 筛选区特殊标签 chip（「收藏」「敏感」等）。chip 只在计数 > 0 时渲染，而计数是
+/// 主页刷新时拉取的内存值——故「chip 出现 / 消失」可断言主页是否已同步到该状态
+/// （直接查库只能证明落库，证明不了主页刷新）。名称文本节点在页面里唯一：
+/// 卡片上的收藏用的是 title 属性，不是文本。
+export function specialTagChip(page: Page, name: string): Locator {
+  return page.getByText(name, { exact: true });
 }
 
 /// Ctrl 点击卡片进入批量模式并打开「添加标签」弹窗，返回标签名输入框。
@@ -517,6 +547,33 @@ export async function getItemTagNames(
 export async function listTrashedImageIds(page: Page): Promise<string[]> {
   const items = await invokeCommand<Array<{ id: string }>>(page, "list_trashed_images");
   return items.map((t) => t.id);
+}
+
+/// 条目的收藏 / 安全标志
+export interface ItemFlags {
+  is_favorite: boolean;
+  is_safe: boolean;
+}
+
+/// 图像的 is_favorite / is_safe（直查后端：详情里的切换是否真的落库）
+export async function getImageFlags(page: Page, imageId: string): Promise<ItemFlags> {
+  const res = await invokeCommand<{
+    items: Array<{ id: string; is_favorite: boolean; is_safe: boolean }>;
+  }>(page, "list_images", { limit: 1000, search: null, tag: null });
+  const item = res.items.find((i) => i.id === imageId);
+  expect(item, `图像应存在：${imageId}`).toBeTruthy();
+  return { is_favorite: item!.is_favorite, is_safe: item!.is_safe };
+}
+
+/// 提示词的 is_favorite / is_safe（同上，验证落库）
+export async function getPromptFlags(page: Page, promptId: string): Promise<ItemFlags> {
+  const items = await invokeCommand<Array<{ id: string; is_favorite: boolean; is_safe: boolean }>>(
+    page,
+    "list_prompts",
+  );
+  const item = items.find((i) => i.id === promptId);
+  expect(item, `提示词应存在：${promptId}`).toBeTruthy();
+  return { is_favorite: item!.is_favorite, is_safe: item!.is_safe };
 }
 
 /// 直连后端批量建提示词（分页专项造数据用，绕过 UI——创建流程本身由 02 覆盖）。
