@@ -66,23 +66,58 @@ pub fn get_by_id(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
     rows.next().transpose()
 }
 
-pub fn list(conn: &Connection) -> Result<Vec<Prompt>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note
-         FROM prompts WHERE is_deleted = 0 ORDER BY updated_at DESC",
-    )?;
-    let rows = stmt.query_map([], row_to_prompt)?;
+pub fn list(conn: &Connection) -> Result<Vec<PromptCard>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {PCARD_COLS}
+         FROM prompts WHERE is_deleted = 0 ORDER BY updated_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_prompt_card)?;
     rows.collect()
+}
+
+/// 主页/回收站列表的卡片投影：与 `Prompt` 相比去掉恒定的 `is_deleted`
+/// （未删除列表恒 false、回收站恒 true，前端零使用），与图像侧 `ImageCard` 对称。
+/// `content` / `content_translate` / `note` 为卡片与详情编辑所需，保留在投影内。
+#[derive(Debug, Serialize, Clone, specta::Type)]
+pub struct PromptCard {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub content_translate: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+    pub is_favorite: bool,
+    pub is_safe: bool,
+    pub note: String,
 }
 
 /// 分页提示词列表：items 为本页，total 为符合条件总数。
 #[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct PaginatedPrompts {
-    pub items: Vec<Prompt>,
+    pub items: Vec<PromptCard>,
     pub total: i64,
 }
 
 const PROMPT_COLS: &str = "id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note";
+
+/// 卡片投影列：与 `PromptCard` 字段一一对应，顺序即 `row_to_prompt_card` 的取列顺序。
+const PCARD_COLS: &str = "id, title, content, content_translate, created_at, updated_at, deleted_at, is_favorite, is_safe, note";
+
+fn row_to_prompt_card(row: &rusqlite::Row) -> Result<PromptCard> {
+    Ok(PromptCard {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        content: row.get(2)?,
+        content_translate: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+        deleted_at: row.get(6)?,
+        is_favorite: row.get(7)?,
+        is_safe: row.get(8)?,
+        note: row.get(9)?,
+    })
+}
 
 /// 提示词关联的「未删除图像」数量（`img.is_deleted = 0`），特殊标签 无图 / 多图 按它判定。
 const IMG_COUNT_SQL: &str = "SELECT COUNT(*) FROM prompt_image_relations pir JOIN images i ON i.id = pir.image_id WHERE pir.prompt_id = prompts.id AND i.is_deleted = 0";
@@ -164,7 +199,7 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedPrompts> {
     )?;
 
     let sql = format!(
-        "SELECT {PROMPT_COLS} FROM prompts WHERE is_deleted = 0{filter}
+        "SELECT {PCARD_COLS} FROM prompts WHERE is_deleted = 0{filter}
          ORDER BY {} {} LIMIT ? OFFSET ?",
         sort_column(&q.sort),
         list_query::order_dir(q.desc)
@@ -172,7 +207,10 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedPrompts> {
     params.push(Value::Integer(list_query::clamp_limit(q.limit)));
     params.push(Value::Integer(list_query::clamp_offset(q.offset)));
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), row_to_prompt)?;
+    let rows = stmt.query_map(
+        rusqlite::params_from_iter(params.iter()),
+        row_to_prompt_card,
+    )?;
     Ok(PaginatedPrompts {
         items: rows.collect::<Result<Vec<_>>>()?,
         total,
@@ -252,12 +290,12 @@ pub fn remove(conn: &Connection, id: &str) -> Result<()> {
 }
 
 /// 列出回收站中的提示词（已软删除），按删除时间倒序。
-pub fn list_trashed(conn: &Connection) -> Result<Vec<Prompt>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note
-         FROM prompts WHERE is_deleted = 1 ORDER BY deleted_at DESC",
-    )?;
-    let rows = stmt.query_map([], row_to_prompt)?;
+pub fn list_trashed(conn: &Connection) -> Result<Vec<PromptCard>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {PCARD_COLS}
+         FROM prompts WHERE is_deleted = 1 ORDER BY deleted_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_prompt_card)?;
     rows.collect()
 }
 

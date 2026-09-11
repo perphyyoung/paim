@@ -2,7 +2,7 @@
 // 图像选择弹窗：从已有图像列表中多选并导入到指定提示词。供提示词详情「从图像列表导入」使用。
 import { computed, onMounted, ref, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands, type Image } from "@/bindings";
+import { commands, type ImageCard } from "@/bindings";
 import { toTimestamp } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
 
@@ -16,7 +16,7 @@ const emit = defineEmits<{
   (e: "imported"): void;
 }>();
 
-const images = ref<Image[]>([]);
+const images = ref<ImageCard[]>([]);
 const total = ref(0);
 const thumbs = ref<Record<string, string>>({});
 const loading = ref(false);
@@ -38,7 +38,7 @@ const SORT_OPTIONS = [
 
 const sortedImages = computed(() => {
   let arr = [...images.value];
-  let cmp: (a: Image, b: Image) => number;
+  let cmp: (a: ImageCard, b: ImageCard) => number;
   switch (sortBy.value) {
     case "createdAt":
       cmp = (a, b) => toTimestamp(a.created_at) - toTimestamp(b.created_at);
@@ -72,7 +72,7 @@ const infoText = computed(() => {
   return `${base} · 已选 ${selectedIds.value.size} 张`;
 });
 
-function thumbUrl(img: Image): string {
+function thumbUrl(img: ImageCard): string {
   return thumbs.value[img.id] ?? "";
 }
 

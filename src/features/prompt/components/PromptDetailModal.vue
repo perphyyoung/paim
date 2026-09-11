@@ -2,7 +2,7 @@
 // 提示词详情弹窗：展示/编辑标题、内容、翻译、备注，标签增删，关联图像网格查看/移除。
 import { computed, ref, toRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands } from "@/bindings";
+import { commands, type PromptCard } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useItemToggle } from "@/composables/useItemToggle";
@@ -25,17 +25,6 @@ import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue"
 import { markPageStale } from "@/utils/crossPageCache";
 import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
 
-interface Prompt {
-  id: string;
-  title: string;
-  content: string;
-  content_translate: string;
-  note: string;
-  is_favorite: boolean;
-  is_safe: boolean;
-  created_at: string;
-  updated_at: string;
-}
 interface TagItem {
   id: number;
   name: string;
@@ -51,7 +40,7 @@ interface RelatedImage {
 
 const props = defineProps<{
   open: boolean;
-  prompts: Prompt[];
+  prompts: PromptCard[];
   /** 进入详情时的「顺序快照」：详情停留期间计数/导航/位置按此旧顺序走，不随新建排序变化 */
   order: string[];
   initialIndex: number;
@@ -74,7 +63,7 @@ const { showToast } = useToast();
 const { openImageLocation } = useOpenImageLocation();
 
 // 以「顺序快照」定位当前提示词，避免列表重载/重排后数据或位置漂移
-const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<Prompt>(
+const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<PromptCard>(
   () => props.prompts,
   toRef(props, "order"),
 );
@@ -235,7 +224,7 @@ function close() {
 }
 
 // 切换收藏/安全（与图像详情共用逻辑，原地更新 current 并通知父级）
-const { toggleCurrent } = useItemToggle<Prompt>({ domain: "prompt", showToast });
+const { toggleCurrent } = useItemToggle<PromptCard>({ domain: "prompt", showToast });
 function toggleFavorite() {
   const p = current.value;
   if (!p) return;

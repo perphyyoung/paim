@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands, type Prompt, type TagGroup, type TagItem } from "@/bindings";
+import { commands, type Prompt, type PromptCard, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { log } from "@/utils/logger";
 import { formatLocalTime } from "@/utils/date";
@@ -249,7 +249,7 @@ const {
   ensureRange,
   reload: reloadBlocks,
   replaceItem,
-} = usePagedBlocks<Prompt>({
+} = usePagedBlocks<PromptCard>({
   label: "prompt",
   load: (offset, limit) => commands.listPromptsPage({ ...currentQuery(), offset, limit }),
 });
@@ -286,7 +286,7 @@ const emptyState = computed(() => {
 });
 
 // row4 随排序依据动态显示
-function rowInfo(p: Prompt): { label: string; value: string } {
+function rowInfo(p: PromptCard): { label: string; value: string } {
   switch (sortBy.value) {
     case "createdAt":
       return { label: "创建时间", value: formatLocalTime(p.created_at) };
@@ -303,7 +303,7 @@ const { toggleOne, toggleBatch } = useItemToggle<Prompt>({
   patch: (p) => replaceItem(p.id, p),
   showToast,
 });
-function toggleFavorite(p: Prompt) {
+function toggleFavorite(p: PromptCard) {
   toggleOne(p, "is_favorite");
 }
 async function onBatchFavorite() {
@@ -314,7 +314,7 @@ async function onBatchFavorite() {
   }
 }
 
-async function copyPrompt(p: Prompt) {
+async function copyPrompt(p: PromptCard) {
   try {
     await navigator.clipboard.writeText(p.content);
     showToast("提示词已复制到剪贴板", "success");
@@ -324,8 +324,8 @@ async function copyPrompt(p: Prompt) {
 }
 
 const singleDeleteOpen = ref(false);
-const singleDeleteTarget = ref<Prompt | null>(null);
-function requestDelete(p: Prompt) {
+const singleDeleteTarget = ref<PromptCard | null>(null);
+function requestDelete(p: PromptCard) {
   singleDeleteTarget.value = p;
   singleDeleteOpen.value = true;
 }
@@ -409,7 +409,7 @@ const detailIndex = ref(0);
 // 进入详情时生成「顺序快照」：详情停留期间计数/导航按旧顺序走，保存只更新数据不做排序重排
 const detailOrder = ref<string[]>([]);
 /** 模板用：占位项已由 v-if 排除，这里只做类型收窄 */
-function asCard(x: Prompt | Placeholder): Prompt {
+function asCard(x: PromptCard | Placeholder): PromptCard {
   return x as Prompt;
 }
 /** 详情弹窗的列表来源：当前已加载项（未加载块是占位，不参与详情翻页） */
@@ -491,9 +491,9 @@ function onTagManagerSaved() {
 
 // —— 回收站 ——
 const trashOpen = ref(false);
-const trashPrompts = shallowRef<Prompt[]>([]);
+const trashPrompts = shallowRef<PromptCard[]>([]);
 const emptyTrashOpen = ref(false);
-const purgeTarget = ref<Prompt | null>(null);
+const purgeTarget = ref<PromptCard | null>(null);
 const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
@@ -546,7 +546,7 @@ async function doEmptyTrash() {
   }
 }
 
-function requestPurgePrompt(p: Prompt) {
+function requestPurgePrompt(p: PromptCard) {
   purgeTarget.value = p;
   purgeConfirmOpen.value = true;
 }
@@ -558,7 +558,7 @@ async function doPurgePrompt() {
   if (p) await purgePrompt(p);
 }
 
-async function restorePrompt(p: Prompt) {
+async function restorePrompt(p: PromptCard) {
   try {
     await commands.restorePrompt(p.id);
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);
@@ -571,7 +571,7 @@ async function restorePrompt(p: Prompt) {
   }
 }
 
-async function purgePrompt(p: Prompt) {
+async function purgePrompt(p: PromptCard) {
   try {
     await commands.purgePrompt(p.id);
     // 关联关系级联删除，图像主页的关联提示词文案已变化

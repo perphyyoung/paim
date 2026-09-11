@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands, type Image, type TagGroup, type TagItem } from "@/bindings";
+import { commands, type Image, type ImageCard, type TagGroup, type TagItem } from "@/bindings";
 import { log } from "@/utils/logger";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -110,7 +110,7 @@ const {
   ensureRange,
   reload: reloadBlocks,
   replaceItem,
-} = usePagedBlocks<Image>({
+} = usePagedBlocks<ImageCard>({
   label: "image",
   load: (offset, limit) => commands.listImagesPage({ ...currentQuery(), offset, limit }),
 });
@@ -281,8 +281,8 @@ async function loadTagFilter() {
 const cardTagAdd = useCardTagAdd({ domain: "image", tagNames, loadTagFilter, showToast });
 
 // 右键菜单
-const ctxMenu = ref<{ x: number; y: number; image: Image } | null>(null);
-function openCtxMenu(e: MouseEvent, img: Image) {
+const ctxMenu = ref<{ x: number; y: number; image: ImageCard } | null>(null);
+function openCtxMenu(e: MouseEvent, img: ImageCard) {
   ctxMenu.value = { x: e.clientX, y: e.clientY, image: img };
 }
 function closeCtxMenu() {
@@ -291,10 +291,10 @@ function closeCtxMenu() {
 
 // 回收站
 const trashOpen = ref(false);
-const trashImages = shallowRef<Image[]>([]);
+const trashImages = shallowRef<ImageCard[]>([]);
 const trashThumbs = shallowRef<Record<string, string>>({});
 const emptyTrashOpen = ref(false);
-const purgeTarget = ref<Image | null>(null);
+const purgeTarget = ref<ImageCard | null>(null);
 const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
@@ -356,7 +356,7 @@ async function doEmptyTrash() {
   }
 }
 
-function requestPurgeImage(img: Image) {
+function requestPurgeImage(img: ImageCard) {
   purgeTarget.value = img;
   purgeConfirmOpen.value = true;
 }
@@ -375,21 +375,21 @@ async function openSavedLocation() {
   if (img) await openImageLocation(img.id);
 }
 
-async function restoreImage(img: Image) {
+async function restoreImage(img: ImageCard) {
   await commands.restoreImage(img.id);
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
   await loadImages(); // 刷新主列表，使恢复的图回到图像页
   // 恢复的图像重新成为提示词卡片的候选背景图
   markPageStale("prompts");
-  showToast(`已恢复「${img.stored_name}」`, "success");
+  showToast(`已恢复「${img.file_name}」`, "success");
 }
 
-async function purgeImage(img: Image) {
+async function purgeImage(img: ImageCard) {
   await commands.purgeImage(img.id);
   // 关联关系级联删除，提示词主页的关联图像计数已变化
   markPageStale("prompts");
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
-  showToast(`已彻底删除「${img.stored_name}」`, "success");
+  showToast(`已彻底删除「${img.file_name}」`, "success");
 }
 
 // 重载：关联映射与 dataDir 并行取（dataDir 先落位，块到达时才能增量拼缩略图 URL），
@@ -423,7 +423,7 @@ function fmtSize(bytes: number) {
 const fmtLocal = formatLocalTime;
 
 // row4 显示内容：跟随当前排序依据动态变化
-function rowInfo(img: Image): { label: string; value: string } {
+function rowInfo(img: ImageCard): { label: string; value: string } {
   switch (sortBy.value) {
     case "fileSize":
       return { label: "大小", value: fmtSize(img.file_size) };
@@ -448,13 +448,13 @@ const detailIndex = ref(0);
 const detailOrder = ref<string[]>([]);
 
 /** 模板用：占位项已由 v-if 排除，这里只做类型收窄 */
-function asCard(x: Image | Placeholder): Image {
+function asCard(x: ImageCard | Placeholder): ImageCard {
   return x as Image;
 }
 /** 详情弹窗的列表来源：当前已加载项（未加载块是占位，不参与详情翻页） */
 const detailImages = computed(() => pageItems.value.filter((x): x is Image => !isPlaceholder(x)));
 
-function openDetail(img: Image) {
+function openDetail(img: ImageCard) {
   // 顺序快照取当前已加载项（未加载块是占位），翻到边界时索引自然到头
   const order = pageItems.value.filter((x): x is Image => !isPlaceholder(x)).map((i) => i.id);
   detailOrder.value = order;
@@ -499,10 +499,10 @@ const {
 
 // ---- 卡片按钮动作 ---- //
 // 复制关联的第一条提示词内容；未关联时提示
-async function copyPrompt(img: Image) {
+async function copyPrompt(img: ImageCard) {
   const first = imagePrompts.value[img.id]?.[0];
   if (!first) {
-    showToast(`「${img.stored_name}」暂未关联提示词`);
+    showToast(`「${img.file_name}」暂未关联提示词`);
     return;
   }
   try {
@@ -514,12 +514,12 @@ async function copyPrompt(img: Image) {
 }
 
 // 切换收藏（单张/批量，逻辑与提示词页共用）
-const { toggleOne, toggleBatch } = useItemToggle<Image>({
+const { toggleOne, toggleBatch } = useItemToggle<ImageCard>({
   domain: "image",
   patch: (it) => replaceItem(it.id, it),
   showToast,
 });
-function toggleFavorite(img: Image) {
+function toggleFavorite(img: ImageCard) {
   toggleOne(img, "is_favorite");
 }
 async function onBatchFavorite() {
@@ -532,8 +532,8 @@ async function onBatchFavorite() {
 
 // 单张删除（移入回收站，需确认）
 const singleDeleteOpen = ref(false);
-const singleDeleteTarget = ref<Image | null>(null);
-function requestDelete(img: Image) {
+const singleDeleteTarget = ref<ImageCard | null>(null);
+function requestDelete(img: ImageCard) {
   singleDeleteTarget.value = img;
   singleDeleteOpen.value = true;
 }
@@ -547,7 +547,7 @@ async function doSingleDelete() {
     delete thumbs.value[img.id];
     await loadImages();
     markPageStale("prompts");
-    showToast(`已删除「${img.stored_name}」到回收站`, "success");
+    showToast(`已删除「${img.file_name}」到回收站`, "success");
   } catch (e) {
     showToast(`删除失败：${e}`, "error");
   }
@@ -789,7 +789,7 @@ function onUploadDone() {
     <ConfirmDialog
       :open="singleDeleteOpen"
       title="确认删除"
-      :message="`确定将图像「${singleDeleteTarget?.stored_name ?? ''}」移入回收站？`"
+      :message="`确定将图像「${singleDeleteTarget?.file_name ?? ''}」移入回收站？`"
       confirm-text="删除"
       danger
       @confirm="doSingleDelete"
@@ -847,8 +847,8 @@ function onUploadDone() {
             />
           </svg>
           <div class="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-center">
-            <p class="truncate text-[length:var(--fs-11)] text-white" :title="img.stored_name">
-              {{ img.stored_name }}
+            <p class="truncate text-[length:var(--fs-11)] text-white" :title="img.file_name">
+              {{ img.file_name }}
             </p>
             <p class="truncate text-[length:var(--fs-10)] text-gray-300">
               删除于 {{ fmtLocal(img.deleted_at) }}
@@ -912,7 +912,7 @@ function onUploadDone() {
     <ConfirmDialog
       :open="purgeConfirmOpen"
       title="彻底删除"
-      :message="`确定彻底删除「${purgeTarget?.stored_name ?? ''}」？此操作不可恢复。`"
+      :message="`确定彻底删除「${purgeTarget?.file_name ?? ''}」？此操作不可恢复。`"
       confirm-text="删除"
       danger
       @confirm="doPurgeImage"

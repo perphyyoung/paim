@@ -53,10 +53,30 @@ pub struct ImageImportBatchResult {
     pub errors: Vec<ImageImportError>,
 }
 
+/// 主页/回收站/选图列表的卡片投影：详情才用的重字段（stored_name/relative_path/
+/// md5/gen_params）不出库，降低万级列表的内存与序列化开销（todo P3）。
+/// `stored_name` 仅后台拼路径与排序键使用，前端显示一律用 file_name。
+#[derive(Debug, Serialize, Clone, specta::Type)]
+pub struct ImageCard {
+    pub id: String,
+    pub file_name: String,
+    pub thumbnail_path: Option<String>,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    /// 文件字节数（specta 的 BigInt 类型经 Builder 配置导出为 TS number）。
+    pub file_size: i64,
+    pub is_favorite: bool,
+    pub is_safe: bool,
+    pub note: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
 /// 分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。
 #[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct PaginatedImages {
-    pub items: Vec<Image>,
+    pub items: Vec<ImageCard>,
     pub total: i64,
 }
 
@@ -250,10 +270,10 @@ pub fn list(
     search: Option<&str>,
     tag: Option<&str>,
     limit: Option<i64>,
-) -> rusqlite::Result<Vec<Image>> {
+) -> rusqlite::Result<Vec<ImageCard>> {
     let (clauses, mut params) = filter_sql(search, tag);
     let mut sql = format!(
-        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
+        "SELECT {CARD_COLS}
          FROM images WHERE is_deleted = 0{clauses} ORDER BY created_at DESC"
     );
     if let Some(n) = limit {
@@ -261,7 +281,7 @@ pub fn list(
         params.push(n.to_string());
     }
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(params), row_to_image)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params), row_to_card)?;
     rows.collect()
 }
 
@@ -273,6 +293,26 @@ pub fn count(conn: &Connection, search: Option<&str>, tag: Option<&str>) -> rusq
 }
 
 const IMAGE_COLS: &str = "id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note";
+
+/// 卡片投影列：与 `ImageCard` 字段一一对应，顺序即 `row_to_card` 的取列顺序。
+const CARD_COLS: &str = "id, file_name, thumbnail_path, width, height, file_size, is_favorite, is_safe, note, created_at, updated_at, deleted_at";
+
+fn row_to_card(r: &rusqlite::Row) -> rusqlite::Result<ImageCard> {
+    Ok(ImageCard {
+        id: r.get(0)?,
+        file_name: r.get(1)?,
+        thumbnail_path: r.get(2)?,
+        width: r.get(3)?,
+        height: r.get(4)?,
+        file_size: r.get(5)?,
+        is_favorite: r.get(6)?,
+        is_safe: r.get(7)?,
+        note: r.get(8)?,
+        created_at: r.get(9)?,
+        updated_at: r.get(10)?,
+        deleted_at: r.get(11)?,
+    })
+}
 
 /// 排序键白名单 → 列名（未命中回落 `created_at`）。
 /// 时间列按 ISO 8601 UTC 字符串排序：paim 原生与 pm 导入（经 `normalize_ts`）均为该格式，字典序即时间序。
@@ -355,7 +395,7 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
     )?;
 
     let sql = format!(
-        "SELECT {IMAGE_COLS} FROM images WHERE is_deleted = 0{filter}
+        "SELECT {CARD_COLS} FROM images WHERE is_deleted = 0{filter}
          ORDER BY {} {} LIMIT ? OFFSET ?",
         sort_column(&q.sort),
         list_query::order_dir(q.desc)
@@ -363,7 +403,7 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
     params.push(Value::Integer(list_query::clamp_limit(q.limit)));
     params.push(Value::Integer(list_query::clamp_offset(q.offset)));
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), row_to_image)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), row_to_card)?;
     Ok(PaginatedImages {
         items: rows.collect::<Result<Vec<_>>>()?,
         total,
@@ -426,12 +466,12 @@ pub fn special_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
 }
 
 /// 回收站列表（软删除的图像）。
-pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<Image>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
-         FROM images WHERE is_deleted = 1 ORDER BY deleted_at DESC",
-    )?;
-    let rows = stmt.query_map([], row_to_image)?;
+pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<ImageCard>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CARD_COLS}
+         FROM images WHERE is_deleted = 1 ORDER BY deleted_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_card)?;
     rows.collect()
 }
 

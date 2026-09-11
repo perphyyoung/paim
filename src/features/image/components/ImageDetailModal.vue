@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands, type TagItem } from "@/bindings";
+import { commands, type Image, type ImageCard, type TagItem } from "@/bindings";
 // 别名导入：组件模板用裸 v-if="open"（prop），直接导入 open 会遮蔽 prop 导致弹窗恒渲染
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -28,29 +28,9 @@ import {
   relatedPromptsCache,
 } from "@/features/image/api/detailCache";
 
-interface Image {
-  id: string;
-  file_name: string;
-  stored_name: string;
-  relative_path: string;
-  thumbnail_path: string | null;
-  md5: string | null;
-  width: number | null;
-  height: number | null;
-  file_size: number;
-  gen_params: string;
-  is_deleted: boolean;
-  deleted_at: string | null;
-  is_favorite: boolean;
-  is_safe: boolean;
-  created_at: string;
-  updated_at: string;
-  note: string;
-}
-
 const props = defineProps<{
   open: boolean;
-  images: Image[];
+  images: ImageCard[];
   /** 进入详情时的「顺序快照」：详情停留期间计数/导航/位置按此旧顺序走 */
   order: string[];
   initialIndex: number;
@@ -63,7 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "update", img: Image): void;
+  (e: "update", img: ImageCard): void;
   /** 替换图像成功：主列表移除旧图、插入新图 */
   (e: "replaced", payload: { oldId: string; image: Image }): void;
   /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
@@ -73,10 +53,8 @@ const emit = defineEmits<{
 const { showToast } = useToast();
 const { openImageLocation } = useOpenImageLocation();
 
-const { current, currentId, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<Image>(
-  () => props.images,
-  toRef(props, "order"),
-);
+const { current, currentId, currentIndex, nav, goFirst, goLast, init } =
+  useDetailSnapshot<ImageCard>(() => props.images, toRef(props, "order"));
 
 // 右键图像区：弹出「打开本地保存位置」「替换图像」菜单
 const ctxMenu = ref<{ x: number; y: number } | null>(null);
@@ -489,7 +467,7 @@ function close() {
 }
 
 // 切换收藏/安全（与提示词详情共用逻辑，原地更新 current 并通知父级）
-const { toggleCurrent } = useItemToggle<Image>({ domain: "image", showToast });
+const { toggleCurrent } = useItemToggle<ImageCard>({ domain: "image", showToast });
 function toggleFavorite() {
   const img = current.value;
   if (!img) return;
