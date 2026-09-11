@@ -48,6 +48,8 @@ const emit = defineEmits<{
   (e: "replaced", payload: { oldId: string; image: Image }): void;
   /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
   (e: "safe-synced", isSafe: boolean): void;
+  /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
+  (e: "ensure-index", index: number): void;
 }>();
 
 const { showToast } = useToast();
@@ -215,7 +217,11 @@ async function doCreatePrompt() {
 // 打开或切换图像时加载原图（详情页展示原图，不同于卡片缩略图）
 async function loadOrig() {
   const img = current.value;
-  if (!img) return;
+  // 翻到尚未加载的项（父级正在补块）：清空旧图，避免短暂显示上一张
+  if (!img) {
+    origSrc.value = "";
+    return;
+  }
   const cached = imageSrcCache.get(img.id);
   if (cached) {
     origSrc.value = convertFileSrc(cached);
@@ -230,10 +236,11 @@ async function loadOrig() {
 }
 
 // ---- 全屏查看（双击大图进入） ----
-// 全屏列表为进入详情时的顺序快照（props.images），与详情导航一致
 const fullscreenOpen = ref(false);
+// 全屏列表按「顺序快照」构造（与详情索引一致）：未加载项只有 id，src/名称由惰性解析补全
+const imagesById = computed(() => new Map(props.images.map((img) => [img.id, img])));
 const fullscreenItems = computed<FullscreenItem[]>(() =>
-  props.images.map((img) => ({ id: img.id, src: "", name: img.file_name })),
+  props.order.map((id) => ({ id, src: "", name: imagesById.value.get(id)?.file_name })),
 );
 
 function openFullscreen() {
@@ -254,7 +261,10 @@ async function resolveFullscreenMeta(id: string) {
 // 加载当前图像的标签
 async function loadTags() {
   const img = current.value;
-  if (!img) return;
+  if (!img) {
+    tags.value = [];
+    return;
+  }
   const cached = imageTagsCache.get(img.id);
   if (cached) {
     tags.value = cached;
@@ -347,7 +357,11 @@ function requestUnlink(p: LinkedPrompt) {
 // 加载当前图像的关联提示词（标题 + 内容）
 async function loadRelatedPrompts() {
   const img = current.value;
-  if (!img) return;
+  if (!img) {
+    relatedPrompts.value = [];
+    promptIndex.value = 0;
+    return;
+  }
   const cached = relatedPromptsCache.get(img.id);
   if (cached) {
     relatedPrompts.value = cached;
@@ -425,6 +439,13 @@ watch(
     }
   },
   { immediate: true }, // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
+);
+// 顺序快照是全量 id，可能指向尚未加载的块：每次定位后通知父级补齐该项
+watch(
+  () => currentIndex.value,
+  (i) => {
+    if (i >= 0) emit("ensure-index", i);
+  },
 );
 // 导航切换时加载对应原图与标签、关联提示词；并复位编辑态
 watch(

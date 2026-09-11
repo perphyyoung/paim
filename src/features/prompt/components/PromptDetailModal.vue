@@ -57,6 +57,8 @@ const emit = defineEmits<{
   (e: "updated"): void;
   /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
   (e: "safe-synced", isSafe: boolean): void;
+  /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
+  (e: "ensure-index", index: number): void;
 }>();
 
 const { showToast } = useToast();
@@ -89,7 +91,11 @@ function loadTags() {
 
 async function loadRelatedImages() {
   const p = current.value;
-  if (!p) return;
+  // 翻到尚未加载的项（父级正在补块）：清空旧列表，避免短暂显示上一条的图
+  if (!p) {
+    relatedImages.value = [];
+    return;
+  }
   // 命中缓存直接渲染：不进 loading，避免切换时闪一下「加载中...」
   const cached = relatedImagesCache.get(p.id);
   if (cached) {
@@ -206,6 +212,13 @@ watch(
     }
   },
   { immediate: true }, // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
+);
+// 顺序快照是全量 id，可能指向尚未加载的块：每次定位后通知父级补齐该项
+watch(
+  () => currentIndex.value,
+  (i) => {
+    if (i >= 0) emit("ensure-index", i);
+  },
 );
 watch(
   () => current.value?.id,

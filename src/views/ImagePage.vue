@@ -451,15 +451,32 @@ const detailOrder = ref<string[]>([]);
 function asCard(x: ImageCard | Placeholder): ImageCard {
   return x as Image;
 }
-/** 详情弹窗的列表来源：当前已加载项（未加载块是占位，不参与详情翻页） */
+/** 详情弹窗的列表来源：已加载项（未加载块是占位，翻到时由 ensure-index 补齐对应块） */
 const detailImages = computed(() => pageItems.value.filter((x): x is Image => !isPlaceholder(x)));
 
 function openDetail(img: ImageCard) {
-  // 顺序快照取当前已加载项（未加载块是占位），翻到边界时索引自然到头
+  // 顺序快照先用当前已加载项即时打开，随后异步补全为全量 id
   const order = pageItems.value.filter((x): x is Image => !isPlaceholder(x)).map((i) => i.id);
   detailOrder.value = order;
   detailIndex.value = Math.max(0, order.indexOf(img.id));
   detailOpen.value = true;
+  void loadDetailOrder();
+}
+
+/** 详情顺序补全为全量 id：主页按块懒加载，索引分母与导航范围不应只等于已加载块条数 */
+async function loadDetailOrder() {
+  try {
+    const ids = await commands.listImageIds(currentQuery());
+    // 空结果（查询期间被清空等）保留已加载顺序，避免导航列表塌成 0
+    if (detailOpen.value && ids.length > 0) detailOrder.value = ids;
+  } catch (e) {
+    log.warn("[ImagePage] 详情顺序补全失败，沿用已加载顺序", String(e));
+  }
+}
+
+/** 详情翻到未加载项：补齐其所在块（顺带预取相邻块，LRU 会淘汰较久未用的块） */
+function ensureDetailIndex(index: number) {
+  ensureRange(index, index);
 }
 function closeDetail() {
   detailOpen.value = false;
@@ -942,6 +959,7 @@ function onUploadDone() {
       @close="closeDetail"
       @update="onDetailUpdate"
       @replaced="onDetailReplaced"
+      @ensure-index="ensureDetailIndex"
     />
 
     <!-- 标签管理（独立组件，图像域） -->
