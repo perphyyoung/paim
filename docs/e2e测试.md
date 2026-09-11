@@ -97,7 +97,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 打日志 | 用 `e2e-logger.ts` 的 `e2eLog.debug/info/warn/error`（调用方式与前端 logger 一致，自动带 `[E2E w<n>]` 前缀）。**不要**在 e2e 文件里 `console.log` 或另写日志实现。用例分节（`[TEST]` 行）由 fixture 自动记录，spec 不需要也不应该手写 |
 | 页面侧诊断 | fixture 已自动采集 webview 控制台消息、失败请求、≥400 响应（`[webview]`/`[pageerror]`/`[req-failed]`/`[http-error]` 前缀写入 paim.log），无需重复采集。失败请求中导航打断的在途请求（`net::ERR_ABORTED`，如用例间复位 reload 时）记 info 级，其余记 error 级 |
 | 定位元素 | 语义属性优先：`getByRole("button", { name: "上传图像" })`、`getByPlaceholder`、`getByText`；无语义属性才退 `data-testid`。**禁 CSS/XPath 路径选择器优先**（pm 的 `Constants.Ids.*` 是 Electron 时代惯例，Playwright 下不推荐） |
-| 定位弹窗 | **禁止靠 Tailwind 类名或 z-index 定位**（改样式即断；`z-50` 这种「为了避开 z-130 的 ToastHost」是隐含知识，只能靠注释补）。弹窗统一在根节点加 `role="dialog" aria-modal="true" aria-label="<名称>"`（无障碍本就该有，不是测试钩子），helper 用 `detailDialog(page, name)` = `getByRole("dialog", { name })`；嵌套弹窗（图像详情里再开提示词详情）靠名称区分，不像 `.z-50` 那样只能按 DOM 顺序取 `first()` |
+| 定位弹窗 | **禁止靠 Tailwind 类名或 z-index 定位**（改样式即断；`z-50` 这种「为了避开 z-130 的 ToastHost」是隐含知识，只能靠注释补）。弹窗统一在根节点加 `role="dialog" aria-modal="true" aria-label="<名称>"`（无障碍本就该有，不是测试钩子）。**作用域由打开动作给出**：`openImageDetail` / `openPromptDetail` 直接返回弹窗 Locator，`closeDetail(detail)` 关它——不要另立「按名字取弹窗」的函数（那会让 spec 多传一个字符串参数、多一个概念） |
 | 点击卡片 | **点文字层**（`getByText(卡片内容)`），**不要点缩略图 `<img>`**——img 上方盖着文字覆盖层（MediaCard 的 `absolute inset-0`），点 img 会被命中目标检查拦下并重试至超时；点文字会冒泡到卡片根，同样触发打开详情 |
 | 打标签 | 两种提交方式都要能用：回车（Enter 命中高亮 → select，未命中 → submit）与点击（点候选项 → select，详情另有「添加」按钮）。候选下拉是 Teleport + fixed `z-[125]`，**会盖住批量弹窗的「确定」按钮**（预期行为，不改布局），所以批量打标签用 `openBatchAddTagDialog` 打开后，一律用回车或点候选项提交，**不要点「确定」** |
 | 进批量模式 | `Ctrl + 点击`卡片（普通点击是打开详情）；可复用 `openBatchAddTagDialog` |

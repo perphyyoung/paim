@@ -340,10 +340,15 @@ export async function createPromptViaDialog(page: Page, content: string): Promis
   await expect(contentInput).toBeHidden();
 }
 
-/// 点卡片文字打开提示词详情（点 img 会被覆盖层拦截）。
+/// 详情弹窗的可访问名（对应组件根节点的 aria-label，helper 内部使用）
+const IMAGE_DETAIL_LABEL = "图像详情";
+const PROMPT_DETAIL_LABEL = "提示词详情";
+
+/// 点卡片文字打开提示词详情（点 img 会被覆盖层拦截），返回详情弹窗定位器——
+/// 弹窗内的控件（收藏/安全/关闭）与主页卡片上的重名，后续定位一律以它为作用域。
 /// 等不到卡片文字或详情弹窗未出现时，把当前 toast 与页面可见文本快照 dump 进 paim.log
 /// 再抛错——只暴露错误现场，不改变用例行为。
-export async function openPromptDetail(page: Page, content: string): Promise<void> {
+export async function openPromptDetail(page: Page, content: string): Promise<Locator> {
   const card = page.getByText(content).first();
   await expect(card)
     .toBeVisible({ timeout: 5_000 })
@@ -352,16 +357,19 @@ export async function openPromptDetail(page: Page, content: string): Promise<voi
       throw err;
     });
   await card.click();
-  await expect(detailDialog(page, PROMPT_DETAIL_DIALOG))
+  const detail = page.getByRole("dialog", { name: PROMPT_DETAIL_LABEL });
+  await expect(detail)
     .toBeVisible({ timeout: 5_000 })
     .catch(async (err) => {
       await dumpPageState(page, "打开提示词详情失败：详情弹窗未出现");
       throw err;
     });
+  return detail;
 }
 
-/// 点卡片文字打开图像详情（卡片内容行显示关联提示词内容）。诊断策略同 openPromptDetail。
-export async function openImageDetail(page: Page, cardText: string): Promise<void> {
+/// 点卡片文字打开图像详情（卡片内容行显示关联提示词内容），返回详情弹窗定位器。
+/// 诊断策略与返回值含义同 openPromptDetail。
+export async function openImageDetail(page: Page, cardText: string): Promise<Locator> {
   const card = page.getByText(cardText).first();
   await expect(card)
     .toBeVisible({ timeout: 5_000 })
@@ -370,28 +378,22 @@ export async function openImageDetail(page: Page, cardText: string): Promise<voi
       throw err;
     });
   await card.click();
-  await expect(detailDialog(page, IMAGE_DETAIL_DIALOG))
+  const detail = page.getByRole("dialog", { name: IMAGE_DETAIL_LABEL });
+  await expect(detail)
     .toBeVisible({ timeout: 5_000 })
     .catch(async (err) => {
       await dumpPageState(page, "打开图像详情失败：详情弹窗未出现");
       throw err;
     });
+  return detail;
 }
 
-/// 详情弹窗的可访问名（对应组件根节点的 aria-label）
-export const IMAGE_DETAIL_DIALOG = "图像详情";
-export const PROMPT_DETAIL_DIALOG = "提示词详情";
-
-/// 详情弹窗容器：按 `role="dialog"` + aria-label 定位，与样式类名、z-index 完全解耦。
-/// 嵌套场景（图像详情里再开提示词详情）靠名称区分，不像 `.z-50` 那样只能靠 DOM 顺序取 first。
-export function detailDialog(page: Page, name: string): Locator {
-  return page.getByRole("dialog", { name });
-}
-
-/// 点弹窗右上 ✕ 关闭详情，并等弹窗消失（两个详情页的关闭按钮 title 均为「关闭」）
-export async function closeDetailDialog(page: Page, name: string): Promise<void> {
-  await detailDialog(page, name).getByTitle("关闭").click();
-  await expect(detailDialog(page, name)).toBeHidden({ timeout: 5_000 });
+/// 点弹窗右上 ✕ 关闭详情并等它消失（两个详情页的关闭按钮 title 均为「关闭」）。
+/// 传 `openImageDetail` / `openPromptDetail` 返回的定位器：作用域由打开动作给出，
+/// 不需要再为「哪个弹窗」传参。
+export async function closeDetail(detail: Locator): Promise<void> {
+  await detail.getByTitle("关闭").click();
+  await expect(detail).toBeHidden({ timeout: 5_000 });
 }
 
 /// 筛选区特殊标签 chip（「收藏」「敏感」等）。chip 只在计数 > 0 时渲染，而计数是
