@@ -99,8 +99,6 @@ pub struct PaginatedPrompts {
     pub total: i64,
 }
 
-const PROMPT_COLS: &str = "id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note";
-
 /// 卡片投影列：与 `PromptCard` 字段一一对应，顺序即 `row_to_prompt_card` 的取列顺序。
 const PCARD_COLS: &str = "id, title, content, content_translate, created_at, updated_at, deleted_at, is_favorite, is_safe, note";
 

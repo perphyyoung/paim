@@ -298,7 +298,7 @@ function rowInfo(p: PromptCard): { label: string; value: string } {
 }
 
 // 切换收藏（单张/批量，逻辑与图像页共用）
-const { toggleOne, toggleBatch } = useItemToggle<Prompt>({
+const { toggleOne, toggleBatch } = useItemToggle<PromptCard>({
   domain: "prompt",
   patch: (p) => replaceItem(p.id, p),
   showToast,

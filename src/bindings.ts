@@ -5,7 +5,7 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 
 /** Commands */
 export const commands = {
-	listPrompts: () => __TAURI_INVOKE<Prompt[]>("list_prompts"),
+	listPrompts: () => __TAURI_INVOKE<PromptCard[]>("list_prompts"),
 	/**  主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。 */
 	listPromptsPage: (query: ListQuery) => __TAURI_INVOKE<PaginatedPrompts>("list_prompts_page", { query }),
 	/**  同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。 */
@@ -21,7 +21,7 @@ export const commands = {
 	/**  为已存在的提示词导入外部图像并关联（复用导入 + 幂等关联），供详情页「从外界导入」。 */
 	addImagesToPrompt: (promptId: string, imagePaths: string[]) => __TAURI_INVOKE<ImageImportBatchResult>("add_images_to_prompt", { promptId, imagePaths }),
 	/**  列出回收站中的提示词（已软删除）。 */
-	listTrashedPrompts: () => __TAURI_INVOKE<Prompt[]>("list_trashed_prompts"),
+	listTrashedPrompts: () => __TAURI_INVOKE<PromptCard[]>("list_trashed_prompts"),
 	/**  恢复回收站中的提示词。 */
 	restorePrompt: (id: string) => __TAURI_INVOKE<Prompt>("restore_prompt", { id }),
 	/**  彻底删除回收站中的提示词。 */
@@ -85,7 +85,7 @@ export const commands = {
 	/**  将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。 */
 	relateImagesToPrompt: (promptId: string, imageIds: string[]) => __TAURI_INVOKE<number>("relate_images_to_prompt", { promptId, imageIds }),
 	/**  返回回收站中的图像（已软删除），与 list_trashed_prompts 对称。 */
-	listTrashedImages: () => __TAURI_INVOKE<Image[]>("list_trashed_images"),
+	listTrashedImages: () => __TAURI_INVOKE<ImageCard[]>("list_trashed_images"),
 	deleteImage: (id: string) => __TAURI_INVOKE<Image>("delete_image", { id }),
 	restoreImage: (id: string) => __TAURI_INVOKE<Image>("restore_image", { id }),
 	purgeImage: (id: string) => __TAURI_INVOKE<null>("purge_image", { id }),
@@ -240,6 +240,27 @@ export type Image = {
 	note: string,
 };
 
+/**
+ *  主页/回收站/选图列表的卡片投影：详情才用的重字段（stored_name/relative_path/
+ *  md5/gen_params）不出库，降低万级列表的内存与序列化开销（todo P3）。
+ *  `stored_name` 仅后台拼路径与排序键使用，前端显示一律用 file_name。
+ */
+export type ImageCard = {
+	id: string,
+	file_name: string,
+	thumbnail_path: string | null,
+	width: number | null,
+	height: number | null,
+	/**  文件字节数（specta 的 BigInt 类型经 Builder 配置导出为 TS number）。 */
+	file_size: number,
+	is_favorite: boolean,
+	is_safe: boolean,
+	note: string,
+	created_at: string,
+	updated_at: string,
+	deleted_at: string | null,
+};
+
 export type ImageImportBatchResult = {
 	results: ImageImportResult[],
 	errors: ImageImportError[],
@@ -285,13 +306,13 @@ export type ListQuery = {
 
 /**  分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。 */
 export type PaginatedImages = {
-	items: Image[],
+	items: ImageCard[],
 	total: number,
 };
 
 /**  分页提示词列表：items 为本页，total 为符合条件总数。 */
 export type PaginatedPrompts = {
-	items: Prompt[],
+	items: PromptCard[],
 	total: number,
 };
 
@@ -303,6 +324,24 @@ export type Prompt = {
 	created_at: string,
 	updated_at: string,
 	is_deleted: boolean,
+	deleted_at: string | null,
+	is_favorite: boolean,
+	is_safe: boolean,
+	note: string,
+};
+
+/**
+ *  主页/回收站列表的卡片投影：与 `Prompt` 相比去掉恒定的 `is_deleted`
+ *  （未删除列表恒 false、回收站恒 true，前端零使用），与图像侧 `ImageCard` 对称。
+ *  `content` / `content_translate` / `note` 为卡片与详情编辑所需，保留在投影内。
+ */
+export type PromptCard = {
+	id: string,
+	title: string,
+	content: string,
+	content_translate: string,
+	created_at: string,
+	updated_at: string,
 	deleted_at: string | null,
 	is_favorite: boolean,
 	is_safe: boolean,

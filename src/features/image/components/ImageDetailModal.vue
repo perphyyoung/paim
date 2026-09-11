@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { commands, type Image, type ImageCard, type TagItem } from "@/bindings";
+import { commands, type Image, type ImageCard, type PromptCard, type TagItem } from "@/bindings";
 // 别名导入：组件模板用裸 v-if="open"（prop），直接导入 open 会遮蔽 prop 导致弹窗恒渲染
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -128,19 +128,7 @@ const editPromptOpen = ref(false);
 const promptAllTags = ref<TagItem[]>([]);
 const promptTagNames = ref<Record<string, string[]>>({});
 // 编辑目标：把当前选中的提示词转成 PromptDetailModal 需要的 Prompt 对象
-const editPrompt = computed<
-  {
-    id: string;
-    title: string;
-    content: string;
-    content_translate: string;
-    note: string;
-    is_favorite: boolean;
-    is_safe: boolean;
-    created_at: string;
-    updated_at: string;
-  }[]
->(() => {
+const editPrompt = computed<PromptCard[]>(() => {
   const p = currentPrompt.value;
   if (!p) return [];
   return [
@@ -152,6 +140,7 @@ const editPrompt = computed<
       note: p.note,
       is_favorite: p.is_favorite,
       is_safe: p.is_safe,
+      deleted_at: null,
       created_at: "",
       updated_at: "",
     },

@@ -164,7 +164,9 @@ pub fn open_connection(path: PathBuf) -> rusqlite::Result<Connection> {
         CREATE INDEX IF NOT EXISTS idx_images_active_favorite ON images(updated_at DESC) WHERE is_deleted = 0 AND is_favorite = 1;
         -- 主页排序键（分页后 ORDER BY 走 SQL，万级数据不能 filesort）
         CREATE INDEX IF NOT EXISTS idx_images_active_file_size ON images(file_size) WHERE is_deleted = 0;
-        CREATE INDEX IF NOT EXISTS idx_images_active_stored_name ON images(stored_name) WHERE is_deleted = 0;
+        -- 文件名排序已改 file_name（显示名口径），旧 stored_name 索引随迁移删除
+DROP INDEX IF EXISTS idx_images_active_stored_name;
+CREATE INDEX IF NOT EXISTS idx_images_active_file_name ON images(file_name) WHERE is_deleted = 0;
         CREATE INDEX IF NOT EXISTS idx_images_active_width ON images(width) WHERE is_deleted = 0;
         CREATE INDEX IF NOT EXISTS idx_images_active_height ON images(height) WHERE is_deleted = 0;
         CREATE INDEX IF NOT EXISTS idx_prompts_active_title ON prompts(title) WHERE is_deleted = 0;

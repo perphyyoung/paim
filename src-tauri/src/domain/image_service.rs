@@ -292,8 +292,6 @@ pub fn count(conn: &Connection, search: Option<&str>, tag: Option<&str>) -> rusq
     conn.query_row(&sql, rusqlite::params_from_iter(params), |r| r.get(0))
 }
 
-const IMAGE_COLS: &str = "id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note";
-
 /// 卡片投影列：与 `ImageCard` 字段一一对应，顺序即 `row_to_card` 的取列顺序。
 const CARD_COLS: &str = "id, file_name, thumbnail_path, width, height, file_size, is_favorite, is_safe, note, created_at, updated_at, deleted_at";
 
@@ -320,7 +318,8 @@ fn sort_column(sort: &str) -> &'static str {
     match sort {
         "updatedAt" => "updated_at",
         "fileSize" => "file_size",
-        "fileName" => "stored_name",
+        // 按显示名（原始文件名）排序，与搜索口径一致；stored_name 是落盘名（{id}{ext}）
+        "fileName" => "file_name",
         "width" => "COALESCE(width, 0)",
         "height" => "COALESCE(height, 0)",
         _ => "created_at",

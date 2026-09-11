@@ -14,7 +14,7 @@ use tauri::State;
 
 #[tauri::command]
 #[specta::specta]
-pub fn list_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::Prompt>, AppError> {
+pub fn list_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::PromptCard>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::list(&conn).map_err(|e| AppError::Message(e.to_string()))
 }
@@ -129,7 +129,7 @@ pub fn delete_prompt(db: State<BkDb>, id: String) -> Result<(), AppError> {
 /// 列出回收站中的提示词（已软删除）。
 #[tauri::command]
 #[specta::specta]
-pub fn list_trashed_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::Prompt>, AppError> {
+pub fn list_trashed_prompts(db: State<BkDb>) -> Result<Vec<prompt_service::PromptCard>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::list_trashed(&conn).map_err(|e| AppError::Message(e.to_string()))
 }

@@ -4,8 +4,8 @@
 use crate::commands::db_blocking;
 use crate::domain::image_ops::{make_center_thumb, open_image};
 use crate::domain::image_service::{
-    self, Image, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome, LinkedPrompt,
-    PaginatedImages,
+    self, Image, ImageCard, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome,
+    LinkedPrompt, PaginatedImages,
 };
 use crate::domain::list_query::ListQuery;
 use crate::domain::prompt_service;
@@ -232,7 +232,7 @@ pub fn relate_images_to_prompt(
 /// 返回回收站中的图像（已软删除），与 list_trashed_prompts 对称。
 #[tauri::command]
 #[specta::specta]
-pub fn list_trashed_images(db: State<BkDb>) -> Result<Vec<Image>, AppError> {
+pub fn list_trashed_images(db: State<BkDb>) -> Result<Vec<ImageCard>, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::list_trashed(&conn).map_err(|e| AppError::Message(e.to_string()))
 }

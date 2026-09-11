@@ -467,7 +467,7 @@ function closeDetail() {
   loadImages();
   loadTagFilter();
 }
-function onDetailUpdate(updated: Image) {
+function onDetailUpdate(updated: ImageCard) {
   // 同步回当前已加载块（占位项不参与）
   replaceItem(updated.id, updated);
 }
