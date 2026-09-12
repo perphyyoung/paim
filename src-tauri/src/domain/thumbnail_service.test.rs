@@ -19,7 +19,7 @@ fn build_thumbnail_follows_year_month_layout() {
         .unwrap();
 
     let thumbs_root = root.join("thumbnails");
-    let thumb_rel = build_thumbnail(&data_dir, &thumbs_root, rel).expect("生成成功");
+    let thumb_rel = build_thumbnail(&data_dir, &thumbs_root, rel, None, None).expect("生成成功");
     assert_eq!(thumb_rel, "thumbnails/202606/thumb_img_x.jpg");
     let decoded = image::open(root.join(&thumb_rel)).unwrap();
     // make_center_thumb 短边贴满居中裁剪，恒为 200×200 方形
@@ -29,7 +29,7 @@ fn build_thumbnail_follows_year_month_layout() {
     image::DynamicImage::new_rgb8(100, 80)
         .save(data_dir.join("plain.png"))
         .unwrap();
-    let thumb_rel2 = build_thumbnail(&data_dir, &thumbs_root, "plain.png").unwrap();
+    let thumb_rel2 = build_thumbnail(&data_dir, &thumbs_root, "plain.png", None, None).unwrap();
     assert_eq!(thumb_rel2, "thumbnails/thumb_plain.jpg");
     assert!(root.join(&thumb_rel2).is_file());
 
@@ -47,12 +47,12 @@ fn build_thumbnail_skips_existing_file() {
         .unwrap();
 
     let thumbs_root = root.join("thumbnails");
-    let thumb_rel = build_thumbnail(&data_dir, &thumbs_root, rel).expect("首次生成");
+    let thumb_rel = build_thumbnail(&data_dir, &thumbs_root, rel, None, None).expect("首次生成");
     let thumb_path = root.join(&thumb_rel);
 
     // 已存在时直接复用现路径，不重新生成（写入垃圾字节后仍原样保留）
     std::fs::write(&thumb_path, b"existing-junk").unwrap();
-    let again = build_thumbnail(&data_dir, &thumbs_root, rel).expect("第二次调用");
+    let again = build_thumbnail(&data_dir, &thumbs_root, rel, None, None).expect("第二次调用");
     assert_eq!(again, thumb_rel);
     assert_eq!(std::fs::read(&thumb_path).unwrap(), b"existing-junk");
 
@@ -67,7 +67,7 @@ fn build_thumbnail_reports_unreadable_image() {
     let rel = "images/202606/broken.png";
     std::fs::write(data_dir.join(rel), b"not an image").unwrap();
 
-    let err = build_thumbnail(&data_dir, &root.join("thumbnails"), rel).unwrap_err();
+    let err = build_thumbnail(&data_dir, &root.join("thumbnails"), rel, None, None).unwrap_err();
     assert!(err.contains("读取图像失败"));
 
     let _ = std::fs::remove_dir_all(&root);

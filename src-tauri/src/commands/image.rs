@@ -15,6 +15,7 @@ use crate::domain::thumbnail_service::{
 use crate::infra::db::BkDb;
 use crate::infra::error::AppError;
 
+use rusqlite::OptionalExtension;
 use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_specta::Event;
@@ -300,21 +301,23 @@ pub fn get_image_src(
     id: String,
 ) -> Result<String, AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let rel: Option<String> = conn
+    let row: Option<(String, String)> = conn
         .query_row(
-            "SELECT relative_path FROM images WHERE id = ?1",
+            "SELECT relative_path, file_name FROM images WHERE id = ?1",
             rusqlite::params![id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
+        .optional()
         .map_err(|e| AppError::Message(e.to_string()))?;
 
-    let Some(rel) = rel else {
+    let Some((rel, file_name)) = row else {
         return Err("原图不存在".into());
     };
-    Ok(crate::infra::db::data_dir(&app)
-        .join(&rel)
-        .to_string_lossy()
-        .into_owned())
+    let full = crate::infra::db::data_dir(&app).join(&rel);
+    if !full.exists() {
+        crate::log_warn!("image_missing: id={id} file_name={file_name} caller=get_image_src");
+    }
+    Ok(full.to_string_lossy().into_owned())
 }
 
 /// 更新图像详情字段（文件名、备注、收藏、安全评级）。

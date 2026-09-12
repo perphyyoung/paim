@@ -47,7 +47,13 @@ pub struct ThumbnailEnsureFixed {
 /// thumbnails/{YYYYMM}/thumb_{stored_name 词干}.jpg，
 /// 返回要写回 images.thumbnail_path 的相对路径；失败原因以 Err 返回。
 /// 缩略图文件已存在时直接返回现路径（与 pm 的 generateThumbnail 一致）。
-pub fn build_thumbnail(data_dir: &Path, thumbs_root: &Path, rel: &str) -> Result<String, String> {
+pub fn build_thumbnail(
+    data_dir: &Path,
+    thumbs_root: &Path,
+    rel: &str,
+    image_id: Option<&str>,
+    file_name: Option<&str>,
+) -> Result<String, String> {
     // 年月子目录取自 relative_path 第二段（images/202608/x.png → 202608）
     let rel_path = Path::new(rel);
     let month = rel_path
@@ -78,7 +84,15 @@ pub fn build_thumbnail(data_dir: &Path, thumbs_root: &Path, rel: &str) -> Result
         return Ok(format!("{thumb_rel_prefix}/{name}"));
     }
 
-    let img = open_image(&data_dir.join(rel)).map_err(|e| format!("读取图像失败: {e}"))?;
+    let full_path = data_dir.join(rel);
+    if !full_path.exists() {
+        crate::log_warn!(
+            "image_missing: id={} file_name={} caller=build_thumbnail",
+            image_id.unwrap_or(""),
+            file_name.unwrap_or("")
+        );
+    }
+    let img = open_image(&full_path).map_err(|e| format!("读取图像失败: {e}"))?;
     let thumb = make_center_thumb(&img).map_err(|e| format!("生成缩略图失败: {e}"))?;
     std::fs::create_dir_all(&thumb_dir).map_err(io_err)?;
     // 编码用 jpeg-encoder（SIMD，image 自带编码器无 SIMD），质量 80 与 pm 一致
@@ -151,7 +165,8 @@ where
                     break;
                 }
                 let (id, rel, file_name) = &rows[idx];
-                let outcome = build_thumbnail(data_dir, thumbs_root, rel);
+                let outcome =
+                    build_thumbnail(data_dir, thumbs_root, rel, Some(id), Some(file_name));
                 results.lock().unwrap().push((id.clone(), outcome));
                 let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
                 on_progress(done, total, file_name);
@@ -221,7 +236,7 @@ pub fn ensure(
             )
             .optional()
             .map_err(|e| format!("读取图像记录失败: {e}"))?;
-        let Some((rel, _file_name, current)) = row else {
+        let Some((rel, file_name, current)) = row else {
             result.missing.push(id.clone());
             continue;
         };
@@ -231,7 +246,7 @@ pub fn ensure(
                 continue;
             }
         }
-        match build_thumbnail(data_dir, thumbs_root, &rel) {
+        match build_thumbnail(data_dir, thumbs_root, &rel, Some(id), Some(&file_name)) {
             Ok(thumb_rel) => {
                 conn.execute(
                     "UPDATE images SET thumbnail_path = ?1 WHERE id = ?2",

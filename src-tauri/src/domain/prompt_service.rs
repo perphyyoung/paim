@@ -488,6 +488,14 @@ pub fn list_related_images_with(
     let mut out = Vec::new();
     for row in rows {
         let (id, file_name, src_rel) = row?;
+        if let Some(rel) = &src_rel {
+            let full = data_dir.join(rel);
+            if !full.exists() {
+                crate::log_warn!(
+                    "image_missing: id={id} file_name={file_name} caller=list_related_images_with"
+                );
+            }
+        }
         out.push(RelatedImage {
             id,
             file_name,

@@ -393,19 +393,22 @@ pub fn open_image_location(
     id: String,
 ) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let rel: Option<String> = conn
+    let row: Option<(String, String)> = conn
         .query_row(
-            "SELECT relative_path FROM images WHERE id = ?1",
+            "SELECT relative_path, file_name FROM images WHERE id = ?1",
             rusqlite::params![id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
         .map_err(|e| AppError::Message(e.to_string()))?;
     drop(conn);
-    let Some(rel) = rel.filter(|s| !s.is_empty()) else {
+    let Some((rel, file_name)) = row.filter(|(s, _)| !s.is_empty()) else {
         return Err(AppError::Message("图像不存在或缺少保存路径".into()));
     };
-    let full = data_dir(&app).join(rel);
+    let full = data_dir(&app).join(&rel);
+    if !full.exists() {
+        crate::log_warn!("image_missing: id={id} file_name={file_name} caller=open_image_location");
+    }
     // 对齐 lap 的做法：explorer 参数拆分（/select, 与路径分开），
     // 且路径统一反斜杠（relative_path 含 /，混用分隔符会让 explorer 回退默认位置）
     let norm = full.to_string_lossy().replace('/', "\\");
