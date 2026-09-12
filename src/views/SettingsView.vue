@@ -10,6 +10,7 @@ import { markPageStale } from "@/utils/crossPageCache";
 import { inspectBackup, type BackupInfo } from "@/features/backup/api/backup";
 import BackupImportModal from "@/features/backup/components/BackupImportModal.vue";
 import BackupExportModal from "@/features/backup/components/BackupExportModal.vue";
+import IntegrityCheckModal from "@/components/IntegrityCheckModal.vue";
 import ThumbnailRebuildModal from "@/features/image/components/ThumbnailRebuildModal.vue";
 
 const { showToast } = useToast();
@@ -133,39 +134,8 @@ function markStaleBothPages() {
   markPageStale("prompts");
 }
 
-// —— 孤儿文件清理（对齐 pm：扫描 → 选目录 → 导出并删除）——
-const cleaningOrphan = ref(false);
-
-async function cleanOrphanFiles() {
-  if (cleaningOrphan.value) return;
-  cleaningOrphan.value = true;
-  try {
-    const scan = await commands.scanOrphanFiles();
-    const total = scan.orphan_image_count + scan.orphan_thumbnail_count;
-    if (total === 0) {
-      showToast("没有发现孤儿文件", "info");
-      return;
-    }
-    const dir = await openFileDialog({
-      directory: true,
-      multiple: false,
-      title: "选择导出目录（孤儿文件将被导出到该目录后删除）",
-    });
-    if (!dir) return; // 用户取消
-    showToast(`发现 ${total} 个孤儿文件，正在导出并删除...`, "info");
-    const result = await commands.exportOrphanFiles(String(dir));
-    showToast(
-      result.failed > 0
-        ? `完成：导出 ${result.exported}、删除 ${result.deleted}、失败 ${result.failed}`
-        : `完成：导出 ${result.exported}、删除 ${result.deleted}`,
-      result.failed > 0 ? "warning" : "success",
-    );
-  } catch (e) {
-    showToast(`清理孤儿文件失败：${e}`, "error");
-  } finally {
-    cleaningOrphan.value = false;
-  }
-}
+// —— 数据完整性检查（弹出 IntegrityCheckModal 展示报告 + 处置入口）——
+const integrityOpen = ref(false);
 
 onMounted(loadDataDir);
 </script>
@@ -232,18 +202,17 @@ onMounted(loadDataDir);
 
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
-          <dt class="text-gray-400">清理孤儿文件</dt>
+          <dt class="text-gray-400">数据完整性检查</dt>
           <dd class="text-sm text-gray-500">
-            扫描磁盘上不在数据库中的原图像和缩略图，原图像导出到选定目录后删除，缩略图直接删除
+            检查孤儿文件（磁盘有数据库无）和孤儿记录（数据库有原图磁盘缺失），报告弹窗内处置
           </dd>
         </div>
         <button
           type="button"
-          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="cleaningOrphan"
-          @click="cleanOrphanFiles"
+          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+          @click="integrityOpen = true"
         >
-          {{ cleaningOrphan ? "处理中..." : "导出并删除" }}
+          检查
         </button>
       </div>
 
@@ -311,5 +280,7 @@ onMounted(loadDataDir);
       @close="rebuildOpen = false"
       @rebuilt="markStaleBothPages"
     />
+
+    <IntegrityCheckModal :open="integrityOpen" @close="integrityOpen = false" />
   </section>
 </template>

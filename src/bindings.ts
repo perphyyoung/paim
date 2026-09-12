@@ -163,11 +163,12 @@ export const commands = {
 	exportBackup: (exportPath: string) => __TAURI_INVOKE<BackupExportSummary>("export_backup", { exportPath }),
 	/**  导入全量备份（自动识别 paim/pm；整体替换当前数据），进度经 backup-progress 事件推送。 */
 	importBackup: (zipPath: string) => __TAURI_INVOKE<BackupImportSummary>("import_backup", { zipPath }),
-	/**  扫描孤儿文件（阻塞，在 spawn_blocking 内执行） */
-	scanOrphanFiles: () => __TAURI_INVOKE<OrphanScanResult>("scan_orphan_files"),
+	/**  数据完整性检查（阻塞，在 spawn_blocking 内执行） */
+	scanIntegrity: () => __TAURI_INVOKE<IntegrityCheckResult>("scan_integrity"),
 	/**
 	 *  导出并删除孤儿文件。
 	 *  `export_dir` 由前端通过目录选择器拿到，命令内部建 `orphan_files_{时间戳}/` 子目录。
+	 *  时间格式与备份导出一致：`YYYYMMDD-HHMMSS`。
 	 */
 	exportOrphanFiles: (exportDir: string) => __TAURI_INVOKE<OrphanExportResult>("export_orphan_files", { exportDir }),
 	/**  返回全局数据统计（12 项，与 pm 统计弹窗对齐），每次调用实时查询。 */
@@ -294,6 +295,16 @@ export type ImageImportResult = {
 /**  替换结果：SameImage 表示新图与旧图为同一张（MD5 相同），无需替换。 */
 export type ImageReplaceOutcome = { kind: "same_image" } | { kind: "replaced"; image: Image; related_prompt_ids: string[] };
 
+/**  完整性检查结果 */
+export type IntegrityCheckResult = {
+	/**  孤儿原图像文件数（磁盘有、DB 无 relative_path） */
+	orphan_image_count: number,
+	/**  孤儿缩略图文件数（磁盘有、DB 无 thumbnail_path） */
+	orphan_thumbnail_count: number,
+	/**  孤儿记录（DB 有 relative_path 但磁盘原图不存在，不含缩略图） */
+	orphan_records: OrphanRecordItem[],
+};
+
 export type LinkedPrompt = {
 	id: string,
 	title: string,
@@ -334,10 +345,15 @@ export type OrphanExportResult = {
 	export_path: string,
 };
 
-/**  扫描结果（不含大小统计——按用户要求只计数） */
-export type OrphanScanResult = {
-	orphan_image_count: number,
-	orphan_thumbnail_count: number,
+/**  孤儿记录条目（DB 有但原图磁盘文件不存在） */
+export type OrphanRecordItem = {
+	id: string,
+	/**  用户可见的文件名 */
+	file_name: string,
+	/**  落盘的存储名 */
+	stored_name: string,
+	/**  DB 中的相对路径（相对于 data_dir） */
+	relative_path: string,
 };
 
 /**  分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。 */
