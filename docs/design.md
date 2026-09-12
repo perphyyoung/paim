@@ -62,7 +62,7 @@
 | 状态/用途          | 色（Tailwind class）                                                    | 示例                                             |
 | ------------------ | ----------------------------------------------------------------------- | ------------------------------------------------ |
 | 安全               | 绿 `bg-green-500`                                                       | 安全 toggle 开启态                               |
-| 敏感/不安全        | 红 `bg-red-500`                                                         | 安全 toggle 关闭态                               |
+| 敏感               | 红 `bg-red-500`                                                         | 安全 toggle 关闭态                               |
 | 收藏               | 琥珀渐变 `from-amber-500 to-amber-400`                                  | 收藏按钮激活态；卡片边框 `border-amber-500`      |
 | 编辑中标识         | 浅蓝 `bg-blue-900/30 text-blue-300`                                     | 详情页编辑态按钮（不用蓝实心）                   |
 | 选中态（列表）     | 靛蓝 `bg-indigo-500/15`                                                 | MediaCard 选中遮罩；checkbox `accent-indigo-500` |
@@ -170,15 +170,15 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 
 ### 组件内局部层级（非全屏，仅作用于自身 stacking context）
 
-| z     | 元素                                | 来源                  |
-| ----- | ----------------------------------- | --------------------- |
-| 1     | 卡片选中遮罩（pointer-events-none） | MediaCard             |
-| 3     | 卡片顶部标签行                      | MediaCard             |
-| 1 / 2 | 计数徽章 / 删除钮                   | TagChip               |
-| 2     | 行内置顶、删除角钮                  | TagManagerModal 行    |
-| 10    | 底部图例条 / 提交条                 | 详情弹窗、全屏查看器  |
+| z     | 元素                                | 来源                                                    |
+| ----- | ----------------------------------- | ------------------------------------------------------- |
+| 1     | 卡片选中遮罩（pointer-events-none） | MediaCard                                               |
+| 3     | 卡片顶部标签行                      | MediaCard                                               |
+| 1 / 2 | 计数徽章 / 删除钮                   | TagChip                                                 |
+| 2     | 行内置顶、删除角钮                  | TagManagerModal 行                                      |
+| 10    | 底部图例条 / 提交条                 | 详情弹窗、全屏查看器                                    |
 | 10    | 详情内查找条                        | PromptDetailModal / ImageDetailModal（useDetailSearch） |
-| 20    | 全屏右上关闭钮                      | ImageFullscreenViewer |
+| 20    | 全屏右上关闭钮                      | ImageFullscreenViewer                                   |
 
 ### 关联关系与注意
 

@@ -824,7 +824,7 @@ const fmtSize = (bytes: number) => {
             <div class="flex items-center">
               <label
                 class="relative inline-block h-6 w-11"
-                :title="current?.is_safe ? '安全' : '不安全'"
+                :title="current?.is_safe ? '安全' : '敏感'"
               >
                 <input
                   type="checkbox"

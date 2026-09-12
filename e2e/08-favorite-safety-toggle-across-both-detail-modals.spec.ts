@@ -14,10 +14,11 @@
  * 弹窗作用域由 `openImageDetail` / `openPromptDetail` 的返回值给出（弹窗内控件与主页卡片
  * 重名，必须限定在弹窗内定位），故下面的点击助手只收 Locator，不收 page。
  */
-import { expect, type Locator } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import {
   closeDetail,
   createPromptViaDialog,
+  expectToastAndDismiss,
   findPromptIdByContent,
   getImageFlags,
   getPromptFlags,
@@ -30,19 +31,27 @@ import {
 } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
-/// 点收藏并断言弹窗内 title 立即翻转（两个详情页的收藏按钮 title 一致）
-async function clickFavorite(detail: Locator, from: "收藏" | "取消收藏"): Promise<void> {
+/// 点收藏并断言弹窗内 title 立即翻转 + 成功 toast（toast 居中挡后续点击，必须点掉）
+async function clickFavorite(
+  page: Page,
+  detail: Locator,
+  from: "收藏" | "取消收藏",
+): Promise<void> {
   const to = from === "收藏" ? "取消收藏" : "收藏";
   await detail.getByTitle(from).click();
   await expect(detail.getByTitle(to)).toBeVisible({ timeout: 5_000 });
+  // 新值：from="收藏" → 点完 = 已收藏；from="取消收藏" → 点完 = 已取消收藏
+  await expectToastAndDismiss(page, from === "收藏" ? "已收藏" : "已取消收藏");
 }
 
-/// 点安全评级并断言 label title 立即翻转。
+/// 点安全评级并断言 label title 立即翻转 + 成功 toast（同上，点掉 toast 才能继续操作）
 /// 点 label 而不是 input：input 是 h-0 w-0 opacity-0，直接点会被可见性/命中检查拦下。
-async function clickSafe(detail: Locator, from: "安全" | "不安全"): Promise<void> {
-  const to = from === "安全" ? "不安全" : "安全";
+async function clickSafe(page: Page, detail: Locator, from: "安全" | "敏感"): Promise<void> {
+  const to = from === "安全" ? "敏感" : "安全";
   await detail.locator(`label[title="${from}"]`).click();
   await expect(detail.locator(`label[title="${to}"]`)).toBeVisible({ timeout: 5_000 });
+  // 新值：from="安全" → 点完 = 敏感；from="敏感" → 点完 = 安全
+  await expectToastAndDismiss(page, from === "安全" ? "已标记为敏感" : "已标记为安全");
 }
 
 test("图像详情切换收藏：弹窗即时反馈 + 落库 + 关闭后主页同步", async ({ page, app }) => {
@@ -54,7 +63,7 @@ test("图像详情切换收藏：弹窗即时反馈 + 落库 + 关闭后主页�
   let detail = await openImageDetail(page, promptContent);
 
   // ① 弹窗内即时反馈（不依赖重载）
-  await clickFavorite(detail, "收藏");
+  await clickFavorite(page, detail, "收藏");
   e2eLog.info("[step] 图像详情：收藏已开启（标题即时翻转）");
 
   // ② 落库
@@ -67,7 +76,7 @@ test("图像详情切换收藏：弹窗即时反馈 + 落库 + 关闭后主页�
 
   // 切回未收藏：UI / 落库 / 主页三处都要回到原状
   detail = await openImageDetail(page, promptContent);
-  await clickFavorite(detail, "取消收藏");
+  await clickFavorite(page, detail, "取消收藏");
   expect((await getImageFlags(page, imageId)).is_favorite, "切回后应落库 false").toBe(false);
   await closeDetail(detail);
   await expect(specialTagChip(page, "收藏")).toBeHidden({ timeout: 5_000 });
@@ -82,9 +91,9 @@ test("图像详情切换安全评级：弹窗即时反馈 + 落库 + 关闭后�
   );
   let detail = await openImageDetail(page, promptContent);
 
-  // 新导入的图像默认安全 → 切为「不安全」
-  await clickSafe(detail, "安全");
-  e2eLog.info("[step] 图像详情：已切为不安全（标题即时翻转）");
+  // 新导入的图像默认安全 → 切为「敏感」
+  await clickSafe(page, detail, "安全");
+  e2eLog.info("[step] 图像详情：已切为敏感（标题即时翻转）");
   expect((await getImageFlags(page, imageId)).is_safe, "应落库 is_safe=false").toBe(false);
 
   await closeDetail(detail);
@@ -93,7 +102,7 @@ test("图像详情切换安全评级：弹窗即时反馈 + 落库 + 关闭后�
 
   // 切回安全
   detail = await openImageDetail(page, promptContent);
-  await clickSafe(detail, "不安全");
+  await clickSafe(page, detail, "敏感");
   expect((await getImageFlags(page, imageId)).is_safe, "切回后应落库 true").toBe(true);
   await closeDetail(detail);
   await expect(specialTagChip(page, "敏感")).toBeHidden({ timeout: 5_000 });
@@ -108,7 +117,7 @@ test("提示词详情切换收藏：弹窗即时反馈 + 落库 + 关闭后主�
   const promptId = await findPromptIdByContent(page, promptContent);
   let detail = await openPromptDetail(page, promptContent);
 
-  await clickFavorite(detail, "收藏");
+  await clickFavorite(page, detail, "收藏");
   e2eLog.info("[step] 提示词详情：收藏已开启（标题即时翻转）");
   expect((await getPromptFlags(page, promptId)).is_favorite, "应落库 is_favorite=true").toBe(true);
 
@@ -117,7 +126,7 @@ test("提示词详情切换收藏：弹窗即时反馈 + 落库 + 关闭后主�
   e2eLog.info("[step] 提示词主页已同步（收藏 chip 出现）");
 
   detail = await openPromptDetail(page, promptContent);
-  await clickFavorite(detail, "取消收藏");
+  await clickFavorite(page, detail, "取消收藏");
   expect((await getPromptFlags(page, promptId)).is_favorite, "切回后应落库 false").toBe(false);
   await closeDetail(detail);
   await expect(specialTagChip(page, "收藏")).toBeHidden({ timeout: 5_000 });
@@ -132,8 +141,8 @@ test("提示词详情切换安全评级：弹窗即时反馈 + 落库 + 关闭�
   const promptId = await findPromptIdByContent(page, promptContent);
   let detail = await openPromptDetail(page, promptContent);
 
-  await clickSafe(detail, "安全");
-  e2eLog.info("[step] 提示词详情：已切为不安全（标题即时翻转）");
+  await clickSafe(page, detail, "安全");
+  e2eLog.info("[step] 提示词详情：已切为敏感（标题即时翻转）");
   expect((await getPromptFlags(page, promptId)).is_safe, "应落库 is_safe=false").toBe(false);
 
   await closeDetail(detail);
@@ -141,7 +150,7 @@ test("提示词详情切换安全评级：弹窗即时反馈 + 落库 + 关闭�
   e2eLog.info("[step] 提示词主页已同步（敏感 chip 出现）");
 
   detail = await openPromptDetail(page, promptContent);
-  await clickSafe(detail, "不安全");
+  await clickSafe(page, detail, "敏感");
   expect((await getPromptFlags(page, promptId)).is_safe, "切回后应落库 true").toBe(true);
   await closeDetail(detail);
   await expect(specialTagChip(page, "敏感")).toBeHidden({ timeout: 5_000 });

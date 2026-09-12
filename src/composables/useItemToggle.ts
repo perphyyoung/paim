@@ -60,6 +60,12 @@ export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<
       const upd = await updateDetail(item, field);
       item[field] = upd[field];
       emitChange();
+      // 详情页成功反馈（主页 toggleOne 不加，避免连续操作堆叠）
+      if (field === "is_favorite") {
+        showToast(item.is_favorite ? "已收藏" : "已取消收藏", "success");
+      } else {
+        showToast(item.is_safe ? "已标记为安全" : "已标记为敏感", "success");
+      }
     } catch {
       showToast("更新失败", "error");
     }
