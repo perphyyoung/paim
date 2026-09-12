@@ -39,8 +39,12 @@ export function useHomeShortcuts(opts: {
         e.preventDefault();
         opts.tagFilter.value?.toggleFilter();
       } else if (e.code === "KeyA") {
-        const tag = (e.target as HTMLElement | null)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return; // 输入框放行（文本全选）
+        const t = e.target as HTMLInputElement | null;
+        const tag = t?.tagName;
+        // 放行文本类 INPUT（原生 Ctrl+A 选中文本）、TEXTAREA、SELECT；
+        // checkbox / radio 的 INPUT 焦点不放行，让主页快捷键接管（复选框上原生 Ctrl+A 什么都不做）
+        if (tag === "TEXTAREA" || tag === "SELECT") return;
+        if (tag === "INPUT" && t?.type !== "checkbox" && t?.type !== "radio") return;
         e.preventDefault();
         opts.onSelectAll();
       }
