@@ -3,6 +3,7 @@
 
 pub mod backup;
 pub mod image;
+pub mod orphan;
 pub mod prompt;
 pub mod stats;
 pub mod tag;

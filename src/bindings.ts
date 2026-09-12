@@ -163,6 +163,13 @@ export const commands = {
 	exportBackup: (exportPath: string) => __TAURI_INVOKE<BackupExportSummary>("export_backup", { exportPath }),
 	/**  导入全量备份（自动识别 paim/pm；整体替换当前数据），进度经 backup-progress 事件推送。 */
 	importBackup: (zipPath: string) => __TAURI_INVOKE<BackupImportSummary>("import_backup", { zipPath }),
+	/**  扫描孤儿文件（阻塞，在 spawn_blocking 内执行） */
+	scanOrphanFiles: () => __TAURI_INVOKE<OrphanScanResult>("scan_orphan_files"),
+	/**
+	 *  导出并删除孤儿文件。
+	 *  `export_dir` 由前端通过目录选择器拿到，命令内部建 `orphan_files_{时间戳}/` 子目录。
+	 */
+	exportOrphanFiles: (exportDir: string) => __TAURI_INVOKE<OrphanExportResult>("export_orphan_files", { exportDir }),
 	/**  返回全局数据统计（12 项，与 pm 统计弹窗对齐），每次调用实时查询。 */
 	getStatistics: () => __TAURI_INVOKE<Statistics>("get_statistics"),
 };
@@ -314,6 +321,24 @@ export type ListQuery = {
 
 /**  日志级别变更事件（payload 为新级别小写字符串），前端监听后刷新本地缓存。 */
 export type LogLevelChanged = string;
+
+/**  导出删除结果 */
+export type OrphanExportResult = {
+	/**  导出的孤儿原图像数 */
+	exported: number,
+	/**  删除的孤儿文件数（原图像 + 缩略图） */
+	deleted: number,
+	/**  失败数（复制或删除出错，单文件失败不中断） */
+	failed: number,
+	/**  导出目录（空串表示无孤儿或无导出发生） */
+	export_path: string,
+};
+
+/**  扫描结果（不含大小统计——按用户要求只计数） */
+export type OrphanScanResult = {
+	orphan_image_count: number,
+	orphan_thumbnail_count: number,
+};
 
 /**  分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。 */
 export type PaginatedImages = {

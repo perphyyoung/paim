@@ -107,6 +107,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::backup::inspect_backup,
             commands::backup::export_backup,
             commands::backup::import_backup,
+            // —— 孤儿文件清理（设置页触发）——
+            commands::orphan::scan_orphan_files,
+            commands::orphan::export_orphan_files,
             // —— 数据统计 ——
             commands::stats::get_statistics,
         ])
