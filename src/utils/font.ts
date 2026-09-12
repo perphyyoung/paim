@@ -3,7 +3,8 @@
  *
  * 字号大小：缩放比例持久化到 localStorage，并写入根元素 CSS 变量
  * `--font-size-scale`；样式层以 `--fs-*` token（calc(px * scale)）消费该变量，
- * 凡使用 token 的界面都随 `useFontScale` 统一缩放。后续字体相关能力（族/行高等）可扩展本文件。
+ * 凡使用 token 的界面都随 `useFontScale` 统一缩放。详情页正文字号
+ * `--fs-detail` 在全局基准上乘 1.15（比卡片大一个字号），不再有独立滑块。
  */
 import { ref } from "vue";
 
@@ -12,17 +13,9 @@ export const FONT_SCALE_LIMITS = { min: 75, max: 150, step: 5 } as const;
 
 const FONT_SCALE_KEY = "fontScale";
 
-/** 详情页正文字号缩放比例的存储键 */
-const DETAIL_FONT_KEY = "detailFontScale";
-
 /** 将缩放比例（%）写入根元素 CSS 变量 --font-size-scale */
 export function applyFontScale(scale: number) {
   document.documentElement.style.setProperty("--font-size-scale", String(scale / 100));
-}
-
-/** 将详情页字号缩放比例（%）写入根元素 CSS 变量 --detail-font-scale */
-export function applyDetailFontScale(scale: number) {
-  document.documentElement.style.setProperty("--detail-font-scale", String(scale / 100));
 }
 
 function loadScale(key: string): number {
@@ -33,7 +26,6 @@ function loadScale(key: string): number {
 /** 应用启动时调用一次，让未打开设置弹窗时缩放也生效 */
 export function initFontScale() {
   applyFontScale(loadScale(FONT_SCALE_KEY));
-  applyDetailFontScale(loadScale(DETAIL_FONT_KEY));
 }
 
 /** 全局字体大小状态：localStorage 持久化并即时应用 */
@@ -49,19 +41,4 @@ export function useFontScale() {
   }
 
   return { fontScale, setFontScale };
-}
-
-/** 详情页正文字号状态：localStorage 持久化并即时应用 */
-export function useDetailFontScale() {
-  const detailFontScale = ref(loadScale(DETAIL_FONT_KEY));
-  applyDetailFontScale(detailFontScale.value);
-
-  function setDetailFontScale(v: number) {
-    const clamped = Math.min(FONT_SCALE_LIMITS.max, Math.max(FONT_SCALE_LIMITS.min, v));
-    detailFontScale.value = clamped;
-    localStorage.setItem(DETAIL_FONT_KEY, String(clamped));
-    applyDetailFontScale(clamped);
-  }
-
-  return { detailFontScale, setDetailFontScale };
 }

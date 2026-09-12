@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { commands } from "@/bindings";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { appVersion } from "@/version";
-import { useFontScale, useDetailFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
+import { useFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { useToast } from "@/components/useToast";
 import { markPageStale } from "@/utils/crossPageCache";
@@ -14,16 +14,11 @@ import ThumbnailRebuildModal from "@/features/image/components/ThumbnailRebuildM
 
 const { showToast } = useToast();
 
-// 全局字体大小（%），写 CSS 变量 --font-size-scale，--fs-* token 随之缩放
+// 全局字体大小（%），写 CSS 变量 --font-size-scale，--fs-* token 随之缩放；
+// 详情页正文字号 --fs-detail 在全局基准上乘 1.15，不再独立设置
 const { fontScale, setFontScale } = useFontScale();
 function onFontScaleInput(e: Event) {
   setFontScale(Number((e.target as HTMLInputElement).value));
-}
-
-// 详情页正文字号（%），写 CSS 变量 --detail-font-scale，--fs-detail 随之缩放
-const { detailFontScale, setDetailFontScale } = useDetailFontScale();
-function onDetailFontScaleInput(e: Event) {
-  setDetailFontScale(Number((e.target as HTMLInputElement).value));
 }
 
 const dataDir = ref("");
@@ -153,7 +148,9 @@ onMounted(loadDataDir);
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
           <dt class="text-gray-400">全局字体大小</dt>
-          <dd class="text-sm text-gray-500">提示词/图像主页卡片文字，当前 {{ fontScale }}%</dd>
+          <dd class="text-sm text-gray-500">
+            主页卡片 + 详情页正文（比主页自动大一个字号）；当前比例 {{ fontScale }}%
+          </dd>
         </div>
         <input
           v-model.number="fontScale"
@@ -163,22 +160,6 @@ onMounted(loadDataDir);
           :step="FONT_SCALE_LIMITS.step"
           class="w-40 shrink-0 accent-blue-600"
           @input="onFontScaleInput"
-        />
-      </div>
-
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">详情页字体大小</dt>
-          <dd class="text-sm text-gray-500">提示词/图像详情页正文，当前 {{ detailFontScale }}%</dd>
-        </div>
-        <input
-          v-model.number="detailFontScale"
-          type="range"
-          :min="FONT_SCALE_LIMITS.min"
-          :max="FONT_SCALE_LIMITS.max"
-          :step="FONT_SCALE_LIMITS.step"
-          class="w-40 shrink-0 accent-blue-600"
-          @input="onDetailFontScaleInput"
         />
       </div>
     </dl>
