@@ -188,14 +188,14 @@ pub async fn get_prompt_thumbs(
 }
 
 /// 提示词卡片背景懒自愈：可见窗口稳定后按提示词校验其关联图像的缩略图，缺图按需生成。
-/// 返回背景路径发生变化的提示词（供前端只刷新这几张卡片），路径为相对数据目录的相对值。
+/// 返回与图像侧对称的 ThumbnailEnsureResult（fixed + missing）。
 #[tauri::command]
 #[specta::specta]
 pub async fn ensure_prompt_thumbnails(
     app: tauri::AppHandle,
     db: State<'_, BkDb>,
     ids: Vec<String>,
-) -> Result<Vec<thumbnail_service::ThumbnailEnsureFixed>, AppError> {
+) -> Result<thumbnail_service::ThumbnailEnsureResult, AppError> {
     db_blocking(&db, move |conn| {
         prompt_service::ensure_thumbnails(
             conn,

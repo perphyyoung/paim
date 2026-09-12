@@ -37,9 +37,9 @@ export const commands = {
 	getPromptThumbs: (ids: string[]) => __TAURI_INVOKE<{ [key in string]: string }>("get_prompt_thumbs", { ids }),
 	/**
 	 *  提示词卡片背景懒自愈：可见窗口稳定后按提示词校验其关联图像的缩略图，缺图按需生成。
-	 *  返回背景路径发生变化的提示词（供前端只刷新这几张卡片），路径为相对数据目录的相对值。
+	 *  返回与图像侧对称的 ThumbnailEnsureResult（fixed + missing）。
 	 */
-	ensurePromptThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureFixed[]>("ensure_prompt_thumbnails", { ids }),
+	ensurePromptThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureResult>("ensure_prompt_thumbnails", { ids }),
 	/**  返回一个提示词关联的（未删除）图像列表（含缩略图与标签），供详情页网格展示。 */
 	getPromptRelatedImages: (id: string) => __TAURI_INVOKE<RelatedImage[]>("get_prompt_related_images", { id }),
 	/**  设为首图：提示词详情图像右键，调整关联 sort_order 使该图排首位（对齐 pm）。 */

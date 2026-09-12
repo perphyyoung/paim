@@ -891,7 +891,8 @@ fn ensure_thumbnails_fills_missing_and_reports_changed_prompts() {
     .unwrap();
 
     let thumbs_root = dir.join("thumbnails");
-    let fixed = ensure_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    let result = ensure_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    let fixed = &result.fixed;
     assert_eq!(fixed.len(), 1, "应报告背景发生变化的提示词");
     assert_eq!(fixed[0].id, "p1");
     assert!(
@@ -914,5 +915,28 @@ fn ensure_thumbnails_fills_missing_and_reports_changed_prompts() {
 
     // 幂等：已补齐后不再报告变化
     let again = ensure_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
-    assert!(again.is_empty(), "重复调用不应再报变化");
+    assert!(again.fixed.is_empty(), "重复调用不应再报变化");
+
+    // 场景 B：DB 有 thumbnail_path 但磁盘文件被删（用户手动清理 / 磁盘异常）
+    // 修复前 before/after 比较因路径相同而判定 fixed=0，但磁盘文件实际被重建了
+    let saved_path = written.clone();
+    assert!(dir.join(&saved_path).is_file(), "缩略图应存在");
+    std::fs::remove_file(dir.join(&saved_path)).unwrap();
+    assert!(!dir.join(&saved_path).is_file(), "缩略图应已删除");
+
+    let after_delete = ensure_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    assert_eq!(
+        after_delete.fixed.len(),
+        1,
+        "磁盘文件被删后重建，路径虽相同仍应报告 fixed（这是修复的 bug）"
+    );
+    assert_eq!(after_delete.fixed[0].id, "p1");
+    assert!(
+        dir.join(&saved_path).is_file(),
+        "重建后的缩略图应已重新落盘"
+    );
+    assert_eq!(
+        after_delete.fixed[0].thumbnail_path, saved_path,
+        "重建路径与原 DB 路径相同（stored_name 没变）"
+    );
 }

@@ -548,26 +548,81 @@ pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, S
 }
 
 /// 提示词卡片背景懒自愈：按提示词取其关联（未删除）图像，缺缩略图的按需生成并回写，
-/// 返回**背景路径发生变化**的提示词（本次新补齐，或首图来源换了一张），
-/// `thumbnail_path` 为相对数据目录的路径（与图像侧 `thumbnail_service::ensure` 同义）。
-/// 调用方为浏览页的可见窗口，顺序执行即可。
+/// 返回与图像侧对称的 `ThumbnailEnsureResult`。
+/// `missing` 为那些传了 id 但最终在 `after` 里取不到缩略图的提示词（关联全部原图缺失且无法自愈）。
 pub fn ensure_thumbnails(
     conn: &Connection,
     data_dir: &std::path::Path,
     thumbs_root: &std::path::Path,
     ids: &[String],
-) -> std::result::Result<Vec<ThumbnailEnsureFixed>, String> {
+) -> std::result::Result<thumbnail_service::ThumbnailEnsureResult, String> {
     let before = thumbs_for(conn, ids).map_err(|e| e.to_string())?;
     let image_ids = related_image_ids(conn, ids).map_err(|e| e.to_string())?;
+    let mut rebuilt_image_ids: Vec<String> = Vec::new();
     if !image_ids.is_empty() {
-        thumbnail_service::ensure(data_dir, thumbs_root, conn, &image_ids)?;
+        let img_result = thumbnail_service::ensure(data_dir, thumbs_root, conn, &image_ids)?;
+        rebuilt_image_ids = img_result.fixed.iter().map(|f| f.id.clone()).collect();
     }
     let after = thumbs_for(conn, ids).map_err(|e| e.to_string())?;
-    Ok(after
-        .into_iter()
-        .filter(|(pid, path)| before.get(pid) != Some(path))
-        .map(|(id, thumbnail_path)| ThumbnailEnsureFixed { id, thumbnail_path })
-        .collect())
+
+    // 1. DB 路径发生变化的提示词（首次补齐 / 首图换了一张）
+    let mut changed: Vec<ThumbnailEnsureFixed> = after
+        .iter()
+        .filter(|(pid, path)| before.get(*pid) != Some(path))
+        .map(|(id, thumbnail_path)| ThumbnailEnsureFixed {
+            id: id.clone(),
+            thumbnail_path: thumbnail_path.clone(),
+        })
+        .collect();
+
+    // 2. 关联图像的缩略图文件被重建过的提示词（路径未变但磁盘文件重生成，before/after 比较捕获不到）
+    if !rebuilt_image_ids.is_empty() {
+        let rebuilt_prompt_ids =
+            prompt_ids_by_image_ids(conn, &rebuilt_image_ids).map_err(|e| e.to_string())?;
+        let existing_ids: std::collections::HashSet<String> =
+            changed.iter().map(|f| f.id.clone()).collect();
+        for pid in &rebuilt_prompt_ids {
+            if existing_ids.contains(pid) {
+                continue;
+            }
+            if let Some(path) = after.get(pid) {
+                changed.push(ThumbnailEnsureFixed {
+                    id: pid.clone(),
+                    thumbnail_path: path.clone(),
+                });
+            }
+        }
+    }
+
+    // missing: 传入的提示词 id 中，after 里取不到缩略图的（关联全部原图缺失且无法自愈）
+    let existing_pids: std::collections::HashSet<&String> = after.keys().collect();
+    let missing: Vec<String> = ids
+        .iter()
+        .filter(|pid| !existing_pids.contains(pid))
+        .cloned()
+        .collect();
+
+    Ok(thumbnail_service::ThumbnailEnsureResult {
+        fixed: changed,
+        missing,
+    })
+}
+
+/// 根据图像 id 列表反查关联的（未删除）提示词 id 列表。
+fn prompt_ids_by_image_ids(conn: &Connection, image_ids: &[String]) -> Result<Vec<String>> {
+    if image_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = vec!["?"; image_ids.len()].join(",");
+    let sql = format!(
+        "SELECT DISTINCT pir.prompt_id
+         FROM prompt_image_relations pir
+         JOIN prompts p ON p.id = pir.prompt_id
+         WHERE pir.image_id IN ({placeholders}) AND p.is_deleted = 0"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(image_ids.iter()), |r| r.get(0))?;
+    rows.collect()
 }
 
 /// 这些提示词关联的全部（未删除）图像 id（去重），供缩略图自愈。

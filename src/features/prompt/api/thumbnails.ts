@@ -8,8 +8,8 @@ import type { ThumbnailEnsureFixed, ThumbnailEnsureResult } from "@/bindings";
 /** 懒自愈单条修复结果（id 此处为提示词 id） */
 export type { ThumbnailEnsureFixed };
 
-/** 批量校验可见提示词的卡片背景，缺失且原图存在时按需生成并回写 */
+/** 批量校验可见提示词的卡片背景，缺失且原图存在时按需生成并回写；与图像侧对称，直接透传后端结果 */
 export async function ensurePromptThumbnails(ids: string[]): Promise<ThumbnailEnsureResult> {
   if (ids.length === 0) return { fixed: [], missing: [] };
-  return { fixed: await commands.ensurePromptThumbnails(ids), missing: [] };
+  return commands.ensurePromptThumbnails(ids);
 }
