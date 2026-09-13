@@ -1,8 +1,9 @@
 /**
  * 缩略图懒自愈：提示词主页磁盘缩略图被删后应自动重建并刷新卡片背景。
  *
- * 关键机制：useThumbnailSelfHeal 内部维护 checked Set，记录已校验过的 id。
- * 每次组件 fresh mount（进程重启）→ checked 空 → 所有可见项重新校验。
+ * 关键机制：useThumbnailSelfHeal 对每次可见窗口变化都「随取随校验」当前可见项（不再有
+ * shared 的一次性 checked 记忆）；仅对 missing（原图缺失）做短 TTL 节流，过期即恢复可校验。
+ * 因此无论进程重启还是运行中滚动，磁盘缩略图被删都会被重新发现并重建。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -13,6 +14,7 @@ import {
   uploadImageWithPrompt,
   gotoPromptsPage,
   restartApp,
+  seedPrompts,
   test,
 } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
@@ -95,39 +97,69 @@ test("提示词主页：关闭应用后手动删缩略图，重开后 SelfHeal �
   expect(after[0]?.naturalWidth, "重建后缩略图应真实加载成功（naturalWidth>0）").toBeGreaterThan(0);
 });
 
-test("提示词主页：运行中删缩略图（不重启），SelfHeal 不会自动校验（checked Set 设计限制）", async ({
+test("提示词主页：运行中删缩略图，滚动触发后 SelfHeal 应自动重建（随取随校验，不再受一次性记忆限制）", async ({
   page,
   app,
 }) => {
-  // 1. upload → SelfHeal 首轮（checked 填充）
+  // 1a. 先造一批空提示词把列表撑过一屏：SelfHeal 的触发源是原生 scroll 事件
+  //     （handleGridScroll → scheduleCheck），内容不足一屏时 scroller 无溢出、wheel
+  //     不产生 scroll 事件 → 无法驱动运行中重校验。所以 test2 故意构造「可滚动」的场景。
   await gotoPromptsPage(page);
   const unique = Date.now();
+  const filler = Array.from({ length: 15 }, (_, i) => `e2e 填充 ${unique}-${i}`);
+  await seedPrompts(page, filler);
+
+  // 1b. upload 目标卡（有缩略图）。排序 createdAt desc → 最新在顶，目标卡位于首屏第一张、可见。
   const { imageId } = await uploadImageWithPrompt(page, `e2e 运行删 ${unique}`, app.mockImagePath);
+  await gotoPromptsPage(page);
+
+  // 等首屏 SelfHeal 校验完成、目标卡缩略图落盘，采集健康态背景基线（src 为纯路径、无 cache-buster）
+  await page.waitForSelector("img");
   await page.waitForTimeout(1500);
   const pathsBefore = await getImagePaths(page, imageId);
-  expect(pathsBefore?.thumbnail_path).toBeTruthy();
+  expect(pathsBefore?.thumbnail_path, "目标卡应有缩略图路径").toBeTruthy();
   e2eLog.info(`[step] 缩略图已存在，path=${pathsBefore?.thumbnail_path}`);
-  // 卡片缩略图正常显示：快照背景基线
-  await page.waitForSelector("img");
-  await page.waitForTimeout(500);
   const before = await snapImg(page);
+  expect(before.length, "缩略图 img 应存在且仅目标卡有（filler 为纯文本卡无 img）").toBeGreaterThan(
+    0,
+  );
 
   // 2. 应用运行中 invoke 删缩略图
   await deleteImageThumbnail(page, imageId);
   e2eLog.info("[step] 运行中删除缩略图完成");
 
-  // 3. scroll 触发 scheduleCheck → 但 checked 已有该 id → 跳过 → 不会重建
+  // 3. 触发一次滚动让 SelfHeal 重新校验可见项。列表已可滚动（16 卡），wheel 产生真实 scroll
+  //    → scheduleCheck（防抖 500ms）→ runCheck 重查可见项，发现目标卡缩略图缺 → 重建。
+  //    先向下滚让目标卡滚出视口、再向上滚回首屏：Scroll 停止时 scrollTop≈0、目标卡可见，
+  //    防抖后的 runCheck 会命中它。
+  await page.getByText(`e2e 运行删 ${unique}`).first().hover();
+  await page.mouse.wheel(0, 120);
+  await page.mouse.wheel(0, -120);
+
+  // 等 SelfHeal 把缩略图重建到磁盘（文件重新出现）
+  const thumbFull = path.join(app.dataDir, pathsBefore!.thumbnail_path);
+  const deadline = Date.now() + 5000;
+  while (!fs.existsSync(thumbFull) && Date.now() < deadline) {
+    await page.waitForTimeout(250);
+  }
+  expect(fs.existsSync(thumbFull), "运行中删除后缩略图应被 SelfHeal 重建到磁盘").toBe(true);
+  // 留出 onFixed → Vue patch 的处理时间，让 <img> 用新 URL 重新加载
   await page.waitForTimeout(1500);
+  const after = await snapImg(page);
+
+  // 4. 验证缩略图已重建（DB 路径仍在）
   const pathsAfter = await getImagePaths(page, imageId);
-  // 注意：SelfHeal 不会重建（checked Set 已记录该 id），磁盘缺但 DB 路径还在
-  // 这是当前设计限制，本用例确认它
   expect(pathsAfter?.thumbnail_path, "DB 路径应仍在").toBeTruthy();
 
-  // 4. 背景校验：删文件后页面不会重新加载缩略图（checked 设计限制 + 无 onFixed），卡片背景保持原样
-  const after = await snapImg(page);
-  e2eLog.info(`[step] 背景对比: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
-  expect(after, "运行中删缩略图后卡片 <img> 不应重新加载/变化（设计限制）").toEqual(before);
+  // 5. 背景校验：运行中删除后卡片 <img> 应带 cache-buster 变化并重新加载
+  const beforeSrc = before[0]?.src;
+  const afterSrc = after[0]?.src;
   e2eLog.info(
-    "[step] 运行中删缩略图后不重启 → SelfHeal 不自动重建（checked 已含该 id）——确认设计限制",
+    `[step] 背景对比: beforeSrc=${beforeSrc} afterSrc=${afterSrc} afterNaturalWidth=${after[0]?.naturalWidth}`,
   );
+  expect(
+    afterSrc,
+    "运行中删除后卡片 <img> src 应带 cache-buster 变化重新加载（随取随校验应发现缺图并自愈）",
+  ).not.toBe(beforeSrc);
+  expect(after[0]?.naturalWidth, "重建后缩略图应真实加载成功（naturalWidth>0）").toBeGreaterThan(0);
 });
