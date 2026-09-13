@@ -5,7 +5,7 @@
 | 节 | 主题 | 一句话教训 |
 |---|---|---|
 | 1 | 冷启动自动弹详情弹窗 / 弹窗子数据为空 | 嵌套 Teleport 的多根组件卸载不可靠，需父级 `v-if` 兜底销毁；被 `v-if` 强制卸载的弹窗，初始化 watch 必须加 `immediate`。 |
-| 2 | 「打开本地保存位置」落到桌面 | `explorer /select,` 必须单独成一个参数且路径统一反斜杠；它不等待返回，返回码不能判断成败。 |
+| 2 | 「打开本地保存位置」定位失败 | 最终改走 `SHOpenFolderAndSelectItems`：`explorer /select,` 既挑参数形式（拆分 + 全反斜杠），又有新窗口冷启动竞态（首次只到目录、第二次才选中）。 |
 | 3 | tauri-specta BigInt 导出报错 | 先查 Builder 级配置，禁止为绑定导出改业务类型；不猜 API（docs.rs 不可用时读本地 registry 宏源码）；批量替换后必须全局扫描。 |
 | 4 | e2e 失败定位不到报错行 | 报错行与 call log 都在完整控制台输出里，`error-context.md` 只有页面快照。 |
 | 5 | e2e 用例间点击被遮罩拦截 | worker 共享实例跨用例保留 UI 状态（弹窗没关）；复位统一放 `page` fixture（用例前 reload），worker 首用例跳过。 |
@@ -101,6 +101,19 @@ std::process::Command::new("explorer")
 
 - Windows 用 `explorer /select,<file>` 定位文件时：参数必须拆分传（`/select,` 与路径分开），路径必须全反斜杠。
 - 排查同类问题时先与参考项目（lap 等）比对参数调用形式，不要先在业务代码里加条件/回退逻辑。
+
+### 续：修完参数后仍「首次只打开目录、第二次才选中文件」
+
+上面的参数修正只解决了「落到桌面」，还剩一个更隐蔽的问题：目标目录**尚无已打开的 Explorer 窗口**时，窗口冷启动是异步的，`/select` 这条选择命令在视图创建完成前发出就被丢弃，于是只打开目录、不选中；窗口已存在时命令派发给现存视图，所以第二次必中——「第一次到目录、第二次到文件」正是这个竞态的特征。
+
+结论：**不要用命令行协议做「定位并选中」**，改走 Shell 官方入口 `SHOpenFolderAndSelectItems`（Electron 与 tauri-plugin-opener 都用它，后者还在 `ERROR_FILE_NOT_FOUND` 时回退 `ShellExecuteExW`）。要点：
+
+- 调用线程必须先 `CoInitializeEx`；只有返回 `S_OK`（本次完成初始化）才配对 `CoUninitialize`，`S_FALSE`/`RPC_E_CHANGED_MODE` 表示线程上已有别人的初始化，不能卸。
+- 进 Shell 之前必须先把路径分隔符归一化为反斜杠：数据库 `relative_path` 存 `/`，`Path::join` 会保留，混用分隔符会让 `ILCreateFromPathW` 直接返回 null（与 `explorer` 回退默认位置同源，坑换了层皮还在）。归一化只做一次，兜底路径复用同一份结果。
+- 父目录 PIDL 与文件 PIDL 都要 `ILCreateFromPathW` 生成、`ILFree` 释放；PIDL 只引用路径字符串，两者必须同生命周期（本项目用 `OwnedItemIdList` 同结构体持有）。
+- 失败要有兜底（本项目保留 `explorer /select,`，最差仍是打开目录）并记 WARN——这次终于能拿到 HRESULT，不再像 `explorer` 那样返回码恒 0、无法判断成败。
+
+实现见 `src-tauri/src/infra/shell_reveal.rs`（`reveal_in_explorer`），由 `open_image_location` 调用，三处右键（图像卡片/图像详情/关联图像）共用一条命令。
 
 ## 3. tauri-specta 集成：BigInt 绕过方式错误与前端迁移
 

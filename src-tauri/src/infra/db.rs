@@ -409,15 +409,7 @@ pub fn open_image_location(
     if !full.exists() {
         crate::log_warn!("image_missing: id={id} file_name={file_name} caller=open_image_location");
     }
-    // 对齐 lap 的做法：explorer 参数拆分（/select, 与路径分开），
-    // 且路径统一反斜杠（relative_path 含 /，混用分隔符会让 explorer 回退默认位置）
-    let norm = full.to_string_lossy().replace('/', "\\");
-    std::process::Command::new("explorer")
-        .arg("/select,")
-        .arg(norm)
-        .spawn()
-        .map_err(|e| AppError::Message(format!("打开保存位置失败: {e}")))?;
-    Ok(())
+    crate::infra::shell_reveal::reveal_in_explorer(&full)
 }
 
 /// 批量切换收藏（对齐 pm：集合级 `1 - is_favorite` 一次 SQL，收藏↔取消收藏）

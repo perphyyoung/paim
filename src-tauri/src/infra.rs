@@ -3,5 +3,6 @@
 pub mod db;
 pub mod error;
 pub mod logging;
+pub mod shell_reveal;
 pub mod text_utils;
 pub mod time;

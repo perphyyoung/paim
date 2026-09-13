@@ -7,7 +7,7 @@
 | [亮点设计.md](./亮点设计.md) | 值得借鉴的设计思路（重在「为什么」，代码细节从简）：缩略图懒自愈的懒触发、校验/修复分离、随取随校验与短 TTL 兜底。 |
 | [新增命令说明(tauri-specta 版).md](./新增命令说明(tauri-specta 版).md) | 新增/修改后端命令与事件的标准流程：`#[specta::specta]` 标注 → collect_commands!/collect_events! 注册 → `pnpm dev` 重新生成 `src/bindings.ts`；前端调用规范与排查速查。 |
 | [添加键盘快捷键.md](./添加键盘快捷键.md) | 快捷键两条路线（系统级 global-shortcut / 应用内 keydown）的选型与参考实现，含 title 联动规范与 pm 对照。 |
-| [lessons.md](./lessons.md) | 排查记录（Lessons Learned）：弹窗残留与初始化、Explorer /select 定位、tauri-specta 集成返工等，含根因与通用约束。 |
+| [lessons.md](./lessons.md) | 排查记录（Lessons Learned）：弹窗残留与初始化、资源管理器定位（`/select,` 竞态与 SHOpenFolderAndSelectItems）、tauri-specta 集成返工等，含根因与通用约束。 |
 | [日志使用说明.md](./日志使用说明.md) | 极简调试日志：后端 4 个宏 + 前端 `log` 对象（仅 DEV 上报），写入 `paim.log` 的格式与位置、使用建议。 |
 | [导入优化.md](./导入优化.md) | pm 备份导入缩略图重建的性能现状（jpeg-encoder SIMD、满核并发）与暂缓的备选方案（turbojpeg / libvips）。 |
 | [虚拟滚动可选优化.md](./虚拟滚动可选优化.md) | VirtualGrid + CustomScrollBar 已落地后的暂缓优化：数据分页演进路径、缩略图缓存穿透、Pinia 引入时机。 |
