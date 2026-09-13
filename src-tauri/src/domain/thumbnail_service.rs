@@ -217,7 +217,7 @@ fn io_err(e: std::io::Error) -> String {
 /// 记录的 thumbnail_path 非空且文件存在 → 跳过；否则走 build_thumbnail
 /// （其内部同样跳过已存在文件）。修复项计入 fixed，无法修复的 id 计入 missing。
 /// 调用方为浏览页的可见窗口（一屏项数），顺序执行即可。
-pub fn ensure(
+pub fn ensure_thumbnails(
     data_dir: &Path,
     thumbs_root: &Path,
     conn: &Connection,

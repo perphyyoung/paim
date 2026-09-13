@@ -470,7 +470,7 @@ pub async fn ensure_image_thumbnails(
     ids: Vec<String>,
 ) -> Result<ThumbnailEnsureResult, AppError> {
     db_blocking(&db, move |conn| {
-        thumbnail_service::ensure(
+        thumbnail_service::ensure_thumbnails(
             &crate::infra::db::data_dir(&app),
             &crate::infra::db::thumbnails_dir(&app),
             conn,

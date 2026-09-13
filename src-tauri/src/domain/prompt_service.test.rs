@@ -1,8 +1,8 @@
 //! 提示词领域服务单元测试：详情更新（只写传入字段，未传字段保持不变）。
 
 use super::{
-    ensure_thumbnails, list_ids, list_page, list_related_images_with, set_prompt_first_image,
-    special_tags_counts, thumbs_for, update_detail,
+    ensure_prompt_thumbnails, list_ids, list_page, list_related_images_with,
+    set_prompt_first_image, special_tags_counts, thumbs_for, update_detail,
 };
 use crate::domain::list_query::ListQuery;
 use crate::infra::db;
@@ -868,7 +868,7 @@ fn thumbs_for_limits_result_to_requested_prompts() {
 /// 懒自愈按提示词补背景：关联图像缺缩略图 → 生成并回写，返回路径变化的提示词；
 /// 再次调用已无变化（幂等）。
 #[test]
-fn ensure_thumbnails_fills_missing_and_reports_changed_prompts() {
+fn ensure_prompt_thumbnails_fills_missing_and_reports_changed_prompts() {
     let (dir, db) = setup();
     let conn = db.0.lock().unwrap();
     conn.execute(
@@ -891,7 +891,7 @@ fn ensure_thumbnails_fills_missing_and_reports_changed_prompts() {
     .unwrap();
 
     let thumbs_root = dir.join("thumbnails");
-    let result = ensure_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    let result = ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
     let fixed = &result.fixed;
     assert_eq!(fixed.len(), 1, "应报告背景发生变化的提示词");
     assert_eq!(fixed[0].id, "p1");
@@ -914,7 +914,7 @@ fn ensure_thumbnails_fills_missing_and_reports_changed_prompts() {
     assert_eq!(written, fixed[0].thumbnail_path, "路径应回写到 images");
 
     // 幂等：已补齐后不再报告变化
-    let again = ensure_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    let again = ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
     assert!(again.fixed.is_empty(), "重复调用不应再报变化");
 
     // 场景 B：DB 有 thumbnail_path 但磁盘文件被删（用户手动清理 / 磁盘异常）
@@ -924,7 +924,8 @@ fn ensure_thumbnails_fills_missing_and_reports_changed_prompts() {
     std::fs::remove_file(dir.join(&saved_path)).unwrap();
     assert!(!dir.join(&saved_path).is_file(), "缩略图应已删除");
 
-    let after_delete = ensure_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    let after_delete =
+        ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
     assert_eq!(
         after_delete.fixed.len(),
         1,

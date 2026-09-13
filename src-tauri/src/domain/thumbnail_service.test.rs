@@ -187,7 +187,7 @@ fn rebuild_all_empty_db_returns_zero() {
 }
 
 #[test]
-fn ensure_heals_missing_and_reports_unfixable() {
+fn ensure_thumbnails_heals_missing_and_reports_unfixable() {
     let root = unique_test_dir("ensure");
     let data_dir = root.join("data");
     // 懒自愈的存在性检查按 data_dir + 相对路径解析，缩略图须在数据目录内（真实布局）
@@ -242,7 +242,7 @@ fn ensure_heals_missing_and_reports_unfixable() {
         "img_unknown".to_string(),
     ];
 
-    let result = ensure(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
+    let result = ensure_thumbnails(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
     let fixed_ids: Vec<&str> = result.fixed.iter().map(|f| f.id.as_str()).collect();
     assert_eq!(fixed_ids, vec!["img_a", "img_b"]);
     assert_eq!(
@@ -275,7 +275,7 @@ fn ensure_heals_missing_and_reports_unfixable() {
     );
 
     // 幂等：再跑一遍无修复项
-    let again = ensure(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
+    let again = ensure_thumbnails(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
     assert!(again.fixed.is_empty());
     assert_eq!(again.missing, vec!["img_d", "img_unknown"]);
 

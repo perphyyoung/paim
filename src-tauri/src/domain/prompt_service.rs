@@ -547,11 +547,11 @@ pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, S
     Ok(map)
 }
 
-/// 提示词卡片背景懒自愈：按提示词取其关联（未删除）图像，缺缩略图的按需生成并回写，
+/// 提示词卡片背景懒自愈：按提示词展开为关联（未删除）图像，缺缩略图的统一走 thumbnail 服务生成并回写。
 /// 返回与图像侧对称的 `ThumbnailEnsureResult`。
 /// `missing` 为「关联了未删除图像（本应有缩略图）但最终取不到」的提示词；
 /// 未关联任何图像的裸提示词不算缺失（卡片本就不需要背景图），不列入 missing。
-pub fn ensure_thumbnails(
+pub fn ensure_prompt_thumbnails(
     conn: &Connection,
     data_dir: &std::path::Path,
     thumbs_root: &std::path::Path,
@@ -561,7 +561,8 @@ pub fn ensure_thumbnails(
     let image_ids = related_image_ids(conn, ids).map_err(|e| e.to_string())?;
     let mut rebuilt_image_ids: Vec<String> = Vec::new();
     if !image_ids.is_empty() {
-        let img_result = thumbnail_service::ensure(data_dir, thumbs_root, conn, &image_ids)?;
+        let img_result =
+            thumbnail_service::ensure_thumbnails(data_dir, thumbs_root, conn, &image_ids)?;
         rebuilt_image_ids = img_result.fixed.iter().map(|f| f.id.clone()).collect();
     }
     let after = thumbs_for(conn, ids).map_err(|e| e.to_string())?;

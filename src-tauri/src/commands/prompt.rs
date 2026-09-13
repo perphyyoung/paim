@@ -197,7 +197,7 @@ pub async fn ensure_prompt_thumbnails(
     ids: Vec<String>,
 ) -> Result<thumbnail_service::ThumbnailEnsureResult, AppError> {
     db_blocking(&db, move |conn| {
-        prompt_service::ensure_thumbnails(
+        prompt_service::ensure_prompt_thumbnails(
             conn,
             &crate::infra::db::data_dir(&app),
             &crate::infra::db::thumbnails_dir(&app),
