@@ -274,7 +274,7 @@ pub fn list(
     let (clauses, mut params) = filter_sql(search, tag);
     let mut sql = format!(
         "SELECT {CARD_COLS}
-         FROM images WHERE is_deleted = 0{clauses} ORDER BY created_at DESC"
+         FROM images WHERE is_deleted = 0{clauses} ORDER BY created_at DESC, id DESC"
     );
     if let Some(n) = limit {
         sql.push_str(" LIMIT ?");
@@ -395,8 +395,9 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
 
     let sql = format!(
         "SELECT {CARD_COLS} FROM images WHERE is_deleted = 0{filter}
-         ORDER BY {} {} LIMIT ? OFFSET ?",
+         ORDER BY {} {}, id {} LIMIT ? OFFSET ?",
         sort_column(&q.sort),
+        list_query::order_dir(q.desc),
         list_query::order_dir(q.desc)
     );
     params.push(Value::Integer(list_query::clamp_limit(q.limit)));
@@ -414,8 +415,9 @@ pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
     let (filter, params) = page_filter(q);
     let sql = format!(
         "SELECT id FROM images WHERE is_deleted = 0{filter}
-         ORDER BY {} {} LIMIT {} OFFSET 0",
+         ORDER BY {} {}, id {} LIMIT {} OFFSET 0",
         sort_column(&q.sort),
+        list_query::order_dir(q.desc),
         list_query::order_dir(q.desc),
         list_query::MAX_IDS
     );
@@ -468,7 +470,7 @@ pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
 pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<ImageCard>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {CARD_COLS}
-         FROM images WHERE is_deleted = 1 ORDER BY deleted_at DESC"
+         FROM images WHERE is_deleted = 1 ORDER BY deleted_at DESC, id DESC"
     ))?;
     let rows = stmt.query_map([], row_to_card)?;
     rows.collect()

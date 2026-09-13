@@ -66,6 +66,9 @@ pub fn get_by_id(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
     rows.next().transpose()
 }
 
+/// 列出全部未软删除提示词，按更新时间倒序。
+/// 说明：主页分页走 `list_page`（含排序/搜索/筛选下推），此全量列表前端不在调用，
+/// **主要供 e2e 数据准备与断言使用**（命令 `list_prompts`，见 e2e-helpers）；保留非死代码。
 pub fn list(conn: &Connection) -> Result<Vec<PromptCard>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {PCARD_COLS}
@@ -204,8 +207,9 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedPrompts> {
 
     let sql = format!(
         "SELECT {PCARD_COLS} FROM prompts WHERE is_deleted = 0{filter}
-         ORDER BY {} {} LIMIT ? OFFSET ?",
+         ORDER BY {} {}, id {} LIMIT ? OFFSET ?",
         sort_column(&q.sort),
+        list_query::order_dir(q.desc),
         list_query::order_dir(q.desc)
     );
     params.push(Value::Integer(list_query::clamp_limit(q.limit)));
@@ -226,8 +230,9 @@ pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
     let (filter, params) = page_filter(q);
     let sql = format!(
         "SELECT id FROM prompts WHERE is_deleted = 0{filter}
-         ORDER BY {} {} LIMIT {} OFFSET 0",
+         ORDER BY {} {}, id {} LIMIT {} OFFSET 0",
         sort_column(&q.sort),
+        list_query::order_dir(q.desc),
         list_query::order_dir(q.desc),
         list_query::MAX_IDS
     );
@@ -303,7 +308,7 @@ pub fn remove(conn: &Connection, id: &str) -> Result<()> {
 pub fn list_trashed(conn: &Connection) -> Result<Vec<PromptCard>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {PCARD_COLS}
-         FROM prompts WHERE is_deleted = 1 ORDER BY deleted_at DESC"
+         FROM prompts WHERE is_deleted = 1 ORDER BY deleted_at DESC, id DESC"
     ))?;
     let rows = stmt.query_map([], row_to_prompt_card)?;
     rows.collect()
