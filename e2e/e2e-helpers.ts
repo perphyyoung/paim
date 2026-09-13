@@ -34,6 +34,8 @@ export interface AppHandle {
   dataDir: string;
   previewDir: string;
   mockImagePath: string;
+  cdpPort: number;
+  env: NodeJS.ProcessEnv;
   /// 已被用例使用过：page fixture 据此决定是否 reload 复位
   /// （worker 首个用例的全新实例跳过 reload，避免打断初始加载的 IPC 请求）
   used: boolean;
@@ -59,6 +61,41 @@ function freePort(): Promise<number> {
   });
 }
 
+/// 轮询连接 CDP 直到找到应用页面（tauri.localhost），返回 browser + page。
+/// launch 与 restart 复用同一套连接/超时逻辑；child 用于提前探测进程已崩溃。
+async function connectAppCdp(
+  cdpPort: number,
+  child: ChildProcess,
+  opts: { timeoutMs: number; intervalMs: number; logTag: string },
+): Promise<{ browser: Browser; page: Page }> {
+  const cdpUrl = `http://127.0.0.1:${cdpPort}`;
+  const deadline = Date.now() + opts.timeoutMs;
+  let lastErr: unknown = new Error(`${opts.logTag} CDP 连接超时`);
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null)
+      throw new Error(`${opts.logTag} 应用进程提前退出 code=${child.exitCode}`);
+    attempt += 1;
+    try {
+      const browser = await chromium.connectOverCDP(cdpUrl);
+      const page = browser
+        .contexts()
+        .flatMap((c) => c.pages())
+        .find((p) => p.url().startsWith("http://tauri.localhost"));
+      if (page) {
+        e2eLog.info(`[${opts.logTag}] 第 ${attempt} 次尝试连上应用页面`);
+        return { browser, page };
+      }
+      lastErr = new Error("已连接 CDP 但未找到应用页面");
+    } catch (e) {
+      lastErr = e;
+      if (attempt % 10 === 0) e2eLog.info(`[${opts.logTag}] 第 ${attempt} 次尝试失败：${e}`);
+    }
+    await new Promise((r) => setTimeout(r, opts.intervalMs));
+  }
+  throw lastErr;
+}
+
 /// spawn 一个应用实例并 CDP 连接。
 /// 实例独立于「文件」而非 worker：同一 worker 顺序跑多个 spec 文件时，每文件一个实例
 /// （Playwright 只有 test/worker 两级 fixture scope，没有 file 级，故在 fixture 里自实现，
@@ -75,46 +112,28 @@ async function launchApp(workerIndex: number, seq: number): Promise<AppHandle> {
   writePng(mockImagePath);
 
   const cdpPort = await freePort();
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PAIM_DATA_DIR: dataDir,
+    PAIM_E2E_MOCK_IMAGE_PATHS: JSON.stringify([mockImagePath]),
+    WEBVIEW2_USER_DATA_FOLDER: path.join(root, "temp", `wv2-w${workerIndex}`),
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
+  };
   const child = spawn(exePath(), [], {
     cwd: root,
-    env: {
-      ...process.env,
-      PAIM_DATA_DIR: dataDir,
-      PAIM_E2E_MOCK_IMAGE_PATHS: JSON.stringify([mockImagePath]),
-      WEBVIEW2_USER_DATA_FOLDER: path.join(root, "temp", `wv2-w${workerIndex}`),
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
-    },
+    env,
     stdio: "ignore",
   });
   child.on("error", (e) => e2eLog.error(`[app] spawn 失败: ${e.message}`));
   child.on("exit", (code) => e2eLog.info(`[app] 进程退出: ${code}`));
 
-  const cdpUrl = `http://127.0.0.1:${cdpPort}`;
   // 本地 spawn 的进程 8 秒连不上 CDP 即为真故障（如启动即失败），快速失败
-  const deadline = Date.now() + 8_000;
-  let lastErr: unknown = new Error("CDP 连接超时");
-  let attempt = 0;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`应用进程提前退出，code=${child.exitCode}`);
-    attempt += 1;
-    try {
-      const browser = await chromium.connectOverCDP(cdpUrl);
-      const page = browser
-        .contexts()
-        .flatMap((c) => c.pages())
-        .find((p) => p.url().startsWith("http://tauri.localhost"));
-      if (page) {
-        e2eLog.info(`[connect] 第 ${attempt} 次尝试连上应用页面`);
-        return { child, browser, page, dataDir, previewDir, mockImagePath, used: false };
-      }
-      lastErr = new Error("已连接 CDP 但未找到应用页面");
-    } catch (e) {
-      lastErr = e;
-      if (attempt % 10 === 0) e2eLog.info(`[connect] 第 ${attempt} 次尝试失败：${e}`);
-    }
-    await new Promise((r) => setTimeout(r, 1_000));
-  }
-  throw lastErr;
+  const { browser, page } = await connectAppCdp(cdpPort, child, {
+    timeoutMs: 8_000,
+    intervalMs: 1_000,
+    logTag: "connect",
+  });
+  return { child, browser, page, dataDir, previewDir, mockImagePath, cdpPort, env, used: false };
 }
 
 /// 优雅关闭自己的实例：先 WM_CLOSE（进程以 0 退出），兜底强杀进程树。
@@ -133,6 +152,40 @@ async function closeApp(app: AppHandle): Promise<void> {
   } catch {
     // 已优雅退出
   }
+}
+
+/// 关闭应用进程后重新 spawn 同一个实例（同 dataDir、同 CDP 端口）。
+/// 用于测试"关闭应用后外部改数据 → 重开验证"的场景，比 page.reload 更接近用户真实操作。
+/// spawn 成功后自动更新 app.child / app.browser / app.page 引用。
+/// afterCloseHook 在进程关闭后、spawn 前执行——用于需要文件句柄释放才能做的操作（如删磁盘文件）。
+export async function restartApp(
+  app: AppHandle,
+  afterCloseHook?: () => Promise<void> | void,
+): Promise<void> {
+  e2eLog.info("[restart] 关闭应用进程");
+  await closeApp(app);
+  if (afterCloseHook) {
+    e2eLog.info("[restart] 执行 afterCloseHook");
+    await afterCloseHook();
+  }
+  // 端口 TIME_WAIT 给 2s 释放；Windows 上 taskkill 后句柄释放也需要时间
+  await new Promise((r) => setTimeout(r, 2_000));
+
+  const root = path.join(import.meta.dirname, "..");
+  const child = spawn(exePath(), [], { cwd: root, env: app.env, stdio: "ignore" });
+  child.on("error", (e) => e2eLog.error(`[restart] spawn 失败: ${e.message}`));
+  child.on("exit", (code) => e2eLog.info(`[restart] 进程退出: ${code}`));
+
+  const { browser, page } = await connectAppCdp(app.cdpPort, child, {
+    timeoutMs: 12_000,
+    intervalMs: 500,
+    logTag: "restart",
+  });
+  app.child = child;
+  app.browser = browser;
+  app.page = page;
+  app.used = true;
+  e2eLog.info("[restart] 应用已重启并重新连上 CDP");
 }
 
 /// 崩溃恢复：先 reload；renderer 崩溃后 CDP 宿主（浏览器进程）通常仍存活，
@@ -650,4 +703,22 @@ export function writePng(filePath: string): void {
   ]);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, png);
+}
+
+// ---- 测试缝（仅 dev 构建）----
+
+export interface E2EImagePaths {
+  file_name: string;
+  relative_path: string;
+  thumbnail_path: string;
+}
+
+/// 删指定图像的缩略图磁盘文件（不删 DB 记录、不删原图），返回删前的 DB 相对路径或 null
+export function deleteImageThumbnail(page: Page, imageId: string): Promise<string | null> {
+  return invokeCommand(page, "e2e_delete_image_thumbnail", { imageId });
+}
+
+/// 读 DB 里图像的 file_name / relative_path / thumbnail_path（最后一个空串表示无缩略图）
+export function getImagePaths(page: Page, imageId: string): Promise<E2EImagePaths | null> {
+  return invokeCommand(page, "e2e_get_image_paths", { imageId });
 }

@@ -8,7 +8,7 @@ use crate::domain::thumbnail_service::{self, ThumbnailEnsureFixed};
 use crate::infra::error::AppError;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
@@ -549,7 +549,8 @@ pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, S
 
 /// 提示词卡片背景懒自愈：按提示词取其关联（未删除）图像，缺缩略图的按需生成并回写，
 /// 返回与图像侧对称的 `ThumbnailEnsureResult`。
-/// `missing` 为那些传了 id 但最终在 `after` 里取不到缩略图的提示词（关联全部原图缺失且无法自愈）。
+/// `missing` 为「关联了未删除图像（本应有缩略图）但最终取不到」的提示词；
+/// 未关联任何图像的裸提示词不算缺失（卡片本就不需要背景图），不列入 missing。
 pub fn ensure_thumbnails(
     conn: &Connection,
     data_dir: &std::path::Path,
@@ -594,11 +595,13 @@ pub fn ensure_thumbnails(
         }
     }
 
-    // missing: 传入的提示词 id 中，after 里取不到缩略图的（关联全部原图缺失且无法自愈）
+    // missing: 传入的提示词中，「关联了未删除图像（本应有缩略图）但 after 里取不到」的。
+    // 未关联任何图像的裸提示词不是异常（卡片本就不需要背景图），排除在 missing 之外。
+    let linked = linked_undeleted_prompt_ids(conn, ids).map_err(|e| e.to_string())?;
     let existing_pids: std::collections::HashSet<&String> = after.keys().collect();
     let missing: Vec<String> = ids
         .iter()
-        .filter(|pid| !existing_pids.contains(pid))
+        .filter(|pid| linked.contains(*pid) && !existing_pids.contains(pid))
         .cloned()
         .collect();
 
@@ -606,6 +609,27 @@ pub fn ensure_thumbnails(
         fixed: changed,
         missing,
     })
+}
+
+/// 传入的提示词中，关联了至少一个未删除图像的提示词 id 集合（缩略图可能的来源）。
+fn linked_undeleted_prompt_ids(
+    conn: &Connection,
+    prompt_ids: &[String],
+) -> Result<HashSet<String>> {
+    if prompt_ids.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let placeholders = vec!["?"; prompt_ids.len()].join(",");
+    let sql = format!(
+        "SELECT DISTINCT pir.prompt_id
+         FROM prompt_image_relations pir
+         JOIN images img ON img.id = pir.image_id
+         WHERE pir.prompt_id IN ({placeholders}) AND img.is_deleted = 0"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(prompt_ids.iter()), |r| r.get(0))?;
+    rows.collect::<Result<Vec<String>>>()
+        .map(|v| v.into_iter().collect())
 }
 
 /// 根据图像 id 列表反查关联的（未删除）提示词 id 列表。

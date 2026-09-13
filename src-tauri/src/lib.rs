@@ -112,6 +112,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::orphan::export_orphan_files,
             // —— 数据统计 ——
             commands::stats::get_statistics,
+            // —— e2e 测试缝 ——
+            commands::e2e::e2e_delete_image_thumbnail,
+            commands::e2e::e2e_get_image_paths,
         ])
 }
 
@@ -150,8 +153,12 @@ pub fn run() {
         return;
     }
 
+    // 仅非 e2e 的 debug 启动才自动导出 bindings（e2e 用内嵌前端，运行期不需要；
+    // 且其 cwd=项目根，裸相对路径 "../src/bindings.ts" 会错写到父级并可能 panic）。
     #[cfg(debug_assertions)]
-    export_bindings(&specta_builder);
+    if std::env::var_os("PAIM_E2E_MOCK_IMAGE_PATHS").is_none() {
+        export_bindings(&specta_builder);
+    }
 
     // 日志级别初始化：paim-config.toml（PAIM_LOG 环境变量可覆盖），前后端共用该全局
     // 开关，运行时可经 set_log_level 命令热切。

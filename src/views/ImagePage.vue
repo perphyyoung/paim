@@ -175,11 +175,15 @@ watch(pageItems, () => {
   if (changed) thumbs.value = map;
 });
 
+// 自愈后：只把带回新路径的图像并入映射（后端回相对路径，与前缀拼接方式同 loadThumbsFor）。
+// cache-buster：自愈重建后 DB 路径不变 → URL 全等会让 Vue 跳过 <img> patch，浏览器不重新请求、
+// 卡片背景停留在失败状态；拼时间戳强制 URL 变化触发重载（asset 协议按 path 服务、忽略 query）。
 function onThumbsFixed(fixed: ThumbnailEnsureFixed[]) {
   const dir = dataDir.value;
   if (!dir || fixed.length === 0) return;
   const map = { ...thumbs.value };
-  for (const f of fixed) map[f.id] = convertFileSrc(`${dir}/${f.thumbnail_path}`);
+  for (const f of fixed)
+    map[f.id] = `${convertFileSrc(`${dir}/${f.thumbnail_path}`)}?t=${Date.now()}`;
   thumbs.value = map;
 }
 

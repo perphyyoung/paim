@@ -2,6 +2,7 @@
 //! 新命令在此声明模块并注册到 lib.rs 的 `specta_builder()`。
 
 pub mod backup;
+pub mod e2e;
 pub mod image;
 pub mod orphan;
 pub mod prompt;

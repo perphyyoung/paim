@@ -173,6 +173,20 @@ export const commands = {
 	exportOrphanFiles: (exportDir: string) => __TAURI_INVOKE<OrphanExportResult>("export_orphan_files", { exportDir }),
 	/**  返回全局数据统计（12 项，与 pm 统计弹窗对齐），每次调用实时查询。 */
 	getStatistics: () => __TAURI_INVOKE<Statistics>("get_statistics"),
+	/**
+	 *  删除指定图像的缩略图磁盘文件（不删 DB 记录、不删原图）。
+	 *  返回缩略图相对路径（用于 e2e 断言重建结果），若 DB 里没有 thumbnail_path 则返回 None。
+	 */
+	e2eDeleteImageThumbnail: (imageId: string) => __TAURI_INVOKE<string | null>("e2e_delete_image_thumbnail", { imageId }),
+	/**
+	 *  读指定图像的 DB 记录：file_name / relative_path / thumbnail_path。
+	 *  不存在则返回 None；thumbnail_path 为 NULL 时空串。
+	 */
+	e2eGetImagePaths: (imageId: string) => __TAURI_INVOKE<{
+	file_name: string,
+	relative_path: string,
+	thumbnail_path: string,
+} | null>("e2e_get_image_paths", { imageId }),
 };
 
 /** Events */
@@ -230,6 +244,13 @@ export type CreatePromptWithImagesResult = {
 	prompt: Prompt,
 	results: ImageImportResult[],
 	errors: ImageImportError[],
+};
+
+/**  e2e 测试缝：图像 DB 三列（thumbnail_path 空串表示 NULL）。 */
+export type E2EImageRecord = {
+	file_name: string,
+	relative_path: string,
+	thumbnail_path: string,
 };
 
 /**  全局快捷键触发事件（payload 为动作名，如 "toggle-settings"）。 */
