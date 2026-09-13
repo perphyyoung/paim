@@ -55,6 +55,12 @@ mock 是进程级环境变量，生产环境不存在，不影响发布路径。
   这两条行为改由前端单测覆盖：`src/composables/usePagedBlocks.test.ts`（`pnpm test:ui`）用可控的
   假 `load` 精确编排失败与延迟时序，见 [项目架构.md](../项目架构.md) 的「前端单元测试」。
 
+- **命令级测试缝**（`src-tauri/src/commands/e2e.rs`，一直有效、无 UI 入口），供用例直接操纵磁盘 / 读 DB，走统一的 `invokeCommand` 语义化封装：
+  - `e2e_delete_image_thumbnail(imageId)`：删指定图像的**缩略图磁盘文件**（不删 DB 记录、不删原图），返回缩略图相对路径（供断言重建结果），DB 无 thumbnail_path 则返回 null；
+  - `e2e_get_image_paths(imageId)`：读 DB 的 `file_name / relative_path / thumbnail_path`（thumbnail_path 为 NULL 时空串）。
+
+  运行中删文件的原子操作无法用 UI 表达（无对应按钮），故这里用命令测试缝代替；「关闭应用后删文件」的真实进程外场景则用 `restartApp` 配合其 `afterCloseHook`（NodeJS `fs` 直删），见下方复用约定。
+
 ## 运行
 
 ```bash
@@ -82,6 +88,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 下沉判据 | 出现第 2 个用例/文件要用同一段代码 → 下沉。单次使用且紧耦合本场景的步骤（如「右键替换图像」）留在 spec 内 |
 | 命名 | 名字要能自解释、带动作对象：`createPromptViaDialog` / `openPromptDetail` / `getItemTagNames` / `expectToastAndDismiss` / `uploadImageWithPrompt`。**不要**用 `helper`、`util`、`doIt` 这类无信息量的名字，也不要用缩写 |
 | 内容分块 | ① 应用实例 fixture（`test` / `AppHandle`）② 页面操作（导航、建数据、开弹窗、toast 等待）③ 后端直查（`invokeCommand` + 语义化封装）④ PNG 生成。**新增内容按块归位，不随手追加到文件末尾** |
+| 进程级重启 | `restartApp(app, afterCloseHook?)` 属于①应用实例 fixture：关掉本实例进程→（可选 afterCloseHook 在文件句柄释放后做外部改动）→用同 dataDir/同 CDP 端口重新 spawn 并连上。**专用于「关闭应用后外部改数据 → 重开验证」**（如 e2e/09 删缩略图）；与 mock 图相关的 app.child/app.browser/app.page 引用会被原地更新。**含重启的用例必须单独放宽超时**（`test.setTimeout(30_000)`）：关进程 + 等端口释放 + 重新 spawn + 连 CDP 固有耗时近 5s，超出默认 10s 预算 |
 | 调后端命令 | 一律走 `invokeCommand<T>(page, cmd, args?)`，不要在 spec 里重复写 `window.__TAURI_INTERNALS__` 访问样板；常用命令再封一层语义化函数（如 `listPrompts` / `getImagePromptsMap` / `getItemTagNames` / `listTrashedImageIds`） |
 | 封装里的断言 | helper 可以做**前置校验断言**（如 `findPromptIdByContent` 找不到就 fail 并带内容），但不要替 spec 做被测行为的断言 |
 | 副作用 | 会改数据的 helper（建提示词/上传图像）在文档注释里写明改了什么；点击类 helper（`expectToastAndDismiss`）说明为什么要点掉（toast 居中且本体 `pointer-events-auto`，不消失会挡住后续点击） |
@@ -108,6 +115,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 06 | Toast 组件自身行为：停留时长 / 点击关闭 / 堆叠 / 层级 / 离场 | 全局（触发点跨主页与详情） |
 | 07 | 分块列表：跨块滚动时远端块按需补齐 | 提示词主页 |
 | 08 | 收藏 / 安全评级切换：弹窗即时反馈 + 落库 + 关闭后主页同步 | 图像详情 + 提示词详情 |
+| 09 | 缩略图懒自愈：磁盘缩略图被删后自动重建并刷新卡片背景（含进程重启后自愈、运行中不重建两个场景） | 提示词主页 |
 
 ## 约定（速查）
 
@@ -123,7 +131,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 打标签 | 两种提交方式都要能用：回车（Enter 命中高亮 → select，未命中 → submit）与点击（点候选项 → select，详情另有「添加」按钮）。候选下拉是 Teleport + fixed `z-[125]`，**会盖住批量弹窗的「确定」按钮**（预期行为，不改布局），所以批量打标签用 `openBatchAddTagDialog` 打开后，一律用回车或点候选项提交，**不要点「确定」** |
 | 进批量模式 | `Ctrl + 点击`卡片（普通点击是打开详情）；可复用 `openBatchAddTagDialog` |
 | 断言 toast | 用 `.first()`——同一 worker 里前一用例的同文案 toast 可能未消失，直接断言会严格模式冲突（resolved to 2 elements）；`expectToast`/`expectToastAndDismiss` 内部已处理 |
-| 用例间状态复位 | page fixture 已内置：**每个文件的首个用例跳过 reload**（该文件实例刚启动、无残留，且 reload 会打断初始加载的 IPC 请求导致回调失联）；同文件其余用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload`。reload 超时 8s，失败会记 `[diag] 用例间复位 reload 失败` 并走崩溃恢复（reload → goto）——看到该行即说明是页面失联，不是用例步骤的问题 |
+| 用例间状态复位 | page fixture 已内置：**每个文件的首个用例跳过 reload**（该文件实例刚启动、无残留，且 reload 会打断初始加载的 IPC 请求导致回调失联）；同文件其余用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload`。reload 超时 8s，失败会记 `[diag] 用例间复位 reload 失败` 并走崩溃恢复（reload → goto）——看到该行即说明是页面失联，不是用例步骤的问题。**注意 reload 只重载页面、不清进程内内存状态**（如 SelfHeal 的 checked Set）；需要「进程级重启」清空内存的场景用 `restartApp`，不要用 reload 凑合 |
 | 用新定位 API | 先查类型定义。playwright 1.62 已移除 `getByDisplayValue` 等旧 API；e2e 目录已纳入 `pnpm check` 的类型检查（`tsc --noEmit -p e2e`），方法名写错会在 check 时暴露 |
 | 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每文件实例独立目录；导入会让数据目录改名，不假设旧文件仍在）。`uploadImageWithPrompt` 内部每次上传前都会覆写 mock 内容（md5 唯一），避免同实例已导入过同路径图时被判重复导入 |
 | 文件选择 | 复用 `select_images` 测试缝（`launchApp` 已把 mock 路径写入实例环境）；替换图像等单选场景需自行校验返回数量 |
