@@ -113,7 +113,7 @@ std::process::Command::new("explorer")
 - 父目录 PIDL 与文件 PIDL 都要 `ILCreateFromPathW` 生成、`ILFree` 释放；PIDL 只引用路径字符串，两者必须同生命周期（本项目用 `OwnedItemIdList` 同结构体持有）。
 - 失败要有兜底（本项目保留 `explorer /select,`，最差仍是打开目录）并记 WARN——这次终于能拿到 HRESULT，不再像 `explorer` 那样返回码恒 0、无法判断成败。
 
-实现见 `src-tauri/src/infra/shell_reveal.rs`（`reveal_in_explorer`），由 `open_image_location` 调用，三处右键（图像卡片/图像详情/关联图像）共用一条命令。
+实现见 `src-tauri/src/infra/shell_explorer.rs`：`reveal_in_explorer`（定位并选中，供 `open_image_location`，三处右键共用）与 `open_in_explorer`（只打开目录，供「打开数据目录」）；两者都用 Shell API，失败才回退 `explorer`。
 
 ## 3. tauri-specta 集成：BigInt 绕过方式错误与前端迁移
 

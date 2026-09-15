@@ -375,12 +375,7 @@ pub fn get_data_dir(app: tauri::AppHandle) -> String {
 #[tauri::command]
 #[specta::specta]
 pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), AppError> {
-    let dir = data_dir(&app);
-    std::process::Command::new("explorer")
-        .arg(&dir)
-        .spawn()
-        .map_err(|e| AppError::Message(format!("打开目录失败: {e}")))?;
-    Ok(())
+    crate::infra::shell_explorer::open_in_explorer(&data_dir(&app))
 }
 
 /// 在资源管理器中定位并选中指定图像的本地保存文件（「打开本地保存位置」）。
@@ -409,7 +404,7 @@ pub fn open_image_location(
     if !full.exists() {
         crate::log_warn!("image_missing: id={id} file_name={file_name} caller=open_image_location");
     }
-    crate::infra::shell_reveal::reveal_in_explorer(&full)
+    crate::infra::shell_explorer::reveal_in_explorer(&full)
 }
 
 /// 批量切换收藏（对齐 pm：集合级 `1 - is_favorite` 一次 SQL，收藏↔取消收藏）
