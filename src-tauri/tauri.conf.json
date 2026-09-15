@@ -4,6 +4,7 @@
   "version": "../package.json",
   "identifier": "com.paim.perphyyoung",
   "build": {
+    "removeUnusedCommands": true,
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev:ui",

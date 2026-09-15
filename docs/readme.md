@@ -9,6 +9,7 @@
 | [添加键盘快捷键.md](./添加键盘快捷键.md) | 快捷键两条路线（系统级 global-shortcut / 应用内 keydown）的选型与参考实现，含 title 联动规范与 pm 对照。 |
 | [lessons.md](./lessons.md) | 排查记录（Lessons Learned）：弹窗残留与初始化、资源管理器定位（`/select,` 竞态与 SHOpenFolderAndSelectItems）、tauri-specta 集成返工等，含根因与通用约束。 |
 | [日志使用说明.md](./日志使用说明.md) | 极简调试日志：后端 4 个宏 + 前端 `log` 对象（仅 DEV 上报），写入 `paim.log` 的格式与位置、使用建议。 |
+| [优化应用大小.md](./优化应用大小.md) | 对照官方「应用体积」逐条评估后的落地结论：Cargo profile（含必须写在 workspace 根的修正）、`removeUnusedCommands` 与 core 权限收敛的审计结果与维护约束。 |
 | [导入优化.md](./导入优化.md) | pm 备份导入缩略图重建的性能现状（jpeg-encoder SIMD、满核并发）与暂缓的备选方案（turbojpeg / libvips）。 |
 | [虚拟滚动可选优化.md](./虚拟滚动可选优化.md) | VirtualGrid + CustomScrollBar 已落地后的暂缓优化：数据分页演进路径、缩略图缓存穿透、Pinia 引入时机。 |
 | [e2e测试.md](./e2e测试.md) | Playwright e2e（CDP 连真实应用）的运行方式、测试缝、文件命名与索引、失败排查顺序。 |

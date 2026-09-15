@@ -1,3 +1,18 @@
 [workspace]
 members = ["src-tauri"]
 resolver = "2"
+
+# profile 必须写在 workspace 根：写在成员（src-tauri/Cargo.toml）里会被 cargo 忽略
+# 并告警 `profiles for the non root package will be ignored`。
+# 依据与逐条取舍见 docs/优化应用大小.md。
+
+[profile.dev]
+incremental = true # 分步编译（dev/test 默认已开启，此处显式写明）
+
+[profile.release]
+codegen-units = 1 # Allows LLVM to perform better optimization.
+lto = true # Enables link-time-optimizations.
+opt-level = "s" # Prioritizes small binary size. Use `3` if you prefer speed.
+panic = "abort" # Higher performance by disabling panic handlers.
+strip = true # Ensures debug symbols are removed.
+# trim-paths = "all" 暂不启用：cargo 1.96 仍标记为未稳定（需 nightly），写了会直接解析失败
