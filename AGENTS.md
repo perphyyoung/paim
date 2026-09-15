@@ -41,7 +41,7 @@
 
 - **target 在项目根**：根目录 Cargo.toml 是 workspace 根，cargo 默认 target-dir 即 `<项目根>/target`（曾用 CARGO_TARGET_DIR 指向共享目录，2026-09-11 已删除该环境变量）；`scripts/gen-bindings.mjs` 与 `e2e/e2e-helpers.ts` 的 exe 兜底路径均为 `<项目根>/target/debug/paim.exe`，找产物去那里。
 - `pnpm check` 链路：format → build:rs → **gen:bindings（自动复写 src/bindings.ts）** → typecheck → build；改了 Rust 命令签名记得跑 pnpm check 或 pnpm dev；验证须 grep warning 和 error 双查。
-- bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta 版).md。
+- bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。
 - vite watch 已改白名单（仅 index.html + src/ + public/）：**package.json 不在监听内**，改版本号（package.json / tauri.conf.json / Cargo.toml）后须重启 vite，否则前端 version 仍显示旧值。原因：此前递归监听项目根会持有 paim-data 目录句柄，挡住 pm 备份导入的整目录改名让位（os error 5），案例见 docs/lessons.md 第 6 条。
 - 测试命令：`pnpm test` 全部单元测试（= `pnpm test:ui` 前端 vitest + `pnpm test:rs` Rust cargo test，前端在前）；`pnpm test:ui` 仅前端单测（vitest，`src/**/*.test.ts`）；`pnpm test:rs` 仅 Rust 单测；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。

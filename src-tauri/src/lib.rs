@@ -15,7 +15,7 @@ pub struct GlobalShortcutEvent(pub String);
 
 /// tauri-specta 命令注册表：单一事实源，同时供 invoke_handler 与 TS 绑定导出使用。
 /// 新增命令必须：① `#[specta::specta]` 标注；② 在此注册；③ 跑 debug 构建（pnpm dev）
-/// 自动重新导出 ../src/bindings.ts（见下方 export_bindings，流程详见 docs/新增命令说明(tauri-specta 版).md）；
+/// 自动重新导出 ../src/bindings.ts（见下方 export_bindings，流程详见 docs/新增命令说明(tauri-specta版).md）；
 /// bindings 由 pnpm check 直接复写：主程序 PAIM_EXPORT_BINDINGS 导出即退模式
 /// （scripts/check-bindings.mjs 调用）。
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
