@@ -185,3 +185,40 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 - **同一层内场景互斥**时可共用 z 值（如 z-60 设置弹窗与右键遮罩、z-50 各业务弹窗），互不叠加出现，DOM 顺序即决定谁在上。
 - **详情内查找条**（PromptDetailModal / ImageDetailModal）：位于弹窗 z-50 遮罩层内部的 `absolute top-2 z-10`（视口顶部居中、弹窗上方空隙），不 Teleport。嵌套打开更高层弹窗（如详情内再开图像/提示词详情）时，被上层遮罩整体盖住属预期；Ctrl+F 归属由 useDetailSearch 的 guard 决定（只作用于最上层弹窗）。
 - **弹窗内的浮层（如下拉候选）必须 Teleport 到 body 并用 fixed**：详情弹窗本体是滚动容器，绝对定位会被 `overflow` 裁剪；z 取 120 与 130 之间的空档，保证盖住顶层模态、又不遮 Toast。
+
+## 六、交互：点击遮罩关闭
+
+> 原则：弹窗默认支持点击遮罩关闭；**内容输入中的场景**除外，避免误触丢失已输入内容。
+> 判断标准：遮罩层是否有 `@click.self`（或等价）关闭逻辑，与 z 值无关。新弹窗请按此分类取舍，输入型弹层一律禁点遮罩关闭。
+
+### 支持点击遮罩关闭
+
+| 弹窗 / 浮层             | z    | 说明                                                     |
+| ----------------------- | ---- | -------------------------------------------------------- |
+| 设置弹窗（App.vue）     | 60   | 点遮罩即关                                               |
+| ContextMenu 遮罩        | 60   | 点击任意处即关（非 .self，菜单本体 z-70 `@click.stop`）  |
+| InlineDialog            | 60   | 默认支持；`closeOnOverlay=false` 时禁用（吞掉点击不关闭） |
+| TrashOverlay            | 50   | 点遮罩即关                                               |
+| ImagePickerModal        | 50   | 点遮罩即关                                               |
+| TagManagerModal         | 50   | 外层遮罩点遮罩即关；内嵌输入对话框例外，见下             |
+| ConfirmDialog           | 110  | 点遮罩即关（等同取消）                                   |
+| BatchActionBar 标签对话框 | 110  | 点遮罩即关                                               |
+| StatsModal              | 110  | 点遮罩即关                                               |
+| BackupImportModal / BackupExportModal | 120 | 点遮罩即关                                |
+| ThumbnailRebuildModal   | 120  | 点遮罩即关                                               |
+| IntegrityCheckModal     | 130  | 点遮罩即关                                               |
+
+### 不支持点击遮罩关闭（须用按钮/Esc 关闭）
+
+| 弹窗                   | z  | 说明                                   |
+| ---------------------- | -- | -------------------------------------- |
+| ImageDetailModal       | 50 | 遮罩不拦截关闭，走内部按钮             |
+| PromptDetailModal      | 50 | 遮罩不拦截关闭，走内部按钮             |
+| ImageUploadModal       | 50 | 遮罩不拦截关闭，走内部按钮             |
+| NewPromptModal         | 50 | 遮罩不拦截关闭，走内部按钮             |
+| ImageFullscreenViewer  | 70 | 全屏查看层（bg-black），仅右上关闭钮    |
+
+### 输入场景的特殊处理
+
+- **TagManagerModal 内嵌 InlineDialog**：输入态（新建/重命名标签、组）传 `:close-on-overlay="false"`，点遮罩无操作，只能点「取消」；确认态（删除标签/组）保持支持点遮罩关闭。
+- **ImageDetailModal 内嵌 InlineDialog**（新建提示词）：未传该 prop，走默认，支持点遮罩关闭。
