@@ -669,6 +669,7 @@ function refresh() {
         :open="dlg.visible"
         :title="dlg.title"
         :danger="dlg.danger"
+        :close-on-overlay="dlg.mode === 'confirm'"
         @close="closeDlg"
         @confirm="submitInput"
       >

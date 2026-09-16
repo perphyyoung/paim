@@ -4,13 +4,17 @@
  * 层级 z-[60]：盖过 z-50 业务弹窗，低于右键菜单本体 z-[70]。
  * 内容由 slot 提供，底部固定「取消 / 确定」。
  */
-const props = defineProps<{
-  open: boolean;
-  title: string;
-  confirmText?: string;
-  confirmDisabled?: boolean;
-  danger?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    title: string;
+    confirmText?: string;
+    confirmDisabled?: boolean;
+    danger?: boolean;
+    closeOnOverlay?: boolean;
+  }>(),
+  { closeOnOverlay: true },
+);
 const emit = defineEmits<{ (e: "close"): void; (e: "confirm"): void }>();
 </script>
 
@@ -19,7 +23,7 @@ const emit = defineEmits<{ (e: "close"): void; (e: "confirm"): void }>();
     <div
       v-if="open"
       class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
-      @click.self="emit('close')"
+      @click.self="closeOnOverlay && emit('close')"
     >
       <div class="w-80 max-w-[90vw] rounded-lg border border-gray-700 bg-gray-800 p-4 shadow-lg">
         <h3 class="mb-3 text-center text-base font-semibold text-gray-100">{{ title }}</h3>
