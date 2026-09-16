@@ -202,7 +202,6 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | ImagePickerModal        | 50   | 点遮罩即关                                               |
 | TagManagerModal         | 50   | 外层遮罩点遮罩即关；内嵌输入对话框例外，见下             |
 | ConfirmDialog           | 110  | 点遮罩即关（等同取消）                                   |
-| BatchActionBar 标签对话框 | 110  | 点遮罩即关                                               |
 | StatsModal              | 110  | 点遮罩即关                                               |
 | BackupImportModal / BackupExportModal | 120 | 点遮罩即关                                |
 | ThumbnailRebuildModal   | 120  | 点遮罩即关                                               |
@@ -221,4 +220,5 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 ### 输入场景的特殊处理
 
 - **TagManagerModal 内嵌 InlineDialog**：输入态（新建/重命名标签、组）传 `:close-on-overlay="false"`，点遮罩无操作，只能点「取消」；确认态（删除标签/组）保持支持点遮罩关闭。
-- **ImageDetailModal 内嵌 InlineDialog**（新建提示词）：未传该 prop，走默认，支持点遮罩关闭。
+- **ImageDetailModal 内嵌 InlineDialog**（新建提示词）：传 `:close-on-overlay="false"`，点遮罩无操作，只能点「取消」。
+- **BatchActionBar 添加标签弹窗**：手写输入弹层，遮罩无关闭逻辑，点遮罩无操作，只能点「取消」。

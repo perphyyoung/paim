@@ -144,7 +144,6 @@ defineExpose({ closeTagDialog });
     <div
       v-if="tagDlgOpen"
       class="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
-      @click.self="tagDlgOpen = false"
     >
       <div class="w-80 max-w-[90vw] rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800">
         <h3 class="text-center text-base font-semibold text-gray-100">批量添加标签</h3>

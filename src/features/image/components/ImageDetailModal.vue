@@ -1010,6 +1010,7 @@ const fmtSize = (bytes: number) => {
   <InlineDialog
     :open="createPromptOpen"
     title="新建提示词"
+    :close-on-overlay="false"
     :confirm-text="createSaving ? '创建中…' : '确定'"
     :confirm-disabled="createSaving"
     @close="createPromptOpen = false"
