@@ -33,7 +33,7 @@ const keyword = ref("");
 const fonts = ref<string[]>([]);
 /** 中文名映射：英文族名 → 中文名；会话内只取一次 */
 const nameMap = ref<Record<string, string>>({});
-const anchor = ref<{ left: number; top: number } | null>(null);
+const anchor = ref<{ right: number; top: number } | null>(null);
 const trigger = ref<HTMLElement | null>(null);
 const searchInput = ref<HTMLInputElement | null>(null);
 
@@ -80,7 +80,9 @@ async function toggle() {
   const rect = trigger.value?.getBoundingClientRect();
   anchor.value = rect
     ? {
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - PANEL_WIDTH - 8)),
+        // 与按钮右边缘对齐、向左展开：设置是 50vw 居中浮层，按钮已贴近卡片右内边距，
+        // 按左边缘向右展开会越出卡片右边界（原来的 Math.min 只挡视口、不挡卡片）
+        right: Math.max(8, window.innerWidth - rect.right),
         top: rect.bottom + 4,
       }
     : null;
@@ -115,7 +117,7 @@ function pick(value: string) {
       <div
         v-if="open && anchor"
         class="fixed z-[70] rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
-        :style="{ left: `${anchor.left}px`, top: `${anchor.top}px`, width: `${PANEL_WIDTH}px` }"
+        :style="{ right: `${anchor.right}px`, top: `${anchor.top}px`, width: `${PANEL_WIDTH}px` }"
       >
         <div class="border-b border-gray-700 p-2">
           <input
