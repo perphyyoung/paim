@@ -52,7 +52,6 @@ const matched = computed(() => {
 const visible = computed(() =>
   fontListWindow(matched.value, props.modelValue, MAX_VISIBLE, SELECTED_OFFSET),
 );
-const hiddenCount = computed(() => matched.value.length - visible.value.length);
 
 /** 空串表示「默认（系统字体栈）」；有中文名时显示 `中文名 (English)` */
 const label = computed(() =>
@@ -153,7 +152,7 @@ function pick(value: string) {
             v-model="keyword"
             type="text"
             class="w-full rounded bg-gray-900 px-2 py-1 text-sm text-gray-100 outline-none placeholder:text-gray-500"
-            placeholder="搜索字体"
+            :placeholder="fonts.length ? `在 ${fonts.length} 个字体家族中筛选` : '搜索字体'"
             @keydown.esc="open = false"
           />
         </div>
@@ -180,8 +179,8 @@ function pick(value: string) {
               {{ displayFontFamily(f, nameMap) }}
             </button>
           </li>
-          <li v-if="hiddenCount > 0" class="px-3 py-1.5 text-xs text-gray-500">
-            共 {{ matched.length }} 项，输入关键字继续筛选
+          <li v-if="!loading && matched.length === 0" class="px-3 py-1.5 text-sm text-gray-500">
+            没有匹配的字体家族
           </li>
         </ul>
       </div>
