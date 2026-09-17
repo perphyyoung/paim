@@ -9,7 +9,7 @@
  *   命令失败只回退空表（显示英文族名），不阻塞选字体；搜索按中英文同时匹配。
  * - 本机字体常上千项，按关键字过滤后最多渲染 `MAX_VISIBLE` 项，其余提示继续输入。
  */
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { commands } from "@/bindings";
 import {
   displayFontFamily,
@@ -34,7 +34,7 @@ const loading = ref(false);
 const loaded = ref(false);
 const keyword = ref("");
 const fonts = ref<string[]>([]);
-/** 中文名映射：英文族名 → 中文名；会话内只取一次 */
+/** 中文名映射：英文族名 → 中文名；挂载即加载（见 loadNameMap） */
 const nameMap = ref<Record<string, string>>({});
 const anchor = ref<{ right: number; top: number } | null>(null);
 const trigger = ref<HTMLElement | null>(null);
@@ -59,21 +59,31 @@ const label = computed(() =>
   props.modelValue ? displayFontFamily(props.modelValue, nameMap.value) : "默认（系统字体栈）",
 );
 
-/** 中文名映射只取一次：文件由后端读取，失败回退空表（只显示英文族名） */
+/**
+ * 中文名映射：每次打开设置页取一次（组件随设置浮层 v-if 重建，故缓存到的是实例而非模块），
+ * 同一次打开内多次展开不再重复请求——这也让「改了 toml 重开设置页即生效」成立。
+ * 文件由后端读取，失败回退空表（只显示英文族名）。
+ */
 let nameMapPromise: Promise<Record<string, string>> | null = null;
-function loadNameMap() {
+async function loadNameMap(): Promise<Record<string, string>> {
   nameMapPromise ??= commands.getFontFamilyMap().catch(() => ({}) as Record<string, string>);
-  return nameMapPromise;
+  // 必须在这里写入：只发请求不写状态的话，label 要等首次展开（loadFonts）才更新成中文名
+  nameMap.value = await nameMapPromise;
+  return nameMap.value;
 }
+
+// 映射不需要用户手势（是我们自己的命令），挂载即取：
+// 否则按钮 label 会先渲染成英文族名，展开下拉后才跳变成「中文名 (English)」
+onMounted(loadNameMap);
 
 async function loadFonts() {
   if (loaded.value) return;
   loaded.value = true;
   loading.value = true;
   try {
-    const [list, map] = await Promise.all([loadSystemFonts(), loadNameMap()]);
+    // 映射由 loadNameMap 自己写入 nameMap（挂载时就已发起），这里只并行等齐
+    const [list] = await Promise.all([loadSystemFonts(), loadNameMap()]);
     fonts.value = list;
-    nameMap.value = map;
   } finally {
     loading.value = false;
   }
