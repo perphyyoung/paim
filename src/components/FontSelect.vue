@@ -14,6 +14,7 @@ import { commands } from "@/bindings";
 import {
   displayFontFamily,
   fontFamilySearchText,
+  fontListWindow,
   loadSystemFonts,
   sanitizeFontFamily,
 } from "@/utils/font";
@@ -23,6 +24,8 @@ const emit = defineEmits<{ "update:modelValue": [string] }>();
 
 /** 过滤后最多渲染的项数（避免上千项的长列表卡顿） */
 const MAX_VISIBLE = 200;
+/** 定位到选中项时，其上方保留的上下文项数 */
+const SELECTED_OFFSET = 40;
 /** 面板宽度（px）：用于贴边时向左收，避免超出视口 */
 const PANEL_WIDTH = 350;
 
@@ -36,6 +39,7 @@ const nameMap = ref<Record<string, string>>({});
 const anchor = ref<{ right: number; top: number } | null>(null);
 const trigger = ref<HTMLElement | null>(null);
 const searchInput = ref<HTMLInputElement | null>(null);
+const listEl = ref<HTMLElement | null>(null);
 
 const matched = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
@@ -44,7 +48,10 @@ const matched = computed(() => {
     fontFamilySearchText(f, nameMap.value).toLowerCase().includes(kw),
   );
 });
-const visible = computed(() => matched.value.slice(0, MAX_VISIBLE));
+// 窗口随选中项移动：只渲染 MAX_VISIBLE 项，不挪窗口的话选中项可能压根不在 DOM 里
+const visible = computed(() =>
+  fontListWindow(matched.value, props.modelValue, MAX_VISIBLE, SELECTED_OFFSET),
+);
 const hiddenCount = computed(() => matched.value.length - visible.value.length);
 
 /** 空串表示「默认（系统字体栈）」；有中文名时显示 `中文名 (English)` */
@@ -72,6 +79,13 @@ async function loadFonts() {
   }
 }
 
+/** 展开后滚动到当前选中的字体家族（无选中或不在列表中则停在顶部） */
+function scrollToSelected() {
+  listEl.value
+    ?.querySelector<HTMLElement>('[data-selected="true"]')
+    ?.scrollIntoView({ block: "center", inline: "nearest" });
+}
+
 async function toggle() {
   if (open.value) {
     open.value = false;
@@ -90,7 +104,11 @@ async function toggle() {
   keyword.value = "";
   await nextTick();
   searchInput.value?.focus();
-  await loadFonts();
+  await loadFonts(); // 首次拉数据；已加载则立即返回
+  // 定位放在展开流程末尾：不能挂在「首次加载」上，否则第二次展开被 loaded 守卫跳过、
+  // 而面板是 v-if 重建的（scrollTop 归零），就又回到顶部了
+  await nextTick();
+  scrollToSelected();
 }
 
 function pick(value: string) {
@@ -129,7 +147,7 @@ function pick(value: string) {
             @keydown.esc="open = false"
           />
         </div>
-        <ul class="max-h-64 overflow-y-auto py-1">
+        <ul ref="listEl" class="max-h-64 overflow-y-auto py-1">
           <li>
             <button
               type="button"
@@ -146,13 +164,14 @@ function pick(value: string) {
               type="button"
               class="block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-gray-700"
               :class="f === modelValue ? 'text-blue-300' : 'text-gray-200'"
+              :data-selected="f === modelValue"
               @click="pick(f)"
             >
               {{ displayFontFamily(f, nameMap) }}
             </button>
           </li>
           <li v-if="hiddenCount > 0" class="px-3 py-1.5 text-xs text-gray-500">
-            还有 {{ hiddenCount }} 项，输入关键字继续筛选
+            共 {{ matched.length }} 项，输入关键字继续筛选
           </li>
         </ul>
       </div>

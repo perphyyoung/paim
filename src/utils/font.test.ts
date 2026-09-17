@@ -29,6 +29,7 @@ import {
   buildFontFamilyValue,
   displayFontFamily,
   fontFamilySearchText,
+  fontListWindow,
   initFontFamily,
   loadSystemFonts,
   sanitizeFontFamily,
@@ -135,6 +136,36 @@ describe("fontFamilySearchText", () => {
 
   it("无映射时只含英文族名", () => {
     expect(fontFamilySearchText("Arial", map)).toBe("Arial");
+  });
+});
+
+describe("fontListWindow", () => {
+  // 用 a0..a9 造一个有序列表，便于用下标断言窗口位置
+  const all = Array.from({ length: 10 }, (_, i) => `f${i}`);
+
+  it("无选中（默认字体栈）→ 从头开始", () => {
+    expect(fontListWindow(all, "", 5, 2)).toEqual(["f0", "f1", "f2", "f3", "f4"]);
+  });
+
+  it("选中项在窗口外 → 窗口前移，且保留字母序", () => {
+    expect(fontListWindow(all, "f7", 5, 2)).toEqual(["f5", "f6", "f7", "f8", "f9"]);
+  });
+
+  it("选中项靠近开头 → 不移动窗口（避免上溢）", () => {
+    expect(fontListWindow(all, "f1", 5, 2)).toEqual(["f0", "f1", "f2", "f3", "f4"]);
+  });
+
+  it("选中项不在列表中（字体已卸载）→ 从头开始", () => {
+    expect(fontListWindow(all, "不存在的字体", 5, 2)).toEqual(["f0", "f1", "f2", "f3", "f4"]);
+  });
+
+  it("列表短于窗口大小 → 原样返回", () => {
+    expect(fontListWindow(all, "f9", 50, 2)).toEqual(all);
+  });
+
+  it("窗口尽量填满：末尾对齐，不为留白裁掉前面", () => {
+    // 期望起点 7 会让窗口只剩 3 项，应回退到 2 使窗口填满 8 项
+    expect(fontListWindow(all, "f9", 8, 2)).toEqual(all.slice(2));
   });
 });
 

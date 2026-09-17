@@ -137,6 +137,24 @@ export function fontFamilySearchText(family: string, map: Record<string, string>
   return cn ? `${family} ${cn}` : family;
 }
 
+/**
+ * 列表渲染窗口：有选中项时把窗口挪到它周围（保留字母序），否则从头开始。
+ * 列表只渲染 `max` 项，选中项若在窗口外根本不在 DOM 里，滚动定位也就无从谈起。
+ * `offset` 是选中项上方保留的上下文项数；选中项不存在时从 0 开始。
+ */
+export function fontListWindow(
+  all: string[],
+  selected: string,
+  max: number,
+  offset: number,
+): string[] {
+  const idx = selected ? all.indexOf(selected) : -1;
+  const desired = idx > offset ? idx - offset : 0;
+  // 再夹一次：窗口尽量填满，避免选中项靠近末尾时右侧留白、前面白白被裁掉
+  const start = Math.min(desired, Math.max(0, all.length - max));
+  return all.slice(start, start + max);
+}
+
 // —— 本机字体家族枚举 ——
 
 /** `queryLocalFonts` 只取用得到的 family（还有 fullName / postscriptName / style） */
