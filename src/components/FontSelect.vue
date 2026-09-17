@@ -24,7 +24,7 @@ const emit = defineEmits<{ "update:modelValue": [string] }>();
 /** 过滤后最多渲染的项数（避免上千项的长列表卡顿） */
 const MAX_VISIBLE = 200;
 /** 面板宽度（px）：用于贴边时向左收，避免超出视口 */
-const PANEL_WIDTH = 288;
+const PANEL_WIDTH = 350;
 
 const open = ref(false);
 const loading = ref(false);
