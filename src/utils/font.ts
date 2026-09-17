@@ -119,6 +119,24 @@ export function useFontFamily() {
   return { fontFamily, setFontFamily };
 }
 
+/**
+ * 显示名：有中文映射 → `中文名 (English)`，否则原样。
+ * 映射来自 `<数据目录>/font-family-map.toml`（后端 `get_font_family_map`）。
+ */
+export function displayFontFamily(family: string, map: Record<string, string>): string {
+  const cn = family ? map[family] : "";
+  return cn ? `${cn} (${family})` : family;
+}
+
+/**
+ * 搜索文本：中文名与英文族名都要能被搜到，
+ * 否则用户搜「雅黑」搜不到 `Microsoft YaHei`。
+ */
+export function fontFamilySearchText(family: string, map: Record<string, string>): string {
+  const cn = map[family];
+  return cn ? `${family} ${cn}` : family;
+}
+
 // —— 本机字体家族枚举 ——
 
 /** `queryLocalFonts` 只取用得到的 family（还有 fullName / postscriptName / style） */

@@ -27,6 +27,8 @@ import {
   FALLBACK_FONT_FAMILIES,
   applyFontFamily,
   buildFontFamilyValue,
+  displayFontFamily,
+  fontFamilySearchText,
   initFontFamily,
   loadSystemFonts,
   sanitizeFontFamily,
@@ -103,6 +105,36 @@ describe("initFontFamily", () => {
     store.set("fontFamily", "KaiTi");
     initFontFamily();
     expect(setProperty).toHaveBeenCalledWith("--font-family", `"KaiTi", ${DEFAULT_FONT_STACK}`);
+  });
+});
+
+describe("displayFontFamily", () => {
+  const map = { "Microsoft YaHei": "微软雅黑" };
+
+  it("有中文映射 → 中文名 (English)", () => {
+    expect(displayFontFamily("Microsoft YaHei", map)).toBe("微软雅黑 (Microsoft YaHei)");
+  });
+
+  it("无映射 → 原样返回英文族名", () => {
+    expect(displayFontFamily("Arial", map)).toBe("Arial");
+  });
+
+  it("空族名（默认字体栈）→ 空串，不显示括号", () => {
+    expect(displayFontFamily("", map)).toBe("");
+  });
+});
+
+describe("fontFamilySearchText", () => {
+  const map = { "Microsoft YaHei": "微软雅黑" };
+
+  it("中英文都能被搜到（搜「雅黑」也要命中 Microsoft YaHei）", () => {
+    const text = fontFamilySearchText("Microsoft YaHei", map);
+    expect(text.toLowerCase()).toContain("microsoft");
+    expect(text).toContain("微软雅黑");
+  });
+
+  it("无映射时只含英文族名", () => {
+    expect(fontFamilySearchText("Arial", map)).toBe("Arial");
   });
 });
 

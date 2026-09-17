@@ -2,13 +2,21 @@
 /**
  * FontSelect - 字体家族下拉（设置页「外观」）。
  *
- * 两个要点：
+ * 三个要点：
  * - 字体列表在**首次展开时**才加载：Local Font Access API 要求用户手势，
  *   挂载即调用可能连授权弹窗都弹不出来；失败/不支持时 `loadSystemFonts` 回退常用字体。
+ * - 中文名映射与字体列表同批加载（后端读 `<数据目录>/font-family-map.toml`）；
+ *   命令失败只回退空表（显示英文族名），不阻塞选字体；搜索按中英文同时匹配。
  * - 本机字体常上千项，按关键字过滤后最多渲染 `MAX_VISIBLE` 项，其余提示继续输入。
  */
 import { computed, nextTick, ref } from "vue";
-import { loadSystemFonts, sanitizeFontFamily } from "@/utils/font";
+import { commands } from "@/bindings";
+import {
+  displayFontFamily,
+  fontFamilySearchText,
+  loadSystemFonts,
+  sanitizeFontFamily,
+} from "@/utils/font";
 
 const props = defineProps<{ modelValue: string }>();
 const emit = defineEmits<{ "update:modelValue": [string] }>();
@@ -23,26 +31,42 @@ const loading = ref(false);
 const loaded = ref(false);
 const keyword = ref("");
 const fonts = ref<string[]>([]);
+/** 中文名映射：英文族名 → 中文名；会话内只取一次 */
+const nameMap = ref<Record<string, string>>({});
 const anchor = ref<{ left: number; top: number } | null>(null);
 const trigger = ref<HTMLElement | null>(null);
 const searchInput = ref<HTMLInputElement | null>(null);
 
 const matched = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
-  return kw ? fonts.value.filter((f) => f.toLowerCase().includes(kw)) : fonts.value;
+  if (!kw) return fonts.value;
+  return fonts.value.filter((f) =>
+    fontFamilySearchText(f, nameMap.value).toLowerCase().includes(kw),
+  );
 });
 const visible = computed(() => matched.value.slice(0, MAX_VISIBLE));
 const hiddenCount = computed(() => matched.value.length - visible.value.length);
 
-/** 空串表示「默认（系统字体栈）」 */
-const label = computed(() => props.modelValue || "默认（系统字体栈）");
+/** 空串表示「默认（系统字体栈）」；有中文名时显示 `中文名 (English)` */
+const label = computed(() =>
+  props.modelValue ? displayFontFamily(props.modelValue, nameMap.value) : "默认（系统字体栈）",
+);
+
+/** 中文名映射只取一次：文件由后端读取，失败回退空表（只显示英文族名） */
+let nameMapPromise: Promise<Record<string, string>> | null = null;
+function loadNameMap() {
+  nameMapPromise ??= commands.getFontFamilyMap().catch(() => ({}) as Record<string, string>);
+  return nameMapPromise;
+}
 
 async function loadFonts() {
   if (loaded.value) return;
   loaded.value = true;
   loading.value = true;
   try {
-    fonts.value = await loadSystemFonts();
+    const [list, map] = await Promise.all([loadSystemFonts(), loadNameMap()]);
+    fonts.value = list;
+    nameMap.value = map;
   } finally {
     loading.value = false;
   }
@@ -79,6 +103,7 @@ function pick(value: string) {
       ref="trigger"
       type="button"
       class="flex w-full items-center justify-between rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+      :title="label"
       @click="toggle"
     >
       <span class="truncate">{{ label }}</span>
@@ -121,7 +146,7 @@ function pick(value: string) {
               :class="f === modelValue ? 'text-blue-300' : 'text-gray-200'"
               @click="pick(f)"
             >
-              {{ f }}
+              {{ displayFontFamily(f, nameMap) }}
             </button>
           </li>
           <li v-if="hiddenCount > 0" class="px-3 py-1.5 text-xs text-gray-500">

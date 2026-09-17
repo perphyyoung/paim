@@ -151,6 +151,8 @@ export const commands = {
 	 *  按图像 id 查库取得真实 relative_path（与前端拼接解耦，杜绝路径拼错）。
 	 */
 	openImageLocation: (id: string) => __TAURI_INVOKE<null>("open_image_location", { id }),
+	/**  供下拉显示中文名：`英文族名 -> 中文名`。 */
+	getFontFamilyMap: () => __TAURI_INVOKE<{ [key in string]: string }>("get_font_family_map"),
 	batchToggleImageFavorite: (ids: string[]) => __TAURI_INVOKE<number>("batch_toggle_image_favorite", { ids }),
 	batchTogglePromptFavorite: (ids: string[]) => __TAURI_INVOKE<number>("batch_toggle_prompt_favorite", { ids }),
 	/**  同步提示词的安全评级到其关联图像（修改提示词安全评级时联动一层，参考 pm 的双向联动）。 */

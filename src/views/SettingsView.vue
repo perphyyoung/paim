@@ -156,7 +156,9 @@ onMounted(loadDataDir);
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
           <dt class="text-gray-400">字体家族</dt>
-          <dd class="text-sm text-gray-500">候选为本机已安装字体；未设置时使用系统默认字体栈</dd>
+          <dd class="text-sm text-gray-500">
+            候选为本机已安装字体；中文名映射见数据目录下 font-family-map.toml
+          </dd>
         </div>
         <FontSelect :model-value="fontFamily" @update:model-value="setFontFamily" />
       </div>
