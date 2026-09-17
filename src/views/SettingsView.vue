@@ -3,8 +3,9 @@ import { computed, onMounted, ref } from "vue";
 import { commands } from "@/bindings";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { appVersion } from "@/version";
-import { useFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
+import { useFontFamily, useFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import FontSelect from "@/components/FontSelect.vue";
 import { useToast } from "@/components/useToast";
 import { markPageStale } from "@/utils/crossPageCache";
 import { inspectBackup, type BackupInfo } from "@/features/backup/api/backup";
@@ -21,6 +22,9 @@ const { fontScale, setFontScale } = useFontScale();
 function onFontScaleInput(e: Event) {
   setFontScale(Number((e.target as HTMLInputElement).value));
 }
+
+// 字体家族：空串 = 默认字体栈；写入 CSS 变量 --font-family（tailwind fontFamily.sans 消费）
+const { fontFamily, setFontFamily } = useFontFamily();
 
 const dataDir = ref("");
 const openError = ref("");
@@ -149,6 +153,14 @@ onMounted(loadDataDir);
 
     <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">外观</h3>
     <dl class="divide-y divide-gray-700">
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <dt class="text-gray-400">字体家族</dt>
+          <dd class="text-sm text-gray-500">候选为本机已安装字体；未设置时使用系统默认字体栈</dd>
+        </div>
+        <FontSelect :model-value="fontFamily" @update:model-value="setFontFamily" />
+      </div>
+
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
           <dt class="text-gray-400">全局字体大小</dt>

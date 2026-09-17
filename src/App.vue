@@ -2,14 +2,15 @@
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { events } from "@/bindings";
-import { initFontScale } from "@/utils/font";
+import { initFontFamily, initFontScale } from "@/utils/font";
 import SettingsView from "@/views/SettingsView.vue";
 import StatsModal from "@/components/StatsModal.vue";
 import ToastHost from "@/components/ToastHost.vue";
 import { cardInfoVisible, toggleCardInfo } from "@/utils/cardInfo";
 
-// 应用启动即应用持久化的全局字体缩放
+// 应用启动即应用持久化的全局字号缩放与字体家族
 initFontScale();
+initFontFamily();
 
 // 全局快捷键（系统级，Rust 侧 tauri-plugin-global-shortcut 注册 Ctrl+,）：
 // 收到事件即切换设置面板开关

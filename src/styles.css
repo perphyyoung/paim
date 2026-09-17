@@ -6,6 +6,11 @@
   color-scheme: dark;
   /* 全局字体缩放：--font-size-scale 由 utils/font.ts 写入，字号 token 均乘此值 */
   --font-size-scale: 1;
+  /* 字体家族：--font-family 由 utils/font.ts 写入（未设置时为默认栈）；
+     tailwind 的 fontFamily.sans 指向本变量，preflight 的 html 字体随之全站生效 */
+  --font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Microsoft YaHei", "PingFang SC",
+    sans-serif;
   --fs-10: calc(12px * var(--font-size-scale));
   --fs-11: calc(13px * var(--font-size-scale));
   --fs-12: calc(14px * var(--font-size-scale));
