@@ -7,3 +7,4 @@ pub mod logging;
 pub mod shell_explorer;
 pub mod text_utils;
 pub mod time;
+pub mod webview_dir;

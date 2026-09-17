@@ -11,16 +11,20 @@
  */
 import { computed, nextTick, onMounted, ref } from "vue";
 import { commands } from "@/bindings";
+import { useToast } from "@/components/useToast";
 import {
   displayFontFamily,
   fontFamilySearchText,
   fontListWindow,
   loadSystemFonts,
   sanitizeFontFamily,
+  type FontListStatus,
 } from "@/utils/font";
 
 const props = defineProps<{ modelValue: string }>();
 const emit = defineEmits<{ "update:modelValue": [string] }>();
+
+const { showToast } = useToast();
 
 /** 过滤后最多渲染的项数（避免上千项的长列表卡顿） */
 const MAX_VISIBLE = 200;
@@ -36,6 +40,10 @@ const keyword = ref("");
 const fonts = ref<string[]>([]);
 /** 中文名映射：英文族名 → 中文名；挂载即加载（见 loadNameMap） */
 const nameMap = ref<Record<string, string>>({});
+/** 本机字体枚举结果状态：非 ok 时在列表上方固定提示（不再静默回退） */
+const listStatus = ref<FontListStatus>("ok");
+/** 仅在权限被拒时才取 WebView 目录路径（重新授权要用） */
+const webviewDir = ref("");
 const anchor = ref<{ right: number; top: number } | null>(null);
 const trigger = ref<HTMLElement | null>(null);
 const searchInput = ref<HTMLInputElement | null>(null);
@@ -81,10 +89,24 @@ async function loadFonts() {
   loading.value = true;
   try {
     // 映射由 loadNameMap 自己写入 nameMap（挂载时就已发起），这里只并行等齐
-    const [list] = await Promise.all([loadSystemFonts(), loadNameMap()]);
-    fonts.value = list;
+    const [result] = await Promise.all([loadSystemFonts(), loadNameMap()]);
+    fonts.value = result.families;
+    listStatus.value = result.status;
+    // 只有被拒时才需要 WebView 目录路径（用于「重新授权」指引），避免白跑一次 invoke
+    if (result.status === "denied") {
+      webviewDir.value = await commands.getWebviewDir();
+    }
   } finally {
     loading.value = false;
+  }
+}
+
+/** 打开 WebView 目录（指引里的一键入口，用户仍需先退出应用才能删 EBWebView） */
+async function openWebviewDir() {
+  try {
+    await commands.openWebviewDir();
+  } catch (e) {
+    showToast(`打开 WebView 目录失败：${e}`, "error");
   }
 }
 
@@ -156,6 +178,31 @@ function pick(value: string) {
             @keydown.esc="open = false"
           />
         </div>
+        <!-- 固定提示条（不随列表滚动）：上次把提示放在列表末尾等于看不见 -->
+        <p
+          v-if="listStatus !== 'ok'"
+          class="border-b border-gray-700 px-3 py-2 text-[11px] leading-snug text-amber-300"
+        >
+          <template v-if="listStatus === 'denied'">
+            未能读取本机字体：字体访问权限已被拒绝，浏览器会记住该决定、不会再弹授权框，以下仅为常用字体。
+            <br />
+            重新授权：① 完全退出 paim（托盘右键 → 退出）；② 删除 WebView 目录下的 EBWebView；③ 重启
+            paim 后再次展开本列表。
+            <br />
+            副作用：界面偏好（字号、字体家族等）会重置，业务数据不受影响。
+            <span class="mt-1 flex items-center gap-2">
+              <button
+                type="button"
+                class="shrink-0 rounded border border-gray-600 px-1.5 py-0.5 text-[11px] text-gray-200 hover:bg-gray-700"
+                @click="openWebviewDir"
+              >
+                打开 WebView 目录
+              </button>
+              <span class="break-all text-gray-400">{{ webviewDir }}</span>
+            </span>
+          </template>
+          <template v-else> 未能读取本机字体（环境不支持或读取失败），以下仅为常用字体。 </template>
+        </p>
         <ul ref="listEl" class="max-h-64 overflow-y-auto py-1">
           <li>
             <button

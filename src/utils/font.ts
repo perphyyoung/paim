@@ -179,15 +179,46 @@ function normalizeFontList(list: LocalFont[]): string[] {
   return [...families].sort((a, b) => a.localeCompare(b, "zh"));
 }
 
-/** 读取本机字体家族名；不可用或失败时返回回退候选表 */
-export async function loadSystemFonts(): Promise<string[]> {
+/**
+ * 读取结果状态：
+ * - `ok`：枚举成功；
+ * - `denied`：字体访问权限被拒绝（**该决定会被 WebView2 记在 profile 里，之后不会再弹授权框**，
+ *   只能清掉 WebView2 用户数据目录才有机会重来——含"清数据目录再导回备份"这类破坏性操作，
+ *   所以界面必须给出明确指引）；
+ * - `unsupported`：环境无此 API（WKWebView / WebKitGTK / 旧 Chromium）；
+ * - `error`：其它失败（含枚举到空列表）。
+ */
+export type FontListStatus = "ok" | "denied" | "unsupported" | "error";
+
+export interface SystemFontsResult {
+  families: string[];
+  status: FontListStatus;
+}
+
+/** 读取本机字体家族名；失败时返回回退候选表并说明原因（供界面提示，不再静默） */
+export async function loadSystemFonts(): Promise<SystemFontsResult> {
+  const fallback = (status: FontListStatus): SystemFontsResult => ({
+    families: [...FALLBACK_FONT_FAMILIES],
+    status,
+  });
   const w = globalThis.window as FontAwareWindow | undefined;
-  if (!w?.queryLocalFonts) return [...FALLBACK_FONT_FAMILIES];
+  if (!w?.queryLocalFonts) return fallback("unsupported");
   try {
     const families = normalizeFontList(await w.queryLocalFonts());
-    return families.length ? families : [...FALLBACK_FONT_FAMILIES];
+    return families.length ? { families, status: "ok" } : fallback("error");
+  } catch (e) {
+    const denied =
+      (e as { name?: string })?.name === "NotAllowedError" || (await isFontPermissionDenied());
+    return fallback(denied ? "denied" : "error");
+  }
+}
+
+/** 权限是否已被持久拒绝（Permissions API 不可用时视为未知） */
+async function isFontPermissionDenied(): Promise<boolean> {
+  try {
+    const status = await navigator.permissions.query({ name: "local-fonts" as PermissionName });
+    return status.state === "denied";
   } catch {
-    // 拒授权 / API 被策略禁用：静默回退
-    return [...FALLBACK_FONT_FAMILIES];
+    return false;
   }
 }

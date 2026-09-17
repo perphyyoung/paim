@@ -170,29 +170,60 @@ describe("fontListWindow", () => {
 });
 
 describe("loadSystemFonts", () => {
-  // 只管 window：不能用 vi.unstubAllGlobals()，会把文件级的 document/localStorage stub 一起清掉
+  // 只管 window / navigator：不能用 vi.unstubAllGlobals()，
+  // 会把文件级的 document/localStorage stub 一起清掉
   afterEach(() => {
     vi.stubGlobal("window", undefined);
+    vi.stubGlobal("navigator", undefined);
   });
 
-  it("无 queryLocalFonts（WKWebView/WebKitGTK）→ 回退候选表", async () => {
+  it("无 queryLocalFonts（WKWebView/WebKitGTK）→ 回退候选表 + unsupported", async () => {
     vi.stubGlobal("window", {});
-    await expect(loadSystemFonts()).resolves.toEqual(FALLBACK_FONT_FAMILIES);
-  });
-
-  it("拒授权/调用抛错 → 回退候选表，不抛出", async () => {
-    vi.stubGlobal("window", {
-      queryLocalFonts: () => Promise.reject(new Error("denied")),
+    await expect(loadSystemFonts()).resolves.toEqual({
+      families: FALLBACK_FONT_FAMILIES,
+      status: "unsupported",
     });
-    await expect(loadSystemFonts()).resolves.toEqual(FALLBACK_FONT_FAMILIES);
   });
 
-  it("枚举到空列表 → 回退候选表", async () => {
+  it("用户在授权框点了拒绝（NotAllowedError）→ 回退候选表 + denied", async () => {
+    vi.stubGlobal("window", {
+      queryLocalFonts: () =>
+        Promise.reject(Object.assign(new Error("denied"), { name: "NotAllowedError" })),
+    });
+    await expect(loadSystemFonts()).resolves.toEqual({
+      families: FALLBACK_FONT_FAMILIES,
+      status: "denied",
+    });
+  });
+
+  it("异常类型不明但权限已是 denied → 判定为 denied（界面要给重置指引）", async () => {
+    vi.stubGlobal("window", { queryLocalFonts: () => Promise.reject(new Error("boom")) });
+    vi.stubGlobal("navigator", {
+      permissions: { query: () => Promise.resolve({ state: "denied" }) },
+    });
+    await expect(loadSystemFonts()).resolves.toEqual({
+      families: FALLBACK_FONT_FAMILIES,
+      status: "denied",
+    });
+  });
+
+  it("非权限类失败 → error（与 denied 区分开，不给破坏性指引）", async () => {
+    vi.stubGlobal("window", { queryLocalFonts: () => Promise.reject(new Error("boom")) });
+    await expect(loadSystemFonts()).resolves.toEqual({
+      families: FALLBACK_FONT_FAMILIES,
+      status: "error",
+    });
+  });
+
+  it("枚举到空列表 → 回退候选表 + error", async () => {
     vi.stubGlobal("window", { queryLocalFonts: () => Promise.resolve([]) });
-    await expect(loadSystemFonts()).resolves.toEqual(FALLBACK_FONT_FAMILIES);
+    await expect(loadSystemFonts()).resolves.toEqual({
+      families: FALLBACK_FONT_FAMILIES,
+      status: "error",
+    });
   });
 
-  it("正常枚举 → 去重后的家族名（逐 style 返回，同一 family 多次出现）", async () => {
+  it("正常枚举 → ok + 去重后的家族名（逐 style 返回，同一 family 多次出现）", async () => {
     vi.stubGlobal("window", {
       queryLocalFonts: () =>
         Promise.resolve([
@@ -201,7 +232,10 @@ describe("loadSystemFonts", () => {
           { family: "Arial" },
         ]),
     });
-    await expect(loadSystemFonts()).resolves.toEqual(["Arial", "Microsoft YaHei"]);
+    await expect(loadSystemFonts()).resolves.toEqual({
+      families: ["Arial", "Microsoft YaHei"],
+      status: "ok",
+    });
   });
 
   it("丢弃空家族名；非法字符按截断处理，不影响其它项", async () => {
@@ -209,6 +243,9 @@ describe("loadSystemFonts", () => {
       queryLocalFonts: () =>
         Promise.resolve([{ family: "  " }, { family: "Bad;Name" }, { family: "SimHei" }]),
     });
-    await expect(loadSystemFonts()).resolves.toEqual(["Bad", "SimHei"]);
+    await expect(loadSystemFonts()).resolves.toEqual({
+      families: ["Bad", "SimHei"],
+      status: "ok",
+    });
   });
 });
