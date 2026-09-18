@@ -8,6 +8,13 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import FontSelect from "@/components/FontSelect.vue";
 import { useToast } from "@/components/useToast";
 import { markPageStale } from "@/utils/crossPageCache";
+import { fileTimestamp } from "@/utils/date";
+import {
+  applyPreferences,
+  buildPreferenceFile,
+  collectPreferences,
+  parsePreferenceFile,
+} from "@/utils/preferences";
 import { inspectBackup, type BackupInfo } from "@/features/backup/api/backup";
 import BackupImportModal from "@/features/backup/components/BackupImportModal.vue";
 import BackupExportModal from "@/features/backup/components/BackupExportModal.vue";
@@ -112,12 +119,8 @@ async function pickExportPath() {
   exportError.value = "";
   let target: string | null = null;
   try {
-    const ts = new Date()
-      .toLocaleString("sv-SE", { hour12: false })
-      .replace(/[-: ]/g, (m) => (m === " " ? "-" : ""))
-      .slice(0, 15);
     target = await saveFileDialog({
-      defaultPath: `paim-backup-${ts}.zip`,
+      defaultPath: `paim-backup-${fileTimestamp()}.zip`,
       filters: [{ name: "paim 备份文件", extensions: ["zip"] }],
     });
   } catch (e) {
@@ -127,6 +130,43 @@ async function pickExportPath() {
   if (!target) return;
   exportZipPath.value = target;
   exportModalOpen.value = true;
+}
+
+// —— 用户偏好导出/导入（仅界面偏好，业务数据走「完整备份」）——
+const prefError = ref("");
+
+async function pickPreferenceExportPath() {
+  prefError.value = "";
+  try {
+    const target = await saveFileDialog({
+      defaultPath: `paim-preferences-${fileTimestamp()}.json`,
+      filters: [{ name: "paim 偏好文件", extensions: ["json"] }],
+    });
+    if (!target) return;
+    await commands.exportPreferences(target, buildPreferenceFile(collectPreferences()));
+    showToast("偏好已导出", "success");
+  } catch (e) {
+    prefError.value = String(e);
+  }
+}
+
+async function pickPreferenceImportPath() {
+  prefError.value = "";
+  try {
+    const selected = await openFileDialog({
+      multiple: false,
+      filters: [{ name: "paim 偏好文件", extensions: ["json"] }],
+    });
+    if (!selected) return;
+    const applied = applyPreferences(
+      parsePreferenceFile(await commands.importPreferences(selected)),
+    );
+    showToast(`已导入 ${applied} 项偏好，正在重启界面…`, "success");
+    // 排序/列数/标签折叠等在组件初始化时读取，重载后才会全部生效
+    window.location.reload();
+  } catch (e) {
+    prefError.value = String(e);
+  }
 }
 
 // —— 重建缩略图 ——
@@ -257,8 +297,35 @@ onMounted(loadDataDir);
         </div>
       </div>
 
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <dt class="text-gray-400">用户偏好</dt>
+          <dd class="text-sm text-gray-500">
+            仅界面偏好（字号、字体家族、布局与排序等），不含提示词与图像；删除 WebView
+            目录或换机后可用它恢复
+          </dd>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <button
+            type="button"
+            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+            @click="pickPreferenceExportPath"
+          >
+            导出
+          </button>
+          <button
+            type="button"
+            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+            @click="pickPreferenceImportPath"
+          >
+            导入
+          </button>
+        </div>
+      </div>
+
       <p v-if="openError" class="py-2 text-sm text-red-400">{{ openError }}</p>
       <p v-if="exportError" class="py-2 text-sm text-red-400">{{ exportError }}</p>
+      <p v-if="prefError" class="py-2 text-sm text-red-400">{{ prefError }}</p>
       <p v-if="importError" class="py-2 text-sm text-red-400">
         {{ importError }}
       </p>

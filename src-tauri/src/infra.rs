@@ -4,6 +4,7 @@ pub mod db;
 pub mod error;
 pub mod font_family_map;
 pub mod logging;
+pub mod preferences;
 pub mod shell_explorer;
 pub mod text_utils;
 pub mod time;

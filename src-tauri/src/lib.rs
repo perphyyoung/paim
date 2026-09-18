@@ -3,7 +3,7 @@ pub mod commands;
 pub mod domain;
 pub mod infra;
 
-use crate::infra::{db, font_family_map, logging, webview_dir};
+use crate::infra::{db, font_family_map, logging, preferences, webview_dir};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use tauri_specta::Event;
@@ -102,6 +102,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             font_family_map::get_font_family_map,
             webview_dir::get_webview_dir,
             webview_dir::open_webview_dir,
+            // —— 用户偏好导出/导入（界面偏好，不含业务数据）——
+            preferences::export_preferences,
+            preferences::import_preferences,
             db::batch_toggle_image_favorite,
             db::batch_toggle_prompt_favorite,
             commands::prompt::sync_prompt_safe_to_images,

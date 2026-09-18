@@ -160,6 +160,10 @@ export const commands = {
 	 *  （站在要删的目录里是删不掉自己的，选中后可以直接删）；不存在则退回打开父目录。
 	 */
 	openWebviewDir: () => __TAURI_INVOKE<null>("open_webview_dir"),
+	/**  导出：把前端序列化好的偏好 JSON 写入指定路径。 */
+	exportPreferences: (path: string, json: string) => __TAURI_INVOKE<null>("export_preferences", { path, json }),
+	/**  导入：读文件、校验后原样返回；写回 localStorage 由前端完成。 */
+	importPreferences: (path: string) => __TAURI_INVOKE<string>("import_preferences", { path }),
 	batchToggleImageFavorite: (ids: string[]) => __TAURI_INVOKE<number>("batch_toggle_image_favorite", { ids }),
 	batchTogglePromptFavorite: (ids: string[]) => __TAURI_INVOKE<number>("batch_toggle_prompt_favorite", { ids }),
 	/**  同步提示词的安全评级到其关联图像（修改提示词安全评级时联动一层，参考 pm 的双向联动）。 */
