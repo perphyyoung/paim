@@ -1,14 +1,11 @@
-# paim 应用配置
-# 位置：本文件与应用同目录（开发/e2e 为项目根，部署为进程工作目录）。
+# paim 开发环境配置（debug 构建读取；文件缺失时应用自动生成）
+# 位置：项目根（与 src-tauri 同级）。
+# release 的配置不在这里——它在应用所在目录（通常即安装目录）由应用自动生成，
+# 两个环境各一份、各只含自己那个键。
 # 修改后重启生效；运行时可用 set_log_level 命令热切（优先级最高）。
 # 环境变量 PAIM_LOG 可临时覆盖本文件（不改文件调试）。
 
-# release 构建的最低日志级别：debug / info / warn / error
-# 正常运行只需 warn（info 及以下的埋点仅为排查准备）
-# release-log-level = "debug"
-release-log-level = "warn"
-
-# 开发/e2e（debug 构建）的最低日志级别
-# 排查问题时可临时改为 debug，查看全量埋点
+# 开发/e2e（debug 构建）的最低日志级别：debug / info / warn / error
+# 排查问题时改成 debug 可查看全量埋点
 dev-log-level = "debug"
 # dev-log-level = "warn"

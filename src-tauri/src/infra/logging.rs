@@ -3,13 +3,16 @@
 //! - 后端关键路径埋点（log_info!/log_warn!/log_error! 宏）
 //! - 前端通过 tauri 命令 `log_msg` 上报（invoke）
 //! 前后端共用一个全局最低级别开关（MIN_LEVEL），启动时按优先级初始化：
-//! PAIM_LOG 环境变量 > paim-config.toml（release/dev 各一键）> 内置默认（release=warn，dev=debug）；
+//! PAIM_LOG 环境变量 > paim-config.toml > 内置默认（release=warn，dev=debug）；
+//! 配置文件按构建类型分离（dev 在项目根、release 在进程工作目录），各自只含本环境的键，
+//! **文件不存在时由 `ensure_config_file` 自动写入对应模板**；
 //! 运行时经 set_log_level 命令热切并 emit 事件同步前端缓存。
 //! 写文件失败时静默，不阻塞业务（调试用途）。
 
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::path::Path;
 use std::sync::OnceLock;
 use tauri_specta::Event;
 
@@ -65,6 +68,53 @@ struct LogConfig {
     dev_log_level: Option<String>,
 }
 
+/// 开发环境（debug）配置文件模板。与 release 各一份、**各只含自己那个键**：
+/// 一个文件里塞两个环境的键，只会让人去改那一行不生效的配置。
+const CONFIG_TEMPLATE_DEV: &str = r#"# paim 开发环境配置（debug 构建读取；文件缺失时应用自动生成）
+# 位置：项目根（与 src-tauri 同级）。
+# 修改后重启生效；运行时可用 set_log_level 命令热切（优先级最高）。
+# 环境变量 PAIM_LOG 可临时覆盖本文件（不改文件调试）。
+
+# 开发/e2e（debug 构建）的最低日志级别：debug / info / warn / error
+# 排查问题时改成 debug 可查看全量埋点
+dev-log-level = "debug"
+"#;
+
+/// 部署环境（release）配置文件模板，见 [`CONFIG_TEMPLATE_DEV`]。
+const CONFIG_TEMPLATE_RELEASE: &str = r#"# paim 配置（release 构建读取；文件缺失时应用自动生成）
+# 位置：应用所在目录（进程工作目录，通常即安装目录，与 paim.log 同目录）。
+# 修改后重启生效；运行时可用 set_log_level 命令热切（优先级最高）。
+# 环境变量 PAIM_LOG 可临时覆盖本文件（不改文件调试）。
+
+# release 构建的最低日志级别：debug / info / warn / error
+# 正常运行只需 warn（info 及以下的埋点仅为排查准备）
+release-log-level = "warn"
+"#;
+
+/// 当前构建类型对应的模板：dev 与 release 各一份，互不引用。
+fn config_template() -> &'static str {
+    if cfg!(debug_assertions) {
+        CONFIG_TEMPLATE_DEV
+    } else {
+        CONFIG_TEMPLATE_RELEASE
+    }
+}
+
+/// 配置文件不存在时写入当前构建类型的默认模板；
+/// 已存在则**一个字节都不动**（哪怕内容损坏也尊重用户改动，由读取侧记 WARN 后回落默认）。
+/// 写失败只记 WARN——工作目录不可写的环境不能让启动崩掉。
+fn ensure_config_file(path: &Path) {
+    if path.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::write(path, config_template()) {
+        write(
+            Level::Warn,
+            format!("[log] 写入默认配置模板失败（{}）：{e}", path.display()),
+        );
+    }
+}
+
 /// 启动初始化，优先级从高到低：`PAIM_LOG` 环境变量 > `paim-config.toml` > 内置默认
 /// （release=warn，dev=debug）。配置文件缺失视为未配置（静默用默认）；解析失败或
 /// 级别值非法按 WARN/ERROR 记录（write 直写不受级别过滤影响，保证总能落盘）。
@@ -76,8 +126,9 @@ pub fn init_from_config() {
     };
     let mut level = default;
 
-    // ① 配置文件
+    // ① 配置文件（不存在则先写入当前构建类型的默认模板）
     let path = config_path();
+    ensure_config_file(&path);
     match std::fs::read_to_string(&path) {
         Ok(text) => match toml::from_str::<LogConfig>(&text) {
             Ok(cfg) => {
