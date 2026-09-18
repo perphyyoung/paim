@@ -9,7 +9,9 @@ export function formatLocalTime(s: string | null): string {
 
 /**
  * 文件名用的本地时间戳（形如 `20260918-120000`）。
- * 完整备份与用户偏好导出共用同一格式，避免两处各写一套。
+ * 前端只此一处产出（完整备份、用户偏好导出的默认文件名用它）；
+ * 后端同名实现是 `infra/time.rs::file_stamp()`（让位备份目录、孤儿文件导出目录用它）——
+ * 跨语言无法共享代码，**改格式必须两端同步**。
  */
 export function fileTimestamp(): string {
   return new Date()

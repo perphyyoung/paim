@@ -21,3 +21,18 @@ fn normalize_ts_canonicalizes_iso_and_slash() {
     // 无法识别的格式保留原值（不影响导入）
     assert_eq!(normalize_ts("not-a-time"), "not-a-time");
 }
+
+/// 时间戳形状：`YYYYMMDD-HHMMSS`（15 字符，第 9 位是连字符，其余全是数字）。
+/// 前端 `utils/date.ts::fileTimestamp()` 必须产出同样形状，改格式时这条会先响。
+#[test]
+fn file_stamp_shape() {
+    let s = file_stamp();
+    assert_eq!(s.len(), 15, "长度应为 15: {s}");
+    assert_eq!(&s[8..9], "-", "第 9 位应为连字符: {s}");
+    assert!(
+        s.chars()
+            .enumerate()
+            .all(|(i, c)| if i == 8 { c == '-' } else { c.is_ascii_digit() }),
+        "除连字符外应全为数字: {s}"
+    );
+}

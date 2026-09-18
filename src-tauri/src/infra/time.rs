@@ -33,6 +33,16 @@ pub fn normalize_ts(raw: &str) -> String {
     raw.to_string()
 }
 
+/// 文件名/目录名用的本地时间戳（形如 `20260918-120000`）。
+///
+/// 统一入口：让位备份目录（`paim-data_<时间戳>`）、孤儿文件导出目录（`orphan_files_<时间戳>`）
+/// 都用它，避免各写一遍 `format("%Y%m%d-%H%M%S")` 后格式漂移。
+/// 前端同名实现见 `src/utils/date.ts::fileTimestamp()`（跨语言无法共享代码，改格式必须同步）；
+/// 注释里的「时间戳」都指这个格式。注意 `db.rs` 生成 ID 用的是无连字符的 `%Y%m%d%H%M%S`，用途不同，不在此列。
+pub fn file_stamp() -> String {
+    chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
+}
+
 #[cfg(test)]
 #[path = "time.test.rs"]
 mod tests;

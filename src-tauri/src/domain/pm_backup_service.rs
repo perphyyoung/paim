@@ -115,7 +115,7 @@ where
         .and_then(|n| n.to_str())
         .unwrap_or("paim-data")
         .to_string();
-    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let ts = crate::infra::time::file_stamp();
     let backup_dir = data_dir
         .parent()
         .unwrap_or(&data_dir)

@@ -180,8 +180,8 @@ export const commands = {
 	scanIntegrity: () => __TAURI_INVOKE<IntegrityCheckResult>("scan_integrity"),
 	/**
 	 *  导出并删除孤儿文件。
-	 *  `export_dir` 由前端通过目录选择器拿到，命令内部建 `orphan_files_{时间戳}/` 子目录。
-	 *  时间格式与备份导出一致：`YYYYMMDD-HHMMSS`。
+	 *  `export_dir` 由前端通过目录选择器拿到，命令内部建 `orphan_files_<时间戳>/` 子目录；
+	 *  时间戳格式见 [`crate::infra::time::file_stamp`]（与备份导出、让位备份目录同一格式）。
 	 */
 	exportOrphanFiles: (exportDir: string) => __TAURI_INVOKE<OrphanExportResult>("export_orphan_files", { exportDir }),
 	/**  返回全局数据统计（12 项，与 pm 统计弹窗对齐），每次调用实时查询。 */

@@ -7,6 +7,7 @@
 use crate::domain::orphan_file_service::{self, IntegrityCheckResult, OrphanExportResult};
 use crate::infra::db::BkDb;
 use crate::infra::error::AppError;
+use crate::infra::time;
 
 /// 数据完整性检查（阻塞，在 spawn_blocking 内执行）
 #[tauri::command]
@@ -22,8 +23,8 @@ pub async fn scan_integrity(
 }
 
 /// 导出并删除孤儿文件。
-/// `export_dir` 由前端通过目录选择器拿到，命令内部建 `orphan_files_{时间戳}/` 子目录。
-/// 时间格式与备份导出一致：`YYYYMMDD-HHMMSS`。
+/// `export_dir` 由前端通过目录选择器拿到，命令内部建 `orphan_files_<时间戳>/` 子目录；
+/// 时间戳格式见 [`crate::infra::time::file_stamp`]（与备份导出、让位备份目录同一格式）。
 #[tauri::command]
 #[specta::specta]
 pub async fn export_orphan_files(
@@ -34,8 +35,7 @@ pub async fn export_orphan_files(
     let data_dir = crate::infra::db::data_dir(&app);
 
     let base = std::path::PathBuf::from(&export_dir);
-    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let orphan_export_dir = base.join(format!("orphan_files_{stamp}"));
+    let orphan_export_dir = base.join(format!("orphan_files_{}", time::file_stamp()));
     std::fs::create_dir_all(&orphan_export_dir)
         .map_err(|e| AppError::Message(format!("创建导出目录失败: {e}")))?;
 
