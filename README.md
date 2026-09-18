@@ -35,6 +35,24 @@ pnpm dev
 pnpm release
 ```
 
+## 开发环境
+
+当前**只在 Windows 上开发与验证**（Tauri 2 + WebView2）。macOS / Linux **未测试**——不是「不支持」，而是没有验证过：Tauri 本身跨平台，但代码里有若干 Windows 专有实现（见下），移植时需要替换。
+
+工具链：
+
+- **Windows + WebView2**（随 Edge 安装，通常已具备）；
+- **Rust**：最低版本见 `src-tauri/Cargo.toml` 的 `rust-version`；
+- **Node ≥ 22.13**：仅「用 npm 安装 pnpm」时需要；pnpm 12 自身是原生可执行文件，运行不再需要 Node；
+- **pnpm 12**：版本已固定在 `package.json` 的 `packageManager`，请勿用其它大版本安装依赖（会改写 `pnpm-lock.yaml`）。
+
+未测试平台的已知适配点（供移植参考，不是原理性障碍）：
+
+- `src-tauri/src/infra/shell_explorer.rs`：「打开数据目录 / 打开本地保存位置」用 Windows Shell API（`SHOpenFolderAndSelectItems` / `explorer`）实现，需换成各平台等价调用；
+- `src-tauri/src/infra/webview_dir.rs`：WebView 目录（`%LOCALAPPDATA%\<identifier>\EBWebView`）与字体授权重置引导是 Windows / WebView2 专有；
+- 字体家族下拉依赖 `queryLocalFonts()`（仅 Chromium 系内核）：WKWebView / WebKitGTK 下会自动回退到 7 个常用字体，功能可用但候选不全；
+- 托盘常驻、全局快捷键、单实例由 Tauri 插件提供，通常无需改，但未在其它平台验证。
+
 ## 项目结构
 
 业务按「特征切片」组织，同一业务在两端对齐：前端是 `src/features/<业务>/` 目录，后端是 `commands/`（命令）与 `domain/`（领域）下的同名文件。完整目录树、分层规则与依赖约束见 [项目架构.md](项目架构.md)；缓存与加载优化的整体设计（KeepAlive、虚拟滚动、批量 Map、实体级缓存、懒自愈等）见 [缓存及加载优化设计.md](缓存及加载优化设计.md)。

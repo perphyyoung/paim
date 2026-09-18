@@ -46,11 +46,13 @@
 - vite watch 已改白名单（仅 index.html + src/ + public/）：**package.json 不在监听内**，改版本号（package.json / tauri.conf.json / Cargo.toml）后须重启 vite，否则前端 version 仍显示旧值。原因：此前递归监听项目根会持有 paim-data 目录句柄，挡住 pm 备份导入的整目录改名让位（os error 5），案例见 docs/lessons.md 第 6 条。
 - 测试命令：`pnpm test` 全部单元测试（= `pnpm test:ui` 前端 vitest + `pnpm test:rs` Rust cargo test，前端在前）；`pnpm test:ui` 仅前端单测（vitest，`src/**/*.test.ts`）；`pnpm test:rs` 仅 Rust 单测；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。
 - 万级压测数据：`node scripts/bench-data.mjs seed --dir <数据目录> [--images N] [--prompts N] [--tags N]`（`--tags` 上限 500，与应用的每域标签上限一致；`clean` 清理；只写已有 paim.db 的目录，写激活中的 paim-data 需 `--force`）。
+- **pnpm / Node**：`package.json` 已 pin `packageManager: pnpm@12.4.2`——往 `pnpm-workspace.yaml` 加配置键前**先确认键名**：pnpm 12 会把无法识别的键上报，pin 了版本时直接失败（`ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS`），未 pin 只是警告。构建脚本审批键是 `allowBuilds`（当前放行 esbuild）。Node ≥ 22.13 只在使用 npm 安装 pnpm 时需要，pnpm 12 自身不依赖 Node。
+- **开发平台**：代码含 Windows 专有实现（`shell_explorer.rs` 的 Shell API 定位、`webview_dir.rs` 的 `%LOCALAPPDATA%` WebView 目录），目前只在 Windows 上开发与测试；跨平台移植的适配点清单见 README 的「开发环境」一节——是「未测试」，不是「不支持」。
 
 ## 根目录文档（动手前先看）
 
 - 项目架构.md: 结构与分层边界的唯一事实源（目录树、分层表、点名禁令、命名约定、sentrux 检查现状；动结构前先看该文件要求的分层与禁令）
-- README.md: 使用与上手（技术栈、快速开始、数据集切换操作、字体家族与全局字体大小、用户偏好导出导入、Schema）；只写怎么用，术语与目录口径不在此重复
+- README.md: 使用与上手（技术栈、快速开始、开发环境与未测试平台适配点、数据集切换操作、字体家族与全局字体大小、用户偏好导出导入、Schema）；只写怎么用，术语与目录口径不在此重复
 - 通用语言.md: DDD 统一语言，记录跨前后端共享的业务术语与各类目录的命名口径（含 WebView 目录 ≠ 数据目录）；只定义「叫什么」，操作步骤在 README.md
 - CHANGE.md: 逐版本改动记录，不记录当前状态
 - todo.md: 待办与计划（**临时性文件**：内容随时增删，其它文件禁止引用）
