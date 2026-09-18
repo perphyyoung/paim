@@ -258,7 +258,7 @@ pub fn thumbnails_dir(app: &tauri::AppHandle) -> PathBuf {
 /// 注意：pm 备份导入的解压目录不在此处，用的是系统临时目录
 /// （见 pm_backup_service.rs 的 create_temp_dir / std::env::temp_dir）。
 /// - 开发环境：项目根下 temp/，与 paim-data 平级；
-/// - 部署环境：应用缓存目录（LocalAppData/{identifier}/cache）下的 temp/。
+/// - 部署环境：应用缓存目录（Windows 为 `%LOCALAPPDATA%\{identifier}`）下的 `temp/`。
 pub fn temp_dir(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         project_root().join("temp")
