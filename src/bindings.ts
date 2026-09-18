@@ -153,9 +153,12 @@ export const commands = {
 	openImageLocation: (id: string) => __TAURI_INVOKE<null>("open_image_location", { id }),
 	/**  供下拉显示中文名：`英文族名 -> 中文名`。 */
 	getFontFamilyMap: () => __TAURI_INVOKE<{ [key in string]: string }>("get_font_family_map"),
-	/**  供界面显示「重新授权」指引里的具体路径。 */
+	/**  供界面显示「重新授权」指引里的具体路径（精确到 `EBWebView`）。 */
 	getWebviewDir: () => __TAURI_INVOKE<string>("get_webview_dir"),
-	/**  在资源管理器中打开 WebView 目录（指引里的一键打开，省得用户手拼路径）。 */
+	/**
+	 *  在资源管理器中打开 WebView 目录：`EBWebView` 存在则打开其父目录并**选中它**
+	 *  （站在要删的目录里是删不掉自己的，选中后可以直接删）；不存在则退回打开父目录。
+	 */
 	openWebviewDir: () => __TAURI_INVOKE<null>("open_webview_dir"),
 	batchToggleImageFavorite: (ids: string[]) => __TAURI_INVOKE<number>("batch_toggle_image_favorite", { ids }),
 	batchTogglePromptFavorite: (ids: string[]) => __TAURI_INVOKE<number>("batch_toggle_prompt_favorite", { ids }),

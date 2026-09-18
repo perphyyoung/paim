@@ -199,10 +199,8 @@ function pick(value: string) {
           <template v-else>
             未能读取本机字体（权限被拒绝或读取失败），以下仅为常用字体。授权一旦被拒绝，浏览器会记住该决定、不会再弹授权框。
             <br />
-            重新授权：① 完全退出 paim（托盘右键 → 退出）；② 删除 WebView 目录下的 EBWebView；③ 重启
-            paim 后再次展开本列表。
-            <br />
-            副作用：界面偏好（字号、字体家族等）会重置，业务数据不受影响。
+            重新授权：① 完全退出 paim（托盘右键 → 退出）；② 删除下面的 WebView 目录；③ 重启 paim
+            后再次展开本列表。
             <span class="mt-1 flex items-center gap-2">
               <button
                 type="button"
@@ -212,6 +210,14 @@ function pick(value: string) {
                 打开 WebView 目录
               </button>
               <span class="break-all text-gray-400">{{ webviewDir }}</span>
+            </span>
+            <span class="mt-1 block text-red-400">
+              WebView 目录 ≠
+              设置里的「数据目录」：业务数据（提示词、图像、paim.db）在数据目录中，删除 WebView
+              目录不会影响它们。
+            </span>
+            <span class="mt-1 block text-red-400">
+              副作用：界面偏好（字号、字体家族等）会重置，需重新设置。
             </span>
             <span class="mt-1 block break-all text-gray-500">原因：{{ listDetail }}</span>
           </template>
