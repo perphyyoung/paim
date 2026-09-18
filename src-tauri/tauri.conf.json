@@ -22,6 +22,26 @@
       }
     ],
     "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' asset: http://asset.localhost data: blob:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "font-src": "'self'",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "frame-ancestors": "'none'"
+      },
+      "devCsp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'unsafe-inline'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' asset: http://asset.localhost data: blob:",
+        "connect-src": "ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420",
+        "font-src": "'self'"
+      },
+      "freezePrototype": true,
       "assetProtocol": {
         "enable": true,
         "scope": []
