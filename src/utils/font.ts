@@ -181,44 +181,58 @@ function normalizeFontList(list: LocalFont[]): string[] {
 
 /**
  * 读取结果状态：
- * - `ok`：枚举成功；
- * - `denied`：字体访问权限被拒绝（**该决定会被 WebView2 记在 profile 里，之后不会再弹授权框**，
- *   只能清掉 WebView2 用户数据目录才有机会重来——含"清数据目录再导回备份"这类破坏性操作，
- *   所以界面必须给出明确指引）；
- * - `unsupported`：环境无此 API（WKWebView / WebKitGTK / 旧 Chromium）；
- * - `error`：其它失败（含枚举到空列表）。
+ * - `ok`：枚举成功（拿到 >0 项）；
+ * - `unsupported`：环境无此 API（WKWebView / WebKitGTK / 旧 Chromium），可建议更新 WebView2 运行时；
+ * - `unreadable`：**其余一切读不到的情况**——抛异常、返回空数组、权限被拒绝。
+ *
+ * 为什么把「被拒」与「其它失败」合并成一种：WebView2 里拒绝不一定表现为 `NotAllowedError`
+ * （实测也可能返回空数组、或抛别的异常），`navigator.permissions` 又未必支持 `local-fonts`
+ * 这个名字，判定不可靠；而用户能采取的行动只有一种——退出应用后删掉 WebView 目录下的
+ * `EBWebView` 再重启（授权决定记在 WebView2 的 profile 里，删掉即重新弹授权框）。
+ * 合并后就不会再出现「明明拒绝了却提示环境不支持」的误导。
  */
-export type FontListStatus = "ok" | "denied" | "unsupported" | "error";
+export type FontListStatus = "ok" | "unsupported" | "unreadable";
 
 export interface SystemFontsResult {
   families: string[];
   status: FontListStatus;
+  /** 失败原因摘要（status 非 ok 时给出）：界面小字显示 + 日志排查用 */
+  detail: string;
 }
 
 /** 读取本机字体家族名；失败时返回回退候选表并说明原因（供界面提示，不再静默） */
 export async function loadSystemFonts(): Promise<SystemFontsResult> {
-  const fallback = (status: FontListStatus): SystemFontsResult => ({
+  const fallback = async (detail: string): Promise<SystemFontsResult> => ({
     families: [...FALLBACK_FONT_FAMILIES],
-    status,
+    status: "unreadable",
+    detail: `${detail}；权限状态=${await fontPermissionState()}`,
   });
+
   const w = globalThis.window as FontAwareWindow | undefined;
-  if (!w?.queryLocalFonts) return fallback("unsupported");
+  if (!w?.queryLocalFonts) {
+    return {
+      families: [...FALLBACK_FONT_FAMILIES],
+      status: "unsupported",
+      detail: "window.queryLocalFonts 不存在",
+    };
+  }
   try {
     const families = normalizeFontList(await w.queryLocalFonts());
-    return families.length ? { families, status: "ok" } : fallback("error");
+    if (families.length) return { families, status: "ok", detail: "" };
+    // 空数组：WebView2 上「权限被拒」就可能表现成这样，故按读不到处理
+    return fallback("枚举到 0 个字体家族");
   } catch (e) {
-    const denied =
-      (e as { name?: string })?.name === "NotAllowedError" || (await isFontPermissionDenied());
-    return fallback(denied ? "denied" : "error");
+    const err = e as { name?: string; message?: string };
+    return fallback(`${err?.name ?? "Error"}: ${err?.message ?? String(e)}`);
   }
 }
 
-/** 权限是否已被持久拒绝（Permissions API 不可用时视为未知） */
-async function isFontPermissionDenied(): Promise<boolean> {
+/** 查询 `local-fonts` 权限状态；Permissions API 不支持该名字时返回失败原因（仅用于排查） */
+async function fontPermissionState(): Promise<string> {
   try {
     const status = await navigator.permissions.query({ name: "local-fonts" as PermissionName });
-    return status.state === "denied";
-  } catch {
-    return false;
+    return status.state;
+  } catch (e) {
+    return `查询失败(${(e as { name?: string })?.name ?? "Error"})`;
   }
 }

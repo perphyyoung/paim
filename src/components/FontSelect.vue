@@ -12,6 +12,7 @@
 import { computed, nextTick, onMounted, ref } from "vue";
 import { commands } from "@/bindings";
 import { useToast } from "@/components/useToast";
+import { log } from "@/utils/logger";
 import {
   displayFontFamily,
   fontFamilySearchText,
@@ -42,7 +43,9 @@ const fonts = ref<string[]>([]);
 const nameMap = ref<Record<string, string>>({});
 /** 本机字体枚举结果状态：非 ok 时在列表上方固定提示（不再静默回退） */
 const listStatus = ref<FontListStatus>("ok");
-/** 仅在权限被拒时才取 WebView 目录路径（重新授权要用） */
+/** 读不到本机字体时的原因摘要（小字显示 + 日志排查） */
+const listDetail = ref("");
+/** 仅在读不到本机字体时才取 WebView 目录路径（重新授权要用） */
 const webviewDir = ref("");
 const anchor = ref<{ right: number; top: number } | null>(null);
 const trigger = ref<HTMLElement | null>(null);
@@ -92,8 +95,14 @@ async function loadFonts() {
     const [result] = await Promise.all([loadSystemFonts(), loadNameMap()]);
     fonts.value = result.families;
     listStatus.value = result.status;
-    // 只有被拒时才需要 WebView 目录路径（用于「重新授权」指引），避免白跑一次 invoke
-    if (result.status === "denied") {
+    listDetail.value = result.detail;
+    if (result.status !== "ok") {
+      log.warn(
+        `[FontSelect] 未能读取本机字体 status=${result.status} detail=${result.detail} fallback=${result.families.length}`,
+      );
+    }
+    // 只有读不到本机字体时才需要 WebView 目录路径（重新授权指引），避免白跑一次 invoke
+    if (result.status === "unreadable") {
       webviewDir.value = await commands.getWebviewDir();
     }
   } finally {
@@ -183,8 +192,12 @@ function pick(value: string) {
           v-if="listStatus !== 'ok'"
           class="border-b border-gray-700 px-3 py-2 text-[11px] leading-snug text-amber-300"
         >
-          <template v-if="listStatus === 'denied'">
-            未能读取本机字体：字体访问权限已被拒绝，浏览器会记住该决定、不会再弹授权框，以下仅为常用字体。
+          <template v-if="listStatus === 'unsupported'">
+            当前 WebView 不支持读取本机字体（内核过旧），以下仅为常用字体。可尝试更新 WebView2
+            运行时后重启应用。
+          </template>
+          <template v-else>
+            未能读取本机字体（权限被拒绝或读取失败），以下仅为常用字体。授权一旦被拒绝，浏览器会记住该决定、不会再弹授权框。
             <br />
             重新授权：① 完全退出 paim（托盘右键 → 退出）；② 删除 WebView 目录下的 EBWebView；③ 重启
             paim 后再次展开本列表。
@@ -200,8 +213,8 @@ function pick(value: string) {
               </button>
               <span class="break-all text-gray-400">{{ webviewDir }}</span>
             </span>
+            <span class="mt-1 block break-all text-gray-500">原因：{{ listDetail }}</span>
           </template>
-          <template v-else> 未能读取本机字体（环境不支持或读取失败），以下仅为常用字体。 </template>
         </p>
         <ul ref="listEl" class="max-h-64 overflow-y-auto py-1">
           <li>
