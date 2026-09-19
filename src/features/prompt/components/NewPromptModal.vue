@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 新建提示词弹窗：内容必需，可关联图像（本地选图上传预览）。标题留空，由后端用提示词 id 自动生成。
 import { nextTick, ref, watch } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { toAssetUrl } from "@/utils/assetUrl";
 import { commands } from "@/bindings";
 import { useToast } from "@/components/useToast";
 
@@ -42,7 +42,7 @@ async function pickFiles() {
       const name = p.split(/[\\/]/).pop() || p;
       let thumb = "";
       try {
-        thumb = convertFileSrc(await commands.getSourceThumbnail(p));
+        thumb = toAssetUrl(await commands.getSourceThumbnail(p));
       } catch {
         // 预览失败时仅显示文件名
       }

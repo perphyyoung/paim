@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { toAssetUrl } from "@/utils/assetUrl";
 import { commands, type Image, type ImageCard, type TagGroup, type TagItem } from "@/bindings";
 import { log } from "@/utils/logger";
 import { useToast } from "@/components/useToast";
@@ -165,7 +165,7 @@ watch(pageItems, () => {
     if (isPlaceholder(it)) continue;
     keep.add(it.id);
     if (!it.thumbnail_path || map[it.id]) continue;
-    map[it.id] = convertFileSrc(`${dir}/${it.thumbnail_path}`);
+    map[it.id] = toAssetUrl(`${dir}/${it.thumbnail_path}`);
     changed = true;
   }
   for (const id of Object.keys(map)) {
@@ -306,7 +306,7 @@ async function loadTrash() {
   trashImages.value = items;
   const map: Record<string, string> = {};
   for (const img of items) {
-    if (img.thumbnail_path) map[img.id] = convertFileSrc(`${dir}/${img.thumbnail_path}`);
+    if (img.thumbnail_path) map[img.id] = toAssetUrl(`${dir}/${img.thumbnail_path}`);
   }
   trashThumbs.value = map;
 }

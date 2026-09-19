@@ -1,6 +1,6 @@
 // 提示词/图像主页共用的缩略图 URL 处理。
-import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ThumbnailEnsureFixed } from "@/bindings";
+import { toAssetUrl } from "@/utils/assetUrl";
 
 /**
  * 把懒自愈重建的缩略图并入 URL 映射，返回新映射（不改入参）。
@@ -14,7 +14,6 @@ export function applyThumbFix(
   fixed: ThumbnailEnsureFixed[],
 ): Record<string, string> {
   const map = { ...cur };
-  for (const f of fixed)
-    map[f.id] = `${convertFileSrc(`${dir}/${f.thumbnail_path}`)}?t=${Date.now()}`;
+  for (const f of fixed) map[f.id] = `${toAssetUrl(`${dir}/${f.thumbnail_path}`)}?t=${Date.now()}`;
   return map;
 }

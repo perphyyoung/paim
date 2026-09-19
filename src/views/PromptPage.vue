@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { toAssetUrl } from "@/utils/assetUrl";
 import { commands, type Prompt, type PromptCard, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { log } from "@/utils/logger";
@@ -168,7 +168,7 @@ async function loadThumbsFor(ids: string[]) {
   try {
     const raw = await commands.getPromptThumbs(need);
     const map = { ...thumbs.value };
-    for (const k of Object.keys(raw)) map[k] = convertFileSrc(`${dir}/${raw[k]}`);
+    for (const k of Object.keys(raw)) map[k] = toAssetUrl(`${dir}/${raw[k]}`);
     thumbs.value = map;
   } catch {
     return; // 失败不记入 tried，下次窗口变化重试

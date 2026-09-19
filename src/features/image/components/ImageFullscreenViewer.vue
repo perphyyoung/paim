@@ -17,7 +17,7 @@ import TagChip from "@/components/TagChip.vue";
 const props = defineProps<{
   items: ImageFullscreenItem[];
   currentIndex: number;
-  /** 按 id 惰性解析大图 src（如 get_image_src → convertFileSrc） */
+  /** 按 id 惰性解析大图 asset URL（查看器窗口传 resolveImageSrc） */
   resolveSrc?: (id: string) => Promise<string>;
   /** 按 id 惰性补全名称/标签（如 get_item_tags） */
   resolveMeta?: (id: string) => Promise<{ name?: string; tags?: string[] }>;

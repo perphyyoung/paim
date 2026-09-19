@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 提示词详情弹窗：展示/编辑标题、内容、翻译、备注，标签增删，关联图像网格查看/移除。
 import { computed, ref, toRef, watch } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { toAssetUrl } from "@/utils/assetUrl";
 import { commands, type PromptCard } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -443,7 +443,8 @@ function requestRemoveImage(img: RelatedImage) {
 }
 
 function imgUrl(img: RelatedImage) {
-  return img.src ? convertFileSrc(img.src) : "";
+  // 空串（尚未生成缩略图）由 toAssetUrl 统一兜底为空串
+  return toAssetUrl(img.src);
 }
 
 // 跳转到图像详情：加载完整图像信息，复用 ImageDetailModal 叠加打开

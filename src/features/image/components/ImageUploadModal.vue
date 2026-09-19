@@ -2,7 +2,7 @@
 // 上传图像弹窗：选择多图 → 预览（可移除）→ 可选关联提示词 → 确定上传。
 // 参考 pm 的图像上传弹窗：提示词为用户输入，非空则应用到本次每一张图。
 import { nextTick, ref, watch } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { toAssetUrl } from "@/utils/assetUrl";
 import { commands } from "@/bindings";
 import { useToast } from "@/components/useToast";
 
@@ -48,7 +48,7 @@ async function pickFiles() {
       const name = p.split(/[\\/]/).pop() || p;
       let thumb = "";
       try {
-        thumb = convertFileSrc(await commands.getSourceThumbnail(p));
+        thumb = toAssetUrl(await commands.getSourceThumbnail(p));
       } catch {
         // 预览失败时仅显示文件名
       }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 图像选择弹窗：从已有图像列表中多选并导入到指定提示词。供提示词详情「从图像列表导入」使用。
 import { computed, onMounted, ref, watch } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { toAssetUrl } from "@/utils/assetUrl";
 import { commands, type ImageCard } from "@/bindings";
 import { toTimestamp } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
@@ -95,7 +95,7 @@ async function loadImages() {
     total.value = page.total;
     const map: Record<string, string> = {};
     for (const img of page.items) {
-      if (img.thumbnail_path) map[img.id] = convertFileSrc(`${dir}/${img.thumbnail_path}`);
+      if (img.thumbnail_path) map[img.id] = toAssetUrl(`${dir}/${img.thumbnail_path}`);
     }
     thumbs.value = map;
   } catch {

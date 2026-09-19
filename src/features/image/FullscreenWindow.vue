@@ -10,8 +10,8 @@
  * 应用并渲染完成后才 `show_image_fullscreen`，避免窗口先露面闪一下上一次的内容。
  */
 import { nextTick, onMounted, onUnmounted, ref } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, events, type ImageFullscreenPayload } from "@/bindings";
+import { resolveImageSrc } from "@/features/image/api/detailCache";
 import ImageFullscreenViewer from "./components/ImageFullscreenViewer.vue";
 import { log } from "@/utils/logger";
 
@@ -50,10 +50,6 @@ async function close() {
   }
 }
 
-async function resolveSrc(id: string) {
-  return convertFileSrc(await commands.getImageSrc(id));
-}
-
 // 名称多由载荷预置，这里惰性补标签
 async function resolveMeta(id: string) {
   const tags = await commands.getItemTags("image", id);
@@ -67,7 +63,7 @@ async function resolveMeta(id: string) {
     :key="seq"
     :items="items"
     :current-index="index"
-    :resolve-src="resolveSrc"
+    :resolve-src="resolveImageSrc"
     :resolve-meta="resolveMeta"
     @close="close"
   />

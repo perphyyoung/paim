@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { commands, type Image, type ImageCard, type PromptCard, type TagItem } from "@/bindings";
 // 别名导入：组件模板用裸 v-if="open"（prop），直接导入 open 会遮蔽 prop 导致弹窗恒渲染
 import { useToast } from "@/components/useToast";
@@ -22,9 +21,10 @@ import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vu
 import { formatLocalTime } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
 import {
-  imageSrcCache,
   imageTagsCache,
+  peekImageSrc,
   relatedPromptsCache,
+  resolveImageSrc,
 } from "@/features/image/api/detailCache";
 
 const props = defineProps<{
@@ -223,14 +223,15 @@ async function loadOrig() {
     origSrc.value = "";
     return;
   }
-  const cached = imageSrcCache.get(img.id);
-  if (cached) {
-    origSrc.value = convertFileSrc(cached);
+  // 命中缓存直接渲染（不进 loading，避免切图时闪一下）
+  const cachedUrl = peekImageSrc(img.id);
+  if (cachedUrl !== null) {
+    origSrc.value = cachedUrl;
     return;
   }
   origSrc.value = "";
   try {
-    origSrc.value = convertFileSrc(await imageSrcCache.fetch(img.id));
+    origSrc.value = await resolveImageSrc(img.id);
   } catch {
     origSrc.value = "";
   }
