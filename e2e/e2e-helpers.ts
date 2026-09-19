@@ -449,6 +449,74 @@ export async function closeDetail(detail: Locator): Promise<void> {
   await expect(detail).toBeHidden({ timeout: 5_000 });
 }
 
+/// ---- 全屏查看（独立窗口）----
+
+/// 查看器窗口的 label（与 src-tauri/src/commands/image_fullscreen.rs 的 WINDOW_LABEL 一致）
+const FULLSCREEN_WINDOW_LABEL = "image-fullscreen";
+
+/// 读页面的窗口 label（TAURI 注入的元数据，不发 IPC；页面还没加载出元数据时返回空串）。
+/// 查看器是独立窗口但 url 与主窗口相同（都加载同一份 index.html），
+/// 所以「哪个 page 是查看器」只能靠 label 区分，不能靠 url。
+async function pageWindowLabel(page: Page): Promise<string> {
+  return page
+    .evaluate(() => {
+      const meta = (
+        window as unknown as {
+          __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } };
+        }
+      ).__TAURI_INTERNALS__?.metadata?.currentWindow?.label;
+      return meta ?? "";
+    })
+    .catch(() => "");
+}
+
+/// 按窗口 label 轮询查找页面（窗口从创建到页面就绪是异步的，还会经历一次 load）
+async function findPageByWindowLabel(
+  browser: Browser,
+  label: string,
+  timeoutMs: number,
+): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const candidate of browser.contexts().flatMap((c) => c.pages())) {
+      if ((await pageWindowLabel(candidate)) === label) return candidate;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`未找到窗口 label=${label} 的页面（查看器窗口未创建或页面未就绪）`);
+}
+
+/// 双击详情弹窗里的大图进入全屏查看，返回**查看器窗口**的 Page（不是主窗口）。
+/// 弹窗内大图的两个 v-if 分支互斥（原图 / 缩略图），故用 img 直取；alt 为空不算语义元素。
+/// 副作用：创建并显示 `image-fullscreen` 窗口；关闭用 closeFullscreenViewer。
+export async function openFullscreenViewer(app: AppHandle, detail: Locator): Promise<Page> {
+  await detail.locator("img").first().dblclick();
+  e2eLog.info("[step] 已双击详情大图，等待查看器窗口就绪");
+  const viewer = await findPageByWindowLabel(app.browser, FULLSCREEN_WINDOW_LABEL, 15_000);
+  await expect(viewer.locator("img").first()).toBeVisible({ timeout: 10_000 });
+  e2eLog.info("[step] 查看器窗口已显示");
+  return viewer;
+}
+
+/// 点查看器窗口的 ✕ 结束查看，并断言该窗口确实不再显示。
+/// 注意：查看器窗口是「隐藏复用」而非销毁（设计如此），页面仍留在 CDP 里，
+/// 所以不能断言页面消失；也不能用「主窗口详情弹窗可见」代理——它一直是挂载的，
+/// 只是被查看器窗口盖住；页面侧 `document.visibilityState` 实测不随窗口隐藏变化。
+/// 故走窗口可见性测试缝 `e2e_is_window_visible`（由主窗口发命令，返回 null 表示窗口不存在）。
+export async function closeFullscreenViewer(app: AppHandle, viewer: Page): Promise<void> {
+  await viewer.getByTitle("关闭").click();
+  await expect
+    .poll(
+      () =>
+        invokeCommand<boolean | null>(app.page, "e2e_is_window_visible", {
+          label: FULLSCREEN_WINDOW_LABEL,
+        }),
+      { timeout: 5_000 },
+    )
+    .toBe(false);
+  e2eLog.info("[step] 查看器窗口已隐藏");
+}
+
 /// 筛选区特殊标签 chip（「收藏」「敏感」等）。chip 只在计数 > 0 时渲染，而计数是
 /// 主页刷新时拉取的内存值——故「chip 出现 / 消失」可断言主页是否已同步到该状态
 /// （直接查库只能证明落库，证明不了主页刷新）。名称文本节点在页面里唯一：
@@ -599,6 +667,19 @@ export async function getItemTagNames(
     id,
   });
   return tags.map((t) => t.name);
+}
+
+/// 给条目挂一个标签（合一命令 add_tag：标签不存在则创建）。
+/// 用途：只需要「该条目已有某标签」这个前置状态、**不验证打标签流程**时用它
+/// （打标签的提交方式与候选下拉由 `e2e/05` 覆盖），省掉一堆 UI 步骤。
+/// 副作用：写库（可能新建标签 + 关联关系）并刷新该条目的 updated_at。
+export async function addItemTag(
+  page: Page,
+  domain: "image" | "prompt",
+  id: string,
+  name: string,
+): Promise<void> {
+  await invokeCommand(page, "add_tag", { domain, id, name });
 }
 
 /// 回收站中的图像 id 列表

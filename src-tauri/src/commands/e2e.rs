@@ -6,7 +6,7 @@ use crate::infra::error::AppError;
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use specta::Type;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 /// e2e 测试缝：图像 DB 三列（thumbnail_path 空串表示 NULL）。
 #[derive(Debug, Serialize, Type)]
@@ -74,4 +74,18 @@ pub fn e2e_get_image_paths(
             thumbnail_path,
         },
     ))
+}
+
+/// 读指定窗口当前是否可见（不存在则返回 None）。
+/// 用途：查看器窗口是「隐藏复用」而非销毁（页面仍留在 CDP 里），而页面侧
+/// `document.visibilityState` 不随窗口隐藏变化，只能从窗口侧判断「是否真的关掉了」。
+#[tauri::command]
+#[specta::specta]
+pub fn e2e_is_window_visible(app: AppHandle, label: String) -> Result<Option<bool>, AppError> {
+    let Some(win) = app.get_webview_window(&label) else {
+        return Ok(None);
+    };
+    win.is_visible()
+        .map(Some)
+        .map_err(|e| AppError::Message(format!("读取窗口可见性失败: {e}")))
 }

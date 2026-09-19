@@ -127,6 +127,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // —— e2e 测试缝 ——
             commands::e2e::e2e_delete_image_thumbnail,
             commands::e2e::e2e_get_image_paths,
+            commands::e2e::e2e_is_window_visible,
         ])
 }
 

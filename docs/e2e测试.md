@@ -58,6 +58,7 @@ mock 是进程级环境变量，生产环境不存在，不影响发布路径。
 - **命令级测试缝**（`src-tauri/src/commands/e2e.rs`，一直有效、无 UI 入口），供用例直接操纵磁盘 / 读 DB，走统一的 `invokeCommand` 语义化封装：
   - `e2e_delete_image_thumbnail(imageId)`：删指定图像的**缩略图磁盘文件**（不删 DB 记录、不删原图），返回缩略图相对路径（供断言重建结果），DB 无 thumbnail_path 则返回 null；
   - `e2e_get_image_paths(imageId)`：读 DB 的 `file_name / relative_path / thumbnail_path`（thumbnail_path 为 NULL 时空串）。
+  - `e2e_is_window_visible(label)`：读指定窗口当前是否可见（窗口不存在返回 null）。专给「隐藏复用而非销毁」的窗口用：这类窗口的页面仍留在 CDP 里，且页面侧 `document.visibilityState` 实测不随窗口隐藏变化，只能从窗口侧判断它是否真的关掉了（用例见 `e2e/10`）。
 
   运行中删文件的原子操作无法用 UI 表达（无对应按钮），故这里用命令测试缝代替；「关闭应用后删文件」的真实进程外场景则用 `restartApp` 配合其 `afterCloseHook`（NodeJS `fs` 直删），见下方复用约定。
 
@@ -116,6 +117,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 07 | 分块列表：跨块滚动时远端块按需补齐 | 提示词主页 |
 | 08 | 收藏 / 安全评级切换：弹窗即时反馈 + 落库 + 关闭后主页同步 | 图像详情 + 提示词详情 |
 | 09 | 缩略图懒自愈：磁盘缩略图被删后自动重建并刷新卡片背景（含进程重启后自愈、运行中不重建两个场景） | 提示词主页 |
+| 10 | 全屏查看：双击图像详情大图在独立查看窗口里显示（图像 / 文件名 / 标签 / 导航索引 / 关闭钮），关闭后详情弹窗不受影响 | 图像详情弹窗 |
 
 ## 约定（速查）
 
@@ -135,6 +137,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 用新定位 API | 先查类型定义。playwright 1.62 已移除 `getByDisplayValue` 等旧 API；e2e 目录已纳入 `pnpm check` 的类型检查（`tsc --noEmit -p e2e`），方法名写错会在 check 时暴露 |
 | 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每文件实例独立目录；导入会让数据目录改名，不假设旧文件仍在）。`uploadImageWithPrompt` 内部每次上传前都会覆写 mock 内容（md5 唯一），避免同实例已导入过同路径图时被判重复导入 |
 | 文件选择 | 复用 `select_images` 测试缝（`launchApp` 已把 mock 路径写入实例环境）；替换图像等单选场景需自行校验返回数量 |
+| 多窗口 | 全屏查看器是**独立窗口**（`image-fullscreen`），其 url 与主窗口相同（同一份 index.html）——找页面必须按窗口 label 区分（`findPageByWindowLabel`），不能按 url；「隐藏复用」类窗口的关闭断言走 `e2e_is_window_visible` 测试缝（页面侧 `document.visibilityState` 不变） |
 
 ## 失败排查（按此顺序，agent 可直接执行）
 

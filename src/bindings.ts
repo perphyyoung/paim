@@ -208,6 +208,12 @@ export const commands = {
 	relative_path: string,
 	thumbnail_path: string,
 } | null>("e2e_get_image_paths", { imageId }),
+	/**
+	 *  读指定窗口当前是否可见（不存在则返回 None）。
+	 *  用途：查看器窗口是「隐藏复用」而非销毁（页面仍留在 CDP 里），而页面侧
+	 *  `document.visibilityState` 不随窗口隐藏变化，只能从窗口侧判断「是否真的关掉了」。
+	 */
+	e2eIsWindowVisible: (label: string) => __TAURI_INVOKE<boolean | null>("e2e_is_window_visible", { label }),
 };
 
 /** Events */
