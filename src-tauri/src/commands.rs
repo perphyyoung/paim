@@ -4,6 +4,7 @@
 pub mod backup;
 pub mod e2e;
 pub mod image;
+pub mod image_fullscreen;
 pub mod orphan;
 pub mod prompt;
 pub mod stats;

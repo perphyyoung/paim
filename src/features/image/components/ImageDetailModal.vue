@@ -17,7 +17,6 @@ import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
-import ImageFullscreenViewer, { type FullscreenItem } from "./ImageFullscreenViewer.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import { formatLocalTime } from "@/utils/date";
@@ -237,27 +236,24 @@ async function loadOrig() {
   }
 }
 
-// ---- 全屏查看（双击大图进入） ----
-const fullscreenOpen = ref(false);
-// 全屏列表按「顺序快照」构造（与详情索引一致）：未加载项只有 id，src/名称由惰性解析补全
+// ---- 全屏查看（双击大图进入独立查看窗口） ----
+// 列表按「顺序快照」构造（与详情索引一致）：src 由查看器窗口按 id 惰性解析，标签同理
 const imagesById = computed(() => new Map(props.images.map((img) => [img.id, img])));
-const fullscreenItems = computed<FullscreenItem[]>(() =>
-  props.order.map((id) => ({ id, src: "", name: imagesById.value.get(id)?.file_name })),
-);
 
-function openFullscreen() {
-  fullscreenOpen.value = true;
-}
-
-async function resolveFullscreenSrc(id: string) {
-  const p = await commands.getImageSrc(id);
-  return convertFileSrc(p);
-}
-
-// 全屏信息条：名称已由 items.name 预置，此处惰性补标签
-async function resolveFullscreenMeta(id: string) {
-  const tags = await commands.getItemTags("image", id);
-  return { tags: tags.map((t) => t.name) };
+async function openFullscreen() {
+  try {
+    await commands.openImageFullscreen({
+      items: props.order.map((id) => ({
+        id,
+        src: "",
+        name: imagesById.value.get(id)?.file_name ?? null,
+        tags: null,
+      })),
+      index: currentIndex.value,
+    });
+  } catch (e) {
+    showToast(`打开全屏查看失败：${e}`, "error");
+  }
 }
 
 // 加载当前图像的标签
@@ -422,9 +418,8 @@ const {
   getEditEl: (f) =>
     f === "fileName" ? fileNameEditEl.value : f === "note" ? noteEditEl.value : null,
   getContainer: () => rootEl.value,
-  // 上层弹窗打开时放行 Ctrl+F：嵌套提示词详情/全屏查看/新建提示词/确认框
-  guard: () =>
-    !(editPromptOpen.value || fullscreenOpen.value || createPromptOpen.value || confirmOpen.value),
+  // 上层弹窗打开时放行 Ctrl+F：嵌套提示词详情/新建提示词/确认框（全屏查看已独立成窗口）
+  guard: () => !(editPromptOpen.value || createPromptOpen.value || confirmOpen.value),
 });
 
 // 打开时跳转到初始图并同步编辑字段
@@ -1042,16 +1037,5 @@ const fmtSize = (bytes: number) => {
     "
     @updated="onNestedPromptUpdated"
     @safe-synced="onNestedPromptSafeSynced"
-  />
-
-  <!-- 全屏查看（双击中区大图进入，列表为详情快照 props.images） -->
-  <ImageFullscreenViewer
-    v-if="fullscreenOpen"
-    :open="fullscreenOpen"
-    :items="fullscreenItems"
-    :current-index="currentIndex"
-    :resolve-src="resolveFullscreenSrc"
-    :resolve-meta="resolveFullscreenMeta"
-    @close="fullscreenOpen = false"
   />
 </template>

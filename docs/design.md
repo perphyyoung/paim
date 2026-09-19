@@ -171,7 +171,6 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | 60  | 设置弹窗              | App.vue                                                                                                                      | 与右键遮罩同层（场景互斥）                                   |
 | 60  | 内嵌子对话框          | InlineDialog（TagManagerModal 内嵌 dlg / ImageDetailModal 新建提示词）                                                       | 弹窗内的子对话框，低于右键菜单本体                           |
 | 70  | 右键菜单本体          | ContextMenu                                                                                                                  | 高于自身遮罩 1 挡                                            |
-| 70  | 全屏查看器            | ImageFullscreenViewer                                                                                                        | 详情页之上的查看层                                           |
 | 90  | 标签拖拽跟随浮层      | TagManagerModal                                                                                                              | 纯展示，pointer-events-none                                  |
 | 100 | 批量操作工具条        | BatchActionBar                                                                                                               | 悬浮工具条，不挡操作                                         |
 | 110 | 确认弹窗              | ConfirmDialog / BatchActionBar 内确认                                                                                        | 最高确认层                                                   |
@@ -226,7 +225,9 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | PromptDetailModal      | 50 | 遮罩不拦截关闭，走内部按钮             |
 | ImageUploadModal       | 50 | 遮罩不拦截关闭，走内部按钮             |
 | NewPromptModal         | 50 | 遮罩不拦截关闭，走内部按钮             |
-| ImageFullscreenViewer  | 70 | 全屏查看层（bg-black），仅右上关闭钮    |
+| ImageFullscreenViewer  | —  | 独立 `image-fullscreen` 窗口（不在主窗口 z 表内），bg-black，仅右上关闭钮 |
+
+> 全屏查看器与主窗口不再共享 stacking context：它跑在独立窗口里（`commands/image_fullscreen.rs`），故上面的主窗口 z 表中没有它。
 
 ### 输入场景的特殊处理
 

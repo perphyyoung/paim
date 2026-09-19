@@ -16,9 +16,6 @@ import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
-import ImageFullscreenViewer, {
-  type FullscreenItem,
-} from "@/features/image/components/ImageFullscreenViewer.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
@@ -193,9 +190,8 @@ const {
             ? noteEditEl.value
             : null,
   getContainer: () => rootEl.value,
-  // 上层弹窗打开时放行 Ctrl+F：图像详情/全屏查看/图像导入/确认框
-  guard: () =>
-    !(imgDetailOpen.value || fullscreenOpen.value || pickerOpen.value || confirmOpen.value),
+  // 上层弹窗打开时放行 Ctrl+F：图像详情/图像导入/确认框（全屏查看已独立成窗口）
+  guard: () => !(imgDetailOpen.value || pickerOpen.value || confirmOpen.value),
 });
 
 watch(
@@ -361,21 +357,21 @@ async function removeTag(tagId: number) {
   notifyUpdated();
 }
 
-// ---- 全屏查看（双击关联图像直接进入，对齐 pm） ----
-const fullscreenOpen = ref(false);
-const fullscreenIndex = ref(0);
-const fullscreenItems = computed<FullscreenItem[]>(() =>
-  relatedImages.value.map((img) => ({
-    id: img.id,
-    src: "",
-    name: img.file_name,
-    tags: img.tags,
-  })),
-);
-
-function openFullscreen(index: number) {
-  fullscreenIndex.value = index;
-  fullscreenOpen.value = true;
+// ---- 全屏查看（双击关联图像进入独立查看窗口，对齐 pm） ----
+async function openFullscreen(index: number) {
+  try {
+    await commands.openImageFullscreen({
+      items: relatedImages.value.map((img) => ({
+        id: img.id,
+        src: "",
+        name: img.file_name,
+        tags: img.tags ?? null,
+      })),
+      index,
+    });
+  } catch (e) {
+    showToast(`打开全屏查看失败：${e}`, "error");
+  }
 }
 
 // 右键关联图像：弹出「打开本地保存位置」菜单（按 id 查库定位真实文件）
@@ -409,11 +405,6 @@ async function setAsFirst() {
   } catch (e) {
     showToast(`设为首图失败：${e}`, "error");
   }
-}
-
-async function resolveFullscreenSrc(id: string) {
-  const p = await commands.getImageSrc(id);
-  return convertFileSrc(p);
 }
 
 async function removeImage(img: RelatedImage) {
@@ -980,16 +971,6 @@ async function onPickerImported() {
     :danger="confirmDanger"
     @confirm="confirmAction"
     @cancel="cancelConfirm"
-  />
-
-  <!-- 全屏查看（双击关联图像直接进入，列表为当前提示词的关联图像） -->
-  <ImageFullscreenViewer
-    v-if="fullscreenOpen"
-    :open="fullscreenOpen"
-    :items="fullscreenItems"
-    :current-index="fullscreenIndex"
-    :resolve-src="resolveFullscreenSrc"
-    @close="fullscreenOpen = false"
   />
 
   <!-- 右键菜单：设为首图（对齐 pm，首图不显示）/ 打开本地保存位置 -->

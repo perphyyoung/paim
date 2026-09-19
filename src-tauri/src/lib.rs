@@ -29,6 +29,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             domain::thumbnail_service::ThumbnailRebuildProgress,
             domain::backup_common::BackupProgress,
             infra::logging::LogLevelChanged,
+            commands::image_fullscreen::ImageFullscreenOpened,
         ])
         .commands(tauri_specta::collect_commands![
             // —— 提示词通用 ——
@@ -76,6 +77,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::image::get_image_related_prompts,
             commands::image::rebuild_thumbnails,
             commands::image::ensure_image_thumbnails,
+            // —— 图像全屏查看窗口（主窗口不动，查看器独立窗口）——
+            commands::image_fullscreen::open_image_fullscreen,
+            commands::image_fullscreen::mount_image_fullscreen,
+            commands::image_fullscreen::show_image_fullscreen,
+            commands::image_fullscreen::close_image_fullscreen,
             // —— 标签（图像/提示词合一，按 domain 分发）——
             commands::tag::get_tag_data,
             commands::tag::get_tags_map,
@@ -323,6 +329,8 @@ pub fn run() {
       }
       let db = db::init(db_path)?;
       app.manage(db);
+      // 全屏查看窗口的载荷中转（窗口按需创建，这里只准备状态）
+      app.manage(commands::image_fullscreen::ImageFullscreenState::default());
 
       // 将数据目录加入 asset 协议 scope，使前端能通过 convertFileSrc 读取本地图片
       app.asset_protocol_scope().allow_directory(db::data_dir(app.handle()), true)?;

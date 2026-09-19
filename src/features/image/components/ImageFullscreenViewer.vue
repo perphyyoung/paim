@@ -1,33 +1,25 @@
-<script lang="ts">
-export interface FullscreenItem {
-  id: string;
-  src: string;
-  name?: string;
-  tags?: string[];
-}
-</script>
-
 <script setup lang="ts">
 /**
- * 图像全屏查看器（图像详情 / 提示词详情共用）。
+ * 图像全屏查看器（独立 `image-fullscreen` 窗口的内容，窗口管理见
+ * src-tauri/src/commands/image_fullscreen.rs）。
  *
- * - 进入/退出 Tauri 窗口全屏（原生标题栏随之消失）
- * - 滚轮缩放（1x - 5x），放大后容器可滚动查看细节
- * - 底部信息条展示文件名与标签（可按 id 惰性补全）
+ * - 本组件只负责展示与交互：窗口的创建/显示/隐藏由后端命令负责，主窗口全程不参与全屏状态
+ *   （为什么不用主窗口切全屏，见 docs/lessons.md 第 18 节）
+ * - 滚轮缩放（1x - 5x），放大后左键拖拽平移
+ * - 左下信息条展示文件名与标签（载荷未预置时按 id 惰性补全）
  * - 导航/索引复用 paim 的 NavAndIndex；仅右上角 ✕ 关闭
  */
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { ImageFullscreenItem } from "@/bindings";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 
 const props = defineProps<{
-  open: boolean;
-  items: FullscreenItem[];
+  items: ImageFullscreenItem[];
   currentIndex: number;
   /** 按 id 惰性解析大图 src（如 get_image_src → convertFileSrc） */
   resolveSrc?: (id: string) => Promise<string>;
-  /** 按 id 惰性补全名称/标签（如 get_image_tags） */
+  /** 按 id 惰性补全名称/标签（如 get_item_tags） */
   resolveMeta?: (id: string) => Promise<{ name?: string; tags?: string[] }>;
 }>();
 
@@ -70,53 +62,45 @@ function onMouseUp() {
 }
 
 onMounted(() => {
-  // 进入 Tauri 原生窗口全屏（权限拒绝时静默降级为 WebView 遮罩）
-  getCurrentWindow()
-    .setFullscreen(true)
-    .catch(() => {});
   // 拖拽监听挂 document 一次：任意位置松开即停止
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);
-  // 全屏期间接管键盘：capture 阶段拦截详情弹窗的 ←/→/↑/↓/Esc，防止全屏列表漂移
-  window.addEventListener("keydown", onCaptureKeydown, true);
+  window.addEventListener("keydown", onKeydown);
 });
 onUnmounted(() => {
-  getCurrentWindow()
-    .setFullscreen(false)
-    .catch(() => {});
   document.removeEventListener("mousemove", onMouseMove);
   document.removeEventListener("mouseup", onMouseUp);
-  window.removeEventListener("keydown", onCaptureKeydown, true);
+  window.removeEventListener("keydown", onKeydown);
 });
 
-// 全屏期间接管键盘（capture 阶段拦截下层详情弹窗；Esc 仅拦截不动作，全屏只 ✕ 关闭）
+// 窗口里只有查看器，无需 capture 拦截下层弹窗；Esc 不响应（只 ✕ 关闭）
 // 键位与 NavAndIndex 一致：←/→ 前后、Home/End 首尾
-function onCaptureKeydown(e: KeyboardEvent) {
-  e.preventDefault();
-  e.stopPropagation();
+function onKeydown(e: KeyboardEvent) {
   switch (e.key) {
     case "ArrowLeft":
+      e.preventDefault();
       nav(-1);
       break;
     case "ArrowRight":
+      e.preventDefault();
       nav(1);
       break;
     case "Home":
+      e.preventDefault();
       goFirst();
       break;
     case "End":
+      e.preventDefault();
       goLast();
       break;
   }
 }
 
-// 打开时以父级传入索引为起点
+// 起始索引由载荷决定（每次打开都以新载荷重新挂载本组件）
 watch(
-  () => (props.open ? props.currentIndex : -1),
+  () => props.currentIndex,
   (i) => {
-    if (i >= 0) {
-      index.value = Math.min(i, Math.max(props.items.length - 1, 0));
-    }
+    index.value = Math.min(Math.max(i, 0), Math.max(props.items.length - 1, 0));
   },
   { immediate: true },
 );
@@ -184,80 +168,66 @@ function onWheel(e: WheelEvent) {
   const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
   zoom.value = Math.min(5, Math.max(1, zoom.value * factor));
 }
-
-// 进入/退出 Tauri 原生窗口全屏（v-if 卸载时还原）；权限拒绝时静默降级为 WebView 遮罩
-onMounted(() => {
-  getCurrentWindow()
-    .setFullscreen(true)
-    .catch(() => {});
-});
-onUnmounted(() => {
-  getCurrentWindow()
-    .setFullscreen(false)
-    .catch(() => {});
-});
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="open && current"
-      class="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden bg-black"
+  <div
+    v-if="current"
+    class="fixed inset-0 flex items-center justify-center overflow-hidden bg-black"
+  >
+    <!-- 仅关闭按钮：无遮罩点击 / Esc / 双击退出 -->
+    <button
+      type="button"
+      class="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-lg text-white hover:bg-white/20"
+      title="关闭"
+      @click="emit('close')"
     >
-      <!-- 仅关闭按钮：无遮罩点击 / Esc / 双击退出 -->
-      <button
-        type="button"
-        class="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-lg text-white hover:bg-white/20"
-        title="关闭"
-        @click="emit('close')"
-      >
-        ✕
-      </button>
+      ✕
+    </button>
 
-      <div
-        class="flex h-full w-full items-center justify-center overflow-hidden"
-        :class="dragging ? 'cursor-grabbing' : 'cursor-grab'"
-        @wheel.prevent="onWheel"
-        @mousedown.prevent="onMouseDown"
-      >
-        <img
-          v-if="currentSrc"
-          :src="currentSrc"
-          :alt="currentName || current.id"
-          class="max-h-full max-w-full object-contain"
-          :style="{ transform: `translate(${translate.x}px, ${translate.y}px) scale(${zoom})` }"
-        />
-        <div v-else class="text-sm text-white/60">加载中…</div>
-      </div>
-
-      <!-- 文件名（左上角） -->
-      <div
-        class="absolute top-3 left-3 z-10 flex items-center rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm"
-      >
-        <span class="max-w-[40vw] truncate text-sm text-white">{{ currentName || "—" }}</span>
-      </div>
-
-      <!-- 标签（左下角） -->
-      <div
-        class="absolute bottom-3 left-3 z-10 flex items-center gap-2 rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm"
-      >
-        <TagChip v-for="t in currentTags" :key="t" size="sm">
-          {{ t }}
-        </TagChip>
-        <span v-if="!currentTags.length" class="text-xs text-white/50">无标签</span>
-      </div>
-
-      <!-- paim 风格导航 + 索引（单条时也显示，箭头由组件禁用） -->
-      <div class="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
-        <NavAndIndex
-          :current-index="index"
-          :order-length="total"
-          @first="goFirst"
-          @prev="nav(-1)"
-          @next="nav(1)"
-          @last="goLast"
-        />
-      </div>
+    <div
+      class="flex h-full w-full items-center justify-center overflow-hidden"
+      :class="dragging ? 'cursor-grabbing' : 'cursor-grab'"
+      @wheel.prevent="onWheel"
+      @mousedown.prevent="onMouseDown"
+    >
+      <img
+        v-if="currentSrc"
+        :src="currentSrc"
+        :alt="currentName || current.id"
+        class="max-h-full max-w-full object-contain"
+        :style="{ transform: `translate(${translate.x}px, ${translate.y}px) scale(${zoom})` }"
+      />
+      <div v-else class="text-sm text-white/60">加载中…</div>
     </div>
-  </Teleport>
+
+    <!-- 文件名（左上角） -->
+    <div
+      class="absolute top-3 left-3 z-10 flex items-center rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm"
+    >
+      <span class="max-w-[40vw] truncate text-sm text-white">{{ currentName || "—" }}</span>
+    </div>
+
+    <!-- 标签（左下角） -->
+    <div
+      class="absolute bottom-3 left-3 z-10 flex items-center gap-2 rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm"
+    >
+      <TagChip v-for="t in currentTags" :key="t" size="sm">
+        {{ t }}
+      </TagChip>
+      <span v-if="!currentTags.length" class="text-xs text-white/50">无标签</span>
+    </div>
+
+    <!-- paim 风格导航 + 索引（单条时也显示，箭头由组件禁用） -->
+    <div class="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
+      <NavAndIndex
+        :current-index="index"
+        :order-length="total"
+        @first="goFirst"
+        @prev="nav(-1)"
+        @next="nav(1)"
+        @last="goLast"
+      />
+    </div>
+  </div>
 </template>

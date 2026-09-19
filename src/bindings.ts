@@ -107,6 +107,14 @@ export const commands = {
 	 *  正常路径仅 N 次文件存在性检查；与查询命令同走 spawn_blocking，慢盘时不冻结 UI。
 	 */
 	ensureImageThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureResult>("ensure_image_thumbnails", { ids }),
+	/**  打开全屏查看（主窗口调用）。 */
+	openImageFullscreen: (payload: ImageFullscreenPayload) => __TAURI_INVOKE<null>("open_image_fullscreen", { payload }),
+	/**  取本次载荷（查看器窗口挂载时调用；复用窗口的载荷走 `ImageFullscreenOpened` 事件）。 */
+	mountImageFullscreen: () => __TAURI_INVOKE<ImageFullscreenPayload>("mount_image_fullscreen"),
+	/**  显示并聚焦查看器窗口（查看器窗口应用载荷、渲染完成后自己调用）。 */
+	showImageFullscreen: () => __TAURI_INVOKE<null>("show_image_fullscreen"),
+	/**  关闭全屏查看：隐藏窗口（复用，不销毁）并聚焦主窗口 —— 主窗口原样露出。 */
+	closeImageFullscreen: () => __TAURI_INVOKE<null>("close_image_fullscreen"),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
 	getTagData: (domain: TagDomain) => __TAURI_INVOKE<TagData>("get_tag_data", { domain }),
 	/**  未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。 */
@@ -206,6 +214,7 @@ export const commands = {
 export const events = {
 	backupProgress: makeEvent<BackupProgress>("backup-progress"),
 	globalShortcut: makeEvent<GlobalShortcutEvent>("global-shortcut"),
+	imageFullscreenOpened: makeEvent<ImageFullscreenOpened>("image-fullscreen-opened"),
 	logLevelChanged: makeEvent<LogLevelChanged>("log-level-changed"),
 	thumbnailRebuildProgress: makeEvent<ThumbnailRebuildProgress>("thumbnail-rebuild-progress"),
 };
@@ -309,6 +318,23 @@ export type ImageCard = {
 	created_at: string,
 	updated_at: string,
 	deleted_at: string | null,
+};
+
+/**  查看器列表项。`src` 允许空串：由查看器窗口按 id 惰性解析（`get_image_src` → `convertFileSrc`）。 */
+export type ImageFullscreenItem = {
+	id: string,
+	src: string,
+	name: string | null,
+	tags: string[] | null,
+};
+
+/**  载荷就绪通知：窗口已存在时据它更新列表（首次创建由 `mount_image_fullscreen` 兜底）。 */
+export type ImageFullscreenOpened = ImageFullscreenPayload;
+
+/**  一次全屏查看的载荷：列表快照 + 起始索引。 */
+export type ImageFullscreenPayload = {
+	items: ImageFullscreenItem[],
+	index: number,
 };
 
 export type ImageImportBatchResult = {

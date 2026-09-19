@@ -1,14 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "精确权限清单：按前端实际调用的 Tauri API 逐条开放（配合 build.removeUnusedCommands 移除未用命令）。新增前端调用的 Tauri API 时必须同步补权限。",
+  "description": "精确权限清单：按前端实际调用的 Tauri API 逐条开放（配合 build.removeUnusedCommands 移除未用命令）。新增前端调用的 Tauri API 时必须同步补权限。窗口含主窗口与全屏查看窗口（后者只调应用自有命令 + 监听事件）。",
   "windows": [
-    "main"
+    "main",
+    "image-fullscreen"
   ],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "core:window:allow-set-fullscreen",
     "dialog:allow-open",
     "dialog:allow-save"
   ]
