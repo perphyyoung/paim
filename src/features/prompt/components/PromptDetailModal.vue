@@ -814,8 +814,8 @@ async function onPickerImported() {
                 v-if="edit"
                 ref="contentEditEl"
                 v-model="content"
-                rows="6"
-                class="w-full resize-y rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
+                rows="1"
+                class="textarea-autogrow max-h-[16lh] min-h-[calc(1lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
               ></textarea>
               <div
                 v-else
@@ -843,8 +843,8 @@ async function onPickerImported() {
                 v-if="edit"
                 ref="translateEditEl"
                 v-model="contentTranslate"
-                rows="4"
-                class="w-full resize-y rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
+                rows="1"
+                class="textarea-autogrow max-h-[16lh] min-h-[calc(1lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
               ></textarea>
               <div v-else class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
                 <HighlightText
@@ -863,8 +863,8 @@ async function onPickerImported() {
                 v-if="edit"
                 ref="noteEditEl"
                 v-model="note"
-                rows="3"
-                class="w-full resize-y rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
+                rows="1"
+                class="textarea-autogrow max-h-[16lh] min-h-[calc(1lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
                 placeholder="输入备注..."
               ></textarea>
               <div v-else class="whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">

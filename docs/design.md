@@ -14,6 +14,7 @@
 | [四、Toast](#四toast全局提示) | 全局提示三色（成功/警告/错误）、居中位置与调用约定 |
 | [五、z-index 层级](#五z-index-层级) | 全屏弹层从低到高的 z 值表、组件内局部层级 |
 | [六、交互：点击遮罩关闭](#六交互点击遮罩关闭) | 支持/不支持点遮罩关闭的弹窗清单、输入型例外 |
+| [七、多行输入自适应](#七多行输入自适应) | `.textarea-autogrow` 的用法：min/max 用 `lh` 表达，`rows` 只作降级兜底 |
 
 ## 一、铁律
 
@@ -234,3 +235,16 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 - **TagManagerModal 内嵌 InlineDialog**：输入态（新建/重命名标签、组）传 `:close-on-overlay="false"`，点遮罩无操作，只能点「取消」；确认态（删除标签/组）保持支持点遮罩关闭。
 - **ImageDetailModal 内嵌 InlineDialog**（新建提示词）：传 `:close-on-overlay="false"`，点遮罩无操作，只能点「取消」。
 - **BatchActionBar 添加标签弹窗**：手写输入弹层，遮罩无关闭逻辑，点遮罩无操作，只能点「取消」。
+
+## 七、多行输入自适应
+
+> 多行输入统一加 `.textarea-autogrow`（定义在 `src/styles.css`）：**不要**再写 `resize-y`，也不要用固定 `rows` 承担最终高度。
+
+- **高度随内容增长**：靠 `field-sizing: content` 实现（本机 WebView2 153 = Chromium 153，该特性自 123 起支持）；不支持的运行时退回 `rows` 的固定高度 + 内部滚动，即旧行为，属可接受的静默降级。
+- **min / max 由使用处给出，且用 `lh` 而非 `px` / `vh`**，才能随「全局字体大小」联动：
+  - 最小高度 `min-h-[calc(Nlh_+_1rem)]`：`N` = 要显示的行数，`1rem` = 该处上下内边距之和（`py-2` → `1rem`，`py-1` → `0.5rem`）。注意 Tailwind 任意值里 `+` 两侧要写成 `_`（CSS `calc` 要求运算符两侧有空白）。
+  - 上限 `max-h-[Mlh]`：超出后框内滚动，避免单个字段把弹窗 / 详情面板撑爆。
+  - 同时保留 `rows="N"`：既是降级兜底，也让代码一眼看出初始几行。
+- **取值口径**（只两条规格，不再按字段细分）：**新建类提示词内容 = min 6 行 / max 16 行**（新建提示词弹窗、上传弹窗、图像详情内嵌新建）；**详情页编辑态 = min 1 行 / max 16 行**（内容 / 翻译 / 备注）。
+- **为什么不做成组件**：详情内查找（`useDetailSearch`）依赖 `contentEditEl` / `translateEditEl` / `noteEditEl` 等 ref 直接对**原生 textarea** 调 `focus()` + `setSelectionRange()`；组件化要给每个 ref 再套一层 `defineExpose({ el })`，收益小于成本。纯 CSS 方案零 JS、零 ref 改动。
+- **实测行为**（真实 WebView2、真实产物 CSS，注入元素探测）：空内容 38px（恰一行，浏览器天然保底一行、不会塌）；`text-sm` 下每行 20px（`min` 5 行实测 116px，与 `rows=5` 的 118px 基本一致）；10 行增高到 218px；30 行封顶（`max-h-[16lh]` = 320px）且框内可滚动。

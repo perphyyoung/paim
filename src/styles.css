@@ -26,3 +26,12 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+/* 多行输入框高度自适应（高度随内容增长，超上限内部滚动）。
+   min/max 由使用处给出：`min-h-[calc(Nlh_+_1rem)]`（1rem = py-2 的上下内边距，py-1 处用 0.5rem）
+   与 `max-h-[Mlh]`；用 lh 而非 px/vh，才能随全局字号缩放联动。
+   field-sizing 不可用的运行时（WebView2 < 123）自动退回 rows 的固定高度，即旧行为。 */
+.textarea-autogrow {
+  field-sizing: content;
+  resize: none;
+  overflow-y: auto;
+}

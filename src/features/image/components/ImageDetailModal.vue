@@ -908,8 +908,8 @@ const fmtSize = (bytes: number) => {
               v-if="edit"
               ref="noteEditEl"
               v-model="note"
-              rows="3"
-              class="mt-1 w-full resize-none rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
+              rows="1"
+              class="textarea-autogrow mt-1 max-h-[16lh] min-h-[calc(1lh_+_0.5rem)] w-full rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
             />
             <div
               v-else
@@ -1016,7 +1016,7 @@ const fmtSize = (bytes: number) => {
       ref="createInput"
       v-model="createContent"
       rows="6"
-      class="mt-3 w-full resize-none rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+      class="textarea-autogrow mt-3 max-h-[16lh] min-h-[calc(6lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
       placeholder="输入提示词内容..."
       @keydown.enter.exact.prevent="doCreatePrompt"
     ></textarea>
