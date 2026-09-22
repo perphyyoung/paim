@@ -1002,10 +1002,12 @@ const fmtSize = (bytes: number) => {
     @cancel="cancelConfirm"
   />
 
-  <!-- 新建提示词（无关联时，纯内容输入，创建后关联当前图像；复用公共 InlineDialog，z-[60]） -->
+  <!-- 新建提示词（无关联时，纯内容输入，创建后关联当前图像；复用公共 InlineDialog，z-[60]；
+       size="lg" 与独立的新建提示词弹窗同宽，长文本输入才有足够宽度） -->
   <InlineDialog
     :open="createPromptOpen"
     title="新建提示词"
+    size="lg"
     :close-on-overlay="false"
     :confirm-text="createSaving ? '创建中…' : '确定'"
     :confirm-disabled="createSaving"
