@@ -100,7 +100,9 @@
 
 ### 计数徽章（count）
 
-左上角绝对定位，`bg-blue-600` 蓝底白字（18px 圆角），**选中/未选中都不变色**。
+标签名**左侧的行内胶囊**（与名称相隔 `mr-1` = 4px），`bg-blue-600` 蓝底白字、`px-1 text-[10px] leading-4 font-bold`、`tabular-nums` 等宽数字，**选中/未选中都不变色**。
+
+> 宽度随位数自适应，因此**任意位数都不会覆盖标签名**，也不会溢出到相邻标签上。
 
 ### 删除按钮（removable = true）
 
@@ -108,10 +110,12 @@
 
 ### 尺寸（size）
 
-| size         | class                        | 场景                                           |
-| ------------ | ---------------------------- | ---------------------------------------------- |
-| `md`（默认） | `px-2.5 py-0.5 text-xs`      | 筛选区、详情页、管理页                         |
-| `sm`         | `px-1 text-[10px] leading-4` | 卡片行（CardTagRow）、图上左下覆盖、全屏查看器 |
+| size         | class                   | 高度 | 场景                                           |
+| ------------ | ----------------------- | ---- | ---------------------------------------------- |
+| `md`（默认） | `py-0.5 text-xs`        | 20px | 筛选区、详情页、管理页                         |
+| `sm`         | `text-[10px] leading-4` | 16px | 卡片行（CardTagRow）、图上左下覆盖、全屏查看器 |
+
+> 两档共用根节点的 `px-1`（左右内边距各 4px）：尺寸档只差字号与垂直内边距。
 
 ### 场景映射
 
@@ -185,7 +189,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | ----- | ----------------------------------- | ------------------------------------------------------- |
 | 1     | 卡片选中遮罩（pointer-events-none） | MediaCard                                               |
 | 3     | 卡片顶部标签行                      | MediaCard                                               |
-| 1 / 2 | 计数徽章 / 删除钮                   | TagChip                                                 |
+| 2     | 删除钮（hover 显示）                | TagChip                                                 |
 | 2     | 行内置顶、删除角钮                  | TagManagerModal 行                                      |
 | 10    | 底部图例条 / 提交条                 | 详情弹窗、全屏查看器                                    |
 | 10    | 详情内查找条                        | PromptDetailModal / ImageDetailModal（useDetailSearch） |
@@ -228,7 +232,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | NewPromptModal         | 50 | 遮罩不拦截关闭，走内部按钮             |
 | ImageFullscreenViewer  | —  | 独立 `image-fullscreen` 窗口（不在主窗口 z 表内），bg-black，仅右上关闭钮 |
 
-> 全屏查看器与主窗口不再共享 stacking context：它跑在独立窗口里（`commands/image_fullscreen.rs`），故上面的主窗口 z 表中没有它。
+> 全屏查看器跑在独立窗口里（`commands/image_fullscreen.rs`），不参与主窗口的 z 层级，故上面的主窗口 z 表中没有它。
 
 ### 输入场景的特殊处理
 
@@ -240,11 +244,11 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 
 > 多行输入统一加 `.textarea-autogrow`（定义在 `src/styles.css`）：**不要**再写 `resize-y`，也不要用固定 `rows` 承担最终高度。
 
-- **高度随内容增长**：靠 `field-sizing: content` 实现（本机 WebView2 153 = Chromium 153，该特性自 123 起支持）；不支持的运行时退回 `rows` 的固定高度 + 内部滚动，即旧行为，属可接受的静默降级。
+- **高度随内容增长**：靠 `field-sizing: content` 实现（本机 WebView2 153 = Chromium 153，该特性自 123 起支持）；运行时若不支持该特性，则退回 `rows` 的固定高度 + 内部滚动，属可接受的静默降级。
 - **min / max 由使用处给出，且用 `lh` 而非 `px` / `vh`**，才能随「全局字体大小」联动：
   - 最小高度 `min-h-[calc(Nlh_+_1rem)]`：`N` = 要显示的行数，`1rem` = 该处上下内边距之和（`py-2` → `1rem`，`py-1` → `0.5rem`）。注意 Tailwind 任意值里 `+` 两侧要写成 `_`（CSS `calc` 要求运算符两侧有空白）。
   - 上限 `max-h-[Mlh]`：超出后框内滚动，避免单个字段把弹窗 / 详情面板撑爆。
   - 同时保留 `rows="N"`：既是降级兜底，也让代码一眼看出初始几行。
-- **取值口径**（只两条规格，不再按字段细分）：**新建类提示词内容 = min 6 行 / max 16 行**（新建提示词弹窗、上传弹窗、图像详情内嵌新建）；**详情页编辑态 = min 1 行 / max 16 行**（内容 / 翻译 / 备注）。
+- **取值口径**（只有两条规格）：**新建类提示词内容 = min 6 行 / max 16 行**（新建提示词弹窗、上传弹窗、图像详情内嵌新建）；**详情页编辑态 = min 1 行 / max 16 行**（内容 / 翻译 / 备注）。
 - **为什么不做成组件**：详情内查找（`useDetailSearch`）依赖 `contentEditEl` / `translateEditEl` / `noteEditEl` 等 ref 直接对**原生 textarea** 调 `focus()` + `setSelectionRange()`；组件化要给每个 ref 再套一层 `defineExpose({ el })`，收益小于成本。纯 CSS 方案零 JS、零 ref 改动。
-- **实测行为**（真实 WebView2、真实产物 CSS，注入元素探测）：空内容 38px（恰一行，浏览器天然保底一行、不会塌）；`text-sm` 下每行 20px（`min` 5 行实测 116px，与 `rows=5` 的 118px 基本一致）；10 行增高到 218px；30 行封顶（`max-h-[16lh]` = 320px）且框内可滚动。
+- **实测行为**（真实 WebView2、真实产物 CSS，注入元素探测）：空内容 38px（恰一行，浏览器天然保底一行、不会塌）；`text-sm` 下每行 20px；10 行增高到 218px；30 行封顶（`max-h-[16lh]` = 320px）且框内可滚动。

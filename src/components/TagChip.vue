@@ -32,8 +32,9 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: "remove"): void }>();
 
 const rootClass = computed(() => [
-  "group relative inline-flex shrink-0 select-none items-center rounded-full transition-colors",
-  props.size === "sm" ? "px-1 text-[10px] leading-4" : "px-2.5 py-0.5 text-xs",
+  // 左右内边距两档共用（px-1 = 4px）：尺寸档只差字号与垂直内边距
+  "group relative inline-flex shrink-0 select-none items-center rounded-full px-1 transition-colors",
+  props.size === "sm" ? "text-[10px] leading-4" : "py-0.5 text-xs",
   props.variant === "solid"
     ? "bg-purple-500 text-white hover:bg-purple-400"
     : "border border-purple-400/50 bg-purple-600/25 text-white hover:border-purple-300/60",
@@ -48,7 +49,7 @@ const rootClass = computed(() => [
   >
     <span
       v-if="count !== null && count !== undefined"
-      class="absolute -left-1.5 -top-1.5 z-[1] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white shadow"
+      class="mr-1 shrink-0 rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-4 text-white tabular-nums"
       >{{ count }}</span
     >
     <span
