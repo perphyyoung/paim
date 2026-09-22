@@ -634,11 +634,11 @@ function refresh() {
                     @pointerdown="onTagPointerDown($event, item)"
                   >
                     <TagChip :count="item.count" dim-on-hover>{{ item.name }}</TagChip>
-                    <!-- 编辑：顶部中央悬浮，hover 显示 -->
+                    <!-- 编辑：左上角悬浮，hover 显示（与右上角的删除左右镜像） -->
                     <button
                       type="button"
-                      title="更新"
-                      class="absolute -top-[13px] left-1/2 z-[2] flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800 text-blue-400"
+                      title="重命名"
+                      class="absolute -left-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-blue-400 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800"
                       @click="openRenameTag(item)"
                     >
                       <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
