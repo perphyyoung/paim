@@ -12,7 +12,7 @@
 //! 因此默认不开满；建议不超过服务端 `-np`。
 
 use crate::commands::db_blocking;
-use crate::domain::similarity_service::{self, IndexMode, PromptHit, SimilarHit, SimilarityStatus};
+use crate::domain::similarity_service::{self, ImageHit, IndexMode, PromptHit, SimilarityStatus};
 use crate::infra::db::{self, BkDb};
 use crate::infra::embedding_client::{self, EmbeddingServiceInfo};
 use crate::infra::error::AppError;
@@ -64,7 +64,7 @@ pub enum MixedSource {
 /// 结果页两侧结果：同一查询向量分别检索图像表与提示词表。
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct MixedHits {
-    pub images: Vec<SimilarHit>,
+    pub images: Vec<ImageHit>,
     pub prompts: Vec<PromptHit>,
 }
 
@@ -321,7 +321,7 @@ pub async fn similar_images(
     limit: usize,
     min_score: f32,
     safe_only: bool,
-) -> Result<Vec<SimilarHit>, AppError> {
+) -> Result<Vec<ImageHit>, AppError> {
     let target = resolve_target(&app, &base_url, MixedSource::Image, &image_id).await?;
     let db = app.state::<BkDb>();
     let limit = limit.clamp(1, 200);
@@ -563,7 +563,7 @@ pub async fn similar_mixed(
     };
     let hits = db_blocking(
         &db,
-        move |conn| -> Result<(Vec<SimilarHit>, Vec<PromptHit>), AppError> {
+        move |conn| -> Result<(Vec<ImageHit>, Vec<PromptHit>), AppError> {
             let images = similarity_service::rank(
                 conn,
                 &target,

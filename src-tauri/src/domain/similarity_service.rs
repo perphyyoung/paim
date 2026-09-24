@@ -50,7 +50,7 @@ pub struct PendingPrompt {
 
 /// 图像相似检索结果（卡片数据由前端按 id 另取，避免本模块依赖卡片投影）。
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
-pub struct SimilarHit {
+pub struct ImageHit {
     pub image_id: String,
     pub score: f32,
 }
@@ -275,13 +275,13 @@ pub fn rank(
     limit: usize,
     min_score: f32,
     safe_only: bool,
-) -> Result<Vec<SimilarHit>, AppError> {
+) -> Result<Vec<ImageHit>, AppError> {
     let hits = rank_in(
         conn, IMAGES, target, exclude_id, limit, min_score, safe_only,
     )?;
     Ok(hits
         .into_iter()
-        .map(|(id, score)| SimilarHit {
+        .map(|(id, score)| ImageHit {
             image_id: id,
             score,
         })

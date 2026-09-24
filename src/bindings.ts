@@ -137,7 +137,7 @@ export const commands = {
 	 *  单侧检索（备用 / 脚本）：以某张图像为查询检索相似图像。
 	 *  结果页已统一走 `similar_mixed`（一次给出图像与提示词两侧）；`safe_only` 与主页「安全模式」口径一致。
 	 */
-	similarImages: (baseUrl: string, imageId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<SimilarHit[]>("similar_images", { baseUrl, imageId, limit, minScore, safeOnly }),
+	similarImages: (baseUrl: string, imageId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<ImageHit[]>("similar_images", { baseUrl, imageId, limit, minScore, safeOnly }),
 	/**
 	 *  按 id 列表取卡片投影（顺序与入参一致，缺失 / 已软删的跳过）。
 	 *  供「按 id 渲染卡片」的场景使用，如相似度检索结果。
@@ -407,6 +407,12 @@ export type ImageFullscreenPayload = {
 	index: number,
 };
 
+/**  图像相似检索结果（卡片数据由前端按 id 另取，避免本模块依赖卡片投影）。 */
+export type ImageHit = {
+	image_id: string,
+	score: number | null,
+};
+
 export type ImageImportBatchResult = {
 	results: ImageImportResult[],
 	errors: ImageImportError[],
@@ -468,7 +474,7 @@ export type LogLevelChanged = string;
 
 /**  结果页两侧结果：同一查询向量分别检索图像表与提示词表。 */
 export type MixedHits = {
-	images: SimilarHit[],
+	images: ImageHit[],
 	prompts: PromptHit[],
 };
 
@@ -574,12 +580,6 @@ export type RelatedImage = {
 	/**  原图像绝对路径（前端配合 convertFileSrc 加载）。 */
 	src: string,
 	tags: string[],
-};
-
-/**  图像相似检索结果（卡片数据由前端按 id 另取，避免本模块依赖卡片投影）。 */
-export type SimilarHit = {
-	image_id: string,
-	score: number | null,
 };
 
 /**
