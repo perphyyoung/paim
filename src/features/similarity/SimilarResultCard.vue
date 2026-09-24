@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 结果页卡片：与主页卡片同「形」（圆角描边 + 背景图铺满 + 文字带阴影），但只保留三样 ——
-// 背景图、相似度角标、名称（图像 = 文件名 / 提示词 = 标题）。
+// 结果页卡片：与主页卡片同「形」（圆角描边 + 背景图铺满 + 文字带阴影），但只保留 ——
+// 背景图、相似度角标、名称（图像 = 文件名 / 提示词 = 标题），提示词另有内容摘要两行。
 // 不渲染主页的按钮行 / 标签行 / 排序行，也不参与批量选择：本卡片只用于「看一眼 + 点进去」。
 import { computed } from "vue";
 
@@ -13,6 +13,8 @@ const props = defineProps<{
   score?: number;
   /** 收藏态：沿用主页卡片的琥珀色描边 */
   favorite?: boolean;
+  /** 摘要（提示词传内容；图像不传） */
+  content?: string;
 }>();
 const emit = defineEmits<{ open: [] }>();
 
@@ -23,7 +25,9 @@ const scoreText = computed(() => (props.score === undefined ? "" : props.score.t
   <div
     class="group relative h-full w-full cursor-pointer overflow-hidden rounded-lg border bg-gray-800"
     :class="favorite ? 'border-amber-500' : 'border-gray-700'"
-    :title="score === undefined ? name : `${name}（相似度 ${scoreText}）`"
+    :title="
+      score === undefined ? name : `${name}（相似度 ${scoreText}）${content ? `\n${content}` : ''}`
+    "
     @click="emit('open')"
   >
     <img v-if="thumb" :src="thumb" alt="" class="absolute inset-0 h-full w-full object-cover" />
@@ -51,14 +55,20 @@ const scoreText = computed(() => (props.score === undefined ? "" : props.score.t
       {{ scoreText }}
     </span>
 
-    <!-- 名称行：白字加重阴影，亮色背景图上也清晰（与主页卡片一致） -->
+    <!-- 名称（+ 摘要）：底部渐变压暗，白字加重阴影，亮色背景图上也清晰（与主页卡片一致） -->
     <div
-      class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 pb-1 pt-3"
+      class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-1.5 pb-1 pt-3"
     >
       <p
         class="truncate text-[length:var(--fs-10)] leading-4 text-white [text-shadow:0_1px_2px_rgba(0,0,0,.9)]"
       >
         {{ name }}
+      </p>
+      <p
+        v-if="content"
+        class="mt-0.5 line-clamp-2 whitespace-pre-wrap text-[11px] leading-4 text-gray-200 [text-shadow:0_1px_2px_rgba(0,0,0,.9)]"
+      >
+        {{ content }}
       </p>
     </div>
   </div>

@@ -37,9 +37,9 @@ export const LIMIT_RANGE = { min: 1, max: 200, step: 1 };
 export const MIN_SCORE_RANGE = { min: 0, max: 1, step: 0.05 };
 /** 索引并发请求数范围：建议不超过服务端 `-np`；图像侧受服务端编码 CPU 限制，开满收益有限。 */
 export const CONCURRENCY_RANGE = { min: 1, max: 8, step: 1 };
-/** 默认条数 / 阈值：实测同内容 ≈0.996~1.000、无关内容 ≈0.2，0.5 落在两者之间。 */
-const DEFAULT_LIMIT = 30;
-const DEFAULT_MIN_SCORE = 0.5;
+/** 默认条数 / 阈值：实测同内容 ≈0.996~1.000、无关内容 ≈0.2，0.5 落在两者之间（结果页「重置」用）。 */
+export const DEFAULT_LIMIT = 30;
+export const DEFAULT_MIN_SCORE = 0.5;
 const DEFAULT_CONCURRENCY = 2;
 
 function read(key: string, fallback: string): string {

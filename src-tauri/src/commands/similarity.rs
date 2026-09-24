@@ -540,9 +540,9 @@ pub async fn similar_prompts(
 }
 
 /// 结果页统一入口：一次查询同时给出「相似图像」与「相似提示词」两侧结果。
-/// 两侧共用同一个查询向量（联合空间，跨模态直接可比），但**各有一套阈值** ——
-/// 同模态与跨模态的余弦分布不同（同模态通常更高），共用一套会有一侧偏严或偏松。
-/// 只排除源自身那一侧（源是图像就只排除该图，反之亦然）。`limit` 上限 200，两侧各取。
+/// 两侧共用同一个查询向量（联合空间，跨模态直接可比），但**条数与阈值都各自独立** ——
+/// 同模态与跨模态的余弦分布不同（同模态通常更高），两侧各取 Top-K 也更合各自需要，
+/// 因此左右两栏各自调参、各自重查。只排除源自身那一侧（源是图像就只排除该图，反之亦然）。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_mixed(
@@ -550,13 +550,15 @@ pub async fn similar_mixed(
     base_url: String,
     source: MixedSource,
     source_id: String,
-    limit: usize,
+    limit_images: usize,
     min_score_images: f32,
+    limit_prompts: usize,
     min_score_prompts: f32,
 ) -> Result<MixedHits, AppError> {
     let target = resolve_target(&app, &base_url, source, &source_id).await?;
     let db = app.state::<BkDb>();
-    let limit = limit.clamp(1, 200);
+    let limit_images = limit_images.clamp(1, 200);
+    let limit_prompts = limit_prompts.clamp(1, 200);
     let (exclude_image, exclude_prompt) = match source {
         MixedSource::Image => (source_id, String::new()),
         MixedSource::Prompt => (String::new(), source_id),
@@ -568,7 +570,7 @@ pub async fn similar_mixed(
                 conn,
                 &target,
                 &exclude_image,
-                limit,
+                limit_images,
                 min_score_images,
                 false,
             )?;
@@ -576,7 +578,7 @@ pub async fn similar_mixed(
                 conn,
                 &target,
                 &exclude_prompt,
-                limit,
+                limit_prompts,
                 min_score_prompts,
             )?;
             Ok((images, prompts))

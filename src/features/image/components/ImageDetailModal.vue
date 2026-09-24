@@ -1051,7 +1051,7 @@ const fmtSize = (bytes: number) => {
       class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
       @click="openSimilar"
     >
-      查找相似图像
+      搜索相似的图像和提示词
     </button>
   </ContextMenu>
 

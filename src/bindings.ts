@@ -162,11 +162,11 @@ export const commands = {
 	similarPrompts: (baseUrl: string, promptId: string, limit: number, minScore: number | null) => __TAURI_INVOKE<PromptHit[]>("similar_prompts", { baseUrl, promptId, limit, minScore }),
 	/**
 	 *  结果页统一入口：一次查询同时给出「相似图像」与「相似提示词」两侧结果。
-	 *  两侧共用同一个查询向量（联合空间，跨模态直接可比），但**各有一套阈值** ——
-	 *  同模态与跨模态的余弦分布不同（同模态通常更高），共用一套会有一侧偏严或偏松。
-	 *  只排除源自身那一侧（源是图像就只排除该图，反之亦然）。`limit` 上限 200，两侧各取。
+	 *  两侧共用同一个查询向量（联合空间，跨模态直接可比），但**条数与阈值都各自独立** ——
+	 *  同模态与跨模态的余弦分布不同（同模态通常更高），两侧各取 Top-K 也更合各自需要，
+	 *  因此左右两栏各自调参、各自重查。只排除源自身那一侧（源是图像就只排除该图，反之亦然）。
 	 */
-	similarMixed: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScoreImages: number | null, minScorePrompts: number | null) => __TAURI_INVOKE<MixedHits>("similar_mixed", { baseUrl, source, sourceId, limit, minScoreImages, minScorePrompts }),
+	similarMixed: (baseUrl: string, source: MixedSource, sourceId: string, limitImages: number, minScoreImages: number | null, limitPrompts: number, minScorePrompts: number | null) => __TAURI_INVOKE<MixedHits>("similar_mixed", { baseUrl, source, sourceId, limitImages, minScoreImages, limitPrompts, minScorePrompts }),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
 	getTagData: (domain: TagDomain) => __TAURI_INVOKE<TagData>("get_tag_data", { domain }),
 	/**  未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。 */

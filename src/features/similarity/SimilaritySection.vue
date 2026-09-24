@@ -128,7 +128,9 @@ const promptApi: IndexPanelApi = {
     <div class="flex items-center justify-between gap-3 py-3">
       <div class="min-w-0">
         <dt class="text-gray-400">启用相似度检索</dt>
-        <dd class="text-sm text-gray-500">在图像详情弹窗的右键菜单提供「查找相似图像」</dd>
+        <dd class="text-sm text-gray-500">
+          在图像详情弹窗的右键菜单提供「搜索相似的图像和提示词」
+        </dd>
       </div>
       <input
         type="checkbox"
@@ -150,7 +152,7 @@ const promptApi: IndexPanelApi = {
       <div class="min-w-0">
         <dt class="text-gray-400">启用相似度检索</dt>
         <dd class="text-sm text-gray-500">
-          在提示词详情（非编辑态）的「提示词内容」右键菜单提供「查找相似提示词」
+          在提示词详情（非编辑态）的「提示词内容」右键菜单提供「搜索相似的图像和提示词」
         </dd>
       </div>
       <input

@@ -59,7 +59,7 @@ const emit = defineEmits<{
   (e: "safe-synced", isSafe: boolean): void;
   /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
   (e: "ensure-index", index: number): void;
-  /** 从「查找相似提示词」结果打开另一条提示词：由父级按 id 重建详情顺序并打开 */
+  /** 从「搜索相似的图像和提示词」结果打开另一条提示词：由父级按 id 重建详情顺序并打开 */
   (e: "open-prompt", id: string): void;
 }>();
 

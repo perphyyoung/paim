@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // 相似结果页（图像 + 提示词合并）：
-//   第 1 行 = 搜索源（缩略图 + 名称）+ 条数 / 重查 / ×
-//   主体左右两栏：左「相似图像」、右「相似提示词」，两栏各自滚动、各自阈值与空/错态
+//   第 1 行 = 搜索源（缩略图 + 名称）+ 重查 / ×
+//   主体左右两栏：左「相似图像」、右「相似提示词」，**两栏的条数 / 阈值 / 重置完全独立**，各栏独立滚动与空/错态
 // 尺寸与详情页一致（h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)]），
 // z 取详情页之上（详情页 z-50），点击结果时由调用方先关本页再跳转，避免被本页盖住。
-// 查询走 similar_mixed：同一个查询向量分别检索两张表（联合空间，跨模态直接比余弦），
-// 因此源是图像时右栏是「跨模态」的相似提示词，源是提示词时左栏是「跨模态」的相似图像。
-// 参数用草稿态：改完点「重查」才提交（条数沿用来源侧偏好，两个阈值各归各类别偏好）。
+// 查询走 similar_mixed：同一个查询向量分别检索两张表（联合空间，跨模态直接比余弦），两侧分别传
+// 各自的 limit 与阈值，因此源是图像时右栏是「跨模态」的相似提示词，源是提示词时左栏是「跨模态」的相似图像。
+// 参数用草稿态：改完点「重查」才提交（两栏分别存各自类别的偏好：image/prompt.similarity.*）。
 import { computed, onUnmounted, ref, watch } from "vue";
 import { commands, type ImageCard, type PromptCard } from "@/bindings";
 import { toAssetUrl } from "@/utils/assetUrl";
@@ -15,7 +15,7 @@ import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import ScoreStepper from "./ScoreStepper.vue";
 import SimilarResultCard from "./SimilarResultCard.vue";
-import { LIMIT_RANGE, useSimilaritySettings } from "./settings";
+import { DEFAULT_LIMIT, DEFAULT_MIN_SCORE, LIMIT_RANGE, useSimilaritySettings } from "./settings";
 
 const props = defineProps<{
   open: boolean;
@@ -25,7 +25,7 @@ const props = defineProps<{
   sourceId: string;
   /** 源名称：图像文件名 / 提示词标题 */
   sourceName?: string;
-  /** 源缩略图（由调用方按各自主页那一套取好；缺省显示灰色占位） */
+  /** 源缩略图（由调用方按各自主页那一套取好；缺省时本组件自己取一次） */
   sourceThumb?: string;
 }>();
 const emit = defineEmits<{
@@ -37,15 +37,6 @@ const emit = defineEmits<{
 const imageSettings = useSimilaritySettings("image");
 const promptSettings = useSimilaritySettings("prompt");
 const baseUrl = imageSettings.baseUrl;
-
-/// 条数沿用来源侧偏好（图像源用 image.similarity.limit，提示词源用 prompt.similarity.limit）
-const sourceLimit = computed(() =>
-  props.sourceKind === "Image" ? imageSettings.limit.value : promptSettings.limit.value,
-);
-function setSourceLimit(v: number) {
-  if (props.sourceKind === "Image") imageSettings.setLimit(v);
-  else promptSettings.setLimit(v);
-}
 
 /// 源缩略图：调用方给了就直接用（图像详情能顺手套上主页那份）；没给就自己取一次
 /// （提示词背景取自「关联首图」，与主页同一套 `getPromptThumbs` + 缺图自愈）
@@ -88,16 +79,29 @@ const imageThumbs = ref<Record<string, string>>({});
 const promptThumbs = ref<Record<string, string>>({});
 const loading = ref(false);
 const error = ref("");
-/// 参数草稿：与已生效值分开，点「重查」才提交
-const draftLimit = ref(sourceLimit.value);
+
+/// 两栏各自的参数草稿：与已生效的偏好分开，点「重查」才提交（图像栏 → image.*，提示词栏 → prompt.*）
+const draftLimitImages = ref(imageSettings.limit.value);
 const draftMinImages = ref(imageSettings.minScore.value);
+const draftLimitPrompts = ref(promptSettings.limit.value);
 const draftMinPrompts = ref(promptSettings.minScore.value);
 const dirty = computed(
   () =>
-    draftLimit.value !== sourceLimit.value ||
+    draftLimitImages.value !== imageSettings.limit.value ||
     draftMinImages.value !== imageSettings.minScore.value ||
+    draftLimitPrompts.value !== promptSettings.limit.value ||
     draftMinPrompts.value !== promptSettings.minScore.value,
 );
+/// 重置只改草稿（回到默认条数 / 阈值），仍需点「重查」生效 —— 与「改条件 → 重查」一致
+function resetImages() {
+  draftLimitImages.value = DEFAULT_LIMIT;
+  draftMinImages.value = DEFAULT_MIN_SCORE;
+}
+function resetPrompts() {
+  draftLimitPrompts.value = DEFAULT_LIMIT;
+  draftMinPrompts.value = DEFAULT_MIN_SCORE;
+}
+
 /// 请求序号：连点「重查」（或切换查询源）会并发多次查询，只有最后一次的结果允许落地
 let seq = 0;
 
@@ -107,11 +111,17 @@ function normLimit(v: number) {
   return Math.min(max, Math.max(min, Math.round(v)));
 }
 
-async function load(over?: { limit: number; minImages: number; minPrompts: number }) {
+async function load(over?: {
+  limitImages: number;
+  minImages: number;
+  limitPrompts: number;
+  minPrompts: number;
+}) {
   const mine = ++seq;
   void loadSourceThumb(); // 源缩略图与检索互不阻塞（打开与换源都会走 load）
-  const lim = over?.limit ?? sourceLimit.value;
+  const limitImages = over?.limitImages ?? imageSettings.limit.value;
   const minImages = over?.minImages ?? imageSettings.minScore.value;
+  const limitPrompts = over?.limitPrompts ?? promptSettings.limit.value;
   const minPrompts = over?.minPrompts ?? promptSettings.minScore.value;
   loading.value = true;
   error.value = "";
@@ -122,8 +132,9 @@ async function load(over?: { limit: number; minImages: number; minPrompts: numbe
       baseUrl.value,
       props.sourceKind,
       props.sourceId,
-      lim,
+      limitImages,
       minImages,
+      limitPrompts,
       minPrompts,
     );
     if (mine !== seq) return;
@@ -184,16 +195,20 @@ async function loadThumbs(mine: number) {
   }
 }
 
-/// 显式提交：草稿写入偏好（记住，供下次查询）后按新参数重查
+/// 显式提交：两侧草稿各自写入对应类别的偏好（记住，供下次查询）后按新参数重查
 function requery() {
-  const lim = normLimit(draftLimit.value);
-  draftLimit.value = lim;
-  setSourceLimit(lim);
+  const limitImages = normLimit(draftLimitImages.value);
+  const limitPrompts = normLimit(draftLimitPrompts.value);
+  draftLimitImages.value = limitImages;
+  draftLimitPrompts.value = limitPrompts;
+  imageSettings.setLimit(limitImages);
   imageSettings.setMinScore(draftMinImages.value);
+  promptSettings.setLimit(limitPrompts);
   promptSettings.setMinScore(draftMinPrompts.value);
   void load({
-    limit: lim,
+    limitImages,
     minImages: imageSettings.minScore.value,
+    limitPrompts,
     minPrompts: promptSettings.minScore.value,
   });
 }
@@ -214,14 +229,20 @@ function reset() {
   error.value = "";
 }
 
+/// 草稿回到已生效偏好（打开 / 换源时）
+function syncDrafts() {
+  draftLimitImages.value = imageSettings.limit.value;
+  draftMinImages.value = imageSettings.minScore.value;
+  draftLimitPrompts.value = promptSettings.limit.value;
+  draftMinPrompts.value = promptSettings.minScore.value;
+}
+
 watch(
   () => props.open,
   (open) => {
     if (open) {
       window.addEventListener("keydown", onKeydown, true);
-      draftLimit.value = sourceLimit.value;
-      draftMinImages.value = imageSettings.minScore.value;
-      draftMinPrompts.value = promptSettings.minScore.value;
+      syncDrafts();
       void load();
     } else {
       window.removeEventListener("keydown", onKeydown, true);
@@ -235,7 +256,7 @@ watch(
   () => [props.sourceKind, props.sourceId] as const,
   () => {
     if (!props.open) return;
-    draftLimit.value = sourceLimit.value;
+    syncDrafts();
     void load();
   },
 );
@@ -263,7 +284,7 @@ function pickPrompt(id: string) {
       <div
         class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col overflow-hidden rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800"
       >
-        <!-- 第 1 行：搜索源 + 参数 -->
+        <!-- 第 1 行：搜索源 + 重查 / 关闭（两栏各自的参数在各自表头） -->
         <div class="flex shrink-0 items-center justify-between gap-3 border-b pb-3 border-gray-700">
           <div class="flex min-w-0 items-center gap-3">
             <img
@@ -280,24 +301,12 @@ function pickPrompt(id: string) {
               <p class="text-xs text-gray-500">
                 查询源：{{
                   sourceKind === "Image" ? "图像" : "提示词"
-                }}；两侧结果由同一向量检索（跨模态）
+                }}；两栏由同一向量检索（跨模态）， 各自的条数与阈值互不影响
               </p>
             </div>
           </div>
-          <div class="flex shrink-0 items-center gap-3 text-xs text-gray-500">
+          <div class="flex shrink-0 items-center gap-2 text-xs text-gray-500">
             <span v-if="dirty" class="text-amber-400">条件已改，点「重查」生效</span>
-            <label class="flex items-center gap-1">
-              条数
-              <input
-                :value="draftLimit"
-                type="number"
-                :min="LIMIT_RANGE.min"
-                :max="LIMIT_RANGE.max"
-                aria-label="每栏返回条数上限"
-                class="w-16 rounded border bg-gray-900 px-1 py-0.5 text-gray-200 border-gray-600"
-                @change="draftLimit = normLimit(Number(($event.target as HTMLInputElement).value))"
-              />
-            </label>
             <button
               type="button"
               class="rounded border px-2 py-1 text-sm transition-colors disabled:opacity-50"
@@ -307,7 +316,7 @@ function pickPrompt(id: string) {
                   : 'border-gray-600 text-gray-200 hover:bg-gray-700'
               "
               :disabled="loading"
-              title="按当前条数与两栏阈值重新检索"
+              title="按两栏各自的条数与阈值重新检索"
               @click="requery"
             >
               重查
@@ -332,14 +341,40 @@ function pickPrompt(id: string) {
             >
               <h4 class="truncate text-sm font-semibold text-gray-200">
                 相似图像
-                <span class="ml-1 text-xs font-normal text-gray-500">
-                  {{ imageRows.length }} 张
-                </span>
+                <span class="ml-1 text-xs font-normal text-gray-500"
+                  >{{ imageRows.length }} 张</span
+                >
               </h4>
-              <label class="flex shrink-0 items-center gap-1 text-xs text-gray-500">
-                阈值
-                <ScoreStepper v-model="draftMinImages" />
-              </label>
+              <div class="flex shrink-0 items-center gap-2 text-xs text-gray-500">
+                <label class="flex items-center gap-1">
+                  条数
+                  <input
+                    :value="draftLimitImages"
+                    type="number"
+                    :min="LIMIT_RANGE.min"
+                    :max="LIMIT_RANGE.max"
+                    aria-label="图像栏返回条数上限"
+                    class="w-14 rounded border bg-gray-900 px-1 py-0.5 text-gray-200 border-gray-600"
+                    @change="
+                      draftLimitImages = normLimit(
+                        Number(($event.target as HTMLInputElement).value),
+                      )
+                    "
+                  />
+                </label>
+                <label class="flex items-center gap-1">
+                  阈值
+                  <ScoreStepper v-model="draftMinImages" />
+                </label>
+                <button
+                  type="button"
+                  class="rounded px-1.5 py-0.5 transition-colors hover:bg-gray-700"
+                  :title="`重置为默认（条数 ${DEFAULT_LIMIT} / 阈值 ${DEFAULT_MIN_SCORE}）`"
+                  @click="resetImages"
+                >
+                  重置
+                </button>
+              </div>
             </header>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="loading" class="p-2 text-sm text-gray-400">正在检索…</p>
@@ -371,10 +406,36 @@ function pickPrompt(id: string) {
                   {{ promptRows.length }} 条
                 </span>
               </h4>
-              <label class="flex shrink-0 items-center gap-1 text-xs text-gray-500">
-                阈值
-                <ScoreStepper v-model="draftMinPrompts" />
-              </label>
+              <div class="flex shrink-0 items-center gap-2 text-xs text-gray-500">
+                <label class="flex items-center gap-1">
+                  条数
+                  <input
+                    :value="draftLimitPrompts"
+                    type="number"
+                    :min="LIMIT_RANGE.min"
+                    :max="LIMIT_RANGE.max"
+                    aria-label="提示词栏返回条数上限"
+                    class="w-14 rounded border bg-gray-900 px-1 py-0.5 text-gray-200 border-gray-600"
+                    @change="
+                      draftLimitPrompts = normLimit(
+                        Number(($event.target as HTMLInputElement).value),
+                      )
+                    "
+                  />
+                </label>
+                <label class="flex items-center gap-1">
+                  阈值
+                  <ScoreStepper v-model="draftMinPrompts" />
+                </label>
+                <button
+                  type="button"
+                  class="rounded px-1.5 py-0.5 transition-colors hover:bg-gray-700"
+                  :title="`重置为默认（条数 ${DEFAULT_LIMIT} / 阈值 ${DEFAULT_MIN_SCORE}）`"
+                  @click="resetPrompts"
+                >
+                  重置
+                </button>
+              </div>
             </header>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="loading" class="p-2 text-sm text-gray-400">正在检索…</p>
@@ -386,6 +447,7 @@ function pickPrompt(id: string) {
                 <template #default="{ item }">
                   <SimilarResultCard
                     :name="item.card.title"
+                    :content="item.card.content"
                     :thumb="promptThumbs[item.card.id]"
                     :score="item.score"
                     :favorite="item.card.is_favorite"
@@ -398,7 +460,8 @@ function pickPrompt(id: string) {
         </div>
 
         <p class="mt-2 shrink-0 text-xs text-gray-500">
-          两栏各自一套阈值（同模态与跨模态的余弦分布不同）；点击结果切换到对应详情；改了条件点「重查」生效并记住；点遮罩或按
+          两栏的条数 / 阈值 /
+          重置互相独立（同模态与跨模态的余弦分布不同）；改完点「重查」生效并记住；点击结果切换到对应详情；点遮罩或按
           Esc 关闭
         </p>
       </div>

@@ -4,7 +4,7 @@
 
 ## 图像相似度检索（图搜图）—— 方案已定，暂停开发
 
-状态：**实施中**（2026-09-24）。已完成：依赖与迁移（`images`/`prompts` 同一次加 `vec`）、`infra/embedding_client.rs`（含 e2e 假实现）、`domain/similarity_service.rs`、命令与事件注册、设置页「图像相似度」区块（`SimilaritySection.vue` + `settings.ts`）、详情弹窗入口与结果弹窗（右键菜单「查找相似图像」+ `SimilarImagesModal.vue`）。验证：Rust 单测 95 通过、`pnpm check` 通过。
+状态：**实施中**（2026-09-24）。已完成：依赖与迁移（`images`/`prompts` 同一次加 `vec`）、`infra/embedding_client.rs`（含 e2e 假实现）、`domain/similarity_service.rs`、命令与事件注册、设置页「图像相似度」区块（`SimilaritySection.vue` + `settings.ts`）、详情弹窗入口与结果弹窗（右键菜单「搜索相似的图像和提示词」+ `SimilarSearchModal.vue`）。验证：Rust 单测 95 通过、`pnpm check` 通过。
 待办：e2e mock 测试缝与文档同步（步骤 5）。
 （提示词侧的同构实现见下方「提示词相似度检索」一节。）
 
@@ -65,7 +65,7 @@
   - `SimilarPromptsModal.vue`：结果用文本行（相似度 + 标题 + 内容摘要），标题栏沿用「条数 / 阈值 −＋ / 重查 / ×」；
   - 偏好键按类别分开：`image.similarity.*` 与 `prompt.similarity.*`（服务地址 `image.similarity.baseUrl` 与并发共用），
     都在 `utils/preferences.ts` 白名单前缀内，无需登记。
-- **入口**：提示词详情**非编辑态**的「提示词内容」右键 →「查找相似提示词」。
+- **入口**：提示词详情**非编辑态**的「提示词内容」右键 →「搜索相似的图像和提示词」（与图像详情右键同一文案、同一结果页）。
   编辑态不绑定（保留浏览器原生复制 / 粘贴）；`isNested`（被图像详情嵌套打开）时隐藏菜单项，避免二级跳转；
   点击结果切到该提示词详情（`PromptPage.openDetailById`：单条顺序进入，`detailExtra` 供详情按 id 取到卡片）。
 
@@ -85,9 +85,13 @@
   目标向量由新内部函数 `resolve_target` 统一解析（图像：已有向量 → 缺则预处理 + 视觉编码；提示词：已有向量 → 缺则内容文本编码），
   同一个向量分别 `rank` / `rank_prompts`，**只排除源自身那一侧**（另一侧传空 id，即不排除）；
   `similar_images` / `similar_prompts` 降级为薄封装保留备用。跨模态依赖该模型的联合空间（探针实测图像↔匹配描述 0.81、无关 0.18）。
-- **两套阈值**：同模态与跨模态的余弦分布不同（同模态通常更高），共用一套会有一侧偏严或偏松；
-  图像侧存 `image.similarity.minScore`、提示词侧存 `prompt.similarity.minScore`，条数沿用来源侧偏好（`*.similarity.limit`）；
-  控件抽成 `ScoreStepper.vue`（`−` / 可直接键入 / `＋`，吸附 step、夹范围、按 step 推导小数位）。
+- **两栏参数完全独立**：条数 + 阈值 + 重置各一套（同模态与跨模态的余弦分布不同，需要的条数也不同）；
+  图像栏存 `image.similarity.limit/minScore`、提示词栏存 `prompt.similarity.limit/minScore`；
+  后端 `similar_mixed` 因此收 `limit_images / min_score_images` 与 `limit_prompts / min_score_prompts` 四个参数，
+  各自 `clamp(1,200)` 后分别调 `rank` / `rank_prompts`（两侧本就是两条独立查询，互不影响）；
+  「重置」只把该栏草稿恢复默认（条数 30 / 阈值 0.5），仍需点「重查」生效；
+  阈值控件抽成 `ScoreStepper.vue`（`−` / 可直接键入 / `＋`，吸附 step、夹范围、按 step 推导小数位）。
+- **卡片内容**：图像 = 背景图 + 相似度 + 文件名；提示词 = 背景图 + 相似度 + 标题 + 内容摘要（两行截断）。
 - **入口统一**为「搜索相似的图像和提示词」：图像详情右键、提示词详情（非编辑态）内容右键；
   点结果：同侧跳对应详情（图像 → 父级 `open-image`；提示词 → 父级 `open-prompt`），
   跨模态结果在本弹窗内叠加打开另一类详情（复用各自既有的嵌套写法：图像侧用 `getImageDetail` 填 `imgDetailImages`，提示词侧用 `promptCardsByIds` + `getItemTags`）。
