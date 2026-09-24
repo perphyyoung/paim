@@ -99,8 +99,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::similarity::index_prompt_embeddings,
             commands::similarity::clear_prompt_embeddings,
             commands::similarity::similar_prompts,
-            // —— 结果页：一次查询给出图像与提示词两侧结果（跨模态）——
-            commands::similarity::similar_mixed,
             // —— 标签（图像/提示词合一，按 domain 分发）——
             commands::tag::get_tag_data,
             commands::tag::get_tags_map,

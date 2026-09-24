@@ -61,13 +61,6 @@ pub enum MixedSource {
     Prompt,
 }
 
-/// 结果页两侧结果：同一查询向量分别检索图像表与提示词表。
-#[derive(Debug, Clone, Serialize, specta::Type)]
-pub struct MixedHits {
-    pub images: Vec<ImageHit>,
-    pub prompts: Vec<PromptHit>,
-}
-
 /// 取查询向量：库里已有直接用；没有则现场算一次并写回（下次不必再算）。
 /// 图像走「预处理 JPEG（含 webp 转码）→ 视觉编码」，提示词走文本编码；两者产出在同一向量空间。
 async fn resolve_target(
@@ -310,23 +303,30 @@ pub async fn index_image_embeddings(
     result?
 }
 
-/// 单侧检索（备用 / 脚本）：以某张图像为查询检索相似图像。
-/// 结果页已统一走 `similar_mixed`（一次给出图像与提示词两侧）；`safe_only` 与主页「安全模式」口径一致。
+/// 以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
+/// 结果页左栏每次只查这一侧，条数 / 阈值由调用方各自传入；`safe_only` 与主页「安全模式」口径一致。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_images(
     app: AppHandle,
     base_url: String,
-    image_id: String,
+    source: MixedSource,
+    source_id: String,
     limit: usize,
     min_score: f32,
     safe_only: bool,
 ) -> Result<Vec<ImageHit>, AppError> {
-    let target = resolve_target(&app, &base_url, MixedSource::Image, &image_id).await?;
+    let target = resolve_target(&app, &base_url, source, &source_id).await?;
     let db = app.state::<BkDb>();
     let limit = limit.clamp(1, 200);
+    // 源自身不必出现在结果里；源是提示词时不排除任何图像（传空串即不排除）
+    let exclude = if source == MixedSource::Image {
+        source_id
+    } else {
+        String::new()
+    };
     db_blocking(&db, move |conn| {
-        similarity_service::rank(conn, &target, &image_id, limit, min_score, safe_only)
+        similarity_service::rank(conn, &target, &exclude, limit, min_score, safe_only)
     })
     .await
 }
@@ -519,74 +519,29 @@ pub async fn index_prompt_embeddings(
     result?
 }
 
-/// 单侧检索（备用 / 脚本）：以某条提示词为查询检索相似提示词。
-/// 结果页已统一走 `similar_mixed`；提示词不过滤 `is_safe`。
+/// 以任意源检索**提示词表**（相似提示词）：源可以是提示词（同模态）或图像（跨模态）。
+/// 结果页右栏每次只查这一侧，条数 / 阈值由调用方各自传入；提示词不过滤 `is_safe`。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_prompts(
     app: AppHandle,
     base_url: String,
-    prompt_id: String,
+    source: MixedSource,
+    source_id: String,
     limit: usize,
     min_score: f32,
 ) -> Result<Vec<PromptHit>, AppError> {
-    let target = resolve_target(&app, &base_url, MixedSource::Prompt, &prompt_id).await?;
-    let db = app.state::<BkDb>();
-    let limit = limit.clamp(1, 200);
-    db_blocking(&db, move |conn| {
-        similarity_service::rank_prompts(conn, &target, &prompt_id, limit, min_score)
-    })
-    .await
-}
-
-/// 结果页统一入口：一次查询同时给出「相似图像」与「相似提示词」两侧结果。
-/// 两侧共用同一个查询向量（联合空间，跨模态直接可比），但**条数与阈值都各自独立** ——
-/// 同模态与跨模态的余弦分布不同（同模态通常更高），两侧各取 Top-K 也更合各自需要，
-/// 因此左右两栏各自调参、各自重查。只排除源自身那一侧（源是图像就只排除该图，反之亦然）。
-#[tauri::command]
-#[specta::specta]
-pub async fn similar_mixed(
-    app: AppHandle,
-    base_url: String,
-    source: MixedSource,
-    source_id: String,
-    limit_images: usize,
-    min_score_images: f32,
-    limit_prompts: usize,
-    min_score_prompts: f32,
-) -> Result<MixedHits, AppError> {
     let target = resolve_target(&app, &base_url, source, &source_id).await?;
     let db = app.state::<BkDb>();
-    let limit_images = limit_images.clamp(1, 200);
-    let limit_prompts = limit_prompts.clamp(1, 200);
-    let (exclude_image, exclude_prompt) = match source {
-        MixedSource::Image => (source_id, String::new()),
-        MixedSource::Prompt => (String::new(), source_id),
+    let limit = limit.clamp(1, 200);
+    // 源自身不必出现在结果里；源是图像时不排除任何提示词（传空串即不排除）
+    let exclude = if source == MixedSource::Prompt {
+        source_id
+    } else {
+        String::new()
     };
-    let hits = db_blocking(
-        &db,
-        move |conn| -> Result<(Vec<ImageHit>, Vec<PromptHit>), AppError> {
-            let images = similarity_service::rank(
-                conn,
-                &target,
-                &exclude_image,
-                limit_images,
-                min_score_images,
-                false,
-            )?;
-            let prompts = similarity_service::rank_prompts(
-                conn,
-                &target,
-                &exclude_prompt,
-                limit_prompts,
-                min_score_prompts,
-            )?;
-            Ok((images, prompts))
-        },
-    )
-    .await?;
-    Ok(MixedHits {
-        images: hits.0,
-        prompts: hits.1,
+    db_blocking(&db, move |conn| {
+        similarity_service::rank_prompts(conn, &target, &exclude, limit, min_score)
     })
+    .await
 }

@@ -134,10 +134,10 @@ export const commands = {
 	/**  清空全部向量（设置页「清空」，之后可重建）。 */
 	clearImageEmbeddings: () => __TAURI_INVOKE<number>("clear_image_embeddings"),
 	/**
-	 *  单侧检索（备用 / 脚本）：以某张图像为查询检索相似图像。
-	 *  结果页已统一走 `similar_mixed`（一次给出图像与提示词两侧）；`safe_only` 与主页「安全模式」口径一致。
+	 *  以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
+	 *  结果页左栏每次只查这一侧，条数 / 阈值由调用方各自传入；`safe_only` 与主页「安全模式」口径一致。
 	 */
-	similarImages: (baseUrl: string, imageId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<ImageHit[]>("similar_images", { baseUrl, imageId, limit, minScore, safeOnly }),
+	similarImages: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<ImageHit[]>("similar_images", { baseUrl, source, sourceId, limit, minScore, safeOnly }),
 	/**
 	 *  按 id 列表取卡片投影（顺序与入参一致，缺失 / 已软删的跳过）。
 	 *  供「按 id 渲染卡片」的场景使用，如相似度检索结果。
@@ -156,17 +156,10 @@ export const commands = {
 	/**  清空全部提示词向量（设置页「清空」，之后可重建）。 */
 	clearPromptEmbeddings: () => __TAURI_INVOKE<number>("clear_prompt_embeddings"),
 	/**
-	 *  单侧检索（备用 / 脚本）：以某条提示词为查询检索相似提示词。
-	 *  结果页已统一走 `similar_mixed`；提示词不过滤 `is_safe`。
+	 *  以任意源检索**提示词表**（相似提示词）：源可以是提示词（同模态）或图像（跨模态）。
+	 *  结果页右栏每次只查这一侧，条数 / 阈值由调用方各自传入；提示词不过滤 `is_safe`。
 	 */
-	similarPrompts: (baseUrl: string, promptId: string, limit: number, minScore: number | null) => __TAURI_INVOKE<PromptHit[]>("similar_prompts", { baseUrl, promptId, limit, minScore }),
-	/**
-	 *  结果页统一入口：一次查询同时给出「相似图像」与「相似提示词」两侧结果。
-	 *  两侧共用同一个查询向量（联合空间，跨模态直接可比），但**条数与阈值都各自独立** ——
-	 *  同模态与跨模态的余弦分布不同（同模态通常更高），两侧各取 Top-K 也更合各自需要，
-	 *  因此左右两栏各自调参、各自重查。只排除源自身那一侧（源是图像就只排除该图，反之亦然）。
-	 */
-	similarMixed: (baseUrl: string, source: MixedSource, sourceId: string, limitImages: number, minScoreImages: number | null, limitPrompts: number, minScorePrompts: number | null) => __TAURI_INVOKE<MixedHits>("similar_mixed", { baseUrl, source, sourceId, limitImages, minScoreImages, limitPrompts, minScorePrompts }),
+	similarPrompts: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScore: number | null) => __TAURI_INVOKE<PromptHit[]>("similar_prompts", { baseUrl, source, sourceId, limit, minScore }),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
 	getTagData: (domain: TagDomain) => __TAURI_INVOKE<TagData>("get_tag_data", { domain }),
 	/**  未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。 */
@@ -471,12 +464,6 @@ export type ListQuery = {
 
 /**  日志级别变更事件（payload 为新级别小写字符串），前端监听后刷新本地缓存。 */
 export type LogLevelChanged = string;
-
-/**  结果页两侧结果：同一查询向量分别检索图像表与提示词表。 */
-export type MixedHits = {
-	images: ImageHit[],
-	prompts: PromptHit[],
-};
 
 /**
  *  结果页的查询源：图像（图像↔图像同模态、图像↔提示词跨模态）或提示词（反之亦然）。

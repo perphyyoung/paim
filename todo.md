@@ -85,13 +85,16 @@
   目标向量由新内部函数 `resolve_target` 统一解析（图像：已有向量 → 缺则预处理 + 视觉编码；提示词：已有向量 → 缺则内容文本编码），
   同一个向量分别 `rank` / `rank_prompts`，**只排除源自身那一侧**（另一侧传空 id，即不排除）；
   `similar_images` / `similar_prompts` 降级为薄封装保留备用。跨模态依赖该模型的联合空间（探针实测图像↔匹配描述 0.81、无关 0.18）。
-- **两栏参数完全独立**：条数 + 阈值 + 重置各一套（同模态与跨模态的余弦分布不同，需要的条数也不同）；
+- **两栏完全独立**：条数 + 阈值 + 重置 + 重查各一套（同模态与跨模态的余弦分布不同，需要的条数也不同）；
   图像栏存 `image.similarity.limit/minScore`、提示词栏存 `prompt.similarity.limit/minScore`；
-  后端 `similar_mixed` 因此收 `limit_images / min_score_images` 与 `limit_prompts / min_score_prompts` 四个参数，
-  各自 `clamp(1,200)` 后分别调 `rank` / `rank_prompts`（两侧本就是两条独立查询，互不影响）；
-  「重置」只把该栏草稿恢复默认（条数 30 / 阈值 0.5），仍需点「重查」生效；
+  后端也是「一侧一条命令」：`similar_images(source, source_id, limit, min_score, safe_only)` 与
+  `similar_prompts(source, source_id, limit, min_score)` —— 源可以是图像或提示词（跨模态），两条命令共用同一个
+  查询向量、各自传 limit / 阈值、各自排除源自身那一侧（源不属于该表则传空串＝不排除）；原 `similar_mixed`（一次出两侧）已删除。
+  前端两栏各有草稿、请求序号与 loading / 空 / 错态，各自点「重查」互不阻塞；
+  「重置」只把该栏草稿恢复默认（条数 30 / 阈值 0.5），仍需点该栏「重查」生效；
   阈值控件抽成 `ScoreStepper.vue`（`−` / 可直接键入 / `＋`，吸附 step、夹范围、按 step 推导小数位）。
-- **卡片内容**：图像 = 背景图 + 相似度 + 文件名；提示词 = 背景图 + 相似度 + 标题 + 内容摘要（两行截断）。
+- **卡片内容**：图像 = 背景图 + 相似度 + 文件名（底部一行）；提示词 = 背景图 + 相似度 → **内容占卡片最大空间**
+  （半透明底、超出裁掉）→ 标题（底部一行）。
 - **入口统一**为「搜索相似的图像和提示词」：图像详情右键、提示词详情（非编辑态）内容右键；
   点结果：同侧跳对应详情（图像 → 父级 `open-image`；提示词 → 父级 `open-prompt`），
   跨模态结果在本弹窗内叠加打开另一类详情（复用各自既有的嵌套写法：图像侧用 `getImageDetail` 填 `imgDetailImages`，提示词侧用 `promptCardsByIds` + `getItemTags`）。

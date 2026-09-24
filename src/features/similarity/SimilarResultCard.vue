@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// 结果页卡片：与主页卡片同「形」（圆角描边 + 背景图铺满 + 文字带阴影），但只保留 ——
-// 背景图、相似度角标、名称（图像 = 文件名 / 提示词 = 标题），提示词另有内容摘要两行。
-// 不渲染主页的按钮行 / 标签行 / 排序行，也不参与批量选择：本卡片只用于「看一眼 + 点进去」。
+// 结果页卡片：与主页卡片同「形」（圆角描边 + 背景图铺满 + 文字带阴影），但不参与批量选择 / 标签 / 排序行。
+// 两种内容布局（由是否给 `content` 决定）：
+// - 图像：背景图 + 相似度角标 + 文件名（底部一行，压在渐变上）；
+// - 提示词：背景图 + 相似度角标 → **内容占卡片最大空间** → 标题（底部一行）。
 import { computed } from "vue";
 
 const props = defineProps<{
@@ -13,12 +14,14 @@ const props = defineProps<{
   score?: number;
   /** 收藏态：沿用主页卡片的琥珀色描边 */
   favorite?: boolean;
-  /** 摘要（提示词传内容；图像不传） */
+  /** 提示词内容：给了就按「图像模式」之外的提示词布局渲染（内容占最大空间） */
   content?: string;
 }>();
 const emit = defineEmits<{ open: [] }>();
 
 const scoreText = computed(() => (props.score === undefined ? "" : props.score.toFixed(3)));
+/// 有内容 → 提示词布局；无内容 → 图像布局
+const isPromptLayout = computed(() => props.content !== undefined);
 </script>
 
 <template>
@@ -47,28 +50,39 @@ const scoreText = computed(() => (props.score === undefined ? "" : props.score.t
       />
     </svg>
 
-    <!-- 相似度角标（左上，避免与主页卡片的删除/收藏按钮位置混淆） -->
+    <!-- 相似度角标（左上，避免与主页卡片的按钮行位置混淆；提示词布局里内容会从它下面开始） -->
     <span
       v-if="score !== undefined"
-      class="absolute left-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[11px] tabular-nums text-emerald-300"
+      class="absolute left-1 top-1 z-[2] rounded bg-black/70 px-1.5 py-0.5 text-[11px] tabular-nums text-emerald-300"
     >
       {{ scoreText }}
     </span>
 
-    <!-- 名称（+ 摘要）：底部渐变压暗，白字加重阴影，亮色背景图上也清晰（与主页卡片一致） -->
+    <!-- 提示词布局：角标 → 内容（占最大空间，超出裁掉）→ 标题 -->
+    <div v-if="isPromptLayout" class="absolute inset-0 z-[1] flex flex-col pt-7">
+      <div class="mx-1 min-h-0 flex-1 overflow-hidden rounded bg-black/50 px-1.5 py-1">
+        <p
+          class="whitespace-pre-wrap text-[11px] leading-4 text-gray-100 [text-shadow:0_1px_2px_rgba(0,0,0,.9)]"
+        >
+          {{ content }}
+        </p>
+      </div>
+      <p
+        class="truncate px-1.5 pb-1 pt-0.5 text-[length:var(--fs-10)] leading-4 text-white [text-shadow:0_1px_2px_rgba(0,0,0,.9)]"
+      >
+        {{ name }}
+      </p>
+    </div>
+
+    <!-- 图像布局：名称行压在底部渐变上 -->
     <div
+      v-else
       class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-1.5 pb-1 pt-3"
     >
       <p
         class="truncate text-[length:var(--fs-10)] leading-4 text-white [text-shadow:0_1px_2px_rgba(0,0,0,.9)]"
       >
         {{ name }}
-      </p>
-      <p
-        v-if="content"
-        class="mt-0.5 line-clamp-2 whitespace-pre-wrap text-[11px] leading-4 text-gray-200 [text-shadow:0_1px_2px_rgba(0,0,0,.9)]"
-      >
-        {{ content }}
       </p>
     </div>
   </div>
