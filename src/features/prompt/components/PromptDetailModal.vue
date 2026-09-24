@@ -194,9 +194,16 @@ const {
             ? noteEditEl.value
             : null,
   getContainer: () => rootEl.value,
-  // 上层弹窗打开时放行 Ctrl+F：图像详情/图像导入/确认框（全屏查看已独立成窗口）
-  guard: () => !(imgDetailOpen.value || pickerOpen.value || confirmOpen.value || similarOpen.value),
+  // 上层弹窗打开时放行 Ctrl+F（判定见下方 overlayOpen）
+  guard: () => !overlayOpen.value,
 });
+
+/// 上层叠加层是否打开（嵌套图像详情 / 图像导入 / 确认框 / 相似结果页）：
+/// 既用于放行 Ctrl+F，也用于**停用底部胶囊的键盘导航** —— 胶囊的 document 监听不区分层级，
+/// 不拦的话 ←/→ 会把本弹窗的条目也一起切走（见 docs/lessons.md 第 22 节）
+const overlayOpen = computed(
+  () => imgDetailOpen.value || pickerOpen.value || confirmOpen.value || similarOpen.value,
+);
 
 watch(
   () => [props.open, props.initialIndex] as const,
@@ -974,6 +981,7 @@ async function onPickerImported() {
           <NavAndIndex
             :current-index="currentIndex"
             :order-length="order.length"
+            :disabled="overlayOpen"
             @first="goFirst"
             @prev="nav(-1)"
             @next="nav(1)"

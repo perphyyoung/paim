@@ -468,16 +468,21 @@ const {
   getEditEl: (f) =>
     f === "fileName" ? fileNameEditEl.value : f === "note" ? noteEditEl.value : null,
   getContainer: () => rootEl.value,
-  // 上层弹窗打开时放行 Ctrl+F：嵌套提示词详情/新建提示词/确认框/相似结果页（全屏查看已独立成窗口）
-  guard: () =>
-    !(
-      editPromptOpen.value ||
-      createPromptOpen.value ||
-      confirmOpen.value ||
-      similarOpen.value ||
-      similarPromptOpen.value
-    ),
+  // 上层弹窗打开时放行 Ctrl+F（判定见下方 overlayOpen）
+  guard: () => !overlayOpen.value,
 });
+
+/// 上层叠加层是否打开（嵌套提示词详情 / 新建提示词 / 确认框 / 相似结果页）：
+/// 既用于放行 Ctrl+F，也用于**停用底部胶囊的键盘导航** —— 胶囊的 document 监听不区分层级，
+/// 不拦的话 ←/→ 会把本弹窗的条目也一起切走（见 docs/lessons.md 第 22 节）
+const overlayOpen = computed(
+  () =>
+    editPromptOpen.value ||
+    createPromptOpen.value ||
+    confirmOpen.value ||
+    similarOpen.value ||
+    similarPromptOpen.value,
+);
 
 // 打开时跳转到初始图并同步编辑字段
 watch(
@@ -819,6 +824,7 @@ const fmtSize = (bytes: number) => {
             <NavAndIndex
               :current-index="currentIndex"
               :order-length="order.length"
+              :disabled="overlayOpen"
               @first="goFirst"
               @prev="nav(-1)"
               @next="nav(1)"

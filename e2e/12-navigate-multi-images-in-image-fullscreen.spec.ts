@@ -17,8 +17,10 @@ import {
   createPromptViaDialog,
   expectToastAndDismiss,
   openFullscreenViewer,
+  openImageDetail,
   openPromptDetail,
   test,
+  uploadImageWithPrompt,
   writePng,
   type AppHandle,
 } from "./e2e-helpers";
@@ -70,4 +72,64 @@ test("查看器键盘翻页：← / → 每次只走一格，末项不越界", a
   e2eLog.info("[step] ← 后退一格：2 / 3");
 
   await closeFullscreenViewer(app, viewer);
+});
+
+// —— 叠加层不穿透（`NavAndIndex` 的 `disabled`）——
+// 胶囊是 document 级监听、挂载即生效且**不区分层级**：详情弹窗上再叠一层（嵌套详情/导入选择器/
+// 相似结果页/确认框）时，被盖住的底层胶囊若不拦，←/→ 会把底层条目也一起切走（见 docs/lessons.md 第 22 节）。
+// 断言用胶囊的「索引文案」作信号（嵌套层 order 恒为 1 条，文案不会撞），两条用例分别覆盖两个详情弹窗。
+
+test("叠加层不穿透：嵌套图像详情开着时，→ / ← 不切换底层提示词", async ({ page, app }) => {
+  // 先建 B 再建 A：A 更新（详情列表按 updated_at 倒序）→ A 在前，→ 有下一条可切，修复前必现跳条
+  const contentB = `e2e 叠加层不穿透 B ${Date.now()}`;
+  const contentA = `e2e 叠加层不穿透 A ${Date.now()}`;
+  await createPromptViaDialog(page, contentB);
+  await createPromptViaDialog(page, contentA);
+  const detail = await openPromptDetail(page, contentA);
+  // A 关联 1 张图：用来打开嵌套图像详情（叠加层入口）
+  writePng(app.mockImagePath);
+  await detail.getByRole("button", { name: "从外界导入图像" }).click();
+  await expectToastAndDismiss(page, "已导入并关联 1 张图像");
+
+  // 索引文案只作「前后不变」的信号，不假设总条数：同文件前面的用例已在同一实例建过数据
+  const caption = detail.getByText(/^\d+ \/ \d+$/);
+  await expect(caption.first()).toBeVisible();
+  const before = (await caption.first().innerText()).trim();
+  e2eLog.info(`[step] 底层提示词详情当前索引：${before}`);
+
+  // 入口按钮是 group-hover 才可见（`hidden` → `group-hover:flex`），先 hover 缩略图再点
+  await detail.locator("img").first().hover();
+  await detail.getByTitle("查看图像详情").first().click();
+  await expect(page.getByRole("dialog", { name: "图像详情" })).toBeVisible();
+  e2eLog.info("[step] 嵌套图像详情已打开（叠加层）");
+
+  await page.keyboard.press("ArrowRight");
+  await expect(caption.first()).toHaveText(before); // 修复前：底层提示词被切到下一条
+  await page.keyboard.press("ArrowLeft");
+  await expect(caption.first()).toHaveText(before);
+  e2eLog.info(`[step] ← / → 均未穿透，底层仍停在 ${before}`);
+});
+
+test("叠加层不穿透：嵌套提示词详情开着时，→ / ← 不切换底层图像", async ({ page, app }) => {
+  // 两张图共用一条提示词（对齐 01 的场景）：底层图像详情的顺序里有「下一张」
+  const promptContent = `e2e 叠加层不穿透图像 ${Date.now()}`;
+  await uploadImageWithPrompt(page, promptContent, app.mockImagePath);
+  await uploadImageWithPrompt(page, promptContent, app.mockImagePath);
+  const detail = await openImageDetail(page, promptContent);
+
+  // 同上：只比较前后是否变化
+  const caption = detail.getByText(/^\d+ \/ \d+$/);
+  await expect(caption.first()).toBeVisible();
+  const before = (await caption.first().innerText()).trim();
+  e2eLog.info(`[step] 底层图像详情当前索引：${before}`);
+
+  await detail.getByTitle("编辑提示词").click(); // 嵌套提示词详情（叠加层）
+  await expect(page.getByRole("dialog", { name: "提示词详情" })).toBeVisible();
+  e2eLog.info("[step] 嵌套提示词详情已打开（叠加层）");
+
+  await page.keyboard.press("ArrowRight");
+  await expect(caption.first()).toHaveText(before); // 修复前：底层图像被切到下一张
+  await page.keyboard.press("ArrowLeft");
+  await expect(caption.first()).toHaveText(before);
+  e2eLog.info(`[step] ← / → 均未穿透，底层仍停在 ${before}`);
 });

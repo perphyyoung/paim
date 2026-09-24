@@ -6,12 +6,18 @@
  *
  * 键盘导航内置于此（document 监听，不依赖焦点）：
  * ←/→ 前后、Home/End 首尾；焦点在输入类元素时不触发。
+ *
+ * `disabled` 给「上层叠加层（嵌套详情弹窗 / 导入选择器 / 相似结果页 / 确认框）已打开」的调用方传：
+ * 监听是 document 级、挂载即生效且不区分层级，不拦的话 ←/→ 会把被盖住的那一层也一起切走
+ * （表现与取舍见 docs/lessons.md 第 22 节）。
  */
 import { onMounted, onUnmounted } from "vue";
 
 const props = defineProps<{
   currentIndex: number;
   orderLength: number;
+  /** 上层叠加层打开：停用键盘导航（不 preventDefault，按键留给上层） */
+  disabled?: boolean;
 }>();
 const emit = defineEmits<{
   (e: "first"): void;
@@ -24,8 +30,9 @@ const emit = defineEmits<{
 const atStart = () => props.currentIndex <= 0;
 const atEnd = () => props.currentIndex >= props.orderLength - 1;
 
-// 键盘导航（无 Esc）：编辑输入时（input/textarea/select）不劫持
+// 键盘导航（无 Esc）：编辑输入时（input/textarea/select）不劫持，被上层盖住时整体停用
 function onNavKeydown(e: KeyboardEvent) {
+  if (props.disabled) return;
   const tag = (e.target as HTMLElement | null)?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   const action: "first" | "prev" | "next" | "last" | null =
