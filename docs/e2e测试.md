@@ -14,8 +14,8 @@
 
 > Playwright 侧的通用经验（fixture scope 只有两级、自实现 file 级隔离、等待策略、定位坑）见 [playwright使用经验.md](./playwright使用经验.md)，本文只讲本项目的运行方式与约定。
 
-- `global-setup.ts`：`pnpm tauri build --debug --no-bundle` 构建一次**带内嵌前端的调试二进制**
-  （等价 pm 的 `pnpm build`），运行期不依赖 vite/devServer。
+- `global-setup.ts`：先清掉**上一轮泄漏的实例目录**（见下），再 `pnpm tauri build --debug --no-bundle`
+  构建一次**带内嵌前端的调试二进制**（等价 pm 的 `pnpm build`），运行期不依赖 vite/devServer。
 - `workers: 4` + `fullyParallel: false`：**用例文件间并行、文件内串行**（与 pm 一致）。
   每个 **spec 文件** 通过 `e2e-helpers.ts` 的 fixture spawn **自己的应用实例**：
   - **Playwright 只有 test / worker 两级 fixture scope，没有 file 级**，而一个 worker 会顺序跑多个文件——
@@ -23,13 +23,21 @@
     （`workers: 1` 时可稳定复现：03 上传的 mock 图 md5 与 02 已导入的相同 → 判重复导入 → 拿不到新图）。
     因此 fixture 里**自实现 file 级 scope**：按 `testInfo.file` 取实例，文件切换时关掉上一个文件的
     实例并起新的（含独立数据目录），代价是每文件一次应用启动（约 2–4s）。
-  - 数据目录 `temp/e2e-w<n>-<序号>`、WebView2 目录 `temp/wv2-w<n>`（按 worker，实例顺序创建不冲突）、
+  - 数据目录 `temp/e2e-w<n>-<序号>`、WebView2 目录 `temp/wv2-w<n>`（按 worker 长期复用，实例顺序创建不冲突）、
     上传预览目录 `temp/preview-e2e-w<n>-<序号>`（互不冲突，teardown 时删除数据目录与预览目录）；
   - CDP 端口按空闲端口动态分配；
   - teardown 由 Playwright 保证执行（用例失败/超时也算）：优雅关闭**自己 spawn 的进程**（不影响其他
-    worker 与 dev 实例）后删除本轮数据目录。
-- 无全局强杀；极端场景（globalTimeout 强杀 worker / 进程崩溃）可能泄漏实例并锁住数据目录，
-  下一轮该 worker 会因 paim.db 被占用而启动失败——按报错关闭残留实例即可（`paim.log` 有记录）。
+    worker 与 dev 实例）后删除本轮数据目录。**顺序契约：关闭 → 等进程真正退出 → 删目录**——
+    Windows 上 `taskkill` 返回 ≠ 句柄已释放，立刻删会撞 EBUSY（`paim.db`、缩略图、asset 协议读过的
+    文件都还开着），后果是「用例全绿的一轮被判失败」（根因与取舍见 [lessons.md](./lessons.md) 第 21 节）；
+  - 删除是 **best-effort 且绝不抛**：`rmSync` 带 `maxRetries` 重试（覆盖杀软扫描 / 句柄延迟释放），
+    仍失败就把目录**改名让位**为 `*-stale-<ts>`（Windows 上目录内含被占文件也能改名）；
+  - `序号` 每轮从 0 重新计数，故泄漏的目录会被**下一轮同 worker 同序号复用**（带着旧库：同 md5 的图会被
+    判重复导入）——所以 globalSetup 起跑前必扫一遍残留；`paim.log` 里 `[cleanup]` / `[global-setup]`
+    前缀就是这类事件的记录。
+- **不做全局强杀**（按名杀 paim 会误伤正在用的 dev 实例）；极端场景（globalTimeout 强杀 worker /
+  进程崩溃）可能留下残留进程，此时下一轮该 worker 会因 `paim.db` 被占用而启动失败——
+  按报错关掉残留实例即可（`paim.log` 有 `[app] 进程退出` / `[cleanup]` 记录）。
 
 ## 测试缝与环境变量
 
@@ -152,3 +160,7 @@ pnpm e2e --grep 上传  # 单个用例
    - **单跑通过 → 判定为并行环境相关的偶发失败**（多 worker = 多个 WebView2 实例并行，资源压力下偶发页面销毁/重建，如 2026-09-09 的 05 用例 5），**不算回归：不追查、不改代码**，重跑全量确认即可；
    - **单跑也失败 → 真失败**，按上面的 `[connect]`/`[step]`/`[diag]` 行定位修复。
    - agent 提示：遇到「全量失败但单跑通过」不要试图修用例或应用代码；如需向用户汇报，说明是环境偶发并给出重跑建议即可。
+3. **收尾报错（用例全绿但 exit 1）**：输出形如 `Failed worker ran N tests: … at e2e-helpers.ts:…` +
+   `1 error was not a part of any test`，用例清单**与该 worker 跑过的文件完全吻合**——那不是用例失败，
+   是 teardown（清理数据目录）报错。查 `paim.log`：看该 worker 最后一个实例有没有 `[app] 进程退出` 行、
+   以及 `[cleanup]` / `[global-setup]` 前缀的行；根因、顺序契约与兜底策略见 [lessons.md](./lessons.md) 第 21 节。

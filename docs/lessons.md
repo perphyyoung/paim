@@ -607,6 +607,38 @@ Windows 退出全屏**不是原子操作**：先恢复窗口装饰（标题栏�
 
 ### 后续参考 / 通用约束
 
-- 悬浮面板类 helper 一律做成**幂等**（先判可见再点开），否则「连续调用同一 helper」的用例必踩遮罩。
+- 悬浮面板类 helper 一律做成**幂等**（先可见再点开），否则「连续调用同一 helper」的用例必踩遮罩。
 - 凡被用例改动的**持久化偏好**（localStorage）：起点显式重置或收尾清理 —— 跨文件共用 profile 时尤其重要。
 - 相似度功能的完整经验见 [开发经验.md](./开发经验.md) 第 4 节；同类教训见 §5。
+
+## 21. e2e 收尾「kill 即删」：用例全绿的一轮被 teardown 判失败（Windows 句柄释放时序）
+
+### 现象与根因
+
+`pnpm e2e` 29 个用例全部通过，收尾却报 `1 error was not a part of any test` + `[ELIFECYCLE] exit 1`：
+Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` 的 `fs.rmSync(app.dataDir)`。
+
+- 这是**竞态**，不是某用例的逻辑问题：同一轮日志里 w0 / w3 的**最后一个实例**没有 `[app] 进程退出` 行，
+  且 `temp/e2e-w0-2`、`temp/e2e-w3-2`（各含 preview 目录）**留在磁盘上**；w1（最后一个实例走
+  `restartApp`，那里等了退出 + 2s）与 w2（恰好死在 rm 之前）没踩中。
+- 根因在 `closeApp`：`taskkill /PID` → 固定 `sleep(1500)` → `taskkill /F /T` **发出即返回**，
+  从不等待进程真正退出；紧接着 `disposeApp` 就删目录。Windows 上 kill 返回 ≠ 句柄已释放
+  （`paim.db`、缩略图、asset 协议读过的文件），而 `fs.rmSync` 的 `force: true` 只忽略 ENOENT、
+  **不重试锁占用** → EBUSY 直接抛 → 整个 worker 判失败（用例结论被环境噪声盖掉）。
+
+### 修复
+
+1. 新增 `waitForExit(child, ms)`（`exitCode` 已置位即返回；否则听 `exit` 事件，定时器 `unref` 不拖住退出）；
+   `closeApp` 改为 `taskkill /PID` → 等 3s → 未退出再 `/F /T` → 等 10s → 仍未退出记 `[app] …` error；
+2. `disposeApp`：关闭 → **等退出** → `removeDirBestEffort()`（`rmSync` 带 `maxRetries/retryDelay`，
+   仍失败则改名为 `*-stale-<ts>` 让出目录名），**绝不抛**；
+3. `globalSetup` 起跑前扫掉残留的 `temp/e2e-*` / `preview-e2e-*` / `*-stale-*` —— 因为「本 worker 内序号」
+   每轮从 0 计数，上一轮泄漏的目录会被本轮同序号**复用旧库**（库里已有同 md5 的图 → 用例被判重复导入），
+   这个隐性污染比直接报错更难查。
+
+### 后续参考 / 通用约束
+
+- **进程生命周期类 teardown 一律「等退出再动它的文件」**：kill/close 都是异步生效的，固定 sleep 是猜。
+- **清理失败不得改变测试结论**：teardown 只记日志（改名让位 + 交由下轮 globalSetup 扫尾）。
+- Windows 上目录内含被占文件**不能删、但能改名**——「改名让位」比无限重试更可靠。
+- 同类教训：§6（vite 监听句柄挡住数据目录改名）、§8（e2e 全量偶发「页面消失」）。

@@ -6,8 +6,8 @@
  * 见 e2e-helpers.ts），文件结束优雅关闭该实例——各实例之间、与正常开发的 1420 实例之间互不干扰。
  * 对话框 mock 与数据目录隔离见 e2e-helpers.ts / docs/e2e测试.md。
  *
- * 运行前提：关闭正在运行的 dev 实例（globalSetup 会先清理残留的 paim 进程，
- * teardown 阶段不杀任何进程）。
+ * 运行前提：关闭正在运行的 dev 实例（globalSetup 只清上一轮**泄漏的实例目录**，
+ * 不杀任何进程——按名杀 paim 会误伤正在用的 dev 实例）。
  */
 import { defineConfig } from "@playwright/test";
 

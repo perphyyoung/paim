@@ -138,21 +138,41 @@ async function launchApp(workerIndex: number, seq: number): Promise<AppHandle> {
   return { child, browser, page, dataDir, previewDir, mockImagePath, cdpPort, env, used: false };
 }
 
-/// 优雅关闭自己的实例：先 WM_CLOSE（进程以 0 退出），兜底强杀进程树。
+/// 等待子进程**真正退出**（已退出含被强杀 → 立即 true；超时 false）。
+/// 为什么必须等：Windows 上 `taskkill` 返回 ≠ 进程句柄已释放，紧接着删数据目录会撞
+/// EBUSY（DB / 缩略图 / asset 协议读过的文件都还开着）。定时器 unref，不拖住 worker 退出。
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    timer.unref();
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+}
+
+/// 优雅关闭自己的实例：先 WM_CLOSE（进程以 0 退出），超时再强杀进程树，
+/// 最后**等到进程真正退出**（见 waitForExit）——调用方（disposeApp）随后就要删数据目录。
 async function closeApp(app: AppHandle): Promise<void> {
   const pid = app.child.pid;
   await app.browser.close().catch(() => {});
   if (pid === undefined) return;
   try {
     execSync(`taskkill /PID ${pid}`, { stdio: "ignore" });
-    await new Promise((r) => setTimeout(r, 1_500));
   } catch {
     // 已退出
   }
+  // 优雅关闭（关窗 → 进程退出）实测 <1s，3s 足够；端口 TIME_WAIT 的等待在 restartApp 里单独留
+  if (await waitForExit(app.child, 3_000)) return;
   try {
     execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
   } catch {
     // 已优雅退出
+  }
+  if (!(await waitForExit(app.child, 10_000))) {
+    e2eLog.error(`[app] 强杀后仍未退出（pid=${pid}），数据目录可能被占用`);
   }
 }
 
@@ -208,12 +228,36 @@ async function recoverPage(app: AppHandle): Promise<void> {
   }
 }
 
+/// 递归删目录（best-effort，**绝不抛**）：
+/// 先带重试地删（Node 对 EBUSY/EPERM/ENOTEMPTY 自动重试，覆盖杀进程后句柄延迟释放、
+/// 杀软扫描新文件这类瞬时占用）；仍失败则**改名让位**——Windows 上目录内文件即使被占用
+/// 也能改名——把目录名腾出来，残留内容由下一轮 globalSetup 的 sweepLeakedDirs 清掉。
+/// 为什么不能抛：teardown 抛异常会让一个用例全绿的 worker 被判失败（本轮「7 个用例通过但
+/// 整轮 exit 1」就是这么来的），清理失败是环境噪声，不是测试结论。
+function removeDirBestEffort(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (e) {
+    const stale = `${dir}-stale-${Date.now()}`;
+    try {
+      fs.renameSync(dir, stale);
+      e2eLog.warn(`[cleanup] 删除失败，已改名让位：${dir} → ${path.basename(stale)}（${e}）`);
+    } catch (e2) {
+      e2eLog.error(`[cleanup] 删除与改名均失败：${dir}（${e} / ${e2}）`);
+    }
+  }
+}
+
 /// 优雅关闭实例并删除它的数据目录与预览目录
-/// （进程已退出、句柄已释放后删，对齐 pm 的 _testDataDir 清理）
+/// （顺序契约：关闭 → **等进程退出** → 删目录，见 closeApp / waitForExit 的注释）
 async function disposeApp(app: AppHandle): Promise<void> {
   await closeApp(app);
-  fs.rmSync(app.dataDir, { recursive: true, force: true });
-  fs.rmSync(app.previewDir, { recursive: true, force: true });
+  // 双保险：closeApp 未走到「已退出」判定（如 pid 缺失）时这里再等一次
+  if (!(await waitForExit(app.child, 15_000))) {
+    e2eLog.warn(`[cleanup] 进程未在 15s 内退出，仍按 best-effort 清理 ${app.dataDir}`);
+  }
+  removeDirBestEffort(app.dataDir);
+  removeDirBestEffort(app.previewDir);
 }
 
 /// 页面侧诊断（控制台消息/失败请求/4xx 响应）写入 paim.log，便于失败时定位卡在哪一步
