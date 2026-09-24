@@ -8,6 +8,7 @@ const BASE_URL_KEY = "image.similarity.baseUrl";
 const ENABLED_KEY = "image.similarity.enabled";
 const LIMIT_KEY = "image.similarity.limit";
 const MIN_SCORE_KEY = "image.similarity.minScore";
+const CONCURRENCY_KEY = "image.similarity.concurrency";
 
 /** 默认服务地址（本机 llama.cpp embedding 服务）。 */
 export const DEFAULT_BASE_URL = "http://127.0.0.1:8080";
@@ -15,9 +16,12 @@ export const DEFAULT_BASE_URL = "http://127.0.0.1:8080";
 export const LIMIT_RANGE = { min: 1, max: 200, step: 1 };
 /** 相似度阈值范围（低于该余弦分的候选不返回）。 */
 export const MIN_SCORE_RANGE = { min: 0, max: 1, step: 0.05 };
+/** 索引并发请求数范围：建议不超过服务端 `-np`；图像侧受服务端编码 CPU 限制，开满收益有限。 */
+export const CONCURRENCY_RANGE = { min: 1, max: 8, step: 1 };
 /** 默认条数 / 阈值：实测同内容 ≈0.996~1.000、无关内容 ≈0.2，0.5 落在两者之间。 */
 const DEFAULT_LIMIT = 30;
 const DEFAULT_MIN_SCORE = 0.5;
+const DEFAULT_CONCURRENCY = 2;
 
 function read(key: string, fallback: string): string {
   try {
@@ -47,6 +51,9 @@ const limit = ref(readNumber(LIMIT_KEY, DEFAULT_LIMIT, LIMIT_RANGE.min, LIMIT_RA
 const minScore = ref(
   readNumber(MIN_SCORE_KEY, DEFAULT_MIN_SCORE, MIN_SCORE_RANGE.min, MIN_SCORE_RANGE.max),
 );
+const concurrency = ref(
+  readNumber(CONCURRENCY_KEY, DEFAULT_CONCURRENCY, CONCURRENCY_RANGE.min, CONCURRENCY_RANGE.max),
+);
 
 /** 相似度检索偏好（全局单例）。 */
 export function useSimilaritySettings() {
@@ -55,6 +62,7 @@ export function useSimilaritySettings() {
     enabled,
     limit,
     minScore,
+    concurrency,
     setBaseUrl(v: string) {
       baseUrl.value = v.trim() || DEFAULT_BASE_URL;
       write(BASE_URL_KEY, baseUrl.value);
@@ -72,6 +80,14 @@ export function useSimilaritySettings() {
       const n = Number.isFinite(v) ? v : DEFAULT_MIN_SCORE;
       minScore.value = Math.min(MIN_SCORE_RANGE.max, Math.max(MIN_SCORE_RANGE.min, n));
       write(MIN_SCORE_KEY, String(minScore.value));
+    },
+    setConcurrency(v: number) {
+      const n = Number.isFinite(v) ? Math.round(v) : DEFAULT_CONCURRENCY;
+      concurrency.value = Math.min(
+        CONCURRENCY_RANGE.max,
+        Math.max(CONCURRENCY_RANGE.min, n || DEFAULT_CONCURRENCY),
+      );
+      write(CONCURRENCY_KEY, String(concurrency.value));
     },
   };
 }

@@ -86,6 +86,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // —— 图像相似度（以图搜图，向量来自外部 embedding 服务）——
             commands::image::image_cards_by_ids,
             commands::similarity::similarity_status,
+            commands::similarity::similarity_index_progress,
             commands::similarity::embedding_service_info,
             commands::similarity::index_image_embeddings,
             commands::similarity::clear_image_embeddings,

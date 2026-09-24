@@ -1,27 +1,53 @@
 <script setup lang="ts">
-// 设置页「图像相似度」区块：服务地址 / 开关 / 检索参数 + 索引（增量 / 全量 / 清空）+ 状态与进度。
-// 索引进度经 `similarity-index-progress` 事件推送；任务在后端线程里跑，离开本页不会中断。
+// 设置页「图像相似度」区块：服务地址 / 开关 / 检索参数 / 索引并发 + 索引（增量 / 全量 / 清空）+ 状态与进度。
+// 进度既可订阅也可查询：事件不重放，离开本页期间推送的增量会丢，挂载时用
+// similarity_index_progress 取回后端任务快照，从而恢复进度条与 ETA。
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { commands, events, type SimilarityStatus } from "@/bindings";
+import { commands, events, type SimilarityIndexProgress, type SimilarityStatus } from "@/bindings";
 import { useToast } from "@/components/useToast";
-import { DEFAULT_BASE_URL, LIMIT_RANGE, MIN_SCORE_RANGE, useSimilaritySettings } from "./settings";
+import {
+  CONCURRENCY_RANGE,
+  DEFAULT_BASE_URL,
+  LIMIT_RANGE,
+  MIN_SCORE_RANGE,
+  useSimilaritySettings,
+} from "./settings";
 
 const { showToast } = useToast();
-const { baseUrl, enabled, limit, minScore, setBaseUrl, setEnabled, setLimit, setMinScore } =
-  useSimilaritySettings();
+const {
+  baseUrl,
+  enabled,
+  limit,
+  minScore,
+  concurrency,
+  setBaseUrl,
+  setEnabled,
+  setLimit,
+  setMinScore,
+  setConcurrency,
+} = useSimilaritySettings();
 
 const status = ref<SimilarityStatus | null>(null);
 const serviceText = ref("");
 const testing = ref(false);
-const indexing = ref(false);
-const progress = ref<{ current: number; total: number; failed: number; file_name: string } | null>(
-  null,
-);
-const summary = ref<{ total: number; indexed: number; failed: number } | null>(null);
+/// 是否有索引任务在跑（由后端快照 / 事件同步，不依赖本组件是否一直挂载）
+const running = ref(false);
+const progress = ref<SimilarityIndexProgress | null>(null);
 const clearArmed = ref(false);
 
 let unlisten: UnlistenFn | null = null;
+/// 索引进行中每 5s 刷新一次本地状态（已建立向量数），结束时停掉
+let statusTimer: number | undefined = undefined;
+
+function syncStatusTimer() {
+  if (running.value && statusTimer === undefined) {
+    statusTimer = window.setInterval(() => void loadStatus(), 5000);
+  } else if (!running.value && statusTimer !== undefined) {
+    window.clearInterval(statusTimer);
+    statusTimer = undefined;
+  }
+}
 
 async function loadStatus() {
   try {
@@ -31,21 +57,53 @@ async function loadStatus() {
   }
 }
 
+/// 取后端进度快照（重进页面时恢复进度条与 ETA）
+async function refreshProgress() {
+  try {
+    const p = await commands.similarityIndexProgress();
+    progress.value = p;
+    running.value = p.running;
+  } catch {
+    // 快照查询失败不影响使用：后续事件仍会推进进度
+  } finally {
+    syncStatusTimer();
+  }
+}
+
 onMounted(async () => {
   await loadStatus();
+  await refreshProgress();
   unlisten = await events.similarityIndexProgress.listen((e) => {
     progress.value = e.payload;
+    running.value = e.payload.running;
+    syncStatusTimer();
+    if (!e.payload.running) void loadStatus();
   });
 });
 onUnmounted(() => {
   unlisten?.();
   unlisten = null;
+  if (statusTimer !== undefined) {
+    window.clearInterval(statusTimer);
+    statusTimer = undefined;
+  }
 });
 
 const percent = computed(() => {
   const p = progress.value;
   return p && p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
 });
+
+/// 预估剩余时间文案（无样本时返回空串）
+function formatEta(ms: number): string {
+  if (!ms || ms <= 0) return "";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `约 ${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `约 ${minutes} 分 ${seconds % 60} 秒`;
+  return `约 ${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`;
+}
+const etaText = computed(() => formatEta(progress.value?.eta_ms ?? 0));
 
 const statusText = computed(() => {
   const s = status.value;
@@ -72,13 +130,12 @@ async function testService() {
 }
 
 async function runIndex(mode: "Incremental" | "Full") {
-  if (indexing.value) return;
-  indexing.value = true;
-  progress.value = null;
-  summary.value = null;
+  if (running.value) return;
+  running.value = true;
+  progress.value = { running: true, current: 0, total: 0, failed: 0, file_name: "", eta_ms: 0 };
+  syncStatusTimer();
   try {
-    const r = await commands.indexImageEmbeddings(baseUrl.value, mode);
-    summary.value = r;
+    const r = await commands.indexImageEmbeddings(baseUrl.value, mode, concurrency.value);
     showToast(
       `索引完成：成功 ${r.indexed} 张，失败 ${r.failed} 张`,
       r.failed > 0 ? "warning" : "success",
@@ -86,8 +143,10 @@ async function runIndex(mode: "Incremental" | "Full") {
   } catch (e) {
     showToast(String(e), "error");
   } finally {
-    indexing.value = false;
+    running.value = false;
+    syncStatusTimer();
     await loadStatus();
+    await refreshProgress();
   }
 }
 
@@ -99,7 +158,6 @@ async function clearIndex() {
   clearArmed.value = false;
   try {
     const n = await commands.clearImageEmbeddings();
-    summary.value = null;
     progress.value = null;
     showToast(`已清空 ${n} 条向量`, "success");
   } catch (e) {
@@ -199,6 +257,26 @@ async function clearIndex() {
 
     <div class="flex items-center justify-between gap-3 py-3">
       <div class="min-w-0">
+        <dt class="text-gray-400">索引并发数</dt>
+        <dd class="text-sm text-gray-500">
+          当前 {{ concurrency }} 路请求（{{ CONCURRENCY_RANGE.min }}~{{ CONCURRENCY_RANGE.max }}）；
+          不要超过服务端 <code>-np</code>，图像侧受服务端编码 CPU 限制，开满收益有限（实测 4 路约
+          1.2x）
+        </dd>
+      </div>
+      <input
+        :value="concurrency"
+        type="number"
+        :min="CONCURRENCY_RANGE.min"
+        :max="CONCURRENCY_RANGE.max"
+        aria-label="索引并发数"
+        class="w-24 shrink-0 rounded border bg-gray-800 px-2 py-1 text-sm text-gray-200 border-gray-600"
+        @change="setConcurrency(Number(($event.target as HTMLInputElement).value))"
+      />
+    </div>
+
+    <div class="flex items-center justify-between gap-3 py-3">
+      <div class="min-w-0">
         <dt class="text-gray-400">向量索引</dt>
         <dd class="text-sm text-gray-500">{{ statusText }}</dd>
         <dd class="mt-1 text-xs text-gray-500">
@@ -211,7 +289,7 @@ async function clearIndex() {
         <button
           type="button"
           class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
-          :disabled="indexing"
+          :disabled="running"
           title="增量索引"
           @click="runIndex('Incremental')"
         >
@@ -220,7 +298,7 @@ async function clearIndex() {
         <button
           type="button"
           class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
-          :disabled="indexing"
+          :disabled="running"
           title="全量重建"
           @click="runIndex('Full')"
         >
@@ -230,7 +308,7 @@ async function clearIndex() {
           type="button"
           class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 hover:bg-gray-700 disabled:opacity-50"
           :class="clearArmed ? 'text-red-400' : 'text-gray-200'"
-          :disabled="indexing"
+          :disabled="running"
           title="清空索引"
           @click="clearIndex"
         >
@@ -239,7 +317,7 @@ async function clearIndex() {
       </div>
     </div>
 
-    <div v-if="indexing" class="py-3">
+    <div v-if="running" class="py-3">
       <div class="h-2 overflow-hidden rounded-full bg-gray-700">
         <div
           class="h-full rounded-full bg-blue-600 transition-all"
@@ -252,14 +330,19 @@ async function clearIndex() {
             ? `正在建立向量... (${progress.current}/${progress.total}，失败 ${progress.failed})`
             : "准备中..."
         }}
+        <span v-if="etaText" class="text-gray-400">· 剩余 {{ etaText }}</span>
+        <span v-if="progress && progress.total > 0" class="text-gray-400">· {{ percent }}%</span>
       </p>
       <p class="mt-1 break-all text-xs text-gray-500">{{ progress?.file_name ?? "" }}</p>
-      <p class="mt-1 text-xs text-gray-500">可离开本页，任务在后端继续；回来后进度会重新显示</p>
+      <p class="mt-1 text-xs text-gray-500">
+        可离开本页，任务在后端继续；回来后进度与剩余时间会继续显示
+      </p>
     </div>
 
-    <div v-else-if="summary" class="py-2 text-sm">
+    <div v-else-if="progress && progress.total > 0" class="py-2 text-sm">
       <p class="text-gray-200">
-        上次索引：共 {{ summary.total }} 张，成功 {{ summary.indexed }}，失败 {{ summary.failed }}
+        上次索引：共 {{ progress.total }} 张，失败 {{ progress.failed }} 张（成功
+        {{ progress.total - progress.failed }} 张）
       </p>
     </div>
   </dl>

@@ -122,13 +122,15 @@ export const commands = {
 	imageCardsByIds: (ids: string[]) => __TAURI_INVOKE<ImageCard[]>("image_cards_by_ids", { ids }),
 	/**  本地索引状态（不访问服务）：总数 / 已索引 / 维度 / 需重建数。 */
 	similarityStatus: () => __TAURI_INVOKE<SimilarityStatus>("similarity_status"),
+	/**  当前索引进度快照（设置页挂载时查询，事件不重放）。 */
+	similarityIndexProgress: () => __TAURI_INVOKE<SimilarityIndexProgress>("similarity_index_progress"),
 	/**  探测 embedding 服务（设置页「测试连通性」）：模型名 / media marker / 维度 / 是否加载视觉塔。 */
 	embeddingServiceInfo: (baseUrl: string) => __TAURI_INVOKE<EmbeddingServiceInfo>("embedding_service_info", { baseUrl }),
 	/**
 	 *  建立图像向量索引：`Full` 先清空全部向量再全量，`Incremental` 只补 `vec IS NULL`。
-	 *  逐张「预处理 + 请求 embedding 服务」（不持锁）后短锁写回，进度经事件推送。
+	 *  `concurrency` 为客户端并发请求数（1~8，建议 ≤ 服务端 `-np`）。
 	 */
-	indexImageEmbeddings: (baseUrl: string, mode: IndexMode) => __TAURI_INVOKE<SimilarityIndexSummary>("index_image_embeddings", { baseUrl, mode }),
+	indexImageEmbeddings: (baseUrl: string, mode: IndexMode, concurrency: number) => __TAURI_INVOKE<SimilarityIndexSummary>("index_image_embeddings", { baseUrl, mode, concurrency }),
 	/**  清空全部向量（设置页「清空」，之后可重建）。 */
 	clearImageEmbeddings: () => __TAURI_INVOKE<number>("clear_image_embeddings"),
 	/**
@@ -516,12 +518,19 @@ export type SimilarHit = {
 	score: number | null,
 };
 
-/**  索引进度（设置页进度条）。 */
+/**
+ *  索引进度：事件推送与命令查询共用同一结构。
+ *  `running = false` 时其余字段是上一轮的终值（用于「上次索引」摘要）。
+ */
 export type SimilarityIndexProgress = {
+	/**  是否有索引任务在跑 */
+	running: boolean,
 	current: number,
 	total: number,
-	file_name: string,
 	failed: number,
+	file_name: string,
+	/**  预估剩余毫秒（尚无足够样本时为 0） */
+	eta_ms: number,
 };
 
 /**  索引结果统计。 */
