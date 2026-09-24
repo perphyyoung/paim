@@ -40,7 +40,9 @@ pub fn open_connection(path: PathBuf) -> rusqlite::Result<Connection> {
             deleted_at TEXT,
             is_favorite INTEGER DEFAULT 0,
             is_safe INTEGER DEFAULT 1,
-            note TEXT DEFAULT ''
+            note TEXT DEFAULT '',
+            -- 语义向量（相似度检索）：f32 LE BLOB，写入前已 L2 归一化；老库由 ensure_column 补列
+            vec BLOB
         );
 
         -- 图像表
@@ -61,7 +63,9 @@ pub fn open_connection(path: PathBuf) -> rusqlite::Result<Connection> {
             is_safe INTEGER DEFAULT 1,
             created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
             updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-            note TEXT DEFAULT ''
+            note TEXT DEFAULT '',
+            -- 语义向量（相似度检索）：f32 LE BLOB，写入前已 L2 归一化；老库由 ensure_column 补列
+            vec BLOB
         );
 
         -- 提示词标签组表
@@ -172,7 +176,25 @@ CREATE INDEX IF NOT EXISTS idx_images_active_file_name ON images(file_name) WHER
         CREATE INDEX IF NOT EXISTS idx_prompts_active_title ON prompts(title) WHERE is_deleted = 0;
         "#,
     )?;
+    // 幂等加列：`CREATE TABLE IF NOT EXISTS` 只对新库生效，老库需 ALTER。
+    // images / prompts 的语义向量列在**同一次迁移**里补齐（相似度检索用）。
+    ensure_column(&conn, "images", "vec", "BLOB")?;
+    ensure_column(&conn, "prompts", "vec", "BLOB")?;
     Ok(conn)
+}
+
+/// 幂等加列：SQLite 没有 `ADD COLUMN IF NOT EXISTS`，先查 `table_info` 再决定是否 ALTER。
+fn ensure_column(conn: &Connection, table: &str, column: &str, decl: &str) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .any(|name| name == column);
+    drop(stmt);
+    if !exists {
+        conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"))?;
+    }
+    Ok(())
 }
 
 /// 生成与 prompt-manager 同格式的文本主键："{prefix}_{YYYYMMDDHHmmss}_{随机5位base36}"。

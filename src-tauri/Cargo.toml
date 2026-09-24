@@ -32,6 +32,9 @@ tauri-plugin-single-instance = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff"] }
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 md-5 = "0.10"
+# 本地 embedding 服务（llama.cpp llama-server）调用：只访问 127.0.0.1 明文 HTTP，故关闭 TLS 特性
+ureq = { version = "2", default-features = false, features = ["json"] }
+base64 = "0.22"
 zip = { version = "4", default-features = false, features = ["deflate"] }
 tauri-plugin-global-shortcut = "2"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "javascript", "typescript"] }

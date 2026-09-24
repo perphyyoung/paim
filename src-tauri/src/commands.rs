@@ -7,6 +7,7 @@ pub mod image;
 pub mod image_fullscreen;
 pub mod orphan;
 pub mod prompt;
+pub mod similarity;
 pub mod stats;
 pub mod tag;
 

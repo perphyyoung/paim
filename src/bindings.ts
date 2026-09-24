@@ -115,6 +115,27 @@ export const commands = {
 	showImageFullscreen: () => __TAURI_INVOKE<null>("show_image_fullscreen"),
 	/**  关闭全屏查看：隐藏窗口（复用，不销毁）并聚焦主窗口 —— 主窗口原样露出。 */
 	closeImageFullscreen: () => __TAURI_INVOKE<null>("close_image_fullscreen"),
+	/**
+	 *  按 id 列表取卡片投影（顺序与入参一致，缺失 / 已删除的跳过）。
+	 *  供「按 id 渲染卡片」的场景使用，如相似度检索结果。
+	 */
+	imageCardsByIds: (ids: string[]) => __TAURI_INVOKE<ImageCard[]>("image_cards_by_ids", { ids }),
+	/**  本地索引状态（不访问服务）：总数 / 已索引 / 维度 / 需重建数。 */
+	similarityStatus: () => __TAURI_INVOKE<SimilarityStatus>("similarity_status"),
+	/**  探测 embedding 服务（设置页「测试连通性」）：模型名 / media marker / 维度 / 是否加载视觉塔。 */
+	embeddingServiceInfo: (baseUrl: string) => __TAURI_INVOKE<EmbeddingServiceInfo>("embedding_service_info", { baseUrl }),
+	/**
+	 *  建立图像向量索引：`Full` 先清空全部向量再全量，`Incremental` 只补 `vec IS NULL`。
+	 *  逐张「预处理 + 请求 embedding 服务」（不持锁）后短锁写回，进度经事件推送。
+	 */
+	indexImageEmbeddings: (baseUrl: string, mode: IndexMode) => __TAURI_INVOKE<SimilarityIndexSummary>("index_image_embeddings", { baseUrl, mode }),
+	/**  清空全部向量（设置页「清空」，之后可重建）。 */
+	clearImageEmbeddings: () => __TAURI_INVOKE<number>("clear_image_embeddings"),
+	/**
+	 *  以某张图像为查询检索相似图像；目标图未建索引时现场补算一次（约 0.5s）再查。
+	 *  `safe_only` 与主页「安全模式」口径一致；`limit` 上限 200（防止前端误传大值）。
+	 */
+	similarImages: (baseUrl: string, imageId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<SimilarHit[]>("similar_images", { baseUrl, imageId, limit, minScore, safeOnly }),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
 	getTagData: (domain: TagDomain) => __TAURI_INVOKE<TagData>("get_tag_data", { domain }),
 	/**  未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。 */
@@ -222,6 +243,7 @@ export const events = {
 	globalShortcut: makeEvent<GlobalShortcutEvent>("global-shortcut"),
 	imageFullscreenOpened: makeEvent<ImageFullscreenOpened>("image-fullscreen-opened"),
 	logLevelChanged: makeEvent<LogLevelChanged>("log-level-changed"),
+	similarityIndexProgress: makeEvent<SimilarityIndexProgress>("similarity-index-progress"),
 	thumbnailRebuildProgress: makeEvent<ThumbnailRebuildProgress>("thumbnail-rebuild-progress"),
 };
 
@@ -279,6 +301,16 @@ export type E2EImageRecord = {
 	file_name: string,
 	relative_path: string,
 	thumbnail_path: string,
+};
+
+/**  服务信息（设置页展示 + 连通性测试）。 */
+export type EmbeddingServiceInfo = {
+	model: string,
+	media_marker: string,
+	/**  服务端模型隐含维度（取自 `/v1/models` 的 `meta.n_embd`，仅用于展示/校验提示） */
+	dim: number,
+	/**  是否加载了视觉塔（`/props` 的 `modalities.vision`）——为 false 时图像向量不可用 */
+	vision: boolean,
 };
 
 /**  全局快捷键触发事件（payload 为动作名，如 "toggle-settings"）。 */
@@ -360,6 +392,9 @@ export type ImageImportResult = {
 
 /**  替换结果：SameImage 表示新图与旧图为同一张（MD5 相同），无需替换。 */
 export type ImageReplaceOutcome = { kind: "same_image" } | { kind: "replaced"; image: Image; related_prompt_ids: string[] };
+
+/**  索引模式：全量会先清空已有向量（换模型 / 改预处理规则后用）。 */
+export type IndexMode = "Incremental" | "Full";
 
 /**  完整性检查结果 */
 export type IntegrityCheckResult = {
@@ -473,6 +508,39 @@ export type RelatedImage = {
 	/**  原图像绝对路径（前端配合 convertFileSrc 加载）。 */
 	src: string,
 	tags: string[],
+};
+
+/**  相似检索结果（卡片数据由前端按 id 另取，避免本模块依赖卡片投影）。 */
+export type SimilarHit = {
+	image_id: string,
+	score: number | null,
+};
+
+/**  索引进度（设置页进度条）。 */
+export type SimilarityIndexProgress = {
+	current: number,
+	total: number,
+	file_name: string,
+	failed: number,
+};
+
+/**  索引结果统计。 */
+export type SimilarityIndexSummary = {
+	total: number,
+	indexed: number,
+	failed: number,
+};
+
+/**  索引 / 检索状态（设置页展示）。 */
+export type SimilarityStatus = {
+	/**  在用图像总数（is_deleted = 0） */
+	total: number,
+	/**  已有向量的图像数 */
+	indexed: number,
+	/**  当前向量维度（无向量时为 0） */
+	dim: number,
+	/**  维度与第一行不一致的行数（换模型后应全量重建） */
+	stale: number,
 };
 
 /**  单个特殊标签的命中数（只统计未删除条目，与主页筛选区口径一致） */

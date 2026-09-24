@@ -20,6 +20,7 @@ import BackupImportModal from "@/features/backup/components/BackupImportModal.vu
 import BackupExportModal from "@/features/backup/components/BackupExportModal.vue";
 import IntegrityCheckModal from "@/components/IntegrityCheckModal.vue";
 import ThumbnailRebuildModal from "@/features/image/components/ThumbnailRebuildModal.vue";
+import SimilaritySection from "@/features/similarity/SimilaritySection.vue";
 
 const { showToast } = useToast();
 
@@ -221,6 +222,8 @@ onMounted(loadDataDir);
         />
       </div>
     </dl>
+
+    <SimilaritySection />
 
     <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">数据</h3>
     <dl class="divide-y divide-gray-700">

@@ -30,6 +30,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             domain::backup_common::BackupProgress,
             infra::logging::LogLevelChanged,
             commands::image_fullscreen::ImageFullscreenOpened,
+            commands::similarity::SimilarityIndexProgress,
         ])
         .commands(tauri_specta::collect_commands![
             // —— 提示词通用 ——
@@ -82,6 +83,13 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::image_fullscreen::mount_image_fullscreen,
             commands::image_fullscreen::show_image_fullscreen,
             commands::image_fullscreen::close_image_fullscreen,
+            // —— 图像相似度（以图搜图，向量来自外部 embedding 服务）——
+            commands::image::image_cards_by_ids,
+            commands::similarity::similarity_status,
+            commands::similarity::embedding_service_info,
+            commands::similarity::index_image_embeddings,
+            commands::similarity::clear_image_embeddings,
+            commands::similarity::similar_images,
             // —— 标签（图像/提示词合一，按 domain 分发）——
             commands::tag::get_tag_data,
             commands::tag::get_tags_map,
@@ -332,6 +340,8 @@ pub fn run() {
       app.manage(db);
       // 全屏查看窗口的载荷中转（窗口按需创建，这里只准备状态）
       app.manage(commands::image_fullscreen::ImageFullscreenState::default());
+      // 相似度索引任务的重入保护（同一次只允许一个索引任务在跑）
+      app.manage(commands::similarity::SimilarityState::default());
 
       // 将数据目录加入 asset 协议 scope，使前端能通过 convertFileSrc 读取本地图片
       app.asset_protocol_scope().allow_directory(db::data_dir(app.handle()), true)?;

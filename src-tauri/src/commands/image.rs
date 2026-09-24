@@ -480,3 +480,17 @@ pub async fn ensure_image_thumbnails(
     })
     .await
 }
+
+/// 按 id 列表取卡片投影（顺序与入参一致，缺失 / 已删除的跳过）。
+/// 供「按 id 渲染卡片」的场景使用，如相似度检索结果。
+#[tauri::command]
+#[specta::specta]
+pub async fn image_cards_by_ids(
+    db: State<'_, BkDb>,
+    ids: Vec<String>,
+) -> Result<Vec<ImageCard>, AppError> {
+    db_blocking(&db, move |conn| {
+        image_service::cards_by_ids(conn, &ids).map_err(AppError::from)
+    })
+    .await
+}

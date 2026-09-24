@@ -312,6 +312,22 @@ fn row_to_card(r: &rusqlite::Row) -> rusqlite::Result<ImageCard> {
     })
 }
 
+/// 按给定 id 列表取卡片投影，返回顺序与入参一致（缺失 / 已删除的 id 跳过）。
+/// 供「按 id 渲染卡片」的场景使用，如相似度检索结果。
+pub fn cards_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<ImageCard>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CARD_COLS} FROM images WHERE id = ?1 AND is_deleted = 0"
+    ))?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let mut rows = stmt.query(rusqlite::params![id])?;
+        if let Some(row) = rows.next()? {
+            out.push(row_to_card(row)?);
+        }
+    }
+    Ok(out)
+}
+
 /// 排序键白名单 → 列名（未命中回落 `created_at`）。
 /// 时间列按 ISO 8601 UTC 字符串排序：paim 原生与 pm 导入（经 `normalize_ts`）均为该格式，字典序即时间序。
 fn sort_column(sort: &str) -> &'static str {

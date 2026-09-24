@@ -4,7 +4,8 @@
 
 ## 图像相似度检索（图搜图）—— 方案已定，暂停开发
 
-状态：方案已确认，**暂停实施**；恢复时按「实施步骤」顺序推进，每步独立验证。
+状态：**实施中**（2026-09-24）。已完成：依赖与迁移（`images`/`prompts` 同一次加 `vec`）、`infra/embedding_client.rs`（含 e2e 假实现）、`domain/similarity_service.rs`、命令与事件注册、设置页「图像相似度」区块（`SimilaritySection.vue` + `settings.ts`）。验证：Rust 单测 95 通过、`pnpm check` 通过。
+待办：详情弹窗入口与相似结果弹窗（步骤 4）、e2e mock 测试缝与文档同步（步骤 5）。
 
 ### 已拍板
 
