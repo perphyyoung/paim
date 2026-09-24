@@ -8,6 +8,9 @@
  * - 滚轮缩放（1x - 5x），放大后左键拖拽平移
  * - 左下信息条展示文件名与标签（载荷未预置时按 id 惰性补全）
  * - 导航/索引复用 paim 的 NavAndIndex；仅右上角 ✕ 关闭
+ * - **键盘导航只由 NavAndIndex 负责**（它内置 document 监听：←/→ 前后、Home/End 首尾），
+ *   本组件不要再注册一份——同一次按键两个监听都收到，各调一次 nav()，索引会一次跳两格
+ *   （多图时表现为「跳项」，1~2 张图被箭头禁用/+2 钳位掩盖，见 docs/lessons.md 第 22 节）
  */
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { ImageFullscreenItem } from "@/bindings";
@@ -65,36 +68,11 @@ onMounted(() => {
   // 拖拽监听挂 document 一次：任意位置松开即停止
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);
-  window.addEventListener("keydown", onKeydown);
 });
 onUnmounted(() => {
   document.removeEventListener("mousemove", onMouseMove);
   document.removeEventListener("mouseup", onMouseUp);
-  window.removeEventListener("keydown", onKeydown);
 });
-
-// 窗口里只有查看器，无需 capture 拦截下层弹窗；Esc 不响应（只 ✕ 关闭）
-// 键位与 NavAndIndex 一致：←/→ 前后、Home/End 首尾
-function onKeydown(e: KeyboardEvent) {
-  switch (e.key) {
-    case "ArrowLeft":
-      e.preventDefault();
-      nav(-1);
-      break;
-    case "ArrowRight":
-      e.preventDefault();
-      nav(1);
-      break;
-    case "Home":
-      e.preventDefault();
-      goFirst();
-      break;
-    case "End":
-      e.preventDefault();
-      goLast();
-      break;
-  }
-}
 
 // 起始索引由载荷决定（每次打开都以新载荷重新挂载本组件）
 watch(

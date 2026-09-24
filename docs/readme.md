@@ -7,7 +7,7 @@
 | [开发经验.md](./开发经验.md) | 值得借鉴的开发经验（重在「为什么」，代码细节从简），开头有经验索引表：缩略图懒自愈、打开目录或文件的推荐方式（Shell API）、全屏查看的体验优化（独立窗口）、相似度检索（外部 embedding 服务：向量存储与失效、跨模态、测试替身）。 |
 | [新增命令说明(tauri-specta版).md](./新增命令说明(tauri-specta版).md) | 新增/修改后端命令与事件的标准流程：`#[specta::specta]` 标注 → collect_commands!/collect_events! 注册 → `pnpm dev` 重新生成 `src/bindings.ts`；前端调用规范与排查速查。 |
 | [添加键盘快捷键.md](./添加键盘快捷键.md) | 快捷键两条路线（系统级 global-shortcut / 应用内 keydown）的选型与参考实现，含 title 联动规范与 pm 对照。 |
-| [lessons.md](./lessons.md) | 排查记录（Lessons Learned）：弹窗残留与初始化、资源管理器定位（`/select,` 竞态与 SHOpenFolderAndSelectItems）、全屏查看器独立窗口（原主窗口全屏往返过渡帧）、tauri-specta 集成返工等，含根因与通用约束。 |
+| [lessons.md](./lessons.md) | 排查记录（Lessons Learned）：弹窗残留与初始化、资源管理器定位（`/select,` 竞态与 SHOpenFolderAndSelectItems）、全屏查看器独立窗口（原主窗口全屏往返过渡帧）与键位双监听（一次按键跳两格）、e2e 收尾与进程退出串行（用例全绿却整轮 exit 1）、tauri-specta 集成返工等，含根因与通用约束。 |
 | [日志使用说明.md](./日志使用说明.md) | 极简调试日志：后端 4 个宏 + 前端 `log` 对象（仅 DEV 上报），写入 `paim.log` 的格式与位置、使用建议。 |
 | [优化应用大小.md](./优化应用大小.md) | 对照官方「应用体积」逐条评估后的落地结论：Cargo profile（含必须写在 workspace 根的修正）、`removeUnusedCommands` 与 core 权限收敛的审计结果与维护约束。 |
 | [导入优化.md](./导入优化.md) | pm 备份导入缩略图重建的性能现状（jpeg-encoder SIMD、满核并发）与暂缓的备选方案（turbojpeg / libvips）。 |

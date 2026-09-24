@@ -647,12 +647,18 @@ async function findPageByWindowLabel(
   throw new Error(`未找到窗口 label=${label} 的页面（查看器窗口未创建或页面未就绪）`);
 }
 
-/// 双击详情弹窗里的大图进入全屏查看，返回**查看器窗口**的 Page（不是主窗口）。
+/// 双击详情弹窗里的图像进入全屏查看，返回**查看器窗口**的 Page（不是主窗口）。
 /// 弹窗内大图的两个 v-if 分支互斥（原图 / 缩略图），故用 img 直取；alt 为空不算语义元素。
+/// `imageIndex` 指定双击第几张（详情图像列表内序号，prompt 详情的关联图像格与图像详情大图都用它；
+/// 断言「以所点那张开场、索引不错位」时必须传，否则只会点到第一张）。
 /// 副作用：创建并显示 `image-fullscreen` 窗口；关闭用 closeFullscreenViewer。
-export async function openFullscreenViewer(app: AppHandle, detail: Locator): Promise<Page> {
-  await detail.locator("img").first().dblclick();
-  e2eLog.info("[step] 已双击详情大图，等待查看器窗口就绪");
+export async function openFullscreenViewer(
+  app: AppHandle,
+  detail: Locator,
+  imageIndex = 0,
+): Promise<Page> {
+  await detail.locator("img").nth(imageIndex).dblclick();
+  e2eLog.info(`[step] 已双击第 ${imageIndex + 1} 张图像，等待查看器窗口就绪`);
   const viewer = await findPageByWindowLabel(app.browser, FULLSCREEN_WINDOW_LABEL, 15_000);
   await expect(viewer.locator("img").first()).toBeVisible({ timeout: 10_000 });
   e2eLog.info("[step] 查看器窗口已显示");
