@@ -26,6 +26,8 @@ import {
   relatedPromptsCache,
   resolveImageSrc,
 } from "@/features/image/api/detailCache";
+import SimilarImagesModal from "@/features/similarity/SimilarImagesModal.vue";
+import { useSimilaritySettings } from "@/features/similarity/settings";
 
 const props = defineProps<{
   open: boolean;
@@ -49,6 +51,8 @@ const emit = defineEmits<{
   (e: "safe-synced", isSafe: boolean): void;
   /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
   (e: "ensure-index", index: number): void;
+  /** 相似度结果里点开某张图：父级据此切换详情到该图（该图可能不在当前列表里） */
+  (e: "open-image", id: string): void;
 }>();
 
 const { showToast } = useToast();
@@ -57,13 +61,25 @@ const { openImageLocation } = useOpenImageLocation();
 const { current, currentId, currentIndex, nav, goFirst, goLast, init } =
   useDetailSnapshot<ImageCard>(() => props.images, toRef(props, "order"));
 
-// 右键图像区：弹出「打开本地保存位置」「替换图像」菜单
+// 右键图像区：弹出「打开本地保存位置」「替换图像」「查找相似图像」菜单
 const ctxMenu = ref<{ x: number; y: number } | null>(null);
 function openCtxMenu(e: MouseEvent) {
   ctxMenu.value = { x: e.clientX, y: e.clientY };
 }
 function closeCtxMenu() {
   ctxMenu.value = null;
+}
+
+// 查找相似图像：入口只在右键菜单（设置里关闭相似度时隐藏该项）
+const { enabled: similarityEnabled } = useSimilaritySettings();
+const similarOpen = ref(false);
+function openSimilar() {
+  closeCtxMenu();
+  similarOpen.value = true;
+}
+function onOpenSimilarImage(id: string) {
+  similarOpen.value = false;
+  emit("open-image", id);
 }
 async function openSavedLocation() {
   const img = current.value;
@@ -973,7 +989,7 @@ const fmtSize = (bytes: number) => {
     </div>
   </Teleport>
 
-  <!-- 右键菜单：打开本地保存位置 / 替换图像 -->
+  <!-- 右键菜单：打开本地保存位置 / 替换图像 / 查找相似图像（设置里关掉相似度时隐藏入口） -->
   <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
     <button
       type="button"
@@ -989,7 +1005,25 @@ const fmtSize = (bytes: number) => {
     >
       替换图像
     </button>
+    <button
+      v-if="similarityEnabled"
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+      @click="openSimilar"
+    >
+      查找相似图像
+    </button>
   </ContextMenu>
+
+  <!-- 相似图像结果（点击结果切到该图详情） -->
+  <SimilarImagesModal
+    v-if="similarOpen"
+    :open="similarOpen"
+    :image-id="currentId"
+    :image-name="current?.file_name"
+    @close="similarOpen = false"
+    @open-image="onOpenSimilarImage"
+  />
 
   <!-- 标签删除确认 -->
   <ConfirmDialog

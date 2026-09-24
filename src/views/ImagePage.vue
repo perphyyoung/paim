@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+} from "vue";
 import { toAssetUrl } from "@/utils/assetUrl";
 import { commands, type Image, type ImageCard, type TagGroup, type TagItem } from "@/bindings";
 import { log } from "@/utils/logger";
@@ -452,10 +461,38 @@ const detailDirty = ref(false);
 function asCard(x: ImageCard | Placeholder): ImageCard {
   return x as Image;
 }
-/** 详情弹窗的列表来源：已加载项（未加载块是占位，翻到时由 ensure-index 补齐对应块） */
-const detailImages = computed(() => pageItems.value.filter((x): x is Image => !isPlaceholder(x)));
+/** 外部入口（相似度结果）带进来的卡片：该图可能不在当前筛选 / 已加载块里，单独挂一张供详情按 id 取到 */
+const detailExtra = ref<ImageCard[]>([]);
+/** 详情弹窗的列表来源：已加载项（未加载块是占位，翻到时由 ensure-index 补齐对应块）+ 外部入口卡片 */
+const detailImages = computed<ImageCard[]>(() => {
+  const loaded: ImageCard[] = pageItems.value.filter((x): x is Image => !isPlaceholder(x));
+  return detailExtra.value.length > 0 ? [...loaded, ...detailExtra.value] : loaded;
+});
+
+/** 从相似度结果打开某图详情：以「单图顺序」进入，不并入当前筛选列表（避免索引/导航错位） */
+async function openDetailById(id: string) {
+  try {
+    const [card] = await commands.imageCardsByIds([id]);
+    if (!card) {
+      showToast("图像不存在或已删除", "warning");
+      return;
+    }
+    detailExtra.value = [card];
+    detailOrder.value = [id];
+    detailDirty.value = false;
+    detailIndex.value = 0;
+    // 详情快照不响应顺序变化（useDetailSnapshot 只在初始化时按 order 定位），
+    // 故先卸载再挂载，让详情按「单图顺序」重新初始化
+    detailOpen.value = false;
+    await nextTick();
+    detailOpen.value = true;
+  } catch (e) {
+    showToast(String(e), "error");
+  }
+}
 
 function openDetail(img: ImageCard) {
+  detailExtra.value = [];
   // 顺序快照先用当前已加载项即时打开，随后异步补全为全量 id
   const order = pageItems.value.filter((x): x is Image => !isPlaceholder(x)).map((i) => i.id);
   detailOrder.value = order;
@@ -482,6 +519,7 @@ function ensureDetailIndex(index: number) {
 }
 function closeDetail() {
   detailOpen.value = false;
+  detailExtra.value = [];
   // 详情期间没有改动就不重拉：reload 会把整列清成占位再重填，纯浏览时是白闪一下
   if (!detailDirty.value) return;
   detailDirty.value = false;
@@ -967,6 +1005,7 @@ function onUploadDone() {
       @update="onDetailUpdate"
       @replaced="onDetailReplaced"
       @ensure-index="ensureDetailIndex"
+      @open-image="openDetailById"
     />
 
     <!-- 标签管理（独立组件，图像域） -->
