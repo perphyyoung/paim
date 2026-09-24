@@ -2,9 +2,12 @@
 // 设置页「图像相似度」区块：服务地址 / 开关 / 检索参数 / 索引并发 + 索引（增量 / 全量 / 清空）+ 状态与进度。
 // 进度既可订阅也可查询：事件不重放，离开本页期间推送的增量会丢，挂载时用
 // similarity_index_progress 取回后端任务快照，从而恢复进度条与 ETA。
+// 三个索引动作都会先弹确认框（全量 / 清空标 danger），避免误点造成长时间任务或向量丢失。
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { commands, events, type SimilarityIndexProgress, type SimilarityStatus } from "@/bindings";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import { useConfirm } from "@/components/useConfirm";
 import { useToast } from "@/components/useToast";
 import {
   CONCURRENCY_RANGE,
@@ -15,6 +18,16 @@ import {
 } from "./settings";
 
 const { showToast } = useToast();
+const {
+  confirmOpen,
+  confirmTitle,
+  confirmMessage,
+  confirmText,
+  confirmDanger,
+  ask,
+  cancelConfirm,
+  confirmAction,
+} = useConfirm();
 const {
   baseUrl,
   enabled,
@@ -34,7 +47,6 @@ const testing = ref(false);
 /// 是否有索引任务在跑（由后端快照 / 事件同步，不依赖本组件是否一直挂载）
 const running = ref(false);
 const progress = ref<SimilarityIndexProgress | null>(null);
-const clearArmed = ref(false);
 
 let unlisten: UnlistenFn | null = null;
 /// 索引进行中每 5s 刷新一次本地状态（已建立向量数），结束时停掉
@@ -129,6 +141,48 @@ async function testService() {
   }
 }
 
+/// 增量索引：先确认（仅统计待处理张数；无待处理时直接提示，不弹框）
+function requestIncremental() {
+  if (running.value) return;
+  const pending = (status.value?.total ?? 0) - (status.value?.indexed ?? 0);
+  if (pending <= 0) {
+    showToast("没有待建立向量的图像（如需重算请用「全量重建」）", "info");
+    return;
+  }
+  ask(
+    `将为 ${pending} 张未建立向量的图像生成向量（已有向量不受影响）。过程中可离开本页，任务会在后端继续。`,
+    { title: "增量索引", confirmText: "开始" },
+    () => runIndex("Incremental"),
+  );
+}
+
+/// 全量重建：会先清空已有向量，属破坏性操作
+function requestFullRebuild() {
+  if (running.value) return;
+  const s = status.value;
+  ask(
+    `将先清空现有 ${s?.indexed ?? 0} 条向量，再为全部 ${s?.total ?? 0} 张图像重新生成；期间相似检索结果不完整。` +
+      `换 embedding 模型或改了预处理规则后需要重建。`,
+    { title: "全量重建", confirmText: "重建", danger: true },
+    () => runIndex("Full"),
+  );
+}
+
+/// 清空：删除全部向量（不影响图像文件）
+function requestClear() {
+  if (running.value) return;
+  const n = status.value?.indexed ?? 0;
+  if (n <= 0) {
+    showToast("当前没有向量", "info");
+    return;
+  }
+  ask(
+    `将删除全部 ${n} 条向量（图像文件、标签、提示词关联都不受影响）；之后需重新建立索引才能检索。`,
+    { title: "清空向量索引", confirmText: "清空", danger: true },
+    () => clearIndex(),
+  );
+}
+
 async function runIndex(mode: "Incremental" | "Full") {
   if (running.value) return;
   running.value = true;
@@ -151,11 +205,6 @@ async function runIndex(mode: "Incremental" | "Full") {
 }
 
 async function clearIndex() {
-  if (!clearArmed.value) {
-    clearArmed.value = true;
-    return;
-  }
-  clearArmed.value = false;
   try {
     const n = await commands.clearImageEmbeddings();
     progress.value = null;
@@ -291,7 +340,7 @@ async function clearIndex() {
           class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
           :disabled="running"
           title="增量索引"
-          @click="runIndex('Incremental')"
+          @click="requestIncremental"
         >
           增量索引
         </button>
@@ -300,19 +349,18 @@ async function clearIndex() {
           class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
           :disabled="running"
           title="全量重建"
-          @click="runIndex('Full')"
+          @click="requestFullRebuild"
         >
           全量重建
         </button>
         <button
           type="button"
-          class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 hover:bg-gray-700 disabled:opacity-50"
-          :class="clearArmed ? 'text-red-400' : 'text-gray-200'"
+          class="rounded border px-3 py-1 text-sm text-gray-200 transition-colors border-gray-600 hover:bg-gray-700 disabled:opacity-50"
           :disabled="running"
           title="清空索引"
-          @click="clearIndex"
+          @click="requestClear"
         >
-          {{ clearArmed ? "确认清空？" : "清空" }}
+          清空
         </button>
       </div>
     </div>
@@ -346,4 +394,15 @@ async function clearIndex() {
       </p>
     </div>
   </dl>
+
+  <!-- 索引动作确认（增量 / 全量重建 / 清空；后两者 danger 样式） -->
+  <ConfirmDialog
+    :open="confirmOpen"
+    :title="confirmTitle"
+    :message="confirmMessage"
+    :confirm-text="confirmText"
+    :danger="confirmDanger"
+    @confirm="confirmAction"
+    @cancel="cancelConfirm"
+  />
 </template>
