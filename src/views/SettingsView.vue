@@ -24,6 +24,14 @@ import SimilaritySection from "@/features/similarity/SimilaritySection.vue";
 
 const { showToast } = useToast();
 
+// 左右结构：左栏页签。通用（外观 + 数据）放第一个并默认选中；相似度收纳 SimilaritySection 整块
+const TABS = [
+  { key: "general", label: "通用" },
+  { key: "similarity", label: "相似度" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+const tab = ref<TabKey>("general");
+
 // 全局字体大小（%），写 CSS 变量 --font-size-scale，--fs-* token 随之缩放；
 // 详情页正文字号 --fs-detail 在全局基准上乘 1.15，不再独立设置
 const { fontScale, setFontScale } = useFontScale();
@@ -186,153 +194,197 @@ onMounted(loadDataDir);
 </script>
 
 <template>
-  <section class="rounded-lg border p-6 shadow-sm border-gray-700 bg-gray-800">
-    <div class="relative mb-4 flex h-6 items-center justify-center">
+  <section
+    class="flex max-h-[80vh] flex-col rounded-lg border p-6 shadow-sm border-gray-700 bg-gray-800"
+  >
+    <div class="relative mb-4 flex h-6 shrink-0 items-center justify-center">
       <h2 class="absolute left-0 text-lg font-semibold text-gray-100">设置</h2>
       <span class="text-xs font-normal text-gray-400"> paim v{{ appVersion }} </span>
     </div>
 
-    <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">外观</h3>
-    <dl class="divide-y divide-gray-700">
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">字体家族</dt>
-          <dd class="text-sm text-gray-500">
-            候选为本机已安装字体；中文名映射见数据目录下 font-family-map.toml
-          </dd>
-        </div>
-        <FontSelect :model-value="fontFamily" @update:model-value="setFontFamily" />
-      </div>
-
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">全局字体大小</dt>
-          <dd class="text-sm text-gray-500">
-            主页卡片 + 详情页正文（比主页自动大一个字号）；当前比例 {{ fontScale }}%
-          </dd>
-        </div>
-        <input
-          v-model.number="fontScale"
-          type="range"
-          :min="FONT_SCALE_LIMITS.min"
-          :max="FONT_SCALE_LIMITS.max"
-          :step="FONT_SCALE_LIMITS.step"
-          class="w-40 shrink-0 accent-blue-600"
-          @input="onFontScaleInput"
-        />
-      </div>
-    </dl>
-
-    <SimilaritySection />
-
-    <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">数据</h3>
-    <dl class="divide-y divide-gray-700">
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">数据目录</dt>
-          <dd class="break-all text-sm text-gray-500" :title="dataDir">
-            {{ dataDir }}
-          </dd>
-        </div>
+    <!-- 左右结构：左栏页签固定，右栏内容单独滚动；面板限高避免长内容顶出视口 -->
+    <div class="flex min-h-0 flex-1">
+      <nav
+        role="tablist"
+        aria-orientation="vertical"
+        aria-label="设置分类"
+        class="flex w-36 shrink-0 flex-col gap-1 border-r pr-3 border-gray-700"
+      >
         <button
+          v-for="t in TABS"
+          :key="t.key"
           type="button"
-          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-          @click="openDir"
+          role="tab"
+          :aria-selected="tab === t.key"
+          :class="[
+            'relative rounded px-3 py-2 text-left text-sm transition-colors',
+            tab === t.key
+              ? 'bg-gray-700/60 text-gray-100'
+              : 'text-gray-400 hover:bg-gray-700/40 hover:text-gray-200',
+          ]"
+          @click="tab = t.key"
         >
-          打开目录
+          <span
+            v-if="tab === t.key"
+            class="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded bg-blue-500"
+          ></span>
+          {{ t.label }}
         </button>
-      </div>
+      </nav>
 
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">重建缩略图</dt>
-          <dd class="text-sm text-gray-500">扫描所有图像，重新生成丢失的缩略图文件</dd>
-        </div>
-        <button
-          type="button"
-          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-          @click="rebuildOpen = true"
-        >
-          重建
-        </button>
-      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto pl-5">
+        <!-- 通用：外观 + 数据。用 v-show 保留状态，切页签零成本 -->
+        <div v-show="tab === 'general'" role="tabpanel" aria-label="通用">
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">外观</h3>
+          <dl class="divide-y divide-gray-700">
+            <div class="flex items-center justify-between gap-3 py-3">
+              <div class="min-w-0">
+                <dt class="text-gray-400">字体家族</dt>
+                <dd class="text-sm text-gray-500">
+                  候选为本机已安装字体；中文名映射见数据目录下 font-family-map.toml
+                </dd>
+              </div>
+              <FontSelect :model-value="fontFamily" @update:model-value="setFontFamily" />
+            </div>
 
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">数据完整性检查</dt>
-          <dd class="text-sm text-gray-500">
-            检查孤儿文件（磁盘有数据库无）和孤儿记录（数据库有原图磁盘缺失），报告弹窗内处置
-          </dd>
-        </div>
-        <button
-          type="button"
-          class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-          @click="integrityOpen = true"
-        >
-          检查
-        </button>
-      </div>
+            <div class="flex items-center justify-between gap-3 py-3">
+              <div class="min-w-0">
+                <dt class="text-gray-400">全局字体大小</dt>
+                <dd class="text-sm text-gray-500">
+                  主页卡片 + 详情页正文（比主页自动大一个字号）；当前比例 {{ fontScale }}%
+                </dd>
+              </div>
+              <input
+                v-model.number="fontScale"
+                type="range"
+                :min="FONT_SCALE_LIMITS.min"
+                :max="FONT_SCALE_LIMITS.max"
+                :step="FONT_SCALE_LIMITS.step"
+                class="w-40 shrink-0 accent-blue-600"
+                @input="onFontScaleInput"
+              />
+            </div>
+          </dl>
 
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">完整备份</dt>
-          <dd class="text-sm text-gray-500">
-            导出或导入所有数据（提示词、图像、标签等，支持导入
-            pm），导入时原数据整体备份后替换，缩略图自动重建
-          </dd>
+          <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            数据
+          </h3>
+          <dl class="divide-y divide-gray-700">
+            <div class="flex items-center justify-between gap-3 py-3">
+              <div class="min-w-0">
+                <dt class="text-gray-400">数据目录</dt>
+                <dd class="break-all text-sm text-gray-500" :title="dataDir">
+                  {{ dataDir }}
+                </dd>
+              </div>
+              <button
+                type="button"
+                class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+                @click="openDir"
+              >
+                打开目录
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 py-3">
+              <div class="min-w-0">
+                <dt class="text-gray-400">重建缩略图</dt>
+                <dd class="text-sm text-gray-500">扫描所有图像，重新生成丢失的缩略图文件</dd>
+              </div>
+              <button
+                type="button"
+                class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+                @click="rebuildOpen = true"
+              >
+                重建
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 py-3">
+              <div class="min-w-0">
+                <dt class="text-gray-400">数据完整性检查</dt>
+                <dd class="text-sm text-gray-500">
+                  检查孤儿文件（磁盘有数据库无）和孤儿记录（数据库有原图磁盘缺失），报告弹窗内处置
+                </dd>
+              </div>
+              <button
+                type="button"
+                class="shrink-0 rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+                @click="integrityOpen = true"
+              >
+                检查
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 py-3">
+              <div class="min-w-0">
+                <dt class="text-gray-400">完整备份</dt>
+                <dd class="text-sm text-gray-500">
+                  导出或导入所有数据（提示词、图像、标签等，支持导入
+                  pm），导入时原数据整体备份后替换，缩略图自动重建
+                </dd>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+                  @click="pickExportPath"
+                >
+                  导出
+                </button>
+                <button
+                  type="button"
+                  class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="inspecting"
+                  @click="pickBackup"
+                >
+                  {{ inspecting ? "检查中..." : "导入" }}
+                </button>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 py-3">
+              <div class="min-w-0">
+                <dt class="text-gray-400">用户偏好</dt>
+                <dd class="text-sm text-gray-500">
+                  仅界面偏好（字号、字体家族、布局与排序等），不含提示词与图像；删除 WebView
+                  目录或换机后可用它恢复
+                </dd>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+                  @click="pickPreferenceExportPath"
+                >
+                  导出
+                </button>
+                <button
+                  type="button"
+                  class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+                  @click="pickPreferenceImportPath"
+                >
+                  导入
+                </button>
+              </div>
+            </div>
+
+            <p v-if="openError" class="py-2 text-sm text-red-400">{{ openError }}</p>
+            <p v-if="exportError" class="py-2 text-sm text-red-400">{{ exportError }}</p>
+            <p v-if="prefError" class="py-2 text-sm text-red-400">{{ prefError }}</p>
+            <p v-if="importError" class="py-2 text-sm text-red-400">
+              {{ importError }}
+            </p>
+          </dl>
         </div>
-        <div class="flex shrink-0 gap-2">
-          <button
-            type="button"
-            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-            @click="pickExportPath"
-          >
-            导出
-          </button>
-          <button
-            type="button"
-            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="inspecting"
-            @click="pickBackup"
-          >
-            {{ inspecting ? "检查中..." : "导入" }}
-          </button>
+
+        <!-- 相似度：整块（启用 / 服务地址 / 索引并发 / 向量索引与进度）。
+             用 v-show 而非 v-if：索引进度靠 events 监听维持，卸载重挂会丢刷新 -->
+        <div v-show="tab === 'similarity'" role="tabpanel" aria-label="相似度">
+          <SimilaritySection />
         </div>
       </div>
-
-      <div class="flex items-center justify-between gap-3 py-3">
-        <div class="min-w-0">
-          <dt class="text-gray-400">用户偏好</dt>
-          <dd class="text-sm text-gray-500">
-            仅界面偏好（字号、字体家族、布局与排序等），不含提示词与图像；删除 WebView
-            目录或换机后可用它恢复
-          </dd>
-        </div>
-        <div class="flex shrink-0 gap-2">
-          <button
-            type="button"
-            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-            @click="pickPreferenceExportPath"
-          >
-            导出
-          </button>
-          <button
-            type="button"
-            class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-            @click="pickPreferenceImportPath"
-          >
-            导入
-          </button>
-        </div>
-      </div>
-
-      <p v-if="openError" class="py-2 text-sm text-red-400">{{ openError }}</p>
-      <p v-if="exportError" class="py-2 text-sm text-red-400">{{ exportError }}</p>
-      <p v-if="prefError" class="py-2 text-sm text-red-400">{{ prefError }}</p>
-      <p v-if="importError" class="py-2 text-sm text-red-400">
-        {{ importError }}
-      </p>
-    </dl>
+    </div>
 
     <ConfirmDialog
       :open="confirmOpen"
