@@ -103,8 +103,11 @@ export interface UseCardTagAddOptions {
   domain: "image" | "prompt";
   /** 卡片标签源（Record<id, 标签名[]>），成功后本地合并，即时反映到卡片 */
   tagNames: Ref<Record<string, string[]>>;
-  /** 成功后刷新标签筛选区 */
-  loadTagFilter: () => Promise<void> | void;
+  /**
+   * 成功后刷新标签相关视图：筛选区（标签组 / 标签源 / 普通标签计数）**和特殊标签命中数**。
+   * 页面注入 `reloadTagViews`——只刷筛选区会漏掉「无标」这类随打标签变化的计数（见 lessons.md 第 23 节）。
+   */
+  reloadTagViews: () => Promise<void> | void;
   showToast: (message: string, type?: ToastType) => void;
 }
 
@@ -117,7 +120,7 @@ export interface UseCardTagAddOptions {
  * 供页面在 onActivated/onDeactivated 中调用，保证 drop 回调始终属于当前页。
  */
 export function useCardTagAdd(options: UseCardTagAddOptions) {
-  const { domain, tagNames, loadTagFilter, showToast } = options;
+  const { domain, tagNames, reloadTagViews, showToast } = options;
 
   const dropFn = async (cardId: string, tagName: string) => {
     const existing = tagNames.value[cardId];
@@ -131,7 +134,7 @@ export function useCardTagAdd(options: UseCardTagAddOptions) {
       addTagName(tagName);
       tagNames.value = { ...tagNames.value, [cardId]: [...(existing ?? []), tagName] };
       showToast(`已添加标签「${tagName}」`, "success");
-      await loadTagFilter();
+      await reloadTagViews();
     } catch (e) {
       showToast(`添加标签失败：${e}`, "error");
     }

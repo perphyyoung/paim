@@ -251,9 +251,9 @@ function openTagManager() {
   tagManagerOpen.value = true;
 }
 function onTagManagerSaved() {
-  // 标签增删改名后候选整体失效，随 loadTagFilter 重建
+  // 标签增删改名后候选整体失效，随 reloadTagViews 重建；删除标签会让条目变「无标」，计数也要刷
   invalidateTagCandidates();
-  loadTagFilter();
+  reloadTagViews();
 }
 
 // 每个标签关联的图片数：直接取后端 count（只统计未删除图片）
@@ -262,6 +262,14 @@ const tagCounts = computed(() => {
   for (const t of allTags.value) counts[t.name] = t.count;
   return counts;
 });
+
+/// 标签关系变化后统一刷新：筛选区（标签组 / 标签源 / 普通标签计数）+ 特殊标签命中数。
+/// `specialTagsCounts` 是内存值、不会随卡片列表自动更新，而打标签会让「无标」等计数变化，
+/// 故凡「改了标签关系」的入口都要走它（批量添加 / 拖拽添加 / 标签管理保存）。
+/// 函数声明具备提升，可安全地先于 `loadTagFilter` 的定义被上方的组合式函数引用。
+async function reloadTagViews() {
+  await Promise.all([loadTagFilter(), loadSpecialTagsCounts()]);
+}
 
 async function loadTagFilter() {
   try {
@@ -286,7 +294,7 @@ async function loadTagFilter() {
 }
 
 // 拖拽筛选区标签到卡片：快捷添加标签（激活时注册，KeepAlive 下与另一主页共用单例回调）
-const cardTagAdd = useCardTagAdd({ domain: "image", tagNames, loadTagFilter, showToast });
+const cardTagAdd = useCardTagAdd({ domain: "image", tagNames, reloadTagViews, showToast });
 
 // 右键菜单
 const ctxMenu = ref<{ x: number; y: number; image: ImageCard } | null>(null);
@@ -645,7 +653,7 @@ const { batchAddTag } = useBatchTagAdd({
   selectedIds,
   tagNames,
   exitBatch,
-  loadTagFilter,
+  reloadTagViews,
   showToast,
 });
 // 批量添加标签：成功才关闭批量添加弹窗，失败保持打开便于修改

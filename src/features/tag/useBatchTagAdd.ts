@@ -18,13 +18,16 @@ export interface UseBatchTagAddOptions {
   tagNames: Ref<Record<string, string[]>>;
   /** 成功后退出批量模式 */
   exitBatch: () => void;
-  /** 成功后刷新标签筛选区（图像侧负责刷新卡片标签源） */
-  loadTagFilter: () => Promise<void> | void;
+  /**
+   * 成功后刷新标签相关视图：筛选区（标签组 / 标签源 / 普通标签计数）**和特殊标签命中数**。
+   * 页面注入 `reloadTagViews`——只刷筛选区会漏掉「无标」这类随打标签变化的计数（见 lessons.md 第 23 节）。
+   */
+  reloadTagViews: () => Promise<void> | void;
   showToast: (message: string, type?: ToastType) => void;
 }
 
 export function useBatchTagAdd(options: UseBatchTagAddOptions) {
-  const { domain, selectedIds, tagNames, exitBatch, loadTagFilter, showToast } = options;
+  const { domain, selectedIds, tagNames, exitBatch, reloadTagViews, showToast } = options;
   const noun = domain === "image" ? "张图像" : "个提示词";
 
   /**
@@ -61,7 +64,7 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
         showToast(`已为 ${missing.length} ${noun}添加标签`, "success");
       }
       exitBatch();
-      await loadTagFilter();
+      await reloadTagViews();
       return true;
     } catch (e) {
       showToast(`批量添加标签失败：${e}`, "error");
