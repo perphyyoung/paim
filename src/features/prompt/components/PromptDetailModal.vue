@@ -17,7 +17,7 @@ import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
-import SimilarPromptsModal from "@/features/similarity/SimilarPromptsModal.vue";
+import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
 import { useSimilaritySettings } from "@/features/similarity/settings";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
@@ -195,7 +195,7 @@ const {
             : null,
   getContainer: () => rootEl.value,
   // 上层弹窗打开时放行 Ctrl+F：图像详情/图像导入/确认框（全屏查看已独立成窗口）
-  guard: () => !(imgDetailOpen.value || pickerOpen.value || confirmOpen.value),
+  guard: () => !(imgDetailOpen.value || pickerOpen.value || confirmOpen.value || similarOpen.value),
 });
 
 watch(
@@ -411,8 +411,8 @@ async function setAsFirst() {
   }
 }
 
-// —— 相似提示词检索（入口：非编辑态的「提示词内容」右键）——
-// 查询对象是当前提示词的 content 向量（只算内容），参数用提示词自己的一套偏好
+// —— 搜索相似的图像和提示词（入口：非编辑态的「提示词内容」右键）——
+// 查询向量取自当前提示词的 content（只算内容）；参数用提示词自己的一套偏好
 const { enabled: similarityEnabled } = useSimilaritySettings("prompt");
 const similarOpen = ref(false);
 /// 内容区右键坐标（与关联图像右键各一份状态，互不影响）
@@ -423,13 +423,26 @@ function openContentCtxMenu(e: MouseEvent) {
 function closeContentCtxMenu() {
   contentCtxMenu.value = null;
 }
-function openSimilarPrompts() {
+function openSimilarSearch() {
   closeContentCtxMenu();
   similarOpen.value = true;
 }
+/// 提示词结果：交给父级按 id 重建详情顺序并打开
 function onOpenSimilarPrompt(id: string) {
   similarOpen.value = false;
   emit("open-prompt", id);
+}
+/// 图像结果（跨模态命中）：叠加打开图像详情（复用关联图像那套 `imgDetailOpen`）
+async function onOpenSimilarImage(id: string) {
+  similarOpen.value = false;
+  try {
+    const detail = await commands.getImageDetail(id);
+    imgDetailImages.value = [detail];
+    imgDetailThumbs.value = {};
+    imgDetailOpen.value = true;
+  } catch {
+    showToast("打开图像详情失败", "error");
+  }
 }
 // 切换条目 / 进入编辑态时收起相似结果（弹窗里查的已是另一条内容）
 watch([() => current.value?.id, edit], () => {
@@ -1004,17 +1017,19 @@ async function onPickerImported() {
     @cancel="cancelConfirm"
   />
 
-  <!-- 相似提示词结果（入口：非编辑态的「提示词内容」右键） -->
-  <SimilarPromptsModal
+  <!-- 相似结果页（左图像 / 右提示词；提示词结果切到该提示词详情，图像结果叠加打开图像详情） -->
+  <SimilarSearchModal
     v-if="similarOpen"
     :open="similarOpen"
-    :prompt-id="current?.id ?? ''"
-    :prompt-title="current?.title"
+    source-kind="Prompt"
+    :source-id="current?.id ?? ''"
+    :source-name="current?.title"
     @close="similarOpen = false"
     @open-prompt="onOpenSimilarPrompt"
+    @open-image="onOpenSimilarImage"
   />
 
-  <!-- 右键菜单：提示词内容 → 查找相似提示词（设置里可关闭；嵌套打开时禁止二级跳转） -->
+  <!-- 右键菜单：提示词内容 → 搜索相似的图像和提示词（设置里可关闭；嵌套打开时禁止二级跳转） -->
   <ContextMenu
     :open="!!contentCtxMenu"
     :x="contentCtxMenu?.x ?? 0"
@@ -1025,9 +1040,9 @@ async function onPickerImported() {
       v-if="similarityEnabled && !isNested"
       type="button"
       class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
-      @click="openSimilarPrompts"
+      @click="openSimilarSearch"
     >
-      查找相似提示词
+      搜索相似的图像和提示词
     </button>
   </ContextMenu>
 

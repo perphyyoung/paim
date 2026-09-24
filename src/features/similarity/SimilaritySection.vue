@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 设置页「相似度」区块：服务级参数（地址 / 并发，图像与提示词共用同一服务）+ 两个索引分组
 // （图像相似度、提示词相似度），每组 = 一个启用开关 + 一个索引面板（SimilarityIndexPanel.vue）。
-// 检索参数（条数上限 / 相似度阈值）只服务「查询」场景，放在各自的结果弹窗里
-// （SimilarImagesModal.vue / SimilarPromptsModal.vue）。
+// 检索参数（条数上限 / 相似度阈值）只服务「查询」场景，放在合并后的结果页里
+// （SimilarSearchModal.vue：左图像 / 右提示词两栏，各有一套阈值）。
 import { ref } from "vue";
 import { commands, events } from "@/bindings";
 import { useToast } from "@/components/useToast";

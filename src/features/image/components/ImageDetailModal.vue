@@ -26,7 +26,7 @@ import {
   relatedPromptsCache,
   resolveImageSrc,
 } from "@/features/image/api/detailCache";
-import SimilarImagesModal from "@/features/similarity/SimilarImagesModal.vue";
+import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
 import { useSimilaritySettings } from "@/features/similarity/settings";
 
 const props = defineProps<{
@@ -61,7 +61,7 @@ const { openImageLocation } = useOpenImageLocation();
 const { current, currentId, currentIndex, nav, goFirst, goLast, init } =
   useDetailSnapshot<ImageCard>(() => props.images, toRef(props, "order"));
 
-// 右键图像区：弹出「打开本地保存位置」「替换图像」「查找相似图像」菜单
+// 右键图像区：弹出「打开本地保存位置」「替换图像」「搜索相似的图像和提示词」菜单
 const ctxMenu = ref<{ x: number; y: number } | null>(null);
 function openCtxMenu(e: MouseEvent) {
   ctxMenu.value = { x: e.clientX, y: e.clientY };
@@ -70,16 +70,49 @@ function closeCtxMenu() {
   ctxMenu.value = null;
 }
 
-// 查找相似图像：入口只在右键菜单（设置里关闭相似度时隐藏该项）
+// 搜索相似的图像和提示词：入口只在右键菜单（设置里关闭相似度时隐藏该项）
 const { enabled: similarityEnabled } = useSimilaritySettings();
 const similarOpen = ref(false);
 function openSimilar() {
   closeCtxMenu();
   similarOpen.value = true;
 }
+/// 图像结果：交给父级按 id 重开图像详情（该图可能不在当前列表里）
 function onOpenSimilarImage(id: string) {
   similarOpen.value = false;
   emit("open-image", id);
+}
+/// 提示词结果（跨模态命中）：本弹窗内部叠加打开提示词详情（与「编辑提示词」同一套嵌套写法）
+const similarPromptCards = ref<PromptCard[]>([]);
+const similarPromptTagNames = ref<Record<string, string[]>>({});
+const similarPromptOpen = ref(false);
+async function onOpenSimilarPrompt(id: string) {
+  similarOpen.value = false;
+  try {
+    const [card] = await commands.promptCardsByIds([id]);
+    if (!card) {
+      showToast("提示词不存在或已删除", "warning");
+      return;
+    }
+    similarPromptCards.value = [card];
+    await loadTagDataForPrompt(id);
+    similarPromptOpen.value = true;
+  } catch (e) {
+    showToast(String(e), "error");
+  }
+}
+/// 取该提示词的标签（供嵌套详情展示与自动补全；全量候选标签与「编辑提示词」共用一份）
+async function loadTagDataForPrompt(id: string) {
+  try {
+    const [tags, data] = await Promise.all([
+      commands.getItemTags("prompt", id),
+      commands.getTagData("prompt"),
+    ]);
+    similarPromptTagNames.value = { [id]: tags.map((t) => t.name) };
+    promptAllTags.value = data.tags ?? [];
+  } catch {
+    similarPromptTagNames.value = {};
+  }
 }
 async function openSavedLocation() {
   const img = current.value;
@@ -435,8 +468,15 @@ const {
   getEditEl: (f) =>
     f === "fileName" ? fileNameEditEl.value : f === "note" ? noteEditEl.value : null,
   getContainer: () => rootEl.value,
-  // 上层弹窗打开时放行 Ctrl+F：嵌套提示词详情/新建提示词/确认框（全屏查看已独立成窗口）
-  guard: () => !(editPromptOpen.value || createPromptOpen.value || confirmOpen.value),
+  // 上层弹窗打开时放行 Ctrl+F：嵌套提示词详情/新建提示词/确认框/相似结果页（全屏查看已独立成窗口）
+  guard: () =>
+    !(
+      editPromptOpen.value ||
+      createPromptOpen.value ||
+      confirmOpen.value ||
+      similarOpen.value ||
+      similarPromptOpen.value
+    ),
 });
 
 // 打开时跳转到初始图并同步编辑字段
@@ -989,7 +1029,7 @@ const fmtSize = (bytes: number) => {
     </div>
   </Teleport>
 
-  <!-- 右键菜单：打开本地保存位置 / 替换图像 / 查找相似图像（设置里关掉相似度时隐藏入口） -->
+  <!-- 右键菜单：打开本地保存位置 / 替换图像 / 搜索相似的图像和提示词（设置里关掉相似度时隐藏入口） -->
   <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
     <button
       type="button"
@@ -1015,14 +1055,31 @@ const fmtSize = (bytes: number) => {
     </button>
   </ContextMenu>
 
-  <!-- 相似图像结果（点击结果切到该图详情） -->
-  <SimilarImagesModal
+  <!-- 相似结果页（左图像 / 右提示词；图像结果切到该图详情，提示词结果叠加打开提示词详情） -->
+  <SimilarSearchModal
     v-if="similarOpen"
     :open="similarOpen"
-    :image-id="currentId"
-    :image-name="current?.file_name"
+    source-kind="Image"
+    :source-id="currentId"
+    :source-name="current?.file_name"
+    :source-thumb="thumbs[currentId]"
     @close="similarOpen = false"
     @open-image="onOpenSimilarImage"
+    @open-prompt="onOpenSimilarPrompt"
+  />
+
+  <!-- 相似结果里的提示词（跨模态命中）：叠加打开提示词详情 -->
+  <PromptDetailModal
+    v-if="similarPromptOpen"
+    :open="similarPromptOpen"
+    :prompts="similarPromptCards"
+    :order="[similarPromptCards[0]?.id ?? '']"
+    :initial-index="0"
+    :tag-names="similarPromptTagNames"
+    :all-tags="promptAllTags"
+    is-nested
+    @close="similarPromptOpen = false"
+    @updated="onNestedPromptUpdated"
   />
 
   <!-- 标签删除确认 -->

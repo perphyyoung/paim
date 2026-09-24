@@ -134,8 +134,8 @@ export const commands = {
 	/**  清空全部向量（设置页「清空」，之后可重建）。 */
 	clearImageEmbeddings: () => __TAURI_INVOKE<number>("clear_image_embeddings"),
 	/**
-	 *  以某张图像为查询检索相似图像；目标图未建索引时现场补算一次（约 0.5s）再查。
-	 *  `safe_only` 与主页「安全模式」口径一致；`limit` 上限 200（防止前端误传大值）。
+	 *  单侧检索（备用 / 脚本）：以某张图像为查询检索相似图像。
+	 *  结果页已统一走 `similar_mixed`（一次给出图像与提示词两侧）；`safe_only` 与主页「安全模式」口径一致。
 	 */
 	similarImages: (baseUrl: string, imageId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<SimilarHit[]>("similar_images", { baseUrl, imageId, limit, minScore, safeOnly }),
 	/**
@@ -156,10 +156,17 @@ export const commands = {
 	/**  清空全部提示词向量（设置页「清空」，之后可重建）。 */
 	clearPromptEmbeddings: () => __TAURI_INVOKE<number>("clear_prompt_embeddings"),
 	/**
-	 *  以某条提示词为查询检索相似提示词；目标未建索引时现场补算一次（一次文本请求）再查。
-	 *  `limit` 上限 200（防止前端误传大值）；提示词不过滤 `is_safe`。
+	 *  单侧检索（备用 / 脚本）：以某条提示词为查询检索相似提示词。
+	 *  结果页已统一走 `similar_mixed`；提示词不过滤 `is_safe`。
 	 */
 	similarPrompts: (baseUrl: string, promptId: string, limit: number, minScore: number | null) => __TAURI_INVOKE<PromptHit[]>("similar_prompts", { baseUrl, promptId, limit, minScore }),
+	/**
+	 *  结果页统一入口：一次查询同时给出「相似图像」与「相似提示词」两侧结果。
+	 *  两侧共用同一个查询向量（联合空间，跨模态直接可比），但**各有一套阈值** ——
+	 *  同模态与跨模态的余弦分布不同（同模态通常更高），共用一套会有一侧偏严或偏松。
+	 *  只排除源自身那一侧（源是图像就只排除该图，反之亦然）。`limit` 上限 200，两侧各取。
+	 */
+	similarMixed: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScoreImages: number | null, minScorePrompts: number | null) => __TAURI_INVOKE<MixedHits>("similar_mixed", { baseUrl, source, sourceId, limit, minScoreImages, minScorePrompts }),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
 	getTagData: (domain: TagDomain) => __TAURI_INVOKE<TagData>("get_tag_data", { domain }),
 	/**  未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。 */
@@ -458,6 +465,18 @@ export type ListQuery = {
 
 /**  日志级别变更事件（payload 为新级别小写字符串），前端监听后刷新本地缓存。 */
 export type LogLevelChanged = string;
+
+/**  结果页两侧结果：同一查询向量分别检索图像表与提示词表。 */
+export type MixedHits = {
+	images: SimilarHit[],
+	prompts: PromptHit[],
+};
+
+/**
+ *  结果页的查询源：图像（图像↔图像同模态、图像↔提示词跨模态）或提示词（反之亦然）。
+ *  两条检索线共用同一个查询向量 —— 该 embedding 模型是联合空间，跨模态可直接比余弦。
+ */
+export type MixedSource = "Image" | "Prompt";
 
 /**  导出删除结果 */
 export type OrphanExportResult = {

@@ -427,6 +427,37 @@ fn rank_prompts_orders_filters_and_skips_dim_mismatch() {
 }
 
 #[test]
+fn ranks_are_scoped_to_their_own_table() {
+    // 结果页用同一个查询向量分别查两张表：两边的 rank 只能命中各自的表、互不串台；
+    // exclude_id 传空串表示「不排除任何行」（结果页里非源那一侧就是这么传的）
+    let (_dir, conn) = setup("sim-cross-table");
+    let target = vec![1.0f32, 0.0];
+    seed_image(
+        &conn,
+        "img_a",
+        "2026-01-01T00:00:00Z",
+        Some(target.clone()),
+        1,
+    );
+    seed_prompt(
+        &conn,
+        "pr_a",
+        "A",
+        "a",
+        "2026-01-01T00:00:00Z",
+        Some(target.clone()),
+    );
+
+    let images = rank(&conn, &target, "", 10, 0.5, false).unwrap();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0].image_id, "img_a");
+
+    let prompts = rank_prompts(&conn, &target, "", 10, 0.5).unwrap();
+    assert_eq!(prompts.len(), 1);
+    assert_eq!(prompts[0].prompt_id, "pr_a");
+}
+
+#[test]
 fn update_detail_invalidates_vec_only_when_content_changes() {
     let (_dir, conn) = setup("sim-prompt-save");
     let created = prompt_service::create(&conn, "原始内容", None).unwrap();

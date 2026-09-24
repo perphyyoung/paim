@@ -73,3 +73,22 @@
 
 - Rust：`cargo test similarity` 12 项通过（新增 6 项提示词用例：增量 / 状态 / 维度不符 / 软删过滤 / 排序与排除自身 / 保存失效规则）；
 - 前端：`pnpm check`（format + build:rs + gen:bindings + vue-tsc + vite build）与 `vitest` 通过。
+
+## 相似结果页（图像 + 提示词合并）—— 已完成
+
+状态：**已完成**（2026-09-24）。原 `SimilarImagesModal.vue` / `SimilarPromptsModal.vue` 合并为 `SimilarSearchModal.vue`（两者已删除）。
+
+- **布局**：尺寸与详情页逐字一致（`h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)]`，遮罩 `z-[115]` 盖在详情页 `z-50` 之上）；
+  第 1 行是搜索源（缩略图 + 名称）+ 条数 / 重查 / ×，下面是左右两栏（左「相似图像」、右「相似提示词」），各栏独立滚动、独立阈值与空/错态；
+  卡片用 `SimilarResultCard.vue`：与主页卡片同「形」（圆角描边 + 背景图铺满 + 文字阴影），但只有背景图、相似度角标、名称（图像 = 文件名，提示词 = 标题）。
+- **后端**：新增 `similar_mixed(base_url, source, source_id, limit, min_score_images, min_score_prompts)`；
+  目标向量由新内部函数 `resolve_target` 统一解析（图像：已有向量 → 缺则预处理 + 视觉编码；提示词：已有向量 → 缺则内容文本编码），
+  同一个向量分别 `rank` / `rank_prompts`，**只排除源自身那一侧**（另一侧传空 id，即不排除）；
+  `similar_images` / `similar_prompts` 降级为薄封装保留备用。跨模态依赖该模型的联合空间（探针实测图像↔匹配描述 0.81、无关 0.18）。
+- **两套阈值**：同模态与跨模态的余弦分布不同（同模态通常更高），共用一套会有一侧偏严或偏松；
+  图像侧存 `image.similarity.minScore`、提示词侧存 `prompt.similarity.minScore`，条数沿用来源侧偏好（`*.similarity.limit`）；
+  控件抽成 `ScoreStepper.vue`（`−` / 可直接键入 / `＋`，吸附 step、夹范围、按 step 推导小数位）。
+- **入口统一**为「搜索相似的图像和提示词」：图像详情右键、提示词详情（非编辑态）内容右键；
+  点结果：同侧跳对应详情（图像 → 父级 `open-image`；提示词 → 父级 `open-prompt`），
+  跨模态结果在本弹窗内叠加打开另一类详情（复用各自既有的嵌套写法：图像侧用 `getImageDetail` 填 `imgDetailImages`，提示词侧用 `promptCardsByIds` + `getItemTags`）。
+- **验证**：`cargo test`（新增 `ranks_are_scoped_to_their_own_table`：同一向量分别查两张表互不串台、`exclude_id` 传空串即不排除）、`pnpm check`、`vitest`。

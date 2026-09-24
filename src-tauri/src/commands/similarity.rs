@@ -53,6 +53,91 @@ pub struct SimilarityIndexSummary {
     pub failed: usize,
 }
 
+/// 结果页的查询源：图像（图像↔图像同模态、图像↔提示词跨模态）或提示词（反之亦然）。
+/// 两条检索线共用同一个查询向量 —— 该 embedding 模型是联合空间，跨模态可直接比余弦。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub enum MixedSource {
+    Image,
+    Prompt,
+}
+
+/// 结果页两侧结果：同一查询向量分别检索图像表与提示词表。
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct MixedHits {
+    pub images: Vec<SimilarHit>,
+    pub prompts: Vec<PromptHit>,
+}
+
+/// 取查询向量：库里已有直接用；没有则现场算一次并写回（下次不必再算）。
+/// 图像走「预处理 JPEG（含 webp 转码）→ 视觉编码」，提示词走文本编码；两者产出在同一向量空间。
+async fn resolve_target(
+    app: &AppHandle,
+    base_url: &str,
+    source: MixedSource,
+    source_id: &str,
+) -> Result<Vec<f32>, AppError> {
+    let db = app.state::<BkDb>();
+    match source {
+        MixedSource::Image => {
+            let id = source_id.to_string();
+            if let Some(v) =
+                db_blocking(&db, move |conn| similarity_service::vec_of(conn, &id)).await?
+            {
+                return Ok(v);
+            }
+            let id = source_id.to_string();
+            let rel = db_blocking(&db, move |conn| {
+                similarity_service::relative_path_of(conn, &id)
+            })
+            .await?
+            .ok_or_else(|| AppError::Message(format!("图像 {source_id} 不存在")))?;
+            let jpeg = similarity_service::prepare_image(&db::data_path(&db::data_dir(app), &rel))?;
+            let url = base_url.to_string();
+            let vec = tauri::async_runtime::spawn_blocking(move || {
+                embedding_client::make_embedder(&url).embed_image(&jpeg)
+            })
+            .await
+            .map_err(|e| AppError::Message(format!("检索任务执行失败: {e}")))??;
+            let id = source_id.to_string();
+            let stored = vec.clone();
+            db_blocking(&db, move |conn| {
+                similarity_service::store(conn, &id, &stored)
+            })
+            .await?;
+            Ok(vec)
+        }
+        MixedSource::Prompt => {
+            let id = source_id.to_string();
+            if let Some(v) = db_blocking(&db, move |conn| {
+                similarity_service::prompt_vec_of(conn, &id)
+            })
+            .await?
+            {
+                return Ok(v);
+            }
+            let id = source_id.to_string();
+            let content = db_blocking(&db, move |conn| {
+                similarity_service::prompt_content_of(conn, &id)
+            })
+            .await?
+            .ok_or_else(|| AppError::Message(format!("提示词 {source_id} 不存在")))?;
+            let url = base_url.to_string();
+            let vec = tauri::async_runtime::spawn_blocking(move || {
+                embedding_client::make_embedder(&url).embed_text(&content)
+            })
+            .await
+            .map_err(|e| AppError::Message(format!("检索任务执行失败: {e}")))??;
+            let id = source_id.to_string();
+            let stored = vec.clone();
+            db_blocking(&db, move |conn| {
+                similarity_service::store_prompt(conn, &id, &stored)
+            })
+            .await?;
+            Ok(vec)
+        }
+    }
+}
+
 /// 更新快照并广播进度：只在 `current` 前进时发布（多线程完成顺序不定，避免进度回退）。
 fn publish(app: &AppHandle, state: &SimilarityState, next: SimilarityIndexProgress) {
     if let Ok(mut slot) = state.progress.lock() {
@@ -225,8 +310,8 @@ pub async fn index_image_embeddings(
     result?
 }
 
-/// 以某张图像为查询检索相似图像；目标图未建索引时现场补算一次（约 0.5s）再查。
-/// `safe_only` 与主页「安全模式」口径一致；`limit` 上限 200（防止前端误传大值）。
+/// 单侧检索（备用 / 脚本）：以某张图像为查询检索相似图像。
+/// 结果页已统一走 `similar_mixed`（一次给出图像与提示词两侧）；`safe_only` 与主页「安全模式」口径一致。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_images(
@@ -237,42 +322,13 @@ pub async fn similar_images(
     min_score: f32,
     safe_only: bool,
 ) -> Result<Vec<SimilarHit>, AppError> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let data_dir = db::data_dir(&app);
-        let bk = app.state::<BkDb>();
-        let lock = || bk.0.lock().map_err(|e| AppError::Message(e.to_string()));
-
-        let existing = {
-            let conn = lock()?;
-            similarity_service::vec_of(&conn, &image_id)?
-        };
-        let target = match existing {
-            Some(v) => v,
-            None => {
-                let rel = {
-                    let conn = lock()?;
-                    similarity_service::relative_path_of(&conn, &image_id)?
-                        .ok_or_else(|| AppError::Message(format!("图像 {image_id} 不存在")))?
-                };
-                let jpeg = similarity_service::prepare_image(&db::data_path(&data_dir, &rel))?;
-                let vec = embedding_client::make_embedder(&base_url).embed_image(&jpeg)?;
-                let conn = lock()?;
-                similarity_service::store(&conn, &image_id, &vec)?;
-                vec
-            }
-        };
-        let conn = lock()?;
-        similarity_service::rank(
-            &conn,
-            &target,
-            &image_id,
-            limit.clamp(1, 200),
-            min_score,
-            safe_only,
-        )
+    let target = resolve_target(&app, &base_url, MixedSource::Image, &image_id).await?;
+    let db = app.state::<BkDb>();
+    let limit = limit.clamp(1, 200);
+    db_blocking(&db, move |conn| {
+        similarity_service::rank(conn, &target, &image_id, limit, min_score, safe_only)
     })
     .await
-    .map_err(|e| AppError::Message(format!("检索任务执行失败: {e}")))?
 }
 
 // —————————————————————— 提示词向量索引（文本侧） ——————————————————————
@@ -463,50 +519,72 @@ pub async fn index_prompt_embeddings(
     result?
 }
 
-/// 以某条提示词为查询检索相似提示词；目标未建索引时现场补算一次（一次文本请求）再查。
-/// `limit` 上限 200（防止前端误传大值）；提示词不过滤 `is_safe`。
+/// 单侧检索（备用 / 脚本）：以某条提示词为查询检索相似提示词。
+/// 结果页已统一走 `similar_mixed`；提示词不过滤 `is_safe`。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_prompts(
-    db: State<'_, BkDb>,
+    app: AppHandle,
     base_url: String,
     prompt_id: String,
     limit: usize,
     min_score: f32,
 ) -> Result<Vec<PromptHit>, AppError> {
-    let existing = {
-        let id = prompt_id.clone();
-        db_blocking(&db, move |conn| {
-            similarity_service::prompt_vec_of(conn, &id)
-        })
-        .await?
-    };
-    let target = match existing {
-        Some(v) => v,
-        None => {
-            let id = prompt_id.clone();
-            let content = db_blocking(&db, move |conn| {
-                similarity_service::prompt_content_of(conn, &id)
-            })
-            .await?
-            .ok_or_else(|| AppError::Message(format!("提示词 {prompt_id} 不存在")))?;
-            let vec = tauri::async_runtime::spawn_blocking(move || {
-                embedding_client::make_embedder(&base_url).embed_text(&content)
-            })
-            .await
-            .map_err(|e| AppError::Message(format!("检索任务执行失败: {e}")))??;
-            let id = prompt_id.clone();
-            let stored = vec.clone();
-            db_blocking(&db, move |conn| {
-                similarity_service::store_prompt(conn, &id, &stored)
-            })
-            .await?;
-            vec
-        }
-    };
+    let target = resolve_target(&app, &base_url, MixedSource::Prompt, &prompt_id).await?;
+    let db = app.state::<BkDb>();
     let limit = limit.clamp(1, 200);
     db_blocking(&db, move |conn| {
         similarity_service::rank_prompts(conn, &target, &prompt_id, limit, min_score)
     })
     .await
+}
+
+/// 结果页统一入口：一次查询同时给出「相似图像」与「相似提示词」两侧结果。
+/// 两侧共用同一个查询向量（联合空间，跨模态直接可比），但**各有一套阈值** ——
+/// 同模态与跨模态的余弦分布不同（同模态通常更高），共用一套会有一侧偏严或偏松。
+/// 只排除源自身那一侧（源是图像就只排除该图，反之亦然）。`limit` 上限 200，两侧各取。
+#[tauri::command]
+#[specta::specta]
+pub async fn similar_mixed(
+    app: AppHandle,
+    base_url: String,
+    source: MixedSource,
+    source_id: String,
+    limit: usize,
+    min_score_images: f32,
+    min_score_prompts: f32,
+) -> Result<MixedHits, AppError> {
+    let target = resolve_target(&app, &base_url, source, &source_id).await?;
+    let db = app.state::<BkDb>();
+    let limit = limit.clamp(1, 200);
+    let (exclude_image, exclude_prompt) = match source {
+        MixedSource::Image => (source_id, String::new()),
+        MixedSource::Prompt => (String::new(), source_id),
+    };
+    let hits = db_blocking(
+        &db,
+        move |conn| -> Result<(Vec<SimilarHit>, Vec<PromptHit>), AppError> {
+            let images = similarity_service::rank(
+                conn,
+                &target,
+                &exclude_image,
+                limit,
+                min_score_images,
+                false,
+            )?;
+            let prompts = similarity_service::rank_prompts(
+                conn,
+                &target,
+                &exclude_prompt,
+                limit,
+                min_score_prompts,
+            )?;
+            Ok((images, prompts))
+        },
+    )
+    .await?;
+    Ok(MixedHits {
+        images: hits.0,
+        prompts: hits.1,
+    })
 }
