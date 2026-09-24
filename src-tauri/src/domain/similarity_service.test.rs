@@ -1,6 +1,7 @@
 //! similarity_service 的单元测试：BLOB 编解码、预处理策略、增量/全量与状态、检索排序与过滤。
 
 use super::*;
+use crate::domain::prompt_service;
 use crate::infra::db;
 use crate::infra::embedding_client::{Embedder, MockEmbedder};
 use rusqlite::Connection;
@@ -241,4 +242,241 @@ fn mock_embedder_is_deterministic_and_normalized() {
     let t = e.embed_text("测试文本").unwrap();
     assert!((t.iter().map(|x| x * x).sum::<f32>().sqrt() - 1.0).abs() < 1e-5);
     assert_eq!(e.info().unwrap().dim, t.len());
+}
+
+// ———————————————— 提示词侧：与图像侧同形，但只算 `content` ————————————————
+
+/// 写一条提示词（可选带向量）。
+fn seed_prompt(
+    conn: &Connection,
+    id: &str,
+    title: &str,
+    content: &str,
+    updated_at: &str,
+    vec: Option<Vec<f32>>,
+) {
+    conn.execute(
+        "INSERT INTO prompts (id, title, content, updated_at, vec) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![id, title, content, updated_at, vec.map(|v| vec_to_blob(&v))],
+    )
+    .unwrap();
+}
+
+#[test]
+fn pending_prompts_and_status_track_incremental() {
+    let (_dir, conn) = setup("sim-prompt-pending");
+    seed_prompt(&conn, "pr_b", "B", "内容 B", "2026-01-02T00:00:00Z", None);
+    seed_prompt(&conn, "pr_a", "A", "内容 A", "2026-01-03T00:00:00Z", None);
+    seed_prompt(
+        &conn,
+        "pr_c",
+        "C",
+        "内容 C",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0, 0.0]),
+    );
+
+    // 增量：只取 vec IS NULL，按 updated_at 倒序；取数带内容原文（标题仅供进度展示）
+    let rows = pending_prompts(&conn).unwrap();
+    let ids: Vec<&str> = rows.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(ids, vec!["pr_a", "pr_b"]);
+    assert_eq!(rows[0].content, "内容 A");
+    assert_eq!(rows[0].title, "A");
+
+    let st = prompt_status(&conn).unwrap();
+    assert_eq!((st.total, st.indexed, st.dim, st.stale), (3, 1, 2, 0));
+
+    // 全量重建 = 清空后待建覆盖全部
+    assert_eq!(clear_prompts(&conn).unwrap(), 1);
+    assert_eq!(pending_prompts(&conn).unwrap().len(), 3);
+    assert_eq!(prompt_status(&conn).unwrap().indexed, 0);
+}
+
+#[test]
+fn prompt_status_flags_dimension_mismatch() {
+    let (_dir, conn) = setup("sim-prompt-stale");
+    seed_prompt(
+        &conn,
+        "pr_a",
+        "A",
+        "a",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0, 0.0]),
+    );
+    seed_prompt(
+        &conn,
+        "pr_b",
+        "B",
+        "b",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0, 0.0, 0.0, 0.0]),
+    );
+
+    let st = prompt_status(&conn).unwrap();
+    assert_eq!(st.indexed, 2);
+    assert_eq!(st.stale, 1, "维度不一致的行应被标记为需重建");
+}
+
+#[test]
+fn prompt_vec_and_content_skip_soft_deleted() {
+    let (_dir, conn) = setup("sim-prompt-vec-of");
+    seed_prompt(
+        &conn,
+        "pr_a",
+        "A",
+        "内容 A",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0, 0.0]),
+    );
+    seed_prompt(&conn, "pr_b", "B", "内容 B", "2026-01-01T00:00:00Z", None);
+
+    assert_eq!(
+        prompt_vec_of(&conn, "pr_a").unwrap().unwrap(),
+        vec![1.0, 0.0]
+    );
+    assert!(prompt_vec_of(&conn, "pr_b").unwrap().is_none());
+    store_prompt(&conn, "pr_b", &[0.0, 1.0]).unwrap();
+    assert_eq!(
+        prompt_vec_of(&conn, "pr_b").unwrap().unwrap(),
+        vec![0.0, 1.0]
+    );
+    assert_eq!(prompt_content_of(&conn, "pr_a").unwrap().unwrap(), "内容 A");
+
+    conn.execute("UPDATE prompts SET is_deleted = 1 WHERE id = 'pr_a'", [])
+        .unwrap();
+    assert!(
+        prompt_vec_of(&conn, "pr_a").unwrap().is_none(),
+        "软删后不返回向量"
+    );
+    assert!(
+        prompt_content_of(&conn, "pr_a").unwrap().is_none(),
+        "软删后不返回内容"
+    );
+}
+
+#[test]
+fn rank_prompts_orders_filters_and_skips_dim_mismatch() {
+    let (_dir, conn) = setup("sim-prompt-rank");
+    let target = vec![1.0f32, 0.0, 0.0, 0.0];
+    seed_prompt(
+        &conn,
+        "pr_self",
+        "self",
+        "s",
+        "2026-01-01T00:00:00Z",
+        Some(target.clone()),
+    );
+    seed_prompt(
+        &conn,
+        "pr_near",
+        "near",
+        "n",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0, 0.0, 0.0, 0.0]),
+    );
+    seed_prompt(
+        &conn,
+        "pr_mid",
+        "mid",
+        "m",
+        "2026-01-01T00:00:00Z",
+        Some(vec![0.8, 0.6, 0.0, 0.0]),
+    );
+    seed_prompt(
+        &conn,
+        "pr_far",
+        "far",
+        "f",
+        "2026-01-01T00:00:00Z",
+        Some(vec![0.0, 1.0, 0.0, 0.0]),
+    );
+    seed_prompt(
+        &conn,
+        "pr_other_dim",
+        "od",
+        "o",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0, 0.0]),
+    );
+    // 提示词没有「安全模式」口径：is_safe = 0 照常参与检索
+    seed_prompt(
+        &conn,
+        "pr_unsafe",
+        "u",
+        "u",
+        "2026-01-01T00:00:00Z",
+        Some(vec![0.9, 0.4, 0.0, 0.0]),
+    );
+    conn.execute("UPDATE prompts SET is_safe = 0 WHERE id = 'pr_unsafe'", [])
+        .unwrap();
+
+    let ids = |limit: usize| -> Vec<String> {
+        rank_prompts(&conn, &target, "pr_self", limit, 0.5)
+            .unwrap()
+            .into_iter()
+            .map(|h| h.prompt_id)
+            .collect()
+    };
+    // 自身排除、维度不同跳过、低于阈值剔除、按余弦降序（is_safe = 0 不过滤）
+    assert_eq!(ids(10), vec!["pr_near", "pr_unsafe", "pr_mid"]);
+    assert_eq!(ids(1), vec!["pr_near"], "limit 生效");
+
+    conn.execute("UPDATE prompts SET is_deleted = 1 WHERE id = 'pr_near'", [])
+        .unwrap();
+    assert_eq!(ids(10), vec!["pr_unsafe", "pr_mid"]);
+}
+
+#[test]
+fn update_detail_invalidates_vec_only_when_content_changes() {
+    let (_dir, conn) = setup("sim-prompt-save");
+    let created = prompt_service::create(&conn, "原始内容", None).unwrap();
+    let id = created.id;
+    store_prompt(&conn, &id, &[1.0, 0.0]).unwrap();
+
+    // 仅改标题：向量保留（不做无谓重算）
+    prompt_service::update_detail(
+        &conn,
+        &id,
+        Some("新标题".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    // 保存时内容与库内一致（前端保存会回传全部字段）：同样保留
+    prompt_service::update_detail(
+        &conn,
+        &id,
+        None,
+        Some("原始内容".into()),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(
+        prompt_vec_of(&conn, &id).unwrap().is_some(),
+        "内容没变不应清空向量"
+    );
+
+    // 内容变了：向量置空，等「增量索引」补算
+    prompt_service::update_detail(
+        &conn,
+        &id,
+        None,
+        Some("改过的内容".into()),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(
+        prompt_vec_of(&conn, &id).unwrap().is_none(),
+        "内容变更应让向量失效"
+    );
+    assert_eq!(pending_prompts(&conn).unwrap().len(), 1);
 }

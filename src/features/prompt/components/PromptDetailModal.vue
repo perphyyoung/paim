@@ -17,6 +17,8 @@ import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import SimilarPromptsModal from "@/features/similarity/SimilarPromptsModal.vue";
+import { useSimilaritySettings } from "@/features/similarity/settings";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
 import { markPageStale } from "@/utils/crossPageCache";
@@ -57,6 +59,8 @@ const emit = defineEmits<{
   (e: "safe-synced", isSafe: boolean): void;
   /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
   (e: "ensure-index", index: number): void;
+  /** 从「查找相似提示词」结果打开另一条提示词：由父级按 id 重建详情顺序并打开 */
+  (e: "open-prompt", id: string): void;
 }>();
 
 const { showToast } = useToast();
@@ -406,6 +410,31 @@ async function setAsFirst() {
     showToast(`设为首图失败：${e}`, "error");
   }
 }
+
+// —— 相似提示词检索（入口：非编辑态的「提示词内容」右键）——
+// 查询对象是当前提示词的 content 向量（只算内容），参数用提示词自己的一套偏好
+const { enabled: similarityEnabled } = useSimilaritySettings("prompt");
+const similarOpen = ref(false);
+/// 内容区右键坐标（与关联图像右键各一份状态，互不影响）
+const contentCtxMenu = ref<{ x: number; y: number } | null>(null);
+function openContentCtxMenu(e: MouseEvent) {
+  contentCtxMenu.value = { x: e.clientX, y: e.clientY };
+}
+function closeContentCtxMenu() {
+  contentCtxMenu.value = null;
+}
+function openSimilarPrompts() {
+  closeContentCtxMenu();
+  similarOpen.value = true;
+}
+function onOpenSimilarPrompt(id: string) {
+  similarOpen.value = false;
+  emit("open-prompt", id);
+}
+// 切换条目 / 进入编辑态时收起相似结果（弹窗里查的已是另一条内容）
+watch([() => current.value?.id, edit], () => {
+  similarOpen.value = false;
+});
 
 async function removeImage(img: RelatedImage) {
   const p = current.value;
@@ -820,6 +849,7 @@ async function onPickerImported() {
               <div
                 v-else
                 class="whitespace-pre-wrap text-[length:var(--fs-detail)] leading-relaxed text-gray-200"
+                @contextmenu.prevent="openContentCtxMenu($event)"
               >
                 <HighlightText :segments="fieldSegs.content" :active-index="activeMatch" />
               </div>
@@ -973,6 +1003,33 @@ async function onPickerImported() {
     @confirm="confirmAction"
     @cancel="cancelConfirm"
   />
+
+  <!-- 相似提示词结果（入口：非编辑态的「提示词内容」右键） -->
+  <SimilarPromptsModal
+    v-if="similarOpen"
+    :open="similarOpen"
+    :prompt-id="current?.id ?? ''"
+    :prompt-title="current?.title"
+    @close="similarOpen = false"
+    @open-prompt="onOpenSimilarPrompt"
+  />
+
+  <!-- 右键菜单：提示词内容 → 查找相似提示词（设置里可关闭；嵌套打开时禁止二级跳转） -->
+  <ContextMenu
+    :open="!!contentCtxMenu"
+    :x="contentCtxMenu?.x ?? 0"
+    :y="contentCtxMenu?.y ?? 0"
+    @close="closeContentCtxMenu"
+  >
+    <button
+      v-if="similarityEnabled && !isNested"
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+      @click="openSimilarPrompts"
+    >
+      查找相似提示词
+    </button>
+  </ContextMenu>
 
   <!-- 右键菜单：设为首图（对齐 pm，首图不显示）/ 打开本地保存位置 -->
   <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">

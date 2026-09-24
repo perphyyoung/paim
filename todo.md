@@ -4,8 +4,9 @@
 
 ## 图像相似度检索（图搜图）—— 方案已定，暂停开发
 
-状态：**实施中**（2026-09-24）。已完成：依赖与迁移（`images`/`prompts` 同一次加 `vec`）、`infra/embedding_client.rs`（含 e2e 假实现）、`domain/similarity_service.rs`、命令与事件注册、设置页「图像相似度」区块（`SimilaritySection.vue` + `settings.ts`）。验证：Rust 单测 95 通过、`pnpm check` 通过。
-待办：详情弹窗入口与相似结果弹窗（步骤 4）、e2e mock 测试缝与文档同步（步骤 5）。
+状态：**实施中**（2026-09-24）。已完成：依赖与迁移（`images`/`prompts` 同一次加 `vec`）、`infra/embedding_client.rs`（含 e2e 假实现）、`domain/similarity_service.rs`、命令与事件注册、设置页「图像相似度」区块（`SimilaritySection.vue` + `settings.ts`）、详情弹窗入口与结果弹窗（右键菜单「查找相似图像」+ `SimilarImagesModal.vue`）。验证：Rust 单测 95 通过、`pnpm check` 通过。
+待办：e2e mock 测试缝与文档同步（步骤 5）。
+（提示词侧的同构实现见下方「提示词相似度检索」一节。）
 
 ### 已拍板
 
@@ -40,3 +41,35 @@
   - 吞吐：图像 ≈ 0.5s/张（串行）、`-np 4` 实际 ≈ 0.45s/张 → 1 万张 ≈ **1.1~1.5 小时**；文本 ≈ 23~43ms/条。
 - 查询性能估算：1 万图 × 2048 维 = 80MB 读取 + 2000 万次乘加 → 单次查询 **50~100ms**，无需向量索引/扩展。
 - 上下文与内存不随请求累积（slot 用完即空、内存首次阶梯分配后平坦）；批处理仍建议单次串行 + 每 N 张落库，避免长事务。
+
+## 提示词相似度检索（以文搜文）—— 已完成
+
+状态：**已完成**（2026-09-24）。与图像侧同构，复用同一 embedding 服务与同一套面板 / 弹窗结构。
+
+### 实现要点
+
+- **只算内容**：向量来自 `prompts.content`（不含标题 / 翻译 / 备注）；存储仍复用已有列 `prompts.vec`（与 `images.vec` 同一次迁移补齐），无新表、无指纹列。
+- **失效策略**：保存时若内容变化 → 该行 `vec` 置 NULL，交给「增量索引」补算。
+  `prompt_service::update_detail` 里用 `vec = CASE WHEN content IS NOT ? THEN NULL ELSE vec END`（SQLite 的 SET 表达式读更新前的旧值），
+  因此「前端保存回传全部字段」「只改标题 / 备注」都不会无谓清空向量。
+- **服务层泛化**：`similarity_service` 把「状态 / 清空 / 写入 / 取向量 / 检索」参数化为表名
+  （`status_in` / `clear_in` / `store_in` / `vec_of_in` / `rank_in`，表名是模块内常量，不来自入参），
+  图像与提示词共用；差异只剩待索引清单（图像取 `relative_path` 再预处理，提示词取 `content` 原文）。
+- **命令层**：新增 `prompt_embedding_status` / `index_prompt_embeddings` / `clear_prompt_embeddings` / `similar_prompts`
+  与 `prompt_cards_by_ids`（结果弹窗按 id 取卡片）；**独立事件 `prompt-index-progress` 与独立 `PromptIndexState`**
+  （图像 `similarity-index-progress` 由单一快照驱动，混用会互相覆盖），两条索引可分别查看进度。
+- **前端**：
+  - `features/similarity/SimilarityIndexPanel.vue` + `indexPanel.ts`：图像 / 提示词共用的索引面板（状态 / 增量 / 全量重建 / 清空 / 进度 / 上次摘要），差异由 `api` 注入；
+  - `SimilaritySection.vue`：服务级参数（地址 / 并发，两类共用）+「图像相似度」「提示词相似度」两个分组，
+    原「向量索引」改名 **「图像向量索引」**，新增 **「提示词向量索引」**；
+  - `SimilarPromptsModal.vue`：结果用文本行（相似度 + 标题 + 内容摘要），标题栏沿用「条数 / 阈值 −＋ / 重查 / ×」；
+  - 偏好键按类别分开：`image.similarity.*` 与 `prompt.similarity.*`（服务地址 `image.similarity.baseUrl` 与并发共用），
+    都在 `utils/preferences.ts` 白名单前缀内，无需登记。
+- **入口**：提示词详情**非编辑态**的「提示词内容」右键 →「查找相似提示词」。
+  编辑态不绑定（保留浏览器原生复制 / 粘贴）；`isNested`（被图像详情嵌套打开）时隐藏菜单项，避免二级跳转；
+  点击结果切到该提示词详情（`PromptPage.openDetailById`：单条顺序进入，`detailExtra` 供详情按 id 取到卡片）。
+
+### 验证
+
+- Rust：`cargo test similarity` 12 项通过（新增 6 项提示词用例：增量 / 状态 / 维度不符 / 软删过滤 / 排序与排除自身 / 保存失效规则）；
+- 前端：`pnpm check`（format + build:rs + gen:bindings + vue-tsc + vite build）与 `vitest` 通过。

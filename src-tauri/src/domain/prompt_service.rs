@@ -120,6 +120,22 @@ fn row_to_prompt_card(row: &rusqlite::Row) -> Result<PromptCard> {
     })
 }
 
+/// 按给定 id 列表取卡片投影，返回顺序与入参一致（缺失 / 已软删的 id 跳过）。
+/// 供「按 id 渲染卡片」的场景使用，如相似度检索结果。
+pub fn cards_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<PromptCard>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {PCARD_COLS} FROM prompts WHERE id = ?1 AND is_deleted = 0"
+    ))?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let mut rows = stmt.query(rusqlite::params![id])?;
+        if let Some(row) = rows.next()? {
+            out.push(row_to_prompt_card(row)?);
+        }
+    }
+    Ok(out)
+}
+
 /// 排序键白名单 → 列名（未命中回落 `updated_at`，与旧 `list` 的默认序一致）。
 fn sort_column(sort: &str) -> &'static str {
     match sort {
@@ -416,8 +432,13 @@ pub fn update_detail(
         params.push(Box::new(v.trim().to_string()));
     }
     if let Some(v) = content {
+        let v = v.trim().to_string();
         sets.push("content = ?".into());
-        params.push(Box::new(v.trim().to_string()));
+        params.push(Box::new(v.clone()));
+        // 内容变了 → 该行向量失效（下次「增量索引」补算）。SQLite 的 SET 表达式读的是更新前的旧值，
+        // 故这里用「旧 content IS NOT 新值」判断：仅改标题 / 备注时保留原向量，不做无谓重算
+        sets.push("vec = CASE WHEN content IS NOT ? THEN NULL ELSE vec END".into());
+        params.push(Box::new(v));
     }
     if let Some(v) = content_translate {
         sets.push("content_translate = ?".into());

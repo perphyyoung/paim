@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, ref, shallowRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+} from "vue";
 import { toAssetUrl } from "@/utils/assetUrl";
 import { commands, type Prompt, type PromptCard, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
@@ -415,10 +424,16 @@ const detailDirty = ref(false);
 function asCard(x: PromptCard | Placeholder): PromptCard {
   return x as Prompt;
 }
-/** 详情弹窗的列表来源：已加载项（未加载块是占位，翻到时由 ensure-index 补齐对应块） */
-const detailPrompts = computed(() => pageItems.value.filter((x): x is Prompt => !isPlaceholder(x)));
+/** 外部入口（相似提示词结果）带进来的卡片：该提示词可能不在当前筛选 / 已加载块里，单独挂一条供详情按 id 取到 */
+const detailExtra = ref<PromptCard[]>([]);
+/** 详情弹窗的列表来源：已加载项（未加载块是占位，翻到时由 ensure-index 补齐对应块）+ 外部入口卡片 */
+const detailPrompts = computed<PromptCard[]>(() => {
+  const loaded: PromptCard[] = pageItems.value.filter((x): x is Prompt => !isPlaceholder(x));
+  return detailExtra.value.length > 0 ? [...loaded, ...detailExtra.value] : loaded;
+});
 
 function openDetail(i: number) {
+  detailExtra.value = [];
   // 顺序快照先用当前已加载项即时打开，随后异步补全为全量 id
   const order = detailPrompts.value.map((p) => p.id);
   detailOrder.value = order;
@@ -432,12 +447,36 @@ function openDetail(i: number) {
   void loadDetailOrder();
 }
 
+/** 从相似提示词结果打开某条提示词详情：以「单条顺序」进入，不并入当前筛选列表（避免索引/导航错位） */
+async function openDetailById(id: string) {
+  try {
+    const [card] = await commands.promptCardsByIds([id]);
+    if (!card) {
+      showToast("提示词不存在或已删除", "warning");
+      return;
+    }
+    detailExtra.value = [card];
+    detailOrder.value = [id];
+    detailDirty.value = false;
+    detailIndex.value = 0;
+    // 详情快照不响应顺序变化（useDetailSnapshot 只在初始化时按 order 定位），
+    // 故先卸载再挂载，让详情按「单条顺序」重新初始化
+    detailOpen.value = false;
+    await nextTick();
+    detailOpen.value = true;
+  } catch (e) {
+    showToast(String(e), "error");
+  }
+}
+
 /** 详情顺序补全为全量 id：主页按块懒加载，索引分母与导航范围不应只等于已加载块条数 */
 async function loadDetailOrder() {
   try {
     const ids = await commands.listPromptIds(currentQuery());
     // 空结果（查询期间被清空等）保留已加载顺序，避免导航列表塌成 0
-    if (detailOpen.value && ids.length > 0) detailOrder.value = ids;
+    if (detailOpen.value && ids.length > 0 && detailExtra.value.length === 0) {
+      detailOrder.value = ids;
+    }
   } catch (e) {
     log.warn("[PromptPage] 详情顺序补全失败，沿用已加载顺序", String(e));
   }
@@ -449,6 +488,7 @@ function ensureDetailIndex(index: number) {
 }
 function closeDetail() {
   detailOpen.value = false;
+  detailExtra.value = [];
   // 详情期间没有改动就不重拉：reload 会把整列清成占位再重填，纯浏览时是白闪一下
   if (!detailDirty.value) return;
   detailDirty.value = false;
@@ -777,6 +817,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       @close="closeDetail"
       @updated="onModalUpdated"
       @ensure-index="ensureDetailIndex"
+      @open-prompt="openDetailById"
     />
 
     <!-- 删除确认 -->

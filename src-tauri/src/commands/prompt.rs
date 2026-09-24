@@ -45,6 +45,20 @@ pub async fn list_prompt_ids(
     .await
 }
 
+/// 按 id 列表取卡片投影（顺序与入参一致，缺失 / 已软删的跳过）。
+/// 供「按 id 渲染卡片」的场景使用，如相似度检索结果。
+#[tauri::command]
+#[specta::specta]
+pub async fn prompt_cards_by_ids(
+    db: State<'_, BkDb>,
+    ids: Vec<String>,
+) -> Result<Vec<prompt_service::PromptCard>, AppError> {
+    db_blocking(&db, move |conn| {
+        prompt_service::cards_by_ids(conn, &ids).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
+}
+
 /// 特殊标签命中数（基于全部未删除提示词，不含搜索 / 标签条件）。
 #[tauri::command]
 #[specta::specta]

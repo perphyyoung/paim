@@ -138,6 +138,28 @@ export const commands = {
 	 *  `safe_only` 与主页「安全模式」口径一致；`limit` 上限 200（防止前端误传大值）。
 	 */
 	similarImages: (baseUrl: string, imageId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<SimilarHit[]>("similar_images", { baseUrl, imageId, limit, minScore, safeOnly }),
+	/**
+	 *  按 id 列表取卡片投影（顺序与入参一致，缺失 / 已软删的跳过）。
+	 *  供「按 id 渲染卡片」的场景使用，如相似度检索结果。
+	 */
+	promptCardsByIds: (ids: string[]) => __TAURI_INVOKE<PromptCard[]>("prompt_cards_by_ids", { ids }),
+	/**  提示词索引状态（不访问服务）：总数 / 已索引 / 维度 / 需重建数。 */
+	promptEmbeddingStatus: () => __TAURI_INVOKE<SimilarityStatus>("prompt_embedding_status"),
+	/**  当前提示词索引进度快照（设置页挂载时查询，事件不重放）。 */
+	promptIndexProgress: () => __TAURI_INVOKE<PromptIndexProgress>("prompt_index_progress"),
+	/**
+	 *  建立提示词向量索引：只对 `prompts.content` 计算向量（不含标题 / 翻译 / 备注）。
+	 *  `Full` 先清空全部向量再全量，`Incremental` 只补 `vec IS NULL`（含内容改过被置空的）。
+	 *  文本请求无视觉编码，比图像侧轻得多，可适当开大并发（仍建议 ≤ 服务端 `-np`）。
+	 */
+	indexPromptEmbeddings: (baseUrl: string, mode: IndexMode, concurrency: number) => __TAURI_INVOKE<SimilarityIndexSummary>("index_prompt_embeddings", { baseUrl, mode, concurrency }),
+	/**  清空全部提示词向量（设置页「清空」，之后可重建）。 */
+	clearPromptEmbeddings: () => __TAURI_INVOKE<number>("clear_prompt_embeddings"),
+	/**
+	 *  以某条提示词为查询检索相似提示词；目标未建索引时现场补算一次（一次文本请求）再查。
+	 *  `limit` 上限 200（防止前端误传大值）；提示词不过滤 `is_safe`。
+	 */
+	similarPrompts: (baseUrl: string, promptId: string, limit: number, minScore: number | null) => __TAURI_INVOKE<PromptHit[]>("similar_prompts", { baseUrl, promptId, limit, minScore }),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
 	getTagData: (domain: TagDomain) => __TAURI_INVOKE<TagData>("get_tag_data", { domain }),
 	/**  未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。 */
@@ -245,6 +267,7 @@ export const events = {
 	globalShortcut: makeEvent<GlobalShortcutEvent>("global-shortcut"),
 	imageFullscreenOpened: makeEvent<ImageFullscreenOpened>("image-fullscreen-opened"),
 	logLevelChanged: makeEvent<LogLevelChanged>("log-level-changed"),
+	promptIndexProgress: makeEvent<PromptIndexProgress>("prompt-index-progress"),
 	similarityIndexProgress: makeEvent<SimilarityIndexProgress>("similarity-index-progress"),
 	thumbnailRebuildProgress: makeEvent<ThumbnailRebuildProgress>("thumbnail-rebuild-progress"),
 };
@@ -503,6 +526,28 @@ export type PromptCard = {
 	note: string,
 };
 
+/**  提示词相似检索结果（同上，卡片数据按 `prompt_id` 另取）。 */
+export type PromptHit = {
+	prompt_id: string,
+	score: number | null,
+};
+
+/**
+ *  提示词索引进度：字段与图像侧同形（`file_name` 语义为「当前项标签」，此处取提示词标题），
+ *  便于前端复用同一个索引面板组件。
+ */
+export type PromptIndexProgress = {
+	/**  是否有索引任务在跑 */
+	running: boolean,
+	current: number,
+	total: number,
+	failed: number,
+	/**  当前项标签（提示词标题） */
+	file_name: string,
+	/**  预估剩余毫秒（尚无足够样本时为 0） */
+	eta_ms: number,
+};
+
 /**  提示词关联的（未删除）图像及其标签，供详情页图像网格展示。 */
 export type RelatedImage = {
 	id: string,
@@ -512,7 +557,7 @@ export type RelatedImage = {
 	tags: string[],
 };
 
-/**  相似检索结果（卡片数据由前端按 id 另取，避免本模块依赖卡片投影）。 */
+/**  图像相似检索结果（卡片数据由前端按 id 另取，避免本模块依赖卡片投影）。 */
 export type SimilarHit = {
 	image_id: string,
 	score: number | null,
@@ -540,11 +585,11 @@ export type SimilarityIndexSummary = {
 	failed: number,
 };
 
-/**  索引 / 检索状态（设置页展示）。 */
+/**  索引 / 检索状态（设置页展示，图像与提示词各算一份）。 */
 export type SimilarityStatus = {
-	/**  在用图像总数（is_deleted = 0） */
+	/**  在用条目总数（is_deleted = 0） */
 	total: number,
-	/**  已有向量的图像数 */
+	/**  已有向量的条目数 */
 	indexed: number,
 	/**  当前向量维度（无向量时为 0） */
 	dim: number,

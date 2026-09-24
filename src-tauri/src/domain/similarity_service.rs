@@ -1,8 +1,13 @@
-//! 图像相似度：向量化与检索（归一化点积 Top-K）。
+//! 图像 / 提示词相似度：向量化与检索（归一化点积 Top-K）。
 //!
-//! 存储：`images.vec` 单列 BLOB（f32 LE，写入前已 L2 归一化，点积即余弦），不另建表、
-//! 不存模型/预处理指纹 —— 换 embedding 模型或改预处理规则后，在设置页点「全量重建」即可；
-//! 「增量」= `vec IS NULL`。替换图像会产生新 id（旧图软删），因此不需要手工失效。
+//! 存储：`images.vec` / `prompts.vec` 单列 BLOB（f32 LE，写入前已 L2 归一化，点积即余弦），
+//! 不另建表、不存模型 / 内容指纹 —— 换 embedding 模型或改预处理规则后，在设置页点「全量重建」即可：
+//! - 图像「增量」= `vec IS NULL`：替换图像会产生新 id（旧图软删），无需指纹列；
+//! - 提示词「增量」同理，且保存时若 `content` 变化会把该行 `vec` 置空
+//!   （见 `prompt_service::update_detail`），因此也不需要内容哈希列。
+//!
+//! 两侧共用同一套「状态 / 清空 / 写入 / 检索」实现（表名由本模块内部常量给出，不来自入参）；
+//! 差异只在「待索引清单」的取数：图像取 `relative_path`（再预处理成 JPEG），提示词取 `content` 原文。
 //!
 //! 本模块只提供「纯函数 + 单条 SQL」，批量循环留在命令层：万级 × ~0.5s 的长任务
 //! **不能长时间持有 DB 锁**，否则主页查询会被整段卡住。
@@ -16,6 +21,10 @@ use std::path::Path;
 pub(crate) const LONG_SIDE: u32 = 1024;
 /// 预处理输出 JPEG 质量。
 pub(crate) const JPEG_QUALITY: u8 = 85;
+
+/// 两张向量表的名字：写死在模块内（不来自入参），拼进 SQL 不构成注入面。
+const IMAGES: &str = "images";
+const PROMPTS: &str = "prompts";
 
 /// 索引模式：全量会先清空已有向量（换模型 / 改预处理规则后用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -31,19 +40,34 @@ pub struct PendingImage {
     pub relative_path: String,
 }
 
-/// 相似检索结果（卡片数据由前端按 id 另取，避免本模块依赖卡片投影）。
+/// 待索引的一条提示词（只算 `content` 的向量；`title` 仅用于进度显示与日志）。
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub struct PendingPrompt {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+}
+
+/// 图像相似检索结果（卡片数据由前端按 id 另取，避免本模块依赖卡片投影）。
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct SimilarHit {
     pub image_id: String,
     pub score: f32,
 }
 
-/// 索引 / 检索状态（设置页展示）。
+/// 提示词相似检索结果（同上，卡片数据按 `prompt_id` 另取）。
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub struct PromptHit {
+    pub prompt_id: String,
+    pub score: f32,
+}
+
+/// 索引 / 检索状态（设置页展示，图像与提示词各算一份）。
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct SimilarityStatus {
-    /// 在用图像总数（is_deleted = 0）
+    /// 在用条目总数（is_deleted = 0）
     pub total: i64,
-    /// 已有向量的图像数
+    /// 已有向量的条目数
     pub indexed: i64,
     /// 当前向量维度（无向量时为 0）
     pub dim: usize,
@@ -93,27 +117,74 @@ pub fn pending(conn: &Connection) -> Result<Vec<PendingImage>, AppError> {
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-/// 清空全部向量（全量重建的第一步 / 设置页「清空」）。
+/// 待索引（增量）提示词：按更新时间倒序，只取内容（不含标题 / 翻译 / 备注）。
+pub fn pending_prompts(conn: &Connection) -> Result<Vec<PendingPrompt>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, content FROM prompts
+         WHERE is_deleted = 0 AND vec IS NULL
+         ORDER BY updated_at DESC",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(PendingPrompt {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            content: r.get(2)?,
+        })
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// 清空全部图像向量（全量重建的第一步 / 设置页「清空」）。
 pub fn clear_all(conn: &Connection) -> Result<usize, AppError> {
-    Ok(conn.execute("UPDATE images SET vec = NULL WHERE vec IS NOT NULL", [])?)
+    clear_in(conn, IMAGES)
+}
+
+/// 清空全部提示词向量。
+pub fn clear_prompts(conn: &Connection) -> Result<usize, AppError> {
+    clear_in(conn, PROMPTS)
+}
+
+fn clear_in(conn: &Connection, table: &str) -> Result<usize, AppError> {
+    Ok(conn.execute(
+        &format!("UPDATE {table} SET vec = NULL WHERE vec IS NOT NULL"),
+        [],
+    )?)
 }
 
 /// 写入一张图的向量。
 pub fn store(conn: &Connection, image_id: &str, vec: &[f32]) -> Result<(), AppError> {
+    store_in(conn, IMAGES, image_id, vec)
+}
+
+/// 写入一条提示词的向量。
+pub fn store_prompt(conn: &Connection, prompt_id: &str, vec: &[f32]) -> Result<(), AppError> {
+    store_in(conn, PROMPTS, prompt_id, vec)
+}
+
+fn store_in(conn: &Connection, table: &str, id: &str, vec: &[f32]) -> Result<(), AppError> {
     conn.execute(
-        "UPDATE images SET vec = ?1 WHERE id = ?2",
-        params![vec_to_blob(vec), image_id],
+        &format!("UPDATE {table} SET vec = ?1 WHERE id = ?2"),
+        params![vec_to_blob(vec), id],
     )?;
     Ok(())
 }
 
 /// 单张图的向量（未索引 / 已删除时返回 None）。
 pub fn vec_of(conn: &Connection, image_id: &str) -> Result<Option<Vec<f32>>, AppError> {
+    vec_of_in(conn, IMAGES, image_id)
+}
+
+/// 单条提示词的向量（未索引 / 已软删时返回 None）。
+pub fn prompt_vec_of(conn: &Connection, prompt_id: &str) -> Result<Option<Vec<f32>>, AppError> {
+    vec_of_in(conn, PROMPTS, prompt_id)
+}
+
+fn vec_of_in(conn: &Connection, table: &str, id: &str) -> Result<Option<Vec<f32>>, AppError> {
     // 行内 `vec` 可为 NULL：闭包按 Option 取列，再用 optional() 兜「无行」，故需 flatten
     let blob: Option<Vec<u8>> = conn
         .query_row(
-            "SELECT vec FROM images WHERE id = ?1 AND is_deleted = 0",
-            params![image_id],
+            &format!("SELECT vec FROM {table} WHERE id = ?1 AND is_deleted = 0"),
+            params![id],
             |r| r.get(0),
         )
         .optional()?
@@ -132,21 +203,43 @@ pub fn relative_path_of(conn: &Connection, image_id: &str) -> Result<Option<Stri
         .optional()?)
 }
 
-/// 状态统计。
+/// 提示词内容（查询目标未建索引时现场补算用；不存在 / 已软删返回 None）。
+pub fn prompt_content_of(conn: &Connection, prompt_id: &str) -> Result<Option<String>, AppError> {
+    Ok(conn
+        .query_row(
+            "SELECT content FROM prompts WHERE id = ?1 AND is_deleted = 0",
+            params![prompt_id],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+/// 图像索引状态统计。
 pub fn status(conn: &Connection) -> Result<SimilarityStatus, AppError> {
+    status_in(conn, IMAGES)
+}
+
+/// 提示词索引状态统计。
+pub fn prompt_status(conn: &Connection) -> Result<SimilarityStatus, AppError> {
+    status_in(conn, PROMPTS)
+}
+
+fn status_in(conn: &Connection, table: &str) -> Result<SimilarityStatus, AppError> {
     let total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM images WHERE is_deleted = 0",
+        &format!("SELECT COUNT(*) FROM {table} WHERE is_deleted = 0"),
         [],
         |r| r.get(0),
     )?;
     let indexed: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM images WHERE is_deleted = 0 AND vec IS NOT NULL",
+        &format!("SELECT COUNT(*) FROM {table} WHERE is_deleted = 0 AND vec IS NOT NULL"),
         [],
         |r| r.get(0),
     )?;
     let dim_bytes: Option<i64> = conn
         .query_row(
-            "SELECT length(vec) FROM images WHERE is_deleted = 0 AND vec IS NOT NULL LIMIT 1",
+            &format!(
+                "SELECT length(vec) FROM {table} WHERE is_deleted = 0 AND vec IS NOT NULL LIMIT 1"
+            ),
             [],
             |r| r.get(0),
         )
@@ -156,8 +249,10 @@ pub fn status(conn: &Connection) -> Result<SimilarityStatus, AppError> {
         0
     } else {
         conn.query_row(
-            "SELECT COUNT(*) FROM images
-             WHERE is_deleted = 0 AND vec IS NOT NULL AND length(vec) <> ?1",
+            &format!(
+                "SELECT COUNT(*) FROM {table}
+                 WHERE is_deleted = 0 AND vec IS NOT NULL AND length(vec) <> ?1"
+            ),
             params![(dim * 4) as i64],
             |r| r.get(0),
         )?
@@ -181,8 +276,49 @@ pub fn rank(
     min_score: f32,
     safe_only: bool,
 ) -> Result<Vec<SimilarHit>, AppError> {
+    let hits = rank_in(
+        conn, IMAGES, target, exclude_id, limit, min_score, safe_only,
+    )?;
+    Ok(hits
+        .into_iter()
+        .map(|(id, score)| SimilarHit {
+            image_id: id,
+            score,
+        })
+        .collect())
+}
+
+/// 以给定向量检索最相似的提示词（id + 余弦分，按分数降序）。
+/// 提示词没有「安全模式」口径，故不过滤 `is_safe`。
+pub fn rank_prompts(
+    conn: &Connection,
+    target: &[f32],
+    exclude_id: &str,
+    limit: usize,
+    min_score: f32,
+) -> Result<Vec<PromptHit>, AppError> {
+    let hits = rank_in(conn, PROMPTS, target, exclude_id, limit, min_score, false)?;
+    Ok(hits
+        .into_iter()
+        .map(|(id, score)| PromptHit {
+            prompt_id: id,
+            score,
+        })
+        .collect())
+}
+
+/// 通用检索：维度过滤 + 归一化点积 + 阈值 + Top-K，返回 (id, score) 降序。
+fn rank_in(
+    conn: &Connection,
+    table: &str,
+    target: &[f32],
+    exclude_id: &str,
+    limit: usize,
+    min_score: f32,
+    safe_only: bool,
+) -> Result<Vec<(String, f32)>, AppError> {
     let sql = format!(
-        "SELECT id, vec FROM images
+        "SELECT id, vec FROM {table}
          WHERE is_deleted = 0 AND vec IS NOT NULL AND id <> ?1 AND length(vec) = ?2{}",
         if safe_only { " AND is_safe = 1" } else { "" }
     );
@@ -190,7 +326,7 @@ pub fn rank(
     let rows = stmt.query_map(params![exclude_id, (target.len() * 4) as i64], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
     })?;
-    let mut hits: Vec<SimilarHit> = Vec::new();
+    let mut hits: Vec<(String, f32)> = Vec::new();
     for row in rows {
         let (id, blob) = row?;
         let v = vec_from_blob(&blob);
@@ -200,17 +336,10 @@ pub fn rank(
         // 向量写入前已归一化 → 点积即余弦
         let score: f32 = v.iter().zip(target.iter()).map(|(a, b)| a * b).sum();
         if score >= min_score {
-            hits.push(SimilarHit {
-                image_id: id,
-                score,
-            });
+            hits.push((id, score));
         }
     }
-    hits.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    hits.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     hits.truncate(limit);
     Ok(hits)
 }
