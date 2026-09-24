@@ -210,7 +210,12 @@ function reloadAll() {
         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
         @click.self="settingsOpen = false"
       >
-        <div class="relative w-[50vw] max-w-[50vw]">
+        <div
+          class="relative w-[50vw] max-w-[50vw]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="设置"
+        >
           <SettingsView />
           <button
             type="button"

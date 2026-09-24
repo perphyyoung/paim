@@ -195,10 +195,13 @@ async function clearIndex() {
       </dd>
     </div>
     <div class="flex shrink-0 items-center gap-2">
+      <!-- aria-label 带上分组名（图像 / 提示词向量索引）：设置页两组按钮文本同名，
+           无障碍读屏与 e2e 都需要能区分是哪一组 -->
       <button
         type="button"
         class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
         :disabled="running"
+        :aria-label="`${api.title}：增量索引`"
         title="增量索引"
         @click="requestIncremental"
       >
@@ -208,6 +211,7 @@ async function clearIndex() {
         type="button"
         class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
         :disabled="running"
+        :aria-label="`${api.title}：全量重建`"
         title="全量重建"
         @click="requestFullRebuild"
       >
@@ -217,6 +221,7 @@ async function clearIndex() {
         type="button"
         class="rounded border px-3 py-1 text-sm text-gray-200 transition-colors border-gray-600 hover:bg-gray-700 disabled:opacity-50"
         :disabled="running"
+        :aria-label="`${api.title}：清空索引`"
         title="清空索引"
         @click="requestClear"
       >

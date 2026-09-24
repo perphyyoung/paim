@@ -67,7 +67,7 @@ llama-server -m <模型>.gguf -mm <mmproj>.gguf --embeddings --pooling last -b 1
 - 入库与检索同一策略（格式 + 尺寸）：格式差异小（JPEG 与同内容 PNG `cos = 0.996`），尺寸差异大（缩图与全分辨率 `cos ≈ 0.97` → 别一边缩一边不缩）。
 - 判定阈值：连续同输入恒为 `cos = 1.000000`，但紧接另一次不同请求之后可能偏到 `0.9988`（批切分 / 浮点顺序差异，`--no-cache-prompt` 也不保证 bit-exact）→ 判定「同图」用 ≤0.999；正负样本差距远大于此（匹配描述 0.81 vs 无关 0.18）。
 - 资源与吞吐（`-np 1` 单串行）：上下文与内存**不随请求累积**（`/slots` 的 slot 保留 prompt token 恒为 0、`n_ctx` 启动即固定；内存首次阶梯分配后连续 300 次请求平坦）；文本 **~23ms/次**、图像（长边 1024，169KB）**~0.5s/张** → 1 万张 ≈ 1.5 小时。
-- 应用侧复用（2026-09-24）：提示词向量索引与相似提示词检索（`index_prompt_embeddings` / `similar_prompts`）走的就是这里的**非 OAI `/embedding` + 单条 `content`** 通路（Rust `Embedder::embed_text`，写库前 L2 归一化），不依赖 `/v1/embeddings`；文本 ~23ms/条 → 千条提示词约半分钟，远比图像侧轻。
+- 应用侧复用（2026-09-24）：两类索引与检索都走本探针验证过的通路——图像侧「预处理 JPEG（长边 1024）+ `/embedding` 提交图像」，提示词侧「非 OAI `/embedding` + 单条 `content`」，都不依赖 `/v1/embeddings`。设计取舍、阈值、并发与 e2e 测试替身汇总见 [../docs/开发经验.md](../docs/开发经验.md) 第 4 节。
 
 ## gen-bindings.mjs — 重新生成前端 bindings
 

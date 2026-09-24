@@ -236,6 +236,14 @@ fn mock_embedder_is_deterministic_and_normalized() {
     let b = e.embed_image(b"bbb").unwrap();
     assert_eq!(a1, a2, "同输入必须同向量");
     assert_ne!(a1, b, "不同输入必须不同向量");
+    // 不同输入的伪向量应只有「各向异性基线」那点小正相似（≈0.1）：恒为正（阈值 0 能全命中），
+    // 又远低于默认阈值 0.5（默认阈值下不会误命中）——假实现自带 ~0.75 的「假相似」曾把
+    // e2e 的阈值判定带偏，这里锁死该性质
+    let cross: f32 = a1.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    assert!(
+        cross > 0.0 && cross < 0.3,
+        "不同输入的余弦 {cross}（应 ≈0.1 的正基线）"
+    );
 
     let norm = a1.iter().map(|x| x * x).sum::<f32>().sqrt();
     assert!((norm - 1.0).abs() < 1e-5, "范数 {norm}");

@@ -193,6 +193,11 @@ impl Embedder for HttpEmbedder {
     }
 }
 
+/// 伪向量的正偏置：真实 embedding 空间是各向异性的 —— 任意两条都带**小幅正**相似，
+/// 因此这里的噪声叠一个 0.1 的公共分量，使任意两条伪向量相似度 ≈0.1（恒为正、远低于 0.5）。
+/// 这样「阈值 0 → 全命中、默认 0.5 → 全过滤」的行为才与真服务一致（阈值判定类用例依赖它）。
+const MOCK_BIAS: f32 = 0.1;
+
 /// 假实现：由输入内容派生的确定性伪向量（同输入同向量、不同输入不同向量、已归一化）。
 /// 供 Rust 单测与 e2e（`PAIM_EMBEDDING_MOCK=1`）使用，不依赖真实服务。
 pub struct MockEmbedder {
@@ -215,7 +220,10 @@ impl MockEmbedder {
             state = state
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
-            v.push(((state >> 33) as f32 / u32::MAX as f32) - 0.5);
+            // 取 state 高 31 位映射到 [-0.5, 0.5) 再加 `MOCK_BIAS`。
+            // 早先用 `u32::MAX` 归一化只到 [-0.5, 0)（均值 -0.25），任意两条伪向量的余弦恒为
+            // ~0.75，会冒充「相似」——阈值判定类用例（e2e）在默认 0.5 下全命中而被带偏。
+            v.push(((state >> 33) as f32 / (1u64 << 31) as f32) - 0.5 + MOCK_BIAS);
         }
         l2_normalize(&mut v);
         v

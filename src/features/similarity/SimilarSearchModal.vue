@@ -346,7 +346,10 @@ function pickPrompt(id: string) {
 
         <!-- 主体：左图像 / 右提示词 -->
         <div class="mt-3 flex min-h-0 flex-1 gap-4">
-          <section class="flex min-w-0 flex-1 flex-col rounded border border-gray-700">
+          <section
+            aria-label="相似图像"
+            class="flex min-w-0 flex-1 flex-col rounded border border-gray-700"
+          >
             <header
               class="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2 border-gray-700"
             >
@@ -424,7 +427,10 @@ function pickPrompt(id: string) {
             </div>
           </section>
 
-          <section class="flex min-w-0 flex-1 flex-col rounded border border-gray-700">
+          <section
+            aria-label="相似提示词"
+            class="flex min-w-0 flex-1 flex-col rounded border border-gray-700"
+          >
             <header
               class="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2 border-gray-700"
             >

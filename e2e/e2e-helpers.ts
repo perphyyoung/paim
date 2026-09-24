@@ -116,6 +116,8 @@ async function launchApp(workerIndex: number, seq: number): Promise<AppHandle> {
     ...process.env,
     PAIM_DATA_DIR: dataDir,
     PAIM_E2E_MOCK_IMAGE_PATHS: JSON.stringify([mockImagePath]),
+    // 相似度（向量索引 / 检索）走假 embedding：按输入派生确定性伪向量，无需真实 llama.cpp 服务
+    PAIM_EMBEDDING_MOCK: "1",
     WEBVIEW2_USER_DATA_FOLDER: path.join(root, "temp", `wv2-w${workerIndex}`),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
   };
@@ -447,6 +449,121 @@ export async function openImageDetail(page: Page, cardText: string): Promise<Loc
 export async function closeDetail(detail: Locator): Promise<void> {
   await detail.getByTitle("关闭").click();
   await expect(detail).toBeHidden({ timeout: 5_000 });
+}
+
+/// ---- 设置面板与相似度（向量索引 / 检索）----
+
+/// 打开设置悬浮面板并返回其定位器（标题栏齿轮；面板根节点 `role=dialog aria-label="设置"`）。
+/// 幂等：面板已打开时直接复用——连续调用（如两类索引各跑一次）时齿轮按钮会被面板遮罩拦下。
+export async function openSettings(page: Page): Promise<Locator> {
+  const panel = page.getByRole("dialog", { name: "设置" });
+  if (await panel.isVisible()) return panel;
+  await page.getByTitle("设置 (Ctrl+Shift+,)").click();
+  await expect(panel).toBeVisible({ timeout: 5_000 });
+  return panel;
+}
+
+/// 打开设置并切到指定页签，返回该页签的内容区（`role=tabpanel`）。
+/// 相似度相关控件都在「相似度」页签里，作用域收在 tabpanel 内可避开同名的其它控件。
+export async function openSettingsTab(page: Page, name: "通用" | "相似度"): Promise<Locator> {
+  const panel = await openSettings(page);
+  await panel.getByRole("tab", { name }).click();
+  const tabpanel = panel.getByRole("tabpanel", { name });
+  await expect(tabpanel).toBeVisible({ timeout: 5_000 });
+  return tabpanel;
+}
+
+/// 关闭设置面板（点右上 ✕）。设置是悬浮面板，不关会一直盖在主页之上。
+export async function closeSettings(page: Page): Promise<void> {
+  const panel = page.getByRole("dialog", { name: "设置" });
+  await panel.getByTitle("关闭").click();
+  await expect(panel).toBeHidden({ timeout: 5_000 });
+}
+
+/// 跑一次相似度索引：设置 → 相似度 → 对应分组点「增量索引」→ 确认「开始」→ 等完成 toast。
+/// 依赖 `PAIM_EMBEDDING_MOCK=1`（fixture 已注入）：假实现按输入派生确定性伪向量，无需真实服务。
+/// 前置：该类别存在未建向量的条目（增量只补 `vec IS NULL`），否则只弹「没有待建立向量」的提示。
+/// 副作用：写库（`images.vec` / `prompts.vec`）。
+export async function runSimilarityIndex(page: Page, kind: "image" | "prompt"): Promise<void> {
+  const tabpanel = await openSettingsTab(page, "相似度");
+  const group = kind === "image" ? "图像向量索引" : "提示词向量索引";
+  await tabpanel.getByRole("button", { name: `${group}：增量索引` }).click();
+  await page.getByRole("button", { name: "开始" }).click();
+  await expectToastAndDismiss(page, "索引完成");
+  e2eLog.info(`[step] ${group}：增量索引完成`);
+}
+
+/// 相似结果页的某一栏（两栏是 `aria-label` 为「相似图像」/「相似提示词」的 section）
+export function similarResultPane(modal: Locator, kind: "image" | "prompt"): Locator {
+  return modal.getByRole("region", { name: kind === "image" ? "相似图像" : "相似提示词" });
+}
+
+/// 从图像详情打开相似结果页：右键大图 → 菜单项「搜索相似的图像和提示词」，返回结果页定位器。
+/// 入口受设置页「启用图像相似度检索」开关控制，关掉时该菜单项不渲染。
+export async function openSimilarSearchFromImageDetail(
+  page: Page,
+  detail: Locator,
+): Promise<Locator> {
+  // 点大图而不是文字：图像详情的右键处理绑在大图区域（与 03 的「替换图像」同一入口）
+  await detail.locator("img").last().click({ button: "right" });
+  return expectSimilarResultModal(page);
+}
+
+/// 从提示词详情打开相似结果页：右键**非编辑态**的提示词内容 → 同一菜单项。
+/// 编辑态不绑定右键（保留浏览器原生复制 / 粘贴），故用例不要先进入编辑态。
+export async function openSimilarSearchFromPromptDetail(
+  page: Page,
+  detail: Locator,
+  content: string,
+): Promise<Locator> {
+  await detail.getByText(content).first().click({ button: "right" });
+  return expectSimilarResultModal(page);
+}
+
+/// 点菜单项并等结果页出现（两个入口共用）
+async function expectSimilarResultModal(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "搜索相似的图像和提示词" }).click();
+  const modal = page.getByRole("dialog", { name: "相似结果" });
+  await expect(modal).toBeVisible({ timeout: 5_000 });
+  return modal;
+}
+
+/// 把结果页两栏的参数各自「重置」为默认（条数 30 / 阈值 0.50）并各点一次「重查」。
+/// 为什么需要：阈值是持久化偏好，同 worker 共用 WebView2 profile，可能留下别的 spec
+/// （或上一轮中断的用例）改过的值；调它把用例起点拉回确定的默认参数（顺带覆盖「重置」按钮）。
+export async function resetBothPanesAndRequery(modal: Locator): Promise<void> {
+  for (const kind of ["image", "prompt"] as const) {
+    const pane = similarResultPane(modal, kind);
+    await pane.getByRole("button", { name: "重置" }).click();
+    await pane.getByRole("button", { name: "重查" }).click();
+  }
+}
+
+/// 把某一栏阈值用「−」降到最低（0）后点该栏「重查」。
+/// 为什么需要：假 embedding 的伪向量方向随机（真余弦 ≈0），默认阈值 0.5 会把结果全过滤掉；
+/// 顺带覆盖了步进控件与「重查只作用于本栏」两个交互（另一栏不受影响）。
+export async function lowerThresholdToZeroAndRequery(pane: Locator): Promise<void> {
+  const minus = pane.getByRole("button", { name: "降低阈值" });
+  for (let i = 0; i < 10; i++) await minus.click(); // 0.50 → 0.00，step 0.05
+  await pane.getByRole("button", { name: "重查" }).click();
+}
+
+/// 清掉用例改过的相似度阈值（两栏随「重查」持久化到 localStorage）。
+/// 同 worker 的其它 spec 文件共用同一 WebView2 profile，故用例收尾必须还原
+/// （与 `setListBlockSize` / `clearListBlockSize` 同一约定）。
+export function clearSimilarityThresholds(page: Page): Promise<void> {
+  return page.evaluate(() => {
+    localStorage.removeItem("image.similarity.minScore");
+    localStorage.removeItem("prompt.similarity.minScore");
+  });
+}
+
+/// 两类向量索引各跑一次增量（结果页两栏都需要），跑完关掉设置面板。
+/// 增量只补 `vec IS NULL`，故调用前需保证对应类别有未建向量的条目。
+export async function indexBothSimilarityKinds(page: Page): Promise<void> {
+  await runSimilarityIndex(page, "image");
+  await runSimilarityIndex(page, "prompt");
+  await closeSettings(page);
 }
 
 /// ---- 全屏查看（独立窗口）----

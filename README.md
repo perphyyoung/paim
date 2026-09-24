@@ -53,6 +53,22 @@ pnpm release
 - 字体家族下拉依赖 `queryLocalFonts()`（仅 Chromium 系内核）：WKWebView / WebKitGTK 下会自动回退到 7 个常用字体，功能可用但候选不全；
 - 托盘常驻、全局快捷键、单实例由 Tauri 插件提供，通常无需改，但未在其它平台验证。
 
+## 相似度检索（可选：本地 embedding 服务）
+
+「以图搜图」与「以文搜文」共用同一个本地 [llama.cpp](https://github.com/ggml-org/llama.cpp) embedding 服务，属**可选能力**：不启动服务时其余功能不受影响。
+
+1. 启动服务（`--embeddings` 必需；`--pooling last` 让接口返回单条已归一化向量；`-b/-ub 1024` 让全分辨率图不被物理批卡住）：
+
+```bash
+llama-server -m <模型>.gguf -mm <mmproj>.gguf --embeddings --pooling last -b 1024 -ub 1024 -np 4 --no-cache-prompt
+```
+
+2. 应用内「设置 → 相似度」：填服务地址（默认 `http://127.0.0.1:8080`）→ 点「测试」确认连通 → 对「图像向量索引」「提示词向量索引」分别点「增量索引」（换 embedding 模型或改了预处理规则后点「全量重建」）。
+3. 建好索引后：在图像详情的图像区右键，或在提示词详情（非编辑态）的提示词内容上右键 → 「搜索相似的图像和提示词」，打开结果页（左「相似图像」、右「相似提示词」，两栏的条数 / 阈值 / 重置 / 重查互相独立）。
+4. 入库与检索必须同一套预处理：应用侧统一「JPEG + 长边 1024」（服务端图像解码器不认 webp，直喂会被静默丢弃成「假图」，向量与画面无关）。
+
+**主模型与 mmproj 必须配套**：主模型的架构标记要与投影器一致（实测 `qwen3vl` 标记配同套 mmproj 可用；`qwen2vl` 标记配 `qwen3vl_merger` 型 mmproj 会在启动时直接报 `mismatch between text model … and mmproj …` 并退出）。启动参数、资源占用与吞吐实测、以及踩坑结论见 [scripts/readme.md](scripts/readme.md)。
+
 ## 项目结构
 
 业务按「特征切片」组织，同一业务在两端对齐：前端是 `src/features/<业务>/` 目录，后端是 `commands/`（命令）与 `domain/`（领域）下的同名文件。完整目录树、分层规则与依赖约束见 [项目架构.md](项目架构.md)；缓存与加载优化的整体设计（KeepAlive、虚拟滚动、批量 Map、实体级缓存、懒自愈等）见 [缓存及加载优化设计.md](缓存及加载优化设计.md)。
@@ -146,7 +162,7 @@ node scripts/bench-data.mjs clean --dir paim-data.压测
 
 数据目录下 `paim.db`，启动时自动建表（与 prompt-manager 同构，便于导入其全量备份）：
 
-- `prompts` / `images` — 提示词、图像（软删除回收站、收藏、备注）
+- `prompts` / `images` — 提示词、图像（软删除回收站、收藏、备注）；两者各有一个 `vec` 列存相似度向量（未启用相似度检索时恒为 NULL）
 - `prompt_tag_groups` / `prompt_tags` / `prompt_tag_relations` — 提示词标签体系
 - `image_tag_groups` / `image_tags` / `image_tag_relations` — 图像标签体系
 - `prompt_image_relations` — 提示词 ↔ 图像关联（带排序）
