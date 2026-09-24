@@ -313,7 +313,12 @@ function pickPrompt(id: string) {
             />
             <span v-else class="h-12 w-12 shrink-0 rounded bg-gray-700"></span>
             <div class="min-w-0">
-              <p class="truncate text-sm font-semibold text-gray-100">
+              <!-- 源文案：图像显示文件名（单行截断）；提示词显示内容（可多行，超出裁掉，悬停看全文） -->
+              <p
+                class="text-sm font-semibold text-gray-100"
+                :class="sourceKind === 'Prompt' ? 'line-clamp-3 whitespace-pre-wrap' : 'truncate'"
+                :title="sourceName"
+              >
                 {{ sourceName ?? sourceId }}
               </p>
               <p class="text-xs text-gray-500">

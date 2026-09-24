@@ -1023,7 +1023,7 @@ async function onPickerImported() {
     :open="similarOpen"
     source-kind="Prompt"
     :source-id="current?.id ?? ''"
-    :source-name="current?.title"
+    :source-name="current?.content"
     @close="similarOpen = false"
     @open-prompt="onOpenSimilarPrompt"
     @open-image="onOpenSimilarImage"
