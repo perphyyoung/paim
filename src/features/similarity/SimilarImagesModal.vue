@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // 相似图像结果弹窗：以某张图为查询，按余弦分列出最相似的若干张（点击结果切到该图详情）。
-// 复用设置页的服务地址 / 条数 / 阈值；缩略图按「数据目录 + 行内 thumbnail_path」拼，
-// 缺图的走一次 ensure_image_thumbnails 自愈（与主页同一套）。
+// 检索参数（返回条数 / 相似度阈值）就近放在本弹窗标题栏 —— 它们只服务「查询」，
+// 改动即持久化（与设置页共用 useSimilaritySettings 单例）并按新参数重查。
+// 缩略图按「数据目录 + 行内 thumbnail_path」拼，缺图的走一次 ensure_image_thumbnails 自愈（与主页同一套）。
 import { onUnmounted, ref, watch } from "vue";
 import { commands, type ImageCard } from "@/bindings";
 import { toAssetUrl } from "@/utils/assetUrl";
 import { applyThumbFix } from "@/utils/thumbFix";
-import { useSimilaritySettings } from "./settings";
+import { LIMIT_RANGE, MIN_SCORE_RANGE, useSimilaritySettings } from "./settings";
 
 const props = defineProps<{
   open: boolean;
@@ -17,7 +18,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: []; "open-image": [id: string] }>();
 
-const { baseUrl, limit, minScore } = useSimilaritySettings();
+const { baseUrl, limit, minScore, setLimit, setMinScore } = useSimilaritySettings();
 
 interface ResultRow {
   card: ImageCard;
@@ -27,8 +28,11 @@ const rows = ref<ResultRow[]>([]);
 const thumbs = ref<Record<string, string>>({});
 const loading = ref(false);
 const error = ref("");
+/// 请求序号：改参数会连发多次查询，只有最后一次的结果允许落地
+let seq = 0;
 
 async function load() {
+  const mine = ++seq;
   loading.value = true;
   error.value = "";
   rows.value = [];
@@ -40,10 +44,12 @@ async function load() {
       minScore.value,
       false,
     );
+    if (mine !== seq) return;
     const ids = hits.map((h) => h.image_id);
     if (ids.length === 0) return;
     // 卡片数据按相似度顺序取回（后端保持入参顺序、缺失项跳过）
     const cards = await commands.imageCardsByIds(ids);
+    if (mine !== seq) return;
     const scoreById = new Map(hits.map((h) => [h.image_id, h.score ?? 0]));
     rows.value = cards.map((card) => ({ card, score: scoreById.get(card.id) ?? 0 }));
 
@@ -57,13 +63,24 @@ async function load() {
     const need = rows.value.filter((r) => !map[r.card.id]).map((r) => r.card.id);
     if (need.length > 0) {
       const fixed = await commands.ensureImageThumbnails(need);
+      if (mine !== seq) return;
       thumbs.value = applyThumbFix(dir, map, fixed.fixed);
     }
   } catch (e) {
-    error.value = String(e);
+    if (mine === seq) error.value = String(e);
   } finally {
-    loading.value = false;
+    if (mine === seq) loading.value = false;
   }
+}
+
+/// 改条数 / 阈值：持久化后立即按新参数重查（用 @change，拖滑块过程不发请求）
+function applyLimit(v: number) {
+  setLimit(v);
+  void load();
+}
+function applyMinScore(v: number) {
+  setMinScore(v);
+  void load();
 }
 
 // ESC 关闭：capture + stopPropagation，避免同时触发下层详情弹窗的关闭
@@ -81,6 +98,7 @@ watch(
       void load();
     } else {
       window.removeEventListener("keydown", onKeydown, true);
+      seq++; // 作废在途请求
       rows.value = [];
       thumbs.value = {};
       error.value = "";
@@ -115,7 +133,35 @@ const scoreText = (score: number) => score.toFixed(3);
             </span>
           </h3>
           <div class="flex shrink-0 items-center gap-3 text-xs text-gray-500">
-            <span v-if="!loading && !error">阈值 {{ minScore }} · 最多 {{ limit }} 条</span>
+            <span v-if="!loading && !error" class="tabular-nums">
+              {{ rows.length }} 张达到阈值
+            </span>
+            <label class="flex items-center gap-1">
+              条数
+              <input
+                :value="limit"
+                type="number"
+                :min="LIMIT_RANGE.min"
+                :max="LIMIT_RANGE.max"
+                aria-label="返回条数上限"
+                class="w-16 rounded border bg-gray-900 px-1 py-0.5 text-gray-200 border-gray-600"
+                @change="applyLimit(Number(($event.target as HTMLInputElement).value))"
+              />
+            </label>
+            <label class="flex items-center gap-1">
+              阈值
+              <input
+                :value="minScore"
+                type="range"
+                :min="MIN_SCORE_RANGE.min"
+                :max="MIN_SCORE_RANGE.max"
+                :step="MIN_SCORE_RANGE.step"
+                aria-label="相似度阈值"
+                class="w-28 accent-blue-600"
+                @change="applyMinScore(Number(($event.target as HTMLInputElement).value))"
+              />
+              <span class="w-8 tabular-nums text-gray-400">{{ minScore }}</span>
+            </label>
             <button
               type="button"
               class="rounded border px-2 py-1 text-sm text-gray-200 transition-colors border-gray-600 hover:bg-gray-700"
@@ -132,7 +178,7 @@ const scoreText = (score: number) => score.toFixed(3);
         </p>
         <p v-else-if="error" class="mt-3 break-all text-sm text-red-400">{{ error }}</p>
         <p v-else-if="rows.length === 0" class="mt-3 text-sm text-gray-400">
-          没有达到阈值的相似图像（可在设置页调低相似度阈值，或先建立向量索引）。
+          没有达到阈值的相似图像（可向左调低上方阈值，或先在设置页建立向量索引）。
         </p>
 
         <div class="mt-3 min-h-0 flex-1 overflow-auto">
@@ -166,7 +212,9 @@ const scoreText = (score: number) => score.toFixed(3);
           </div>
         </div>
 
-        <p class="mt-2 text-xs text-gray-500">点击结果切换到该图详情；点遮罩或按 Esc 关闭本窗口</p>
+        <p class="mt-2 text-xs text-gray-500">
+          点击结果切换到该图详情；点遮罩或按 Esc 关闭本窗口（条数 / 阈值会记住，供下次查询使用）
+        </p>
       </div>
     </div>
   </Teleport>

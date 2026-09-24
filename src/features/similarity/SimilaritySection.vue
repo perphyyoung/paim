@@ -9,13 +9,8 @@ import { commands, events, type SimilarityIndexProgress, type SimilarityStatus }
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { useConfirm } from "@/components/useConfirm";
 import { useToast } from "@/components/useToast";
-import {
-  CONCURRENCY_RANGE,
-  DEFAULT_BASE_URL,
-  LIMIT_RANGE,
-  MIN_SCORE_RANGE,
-  useSimilaritySettings,
-} from "./settings";
+// 检索参数（条数上限 / 相似度阈值）只服务「查询」场景，放在相似度结果弹窗里（见 SimilarImagesModal.vue）
+import { CONCURRENCY_RANGE, DEFAULT_BASE_URL, useSimilaritySettings } from "./settings";
 
 const { showToast } = useToast();
 const {
@@ -28,18 +23,8 @@ const {
   cancelConfirm,
   confirmAction,
 } = useConfirm();
-const {
-  baseUrl,
-  enabled,
-  limit,
-  minScore,
-  concurrency,
-  setBaseUrl,
-  setEnabled,
-  setLimit,
-  setMinScore,
-  setConcurrency,
-} = useSimilaritySettings();
+const { baseUrl, enabled, concurrency, setBaseUrl, setEnabled, setConcurrency } =
+  useSimilaritySettings();
 
 const status = ref<SimilarityStatus | null>(null);
 const serviceText = ref("");
@@ -269,43 +254,6 @@ async function clearIndex() {
 
     <div class="flex items-center justify-between gap-3 py-3">
       <div class="min-w-0">
-        <dt class="text-gray-400">返回条数上限</dt>
-        <dd class="text-sm text-gray-500">
-          当前 {{ limit }} 条（{{ LIMIT_RANGE.min }}~{{ LIMIT_RANGE.max }}）
-        </dd>
-      </div>
-      <input
-        :value="limit"
-        type="number"
-        :min="LIMIT_RANGE.min"
-        :max="LIMIT_RANGE.max"
-        aria-label="返回条数上限"
-        class="w-24 shrink-0 rounded border bg-gray-800 px-2 py-1 text-sm text-gray-200 border-gray-600"
-        @change="setLimit(Number(($event.target as HTMLInputElement).value))"
-      />
-    </div>
-
-    <div class="flex items-center justify-between gap-3 py-3">
-      <div class="min-w-0">
-        <dt class="text-gray-400">相似度阈值</dt>
-        <dd class="text-sm text-gray-500">
-          低于该余弦分的候选不返回，当前 {{ minScore }}（同内容约 0.99、无关内容约 0.2）
-        </dd>
-      </div>
-      <input
-        :value="minScore"
-        type="range"
-        :min="MIN_SCORE_RANGE.min"
-        :max="MIN_SCORE_RANGE.max"
-        :step="MIN_SCORE_RANGE.step"
-        aria-label="相似度阈值"
-        class="w-40 shrink-0 accent-blue-600"
-        @input="setMinScore(Number(($event.target as HTMLInputElement).value))"
-      />
-    </div>
-
-    <div class="flex items-center justify-between gap-3 py-3">
-      <div class="min-w-0">
         <dt class="text-gray-400">索引并发数</dt>
         <dd class="text-sm text-gray-500">
           当前 {{ concurrency }} 路请求（{{ CONCURRENCY_RANGE.min }}~{{ CONCURRENCY_RANGE.max }}）；
@@ -329,9 +277,9 @@ async function clearIndex() {
         <dt class="text-gray-400">向量索引</dt>
         <dd class="text-sm text-gray-500">{{ statusText }}</dd>
         <dd class="mt-1 text-xs text-gray-500">
-          图像会先转成「JPEG + 长边 1024」再送服务；换了 embedding
-          模型（或改了上述预处理规则）后需点
-          <span class="text-gray-400">全量重建</span>，增量只补未建立的图像
+          图像会先转成「JPEG + 长边 1024」再送服务；换了 embedding 模型（或改了该预处理规则）后需点
+          <span class="text-gray-400">全量重建</span
+          >，增量只补未建立的图像。检索用的返回条数与相似度阈值在 「相似图像」结果弹窗里调整
         </dd>
       </div>
       <div class="flex shrink-0 items-center gap-2">
