@@ -23,8 +23,10 @@ const props = defineProps<{
   sourceKind: "Image" | "Prompt";
   /** 查询源 id */
   sourceId: string;
-  /** 源名称：图像文件名 / 提示词标题 */
+  /** 源文案：图像优先给「关联提示词内容」，没有才给文件名；提示词给内容（由调用方决定传哪一个） */
   sourceName?: string;
+  /** 源文案类型：`content` 按内容渲染（多行、保留换行、最多 3 行），`name` 单行截断 */
+  sourceTextKind?: "name" | "content";
   /** 源缩略图（由调用方按各自主页那一套取好；缺省时本组件自己取一次） */
   sourceThumb?: string;
 }>();
@@ -313,10 +315,13 @@ function pickPrompt(id: string) {
             />
             <span v-else class="h-12 w-12 shrink-0 rounded bg-gray-700"></span>
             <div class="min-w-0">
-              <!-- 源文案：图像显示文件名（单行截断）；提示词显示内容（可多行，超出裁掉，悬停看全文） -->
+              <!-- 源文案：内容（提示词内容 / 图像的关联提示词内容）按多行渲染并裁到 3 行，文件名单行截断；
+                   两者都挂 title，悬停可看全文 -->
               <p
                 class="text-sm font-semibold text-gray-100"
-                :class="sourceKind === 'Prompt' ? 'line-clamp-3 whitespace-pre-wrap' : 'truncate'"
+                :class="
+                  sourceTextKind === 'content' ? 'line-clamp-3 whitespace-pre-wrap' : 'truncate'
+                "
                 :title="sourceName"
               >
                 {{ sourceName ?? sourceId }}

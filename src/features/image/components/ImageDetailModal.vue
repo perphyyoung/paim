@@ -1055,13 +1055,15 @@ const fmtSize = (bytes: number) => {
     </button>
   </ContextMenu>
 
-  <!-- 相似结果页（左图像 / 右提示词；图像结果切到该图详情，提示词结果叠加打开提示词详情） -->
+  <!-- 相似结果页（左图像 / 右提示词；图像结果切到该图详情，提示词结果叠加打开提示词详情）。
+       首行源文案：该图有关联提示词就先显示提示词内容（跟随详情里选中的那条），没有才回落到文件名 -->
   <SimilarSearchModal
     v-if="similarOpen"
     :open="similarOpen"
     source-kind="Image"
     :source-id="currentId"
-    :source-name="current?.file_name"
+    :source-name="currentPrompt?.content ?? current?.file_name"
+    :source-text-kind="currentPrompt ? 'content' : 'name'"
     :source-thumb="thumbs[currentId]"
     @close="similarOpen = false"
     @open-image="onOpenSimilarImage"

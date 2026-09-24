@@ -1024,6 +1024,7 @@ async function onPickerImported() {
     source-kind="Prompt"
     :source-id="current?.id ?? ''"
     :source-name="current?.content"
+    source-text-kind="content"
     @close="similarOpen = false"
     @open-prompt="onOpenSimilarPrompt"
     @open-image="onOpenSimilarImage"
