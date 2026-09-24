@@ -9,13 +9,17 @@
  * 断言用「无标」chip 的出现/消失：chip 只在计数 > 0 时渲染（TagFilterPanel），于是
  * 「最后一条无标条目被打上标签」等价于 chip 消失——比读数字稳（计数是内存值，直接查库证明不了主页刷新）。
  *
- * 两条用例分别覆盖两条入口：① 提示词主页批量添加 ② 图像主页拖拽添加。
+ * 四条用例按「改了会影响特殊计数的数据」的入口分：① 提示词主页批量添加标签 ② 图像主页拖拽添加标签
+ * （断言「无标」chip 消失）③④ 两个主页卡片上的**单张收藏**（断言「收藏」chip 出现 / 消失）。
  * 用例 2 的拖拽源标签先用批量入口创建（顺带让筛选区出现该标签）；若批量刷新坏了，用例 1 会先红。
  */
 import { expect, type Page } from "@playwright/test";
 import {
+  cardById,
   createPromptViaDialog,
   expectToastAndDismiss,
+  findPromptIdByContent,
+  gotoPromptsPage,
   openBatchAddTagDialog,
   specialTagChip,
   test,
@@ -82,4 +86,43 @@ test("图像主页拖拽添加标签后：无标计数随之刷新（chip 消失
   await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
   await expect(specialTagChip(page, NO_TAG)).toBeHidden();
   e2eLog.info("[step] 无标 chip 已消失（计数已刷新）");
+});
+
+// 卡片上的**单张**收藏 / 安全切换（MediaCard 的按钮行）只把新对象写回列表，不重载列表——
+// 因此也要显式重拉特殊计数（「收藏」「敏感」），否则 chip 停在旧值。两条用例对称覆盖两个主页。
+// 卡片上的按钮是文字层的兄弟节点，故用 `cardById`（按条目 id 取卡片根）作作用域。
+
+test("提示词主页卡片单张收藏：收藏计数随之刷新（chip 出现 / 消失）", async ({ page }) => {
+  // 文件内前面的用例停在图像主页（用例间只 reload，不重置路由），先切回
+  await gotoPromptsPage(page);
+  const content = `e2e 卡片收藏 ${Date.now()}`;
+  await createPromptViaDialog(page, content);
+  await expect(specialTagChip(page, "收藏")).toBeHidden(); // 基线：尚未收藏任何条目
+  e2eLog.info("[step] 基线：收藏 chip 不可见");
+
+  const card = cardById(page, await findPromptIdByContent(page, content));
+  await card.getByTitle("收藏").click(); // 卡片不带 toast，直接看计数
+  await expect(specialTagChip(page, "收藏")).toBeVisible(); // 修复前：计数没刷，chip 不出现
+
+  await card.getByTitle("取消收藏").click();
+  await expect(specialTagChip(page, "收藏")).toBeHidden();
+  e2eLog.info("[step] 卡片收藏 chip 随单张切换出现并消失");
+});
+
+test("图像主页卡片单张收藏：收藏计数随之刷新（chip 出现 / 消失）", async ({ page, app }) => {
+  const { imageId } = await uploadImageWithPrompt(
+    page,
+    `e2e 卡片收藏图像 ${Date.now()}`,
+    app.mockImagePath,
+  );
+  await expect(specialTagChip(page, "收藏")).toBeHidden();
+  e2eLog.info("[step] 基线：收藏 chip 不可见");
+
+  const card = cardById(page, imageId);
+  await card.getByTitle("收藏").click();
+  await expect(specialTagChip(page, "收藏")).toBeVisible();
+
+  await card.getByTitle("取消收藏").click();
+  await expect(specialTagChip(page, "收藏")).toBeHidden();
+  e2eLog.info("[step] 卡片收藏 chip 随单张切换出现并消失");
 });

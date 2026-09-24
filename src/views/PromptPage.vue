@@ -311,6 +311,8 @@ function rowInfo(p: PromptCard): { label: string; value: string } {
 const { toggleOne, toggleBatch } = useItemToggle<PromptCard>({
   domain: "prompt",
   patch: (p) => replaceItem(p.id, p),
+  // 卡片上单张切收藏：特殊计数「收藏」是内存值，只写回列表项不会更新它
+  afterToggle: loadSpecialTagsCounts,
   showToast,
 });
 function toggleFavorite(p: PromptCard) {

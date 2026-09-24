@@ -587,6 +587,8 @@ async function copyPrompt(img: ImageCard) {
 const { toggleOne, toggleBatch } = useItemToggle<ImageCard>({
   domain: "image",
   patch: (it) => replaceItem(it.id, it),
+  // 卡片上单张切收藏：特殊计数「收藏」是内存值，只写回列表项不会更新它
+  afterToggle: loadSpecialTagsCounts,
   showToast,
 });
 function toggleFavorite(img: ImageCard) {

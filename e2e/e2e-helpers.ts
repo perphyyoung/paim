@@ -692,6 +692,13 @@ export function specialTagChip(page: Page, name: string): Locator {
   return page.getByText(name, { exact: true });
 }
 
+/// 卡片根元素（MediaCard 根带 `data-card-drop-id` = 条目 id；拖拽命中与卡片级按钮都把它当作用域）。
+/// id 来自 `findPromptIdByContent` / `uploadImageWithPrompt` 等查库 helper 的返回值。
+/// 为什么不用「文字 → 后代」定位：卡片上的按钮行是文字层的**兄弟节点**，不是它的子节点。
+export function cardById(page: Page, id: string): Locator {
+  return page.locator(`[data-card-drop-id="${id}"]`);
+}
+
 /// Ctrl 点击卡片进入批量模式并打开「添加标签」弹窗，返回标签名输入框。
 /// 进批量模式必须带 Ctrl（普通点击卡片是打开详情）。
 /// 注：候选下拉是 Teleport + fixed z-[125]，会盖住弹窗的「确定」按钮（预期行为），

@@ -699,7 +699,7 @@ Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` �
 ### 顺带审计（同一类：改了数据没重拉计数）
 
 - **已覆盖**（都经过 `loadPrompts` / `loadImages`，其中已含本计数）：详情关窗（有改动时）、上传完成、切页脏标记、批量收藏、批量删除、单张删除、回收站恢复 / 清空 / 彻底删除（彻底删除的条目本就 `is_deleted = 1`，不进计数）。
-- **遗留**：主页卡片上的**单张**收藏 / 安全切换（`useItemToggle.toggleOne`）只写回列表项，没重拉特殊计数 → 「收藏」「敏感」chip 会停在旧值；本次未动（属另一入口的取舍，待定）。
+- **卡片上的单张收藏**（`useItemToggle.toggleOne`）原先只写回列表项，没重拉特殊计数 → 「收藏」chip 停在旧值。已补：`useItemToggle` 增 `afterToggle` 回调，两个主页传 `loadSpecialTagsCounts`（卡片上只有收藏这一项切换，所以只重拉该计数、不重拉整个筛选区）；`afterToggle` 自身失败单独吞掉，避免切换已成功却报「更新失败」。
 
 ### 后续参考 / 通用约束
 

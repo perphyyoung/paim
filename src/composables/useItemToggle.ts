@@ -23,11 +23,17 @@ interface UseItemToggleOptions<T extends BoolItem> {
   domain: "image" | "prompt";
   /** 主页单张切换后写回列表（分页下只更新已加载块中那一项；详情弹窗可省略） */
   patch?: (item: T) => void;
+  /**
+   * 主页卡片单张切换成功后调用（详情弹窗不需要：关窗时若有改动会整体重载，已覆盖）。
+   * 卡片上只有「收藏」这一项切换，而「收藏」本身就是特殊标签计数：只把新对象写回列表项
+   * 不会更新那个内存计数，所以页面要在这里重拉一次（`loadSpecialTagsCounts`）。
+   */
+  afterToggle?: () => void | Promise<void>;
   showToast: (message: string, type?: ToastType) => void;
 }
 
 export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<T>) {
-  const { domain, patch, showToast } = options;
+  const { domain, patch, afterToggle, showToast } = options;
   const noun = domain === "image" ? "张图像" : "个提示词";
 
   // 单条切换的下一个布尔值
@@ -71,11 +77,17 @@ export function useItemToggle<T extends BoolItem>(options: UseItemToggleOptions<
     }
   }
 
-  // 主页单张切换：后端返回新对象，写回列表对应项
+  // 主页单张切换：后端返回新对象，写回列表对应项，随后刷新特殊标签计数
   async function toggleOne(item: T, field: BoolField) {
     try {
       const updated = await updateDetail(item, field);
       patch?.(updated as T);
+      // 计数刷新单独吞错：切换已经落库成功，不该因重拉失败而报「更新失败」
+      try {
+        await afterToggle?.();
+      } catch {
+        // 计数留在旧值，下次重载会自愈
+      }
     } catch (e) {
       showToast(`更新失败：${e}`, "error");
     }
