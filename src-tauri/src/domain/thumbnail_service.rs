@@ -84,7 +84,7 @@ pub fn build_thumbnail(
         return Ok(format!("{thumb_rel_prefix}/{name}"));
     }
 
-    let full_path = data_dir.join(rel);
+    let full_path = crate::infra::db::data_path(data_dir, rel);
     if !full_path.exists() {
         crate::log_warn!(
             "image_missing: id={} file_name={} caller=build_thumbnail",
@@ -242,7 +242,7 @@ pub fn ensure_thumbnails(
         };
         // 已有路径且文件还在 → 无需处理
         if let Some(cur) = &current {
-            if data_dir.join(cur).is_file() {
+            if crate::infra::db::data_path(data_dir, cur).is_file() {
                 continue;
             }
         }

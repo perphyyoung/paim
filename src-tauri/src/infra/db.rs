@@ -269,6 +269,22 @@ pub fn images_dir(app: &tauri::AppHandle) -> PathBuf {
     base_data_dir(app).join("images")
 }
 
+/// 库中相对路径（`images.relative_path` / `thumbnail_path`）→ 绝对路径：**唯一拼法**。
+///
+/// 这两个字段相对**数据目录**（`data_dir`）存储、且用正斜杠（如 `images/202607/img_x.webp`），
+/// 因此：
+/// - 不要用 `images_dir.join(relative_path)` —— `images_dir` 已含 `images` 段，会拼成
+///   `images/images/...`（曾把相似度索引整批打挂）；
+/// - 命令层不要再手写 `data_dir(&app).join(...)`，需要 app 时用 [`app_data_path`]。
+pub fn data_path(data_dir: &Path, relative_path: &str) -> PathBuf {
+    data_dir.join(relative_path.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
+
+/// [`data_path`] 的 AppHandle 便捷版。
+pub fn app_data_path(app: &tauri::AppHandle, relative_path: &str) -> PathBuf {
+    data_path(&data_dir(app), relative_path)
+}
+
 /// 缩略图存储目录（数据目录基准下）。
 pub fn thumbnails_dir(app: &tauri::AppHandle) -> PathBuf {
     base_data_dir(app).join("thumbnails")
@@ -422,7 +438,7 @@ pub fn open_image_location(
     let Some((rel, file_name)) = row.filter(|(s, _)| !s.is_empty()) else {
         return Err(AppError::Message("图像不存在或缺少保存路径".into()));
     };
-    let full = data_dir(&app).join(&rel);
+    let full = app_data_path(&app, &rel);
     if !full.exists() {
         crate::log_warn!("image_missing: id={id} file_name={file_name} caller=open_image_location");
     }

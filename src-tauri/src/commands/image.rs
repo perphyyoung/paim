@@ -313,7 +313,7 @@ pub fn get_image_src(
     let Some((rel, file_name)) = row else {
         return Err("原图不存在".into());
     };
-    let full = crate::infra::db::data_dir(&app).join(&rel);
+    let full = crate::infra::db::app_data_path(&app, &rel);
     if !full.exists() {
         crate::log_warn!("image_missing: id={id} file_name={file_name} caller=get_image_src");
     }

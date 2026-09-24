@@ -42,7 +42,7 @@ pub fn e2e_delete_image_thumbnail(
     if rel.is_empty() {
         return Ok(None);
     }
-    let full = crate::infra::db::data_dir(&app).join(&rel);
+    let full = crate::infra::db::app_data_path(&app, &rel);
     if full.exists() {
         std::fs::remove_file(&full)
             .map_err(|e| AppError::Message(format!("删除缩略图失败: {e}")))?;

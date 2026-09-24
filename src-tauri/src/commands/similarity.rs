@@ -78,7 +78,7 @@ pub async fn index_image_embeddings(
     let task_app = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let embedder = embedding_client::make_embedder(&base_url);
-        let images_dir = db::images_dir(&task_app);
+        let data_dir = db::data_dir(&task_app);
         let bk = task_app.state::<BkDb>();
         let lock = || bk.0.lock().map_err(|e| AppError::Message(e.to_string()));
 
@@ -94,8 +94,10 @@ pub async fn index_image_embeddings(
         let mut indexed = 0usize;
         let mut failed = 0usize;
         for (i, item) in pending.iter().enumerate() {
-            let outcome = similarity_service::prepare_image(&images_dir.join(&item.relative_path))
-                .and_then(|jpeg| embedder.embed_image(&jpeg));
+            // 路径统一走 db::data_path（relative_path 相对数据目录，勿用 images_dir 再拼）
+            let outcome =
+                similarity_service::prepare_image(&db::data_path(&data_dir, &item.relative_path))
+                    .and_then(|jpeg| embedder.embed_image(&jpeg));
             match outcome {
                 Ok(vec) => {
                     let conn = lock()?;
@@ -140,7 +142,7 @@ pub async fn similar_images(
     safe_only: bool,
 ) -> Result<Vec<SimilarHit>, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let images_dir = db::images_dir(&app);
+        let data_dir = db::data_dir(&app);
         let bk = app.state::<BkDb>();
         let lock = || bk.0.lock().map_err(|e| AppError::Message(e.to_string()));
 
@@ -156,7 +158,7 @@ pub async fn similar_images(
                     similarity_service::relative_path_of(&conn, &image_id)?
                         .ok_or_else(|| AppError::Message(format!("图像 {image_id} 不存在")))?
                 };
-                let jpeg = similarity_service::prepare_image(&images_dir.join(rel))?;
+                let jpeg = similarity_service::prepare_image(&db::data_path(&data_dir, &rel))?;
                 let vec = embedding_client::make_embedder(&base_url).embed_image(&jpeg)?;
                 let conn = lock()?;
                 similarity_service::store(&conn, &image_id, &vec)?;

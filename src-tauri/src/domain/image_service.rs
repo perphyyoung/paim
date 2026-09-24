@@ -650,10 +650,10 @@ pub(crate) fn purge_with(conn: &Connection, data_dir: &Path, id: &str) -> rusqli
 
     if let Some((rel, thumb)) = row {
         if let Some(rel) = rel {
-            let _ = std::fs::remove_file(data_dir.join(rel));
+            let _ = std::fs::remove_file(crate::infra::db::data_path(data_dir, &rel));
         }
         if let Some(thumb) = thumb {
-            let _ = std::fs::remove_file(data_dir.join(thumb));
+            let _ = std::fs::remove_file(crate::infra::db::data_path(data_dir, &thumb));
         }
         let tx = conn.unchecked_transaction()?;
         let related_prompt_ids: Vec<String> = {

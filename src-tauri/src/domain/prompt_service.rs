@@ -494,7 +494,7 @@ pub fn list_related_images_with(
     for row in rows {
         let (id, file_name, src_rel) = row?;
         if let Some(rel) = &src_rel {
-            let full = data_dir.join(rel);
+            let full = crate::infra::db::data_path(data_dir, rel);
             if !full.exists() {
                 crate::log_warn!(
                     "image_missing: id={id} file_name={file_name} caller=list_related_images_with"
@@ -505,7 +505,11 @@ pub fn list_related_images_with(
             id,
             file_name,
             src: src_rel
-                .map(|rel| data_dir.join(&rel).to_string_lossy().into_owned())
+                .map(|rel| {
+                    crate::infra::db::data_path(data_dir, &rel)
+                        .to_string_lossy()
+                        .into_owned()
+                })
                 .unwrap_or_default(),
             tags: Vec::new(),
         });
