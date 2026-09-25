@@ -453,7 +453,7 @@ async function onOpenSimilarImage(id: string) {
 }
 
 /// 嵌套图像详情里点到的「提示词」结果（跨类）：关掉本层嵌套图像，把请求上抛给宿主 ——
-/// 宿主（图像详情）用自己的嵌套提示词槽替换，层级不增（槽位模型见 docs/lessons.md 第 24 节）。
+/// 宿主（图像详情）用自己的嵌套提示词槽替换，层级不增（槽位模型见 docs/开发经验.md 第 5 节）。
 /// 顶层详情上抛时由页面换当前详情，保持既有语义。
 function onNestedOpenPrompt(id: string) {
   imgDetailOpen.value = false;
@@ -1051,7 +1051,7 @@ async function onPickerImported() {
 
   <!-- 右键菜单：提示词内容 → 搜索相似的图像和提示词（设置里可关闭）。
        嵌套态同样可用：结果跳转已收敛为「替换本层槽位 / 上抛给宿主替换其槽位」，不会越点越多
-       （嵌套详情的槽位模型见 docs/lessons.md 第 24 节） -->
+       （嵌套详情的槽位模型见 docs/开发经验.md 第 5 节） -->
   <ContextMenu
     :open="!!contentCtxMenu"
     :x="contentCtxMenu?.x ?? 0"

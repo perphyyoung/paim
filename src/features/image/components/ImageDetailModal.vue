@@ -1077,7 +1077,7 @@ const fmtSize = (bytes: number) => {
   />
 
   <!-- 相似结果里的提示词（跨模态命中）：叠加打开提示词详情。
-       它在里面点到的提示词结果回到本槽位替换（同类 → 换本层，不叠新层；槽位模型见 docs/lessons.md 第 24 节） -->
+       它在里面点到的提示词结果回到本槽位替换（同类 → 换本层，不叠新层；槽位模型见 docs/开发经验.md 第 5 节） -->
   <PromptDetailModal
     v-if="similarPromptOpen"
     :open="similarPromptOpen"
