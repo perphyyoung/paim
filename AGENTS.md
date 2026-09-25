@@ -7,7 +7,6 @@
 - **只知道"干什么、不知道叫什么"** → `zg query "<自然语言>"` 语义检索；但本仓语义结果偏文档（`docs/lessons.md` 常排第一），代码命中率一般，**必须用 `--rg` 或 `--fts` 复核**后再下结论。
 - `--fts` 命中代码并带 `symbol:` 标签，介于精确与语义之间。
 - 代码结构变动后（如目录重命名、大批文件搬迁）先跑 `zg index`（增量：补新增与变更文件）。只有索引里仍出现已删除/旧路径的命中时，才用 `zg index --rebuild`（丢弃旧索引、全量重算 embedding，更慢）。
-- 与 gitnexus 的分工：zg 找「文本片段/文档/自然语言描述」，gitnexus 找「已知符号的调用链与影响面」（见下「项目规则」）。
 
 ## 项目规则
 
@@ -15,11 +14,8 @@
 - 不因「要重新编译/重新验证」降低代码质量标准
 - 对称结构优先于改动成本，不为「现状能跑」保留次优写法
 - 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → typecheck → build），通过后再按需跑 `pnpm test`（全部单元测试，含前后端）/ `sentrux check .` / `pnpm e2e`；验证通过才输出**单独一行**的简要的一句话 git commit 信息，方便复制。不要跳过 `pnpm check` 直接跑其它命令
+- 日志文件的删除会被阻止，用清空代替
 - 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
-- 语义搜索优先使用 gitnexus mcp，查询时传 `repo: "paim"` 指定当前仓库
-  - 查找某概念的所有相关代码（不看函数怎么命名）：用自然语言查询（中文/英文皆可），走语义向量召回
-  - 精确定位已知函数或某符号的调用链：直接用符号名/路径查询（如 `remove_prompt_image`）
-  - 编辑前先 `impact({target, direction:"upstream", repo:"paim"})` 做影响分析
 - 及时删除不再使用的代码和文件；检查死代码时，需要考虑 e2e
 - 正确命名，不要误导
 - 禁止 mod.rs 命名，直接功能命名
@@ -81,7 +77,6 @@
   - 说明：本应用的 electron 版本
   - 项目路径: "../prompt-manager"
   - 查阅时可参考 "../prompt-manager/代码目录结构说明.md"
-  - 也可使用 gitnexus mcp, 指定`repo: "prompt-manager"`
 - lap
   - 全称：lap
   - 说明：tauri 2 框架的图像管理工具，tauri 相关实现可参考
