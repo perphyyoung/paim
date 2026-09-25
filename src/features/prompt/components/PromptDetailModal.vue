@@ -451,6 +451,14 @@ async function onOpenSimilarImage(id: string) {
     showToast("打开图像详情失败", "error");
   }
 }
+
+/// 嵌套图像详情里点到的「提示词」结果（跨类）：关掉本层嵌套图像，把请求上抛给宿主 ——
+/// 宿主（图像详情）用自己的嵌套提示词槽替换，层级不增（槽位模型见 docs/lessons.md 第 24 节）。
+/// 顶层详情上抛时由页面换当前详情，保持既有语义。
+function onNestedOpenPrompt(id: string) {
+  imgDetailOpen.value = false;
+  emit("open-prompt", id);
+}
 // 切换条目 / 进入编辑态时收起相似结果（弹窗里查的已是另一条内容）
 watch([() => current.value?.id, edit], () => {
   similarOpen.value = false;
@@ -992,7 +1000,8 @@ async function onPickerImported() {
     </div>
   </Teleport>
 
-  <!-- 叠加的图像详情（嵌套：禁用其二级跳转入口） -->
+  <!-- 叠加的图像详情（嵌套：禁用其二级跳转入口）。
+       两个结果回传按「槽位模型」收敛：图像结果换掉本层嵌套图像；提示词结果上抛给宿主替换它的嵌套提示词槽 -->
   <ImageDetailModal
     :open="imgDetailOpen"
     :images="imgDetailImages"
@@ -1003,6 +1012,8 @@ async function onPickerImported() {
     @close="imgDetailOpen = false"
     @replaced="onNestedImageReplaced"
     @safe-synced="onNestedImageSafeSynced"
+    @open-image="onOpenSimilarImage"
+    @open-prompt="onNestedOpenPrompt"
   />
 
   <!-- 从图像列表导入选择器 -->
@@ -1038,7 +1049,9 @@ async function onPickerImported() {
     @open-image="onOpenSimilarImage"
   />
 
-  <!-- 右键菜单：提示词内容 → 搜索相似的图像和提示词（设置里可关闭；嵌套打开时禁止二级跳转） -->
+  <!-- 右键菜单：提示词内容 → 搜索相似的图像和提示词（设置里可关闭）。
+       嵌套态同样可用：结果跳转已收敛为「替换本层槽位 / 上抛给宿主替换其槽位」，不会越点越多
+       （嵌套详情的槽位模型见 docs/lessons.md 第 24 节） -->
   <ContextMenu
     :open="!!contentCtxMenu"
     :x="contentCtxMenu?.x ?? 0"
@@ -1046,7 +1059,7 @@ async function onPickerImported() {
     @close="closeContentCtxMenu"
   >
     <button
-      v-if="similarityEnabled && !isNested"
+      v-if="similarityEnabled"
       type="button"
       class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
       @click="openSimilarSearch"

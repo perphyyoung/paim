@@ -123,3 +123,60 @@ test("提示词详情内容右键搜索：跨模态命中图像并可打开图�
 
   await clearSimilarityThresholds(page);
 });
+
+// —— 嵌套详情的「槽位」模型：原始详情永不被替换，嵌套的图像/提示词各最多一个（模型见 docs/lessons.md 第 24 节）——
+// 修复前：嵌套态（`is-nested`）的提示词详情内容右键**没有菜单项**（空盒子），且嵌套层缺 `@open-*` 接线，
+// 于是「在嵌套层里继续搜」这条路是死的。本用例把它钉住：菜单可用 + 两层槽位的收敛行为。
+test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底部详情不动、同类只替换不叠加）", async ({
+  page,
+  app,
+}) => {
+  // 步骤多（两层嵌套 + 两次搜索 + 逐层关闭），放宽到 30s
+  test.setTimeout(30_000);
+  const { source, other } = makeContentPair("C");
+  await uploadImageWithPrompt(page, source, app.mockImagePath);
+  await uploadImageWithPrompt(page, other, app.mockImagePath);
+  await indexBothSimilarityKinds(page);
+
+  // 第 0 层：源图像的详情（本用例全程不得被替换）
+  await openImageDetail(page, source);
+  // 图像详情可能有多层，`.first()` = DOM 顺序在最前的那层 = 底部原始详情（后开的嵌套层在其后）
+  const bottom = page.getByRole("dialog", { name: "图像详情" }).first();
+  await expect(bottom).toBeVisible();
+
+  // 第 1 层：跨类结果（提示词）→ 嵌套提示词详情
+  const modal1 = await openSimilarSearchFromImageDetail(page, bottom);
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal1, "prompt"));
+  await similarResultPane(modal1, "prompt").getByText(other, { exact: true }).click();
+  const nestedPrompt = page.getByRole("dialog", { name: "提示词详情" });
+  await expect(nestedPrompt).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 第 1 层：嵌套提示词详情已打开");
+
+  // ① 嵌套层的内容右键必须能用：修复前菜单项不存在，这一步会超时
+  const modal2 = await openSimilarSearchFromPromptDetail(page, nestedPrompt, other);
+  e2eLog.info("[step] 嵌套提示词详情的内容右键可用（菜单项已出现）");
+
+  // ② 跨类结果（图像）→ 落在本层自己的嵌套图像槽：底部与第 1 层都保留（层数 2 + 1）
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal2, "image"));
+  await similarResultPane(modal2, "image").getByText("e2e-upload.png").first().click();
+  await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 本层
+  await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(1); // 第 1 层仍在
+  e2eLog.info("[step] 第 2 层：跨类结果落在本层槽位（底部详情未动、第 1 层保留）");
+
+  // ③ 第 2 层里再搜同类（图像）→ 替换本层，不叠加第 3 个图像详情
+  const nestedImage = page.getByRole("dialog", { name: "图像详情" }).nth(1);
+  const modal3 = await openSimilarSearchFromImageDetail(page, nestedImage);
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal3, "image"));
+  await similarResultPane(modal3, "image").getByText("e2e-upload.png").first().click();
+  await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 仍是 2：替换而非叠加
+  await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(1);
+  e2eLog.info("[step] 同类结果只替换本层槽位（层数不变）");
+
+  // ④ 逐层关闭：底部那条「源图像详情」原样还在（没有被任何一次跳转替换掉）
+  await closeDetail(page.getByRole("dialog", { name: "图像详情" }).nth(1));
+  await closeDetail(nestedPrompt);
+  await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
+  await closeDetail(bottom);
+  e2eLog.info("[step] 逐层关闭后，底部详情仍是源图像详情");
+  await clearSimilarityThresholds(page);
+});
