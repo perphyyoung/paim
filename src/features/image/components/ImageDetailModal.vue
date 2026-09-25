@@ -53,6 +53,8 @@ const emit = defineEmits<{
   (e: "ensure-index", index: number): void;
   /** 相似度结果里点开某张图：父级据此切换详情到该图（该图可能不在当前列表里） */
   (e: "open-image", id: string): void;
+  /** 嵌套实例里点到的提示词结果：本层不叠加，上抛给宿主按槽位替换（见 docs/开发经验.md 第 5 节） */
+  (e: "open-prompt", id: string): void;
 }>();
 
 const { showToast } = useToast();
@@ -82,12 +84,19 @@ function onOpenSimilarImage(id: string) {
   similarOpen.value = false;
   emit("open-image", id);
 }
-/// 提示词结果（跨模态命中）：本弹窗内部叠加打开提示词详情（与「编辑提示词」同一套嵌套写法）
+/// 提示词结果（跨模态命中）：本弹窗内部叠加打开提示词详情（与「编辑提示词」同一套嵌套写法）。
+/// **嵌套实例要上抛**：嵌套的图像详情必然已经坐在一个提示词层下面（它就是那一层的跨类槽），
+/// 再在内部开一层就是第 4 层、且提示词嵌套会有两个（违反槽位模型）→ 关掉自己的结果页交给宿主替换其提示词槽。
+/// 顶层（非嵌套）才用内部槽（那是它唯一的嵌套提示词层）。
 const similarPromptCards = ref<PromptCard[]>([]);
 const similarPromptTagNames = ref<Record<string, string[]>>({});
 const similarPromptOpen = ref(false);
 async function onOpenSimilarPrompt(id: string) {
   similarOpen.value = false;
+  if (props.isNested) {
+    emit("open-prompt", id);
+    return;
+  }
   try {
     const [card] = await commands.promptCardsByIds([id]);
     if (!card) {
@@ -1077,9 +1086,11 @@ const fmtSize = (bytes: number) => {
   />
 
   <!-- 相似结果里的提示词（跨模态命中）：叠加打开提示词详情。
-       它在里面点到的提示词结果回到本槽位替换（同类 → 换本层，不叠新层；槽位模型见 docs/开发经验.md 第 5 节） -->
+       它在里面点到的提示词结果回到本槽位替换（同类 → 换本层，不叠新层；槽位模型见 docs/开发经验.md 第 5 节）。
+       `:key` 必须跟着槽内容走：详情快照只在初始化时按 id 固定当前项（同 PromptDetailModal 的注释） -->
   <PromptDetailModal
     v-if="similarPromptOpen"
+    :key="similarPromptCards[0]?.id ?? 'none'"
     :open="similarPromptOpen"
     :prompts="similarPromptCards"
     :order="[similarPromptCards[0]?.id ?? '']"

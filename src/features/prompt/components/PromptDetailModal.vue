@@ -1001,8 +1001,11 @@ async function onPickerImported() {
   </Teleport>
 
   <!-- 叠加的图像详情（嵌套：禁用其二级跳转入口）。
-       两个结果回传按「槽位模型」收敛：图像结果换掉本层嵌套图像；提示词结果上抛给宿主替换它的嵌套提示词槽 -->
+       两个结果回传按「槽位模型」收敛：图像结果换掉本层嵌套图像；提示词结果上抛给宿主替换它的嵌套提示词槽。
+       `:key` 必须跟着槽内容走：详情快照（useDetailSnapshot）只在初始化时按 id 固定当前项，
+       换槽时复用同一实例会**停在旧 id**（`current` 变 null → 大图落到「无图像」） -->
   <ImageDetailModal
+    :key="imgDetailImages[0]?.id ?? 'none'"
     :open="imgDetailOpen"
     :images="imgDetailImages"
     :order="[imgDetailImages[0]?.id ?? '']"
