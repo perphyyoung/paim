@@ -178,16 +178,19 @@ test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底�
   await expect(nestedImage.locator("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
   e2eLog.info("[step] 同类结果只替换本层槽位（层数不变，且新图已渲染）");
 
-  // ④ 第 2 层里点**提示词**结果 → 关掉本层嵌套图像、替换第 1 层的嵌套提示词槽（同样要换上新内容）
+  // ④ 嵌套图像里点**提示词**结果 → 替换「嵌套提示词槽」（槽是独立的：图像槽不被牵连，层数不变）
   const modal4 = await openSimilarSearchFromImageDetail(page, nestedImage);
   await lowerThresholdToZeroAndRequery(similarResultPane(modal4, "prompt"));
   await similarResultPane(modal4, "prompt").getByText(source, { exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(1); // 嵌套图像已关，只剩底部
+  await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(1); // 仍是那一个槽
+  await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 嵌套图像槽（未被牵连）
   await expect(nestedPrompt.getByText(source, { exact: true }).first()).toBeVisible(); // 内容已换成 source
-  e2eLog.info("[step] 跨类结果替换第 1 层提示词槽（内容已换新，层数不变）");
+  e2eLog.info("[step] 跨类结果替换提示词槽（内容换新，各槽互不牵连）");
 
-  // ⑤ 逐层关闭：底部那条「源图像详情」原样还在（没有被任何一次跳转替换掉）
-  await closeDetail(nestedPrompt);
+  // ⑤ 逐个关闭两个槽 + 底部：**自顶向下**关（槽位是叠放的，下层弹窗的关闭钮会被上层遮罩拦下），
+  // 关完确认底部那条「源图像详情」原样还在（没有被任何一次跳转替换掉）
+  await closeDetail(nestedPrompt); // 提示词槽在最上（渲染在图像槽之后）
+  await closeDetail(page.getByRole("dialog", { name: "图像详情" }).nth(1));
   await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
   await closeDetail(bottom);
   e2eLog.info("[step] 逐层关闭后，底部详情仍是源图像详情");

@@ -12,6 +12,7 @@ import { ensureTagCandidates, tagCandidates } from "@/features/tag/useTagCandida
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import { useDetailSearch } from "@/composables/useDetailSearch";
+import { useNestedDetails } from "@/composables/useNestedDetails";
 import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
@@ -19,7 +20,6 @@ import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
 import { useSimilaritySettings } from "@/features/similarity/settings";
-import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
 import { markPageStale } from "@/utils/crossPageCache";
 import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
@@ -64,6 +64,9 @@ const emit = defineEmits<{
 }>();
 
 const { showToast } = useToast();
+// 嵌套详情槽（页面 provide + `<NestedDetailSlots>` 渲染）：本弹窗只负责「打开/替换槽」，
+// 槽位上限与实例重建由栈统一管（槽位模型见 docs/开发经验.md 第 5 节）
+const nested = useNestedDetails();
 const { openImageLocation } = useOpenImageLocation();
 
 // 以「顺序快照」定位当前提示词，避免列表重载/重排后数据或位置漂移
@@ -202,7 +205,7 @@ const {
 /// 既用于放行 Ctrl+F，也用于**停用底部胶囊的键盘导航** —— 胶囊的 document 监听不区分层级，
 /// 不拦的话 ←/→ 会把本弹窗的条目也一起切走（见 docs/lessons.md 第 22 节）
 const overlayOpen = computed(
-  () => imgDetailOpen.value || pickerOpen.value || confirmOpen.value || similarOpen.value,
+  () => pickerOpen.value || confirmOpen.value || similarOpen.value || nested.anyOpen.value,
 );
 
 watch(
@@ -270,20 +273,24 @@ async function toggleSafe() {
   }
 }
 
-// 嵌套图像详情内修改安全评级后，同步当前提示词 UI（联动写库已完成）
-function onNestedImageSafeSynced(isSafe: boolean) {
-  const p = current.value;
-  if (p) p.is_safe = isSafe;
-}
-
-// 嵌套图像详情内替换图像后：原位换入新图（图像详情的 current 依赖 imgDetailImages），
-// 重载关联图像条使缩略图立即反映新图；并通知主页刷新（卡片缩略图/图像页列表已变化）
-async function onNestedImageReplaced({ oldId, image }: { oldId: string; image: FullImage }) {
-  imgDetailImages.value = imgDetailImages.value.map((i) => (i.id === oldId ? image : i));
-  // 换图后旧缓存里的 id/src 已失效
-  await reloadRelatedImages();
-  notifyUpdated();
-}
+// —— 嵌套槽的信号订阅 ——
+// 槽由页面持有（<NestedDetailSlots>），回调链表达不了「谁打开的」，故改为订阅栈的信号：
+// 内容变化（编辑 / 换图 / 安全联动）→ 重拉关联图像条并通知主页；安全联动 → 同步本条 UI
+watch(
+  () => nested.revision.value,
+  () => {
+    if (!props.open) return;
+    void reloadRelatedImages();
+    notifyUpdated();
+  },
+);
+watch(
+  () => nested.safeSynced.value?.at ?? 0,
+  () => {
+    const v = nested.safeSynced.value;
+    if (v && current.value) current.value.is_safe = v.isSafe;
+  },
+);
 
 async function saveFields() {
   const p = current.value;
@@ -434,30 +441,16 @@ function openSimilarSearch() {
   closeContentCtxMenu();
   similarOpen.value = true;
 }
-/// 提示词结果：交给父级按 id 重建详情顺序并打开
+/// 提示词结果：嵌套实例换「提示词槽」；底层详情交给父级按 id 重开（列表内换条的既有语义）
 function onOpenSimilarPrompt(id: string) {
   similarOpen.value = false;
-  emit("open-prompt", id);
+  if (props.isNested) void nested.openNested("prompt", id);
+  else emit("open-prompt", id);
 }
-/// 图像结果（跨模态命中）：叠加打开图像详情（复用关联图像那套 `imgDetailOpen`）
-async function onOpenSimilarImage(id: string) {
+/// 图像结果（跨模态命中）：一律交给「嵌套图像槽」（每类至多一个，已有内容即替换）
+function onOpenSimilarImage(id: string) {
   similarOpen.value = false;
-  try {
-    const detail = await commands.getImageDetail(id);
-    imgDetailImages.value = [detail];
-    imgDetailThumbs.value = {};
-    imgDetailOpen.value = true;
-  } catch {
-    showToast("打开图像详情失败", "error");
-  }
-}
-
-/// 嵌套图像详情里点到的「提示词」结果（跨类）：关掉本层嵌套图像，把请求上抛给宿主 ——
-/// 宿主（图像详情）用自己的嵌套提示词槽替换，层级不增（槽位模型见 docs/开发经验.md 第 5 节）。
-/// 顶层详情上抛时由页面换当前详情，保持既有语义。
-function onNestedOpenPrompt(id: string) {
-  imgDetailOpen.value = false;
-  emit("open-prompt", id);
+  void nested.openNested("image", id);
 }
 // 切换条目 / 进入编辑态时收起相似结果（弹窗里查的已是另一条内容）
 watch([() => current.value?.id, edit], () => {
@@ -504,38 +497,10 @@ function imgUrl(img: RelatedImage) {
   return toAssetUrl(img.src);
 }
 
-// 跳转到图像详情：加载完整图像信息，复用 ImageDetailModal 叠加打开
-interface FullImage {
-  id: string;
-  file_name: string;
-  stored_name: string;
-  relative_path: string;
-  thumbnail_path: string | null;
-  md5: string | null;
-  width: number | null;
-  height: number | null;
-  file_size: number;
-  gen_params: string;
-  is_deleted: boolean;
-  deleted_at: string | null;
-  is_favorite: boolean;
-  is_safe: boolean;
-  created_at: string;
-  updated_at: string;
-  note: string;
-}
-const imgDetailOpen = ref(false);
-const imgDetailImages = ref<FullImage[]>([]);
-const imgDetailThumbs = ref<Record<string, string>>({});
-async function viewImage(img: RelatedImage) {
-  try {
-    const detail = await commands.getImageDetail(img.id);
-    imgDetailImages.value = [detail];
-    imgDetailThumbs.value = {};
-    imgDetailOpen.value = true;
-  } catch {
-    showToast("打开图像详情失败", "error");
-  }
+// 查看关联图像详情：交给页面的「嵌套图像槽」（每类至多一个，换内容即换实例，
+// 详情快照因此永远对得上内容；历史坑见 docs/lessons.md 第 25 节）
+function viewImage(img: RelatedImage) {
+  void nested.openNested("image", img.id);
 }
 
 // 从外界直接导入图像并关联到当前提示词
@@ -1000,24 +965,8 @@ async function onPickerImported() {
     </div>
   </Teleport>
 
-  <!-- 叠加的图像详情（嵌套：禁用其二级跳转入口）。
-       两个结果回传按「槽位模型」收敛：图像结果换掉本层嵌套图像；提示词结果上抛给宿主替换它的嵌套提示词槽。
-       `:key` 必须跟着槽内容走：详情快照（useDetailSnapshot）只在初始化时按 id 固定当前项，
-       换槽时复用同一实例会**停在旧 id**（`current` 变 null → 大图落到「无图像」） -->
-  <ImageDetailModal
-    :key="imgDetailImages[0]?.id ?? 'none'"
-    :open="imgDetailOpen"
-    :images="imgDetailImages"
-    :order="[imgDetailImages[0]?.id ?? '']"
-    :initial-index="0"
-    :thumbs="imgDetailThumbs"
-    is-nested
-    @close="imgDetailOpen = false"
-    @replaced="onNestedImageReplaced"
-    @safe-synced="onNestedImageSafeSynced"
-    @open-image="onOpenSimilarImage"
-    @open-prompt="onNestedOpenPrompt"
-  />
+  <!-- 嵌套的图像详情由页面统一渲染（<NestedDetailSlots>：图像 / 提示词各至多一个槽，
+       换内容即换实例；槽位模型见 docs/开发经验.md 第 5 节） -->
 
   <!-- 从图像列表导入选择器 -->
   <ImagePickerModal

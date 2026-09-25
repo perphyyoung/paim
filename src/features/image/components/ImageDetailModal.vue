@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRef, watch } from "vue";
-import { commands, type Image, type ImageCard, type PromptCard, type TagItem } from "@/bindings";
+import { commands, type Image, type ImageCard } from "@/bindings";
 // 别名导入：组件模板用裸 v-if="open"（prop），直接导入 open 会遮蔽 prop 导致弹窗恒渲染
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -12,12 +12,12 @@ import { ensureTagCandidates, tagCandidates } from "@/features/tag/useTagCandida
 import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import { useDetailSearch } from "@/composables/useDetailSearch";
+import { useNestedDetails } from "@/composables/useNestedDetails";
 import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
-import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
 import { formatLocalTime } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
 import {
@@ -58,6 +58,9 @@ const emit = defineEmits<{
 }>();
 
 const { showToast } = useToast();
+// 嵌套详情槽（页面 provide + `<NestedDetailSlots>` 渲染）：本弹窗只负责「打开/替换槽」，
+// 槽位上限与实例重建由栈统一管（槽位模型见 docs/开发经验.md 第 5 节）
+const nested = useNestedDetails();
 const { openImageLocation } = useOpenImageLocation();
 
 const { current, currentId, currentIndex, nav, goFirst, goLast, init } =
@@ -79,49 +82,17 @@ function openSimilar() {
   closeCtxMenu();
   similarOpen.value = true;
 }
-/// 图像结果：交给父级按 id 重开图像详情（该图可能不在当前列表里）
+/// 图像结果：嵌套实例换「嵌套图像槽」（同类 → 换它自己那层）；底层详情交给父级按 id 重开
+/// （该图可能不在当前列表里，属「列表内换条」的既有语义）
 function onOpenSimilarImage(id: string) {
   similarOpen.value = false;
-  emit("open-image", id);
+  if (props.isNested) void nested.openNested("image", id);
+  else emit("open-image", id);
 }
-/// 提示词结果（跨模态命中）：本弹窗内部叠加打开提示词详情（与「编辑提示词」同一套嵌套写法）。
-/// **嵌套实例要上抛**：嵌套的图像详情必然已经坐在一个提示词层下面（它就是那一层的跨类槽），
-/// 再在内部开一层就是第 4 层、且提示词嵌套会有两个（违反槽位模型）→ 关掉自己的结果页交给宿主替换其提示词槽。
-/// 顶层（非嵌套）才用内部槽（那是它唯一的嵌套提示词层）。
-const similarPromptCards = ref<PromptCard[]>([]);
-const similarPromptTagNames = ref<Record<string, string[]>>({});
-const similarPromptOpen = ref(false);
-async function onOpenSimilarPrompt(id: string) {
+/// 提示词结果（跨模态命中）：一律交给页面的「嵌套提示词槽」（每类至多一个，已有内容即替换）
+function onOpenSimilarPrompt(id: string) {
   similarOpen.value = false;
-  if (props.isNested) {
-    emit("open-prompt", id);
-    return;
-  }
-  try {
-    const [card] = await commands.promptCardsByIds([id]);
-    if (!card) {
-      showToast("提示词不存在或已删除", "warning");
-      return;
-    }
-    similarPromptCards.value = [card];
-    await loadTagDataForPrompt(id);
-    similarPromptOpen.value = true;
-  } catch (e) {
-    showToast(String(e), "error");
-  }
-}
-/// 取该提示词的标签（供嵌套详情展示与自动补全；全量候选标签与「编辑提示词」共用一份）
-async function loadTagDataForPrompt(id: string) {
-  try {
-    const [tags, data] = await Promise.all([
-      commands.getItemTags("prompt", id),
-      commands.getTagData("prompt"),
-    ]);
-    similarPromptTagNames.value = { [id]: tags.map((t) => t.name) };
-    promptAllTags.value = data.tags ?? [];
-  } catch {
-    similarPromptTagNames.value = {};
-  }
+  void nested.openNested("prompt", id);
 }
 async function openSavedLocation() {
   const img = current.value;
@@ -181,63 +152,33 @@ const currentPrompt = computed<LinkedPrompt | undefined>(() =>
   props.open ? relatedPrompts.value[promptIndex.value] : undefined,
 );
 
-// —— 编辑提示词（打开提示词详情弹窗，复用 PromptDetailModal）——
-const editPromptOpen = ref(false);
-// 供 PromptDetailModal 使用的标签数据（由本图像的提示词标签构造）
-const promptAllTags = ref<TagItem[]>([]);
-const promptTagNames = ref<Record<string, string[]>>({});
-// 编辑目标：把当前选中的提示词转成 PromptDetailModal 需要的 Prompt 对象
-const editPrompt = computed<PromptCard[]>(() => {
-  const p = currentPrompt.value;
-  if (!p) return [];
-  return [
-    {
-      id: p.id,
-      title: p.title,
-      content: p.content,
-      content_translate: p.content_translate,
-      note: p.note,
-      is_favorite: p.is_favorite,
-      is_safe: p.is_safe,
-      deleted_at: null,
-      created_at: "",
-      updated_at: "",
-    },
-  ];
-});
-
-// 嵌套提示词详情内修改安全评级后，同步当前图像 UI（联动写库已完成）
-function onNestedPromptSafeSynced(isSafe: boolean) {
-  const img = current.value;
-  if (img) img.is_safe = isSafe;
-}
-
-// 嵌套提示词详情内数据变化（含设为首图改封面）：刷新关联提示词缓存，并标记提示词页过期，
-// 否则 KeepAlive 的提示词主页不重拉、卡片缩略图不更新
-function onNestedPromptUpdated() {
-  void reloadRelatedPrompts();
-  markPageStale("prompts");
-  // 图像主页卡片的关联提示词文案已变，关闭详情时统一重拉
-  if (current.value) emit("update", current.value);
-}
-
-async function loadPromptTagData() {
-  try {
-    const data = await commands.getTagData("prompt");
-    promptAllTags.value = data.tags ?? [];
-  } catch {
-    promptAllTags.value = [];
-  }
-  if (currentPrompt.value) {
-    promptTagNames.value = { [currentPrompt.value.id]: currentPrompt.value.tags ?? [] };
-  }
-}
-
+/// 编辑当前关联的提示词：交给页面的「嵌套提示词槽」（与相似结果共用一个槽，各至多一个）
 function openEditPrompt() {
-  if (!currentPrompt.value) return;
-  loadPromptTagData();
-  editPromptOpen.value = true;
+  const p = currentPrompt.value;
+  if (p) void nested.openNested("prompt", p.id);
 }
+
+// —— 嵌套槽的信号订阅 ——
+// 槽由页面持有（<NestedDetailSlots>），回调链表达不了「谁打开的」，故改为订阅栈的信号：
+// 内容变化（编辑 / 设为首图 / 换图 / 安全联动）→ 重拉关联提示词缓存 + 标记提示词页过期
+// （否则 KeepAlive 的提示词主页不重拉、卡片缩略图不更新），并回写卡片供主页原位更新
+watch(
+  () => nested.revision.value,
+  () => {
+    if (!props.open) return;
+    void reloadRelatedPrompts();
+    markPageStale("prompts");
+    if (current.value) emit("update", current.value);
+  },
+);
+watch(
+  () => nested.safeSynced.value?.at ?? 0,
+  () => {
+    const v = nested.safeSynced.value;
+    const img = current.value;
+    if (v && img) img.is_safe = v.isSafe;
+  },
+);
 
 // —— 新建提示词（无关联时，仅内容输入，创建后关联当前图像）——
 const createPromptOpen = ref(false);
@@ -485,12 +426,7 @@ const {
 /// 既用于放行 Ctrl+F，也用于**停用底部胶囊的键盘导航** —— 胶囊的 document 监听不区分层级，
 /// 不拦的话 ←/→ 会把本弹窗的条目也一起切走（见 docs/lessons.md 第 22 节）
 const overlayOpen = computed(
-  () =>
-    editPromptOpen.value ||
-    createPromptOpen.value ||
-    confirmOpen.value ||
-    similarOpen.value ||
-    similarPromptOpen.value,
+  () => createPromptOpen.value || confirmOpen.value || similarOpen.value || nested.anyOpen.value,
 );
 
 // 打开时跳转到初始图并同步编辑字段
@@ -1085,23 +1021,9 @@ const fmtSize = (bytes: number) => {
     @open-prompt="onOpenSimilarPrompt"
   />
 
-  <!-- 相似结果里的提示词（跨模态命中）：叠加打开提示词详情。
-       它在里面点到的提示词结果回到本槽位替换（同类 → 换本层，不叠新层；槽位模型见 docs/开发经验.md 第 5 节）。
-       `:key` 必须跟着槽内容走：详情快照只在初始化时按 id 固定当前项（同 PromptDetailModal 的注释） -->
-  <PromptDetailModal
-    v-if="similarPromptOpen"
-    :key="similarPromptCards[0]?.id ?? 'none'"
-    :open="similarPromptOpen"
-    :prompts="similarPromptCards"
-    :order="[similarPromptCards[0]?.id ?? '']"
-    :initial-index="0"
-    :tag-names="similarPromptTagNames"
-    :all-tags="promptAllTags"
-    is-nested
-    @close="similarPromptOpen = false"
-    @updated="onNestedPromptUpdated"
-    @open-prompt="onOpenSimilarPrompt"
-  />
+  <!-- 嵌套的提示词详情（相似结果 / 编辑提示词）由页面统一渲染：
+       <NestedDetailSlots> 持有图像与提示词两个槽（各至多一个，换内容即换实例），
+       槽位模型见 docs/开发经验.md 第 5 节 -->
 
   <!-- 标签删除确认 -->
   <ConfirmDialog
@@ -1136,21 +1058,5 @@ const fmtSize = (bytes: number) => {
     ></textarea>
   </InlineDialog>
 
-  <!-- 编辑提示词（复用提示词详情弹窗，父级 v-if 强制整体卸载） -->
-  <PromptDetailModal
-    v-if="editPromptOpen"
-    :open="editPromptOpen"
-    :prompts="editPrompt"
-    :order="[editPrompt[0]?.id ?? '']"
-    :initial-index="0"
-    :tag-names="promptTagNames"
-    :all-tags="promptAllTags"
-    is-nested
-    @close="
-      editPromptOpen = false;
-      reloadRelatedPrompts();
-    "
-    @updated="onNestedPromptUpdated"
-    @safe-synced="onNestedPromptSafeSynced"
-  />
+  <!-- 编辑提示词：走与相似结果同一个「嵌套提示词槽」（见上方注释），不再另开实例 -->
 </template>

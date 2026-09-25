@@ -23,6 +23,8 @@ import { useItemToggle } from "@/composables/useItemToggle";
 import { SPECIAL_TAG_NAMES } from "@/features/tag/specialTags";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
+import NestedDetailSlots from "@/components/NestedDetailSlots.vue";
+import { provideNestedDetails } from "@/composables/useNestedDetails";
 import MediaCard from "@/components/MediaCard.vue";
 import CardSizeSlider from "@/components/CardSizeSlider.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
@@ -49,6 +51,9 @@ import {
 } from "@/features/tag/useTagCandidates";
 
 const { showToast } = useToast();
+// 嵌套详情栈：图像 / 提示词各至多一个槽（由 <NestedDetailSlots> 渲染），详情弹窗只调 openNested
+// （槽位模型见 docs/开发经验.md 第 5 节）
+const nested = provideNestedDetails(showToast);
 
 /** 搜索输入防抖：筛选下推后端后，每次输入都会触发一次查询 */
 const KEYWORD_DEBOUNCE_MS = 300;
@@ -435,6 +440,7 @@ const detailPrompts = computed<PromptCard[]>(() => {
 });
 
 function openDetail(i: number) {
+  nested.closeAll(); // 换底层详情：嵌套槽随之失效（槽挂在底层详情上，不能悬空）
   detailExtra.value = [];
   // 顺序快照先用当前已加载项即时打开，随后异步补全为全量 id
   const order = detailPrompts.value.map((p) => p.id);
@@ -451,6 +457,7 @@ function openDetail(i: number) {
 
 /** 从相似提示词结果打开某条提示词详情：以「单条顺序」进入，不并入当前筛选列表（避免索引/导航错位） */
 async function openDetailById(id: string) {
+  nested.closeAll();
   try {
     const [card] = await commands.promptCardsByIds([id]);
     if (!card) {
@@ -489,6 +496,7 @@ function ensureDetailIndex(index: number) {
   ensureRange(index, index);
 }
 function closeDetail() {
+  nested.closeAll(); // 底层详情关闭：嵌套槽一并收起（它没有自己的宿主了）
   detailOpen.value = false;
   detailExtra.value = [];
   // 详情期间没有改动就不重拉：reload 会把整列清成占位再重填，纯浏览时是白闪一下
@@ -829,6 +837,9 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       @ensure-index="ensureDetailIndex"
       @open-prompt="openDetailById"
     />
+
+    <!-- 嵌套详情槽（图像 / 提示词各至多一个；跨类结果与嵌套实例的同类结果都落在槽上） -->
+    <NestedDetailSlots />
 
     <!-- 删除确认 -->
     <ConfirmDialog

@@ -23,6 +23,8 @@ import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
 import { useItemToggle } from "@/composables/useItemToggle";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
+import NestedDetailSlots from "@/components/NestedDetailSlots.vue";
+import { provideNestedDetails } from "@/composables/useNestedDetails";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
@@ -49,6 +51,9 @@ import {
 
 const { showToast } = useToast();
 const { openImageLocation } = useOpenImageLocation();
+// 嵌套详情栈：图像 / 提示词各至多一个槽（由 <NestedDetailSlots> 渲染），详情弹窗只调 openNested
+// （槽位模型见 docs/开发经验.md 第 5 节）
+const nested = provideNestedDetails(showToast);
 
 /** 搜索输入防抖：筛选下推后端后，每次输入都会触发一次查询 */
 const KEYWORD_DEBOUNCE_MS = 300;
@@ -479,6 +484,7 @@ const detailImages = computed<ImageCard[]>(() => {
 
 /** 从相似度结果打开某图详情：以「单图顺序」进入，不并入当前筛选列表（避免索引/导航错位） */
 async function openDetailById(id: string) {
+  nested.closeAll(); // 换底层详情：嵌套槽随之失效（槽挂在底层详情上，不能悬空）
   try {
     const [card] = await commands.imageCardsByIds([id]);
     if (!card) {
@@ -500,6 +506,7 @@ async function openDetailById(id: string) {
 }
 
 function openDetail(img: ImageCard) {
+  nested.closeAll();
   detailExtra.value = [];
   // 顺序快照先用当前已加载项即时打开，随后异步补全为全量 id
   const order = pageItems.value.filter((x): x is Image => !isPlaceholder(x)).map((i) => i.id);
@@ -526,6 +533,7 @@ function ensureDetailIndex(index: number) {
   ensureRange(index, index);
 }
 function closeDetail() {
+  nested.closeAll(); // 底层详情关闭：嵌套槽一并收起（它没有自己的宿主了）
   detailOpen.value = false;
   detailExtra.value = [];
   // 详情期间没有改动就不重拉：reload 会把整列清成占位再重填，纯浏览时是白闪一下
@@ -1017,6 +1025,9 @@ function onUploadDone() {
       @ensure-index="ensureDetailIndex"
       @open-image="openDetailById"
     />
+
+    <!-- 嵌套详情槽（图像 / 提示词各至多一个；跨类结果与嵌套实例的同类结果都落在槽上） -->
+    <NestedDetailSlots />
 
     <!-- 标签管理（独立组件，图像域） -->
     <TagManagerModal

@@ -2,7 +2,11 @@
 
 本文件仅供临时性的进度追踪，其它文件不得引用。
 
-## 嵌套详情的「槽位」模型（已实施，后续项保留）
+## 嵌套详情的「槽位」模型（已实施并重构成「嵌套详情栈」，后续项保留）
+
+> 重构（2026-09-25）：两个详情弹窗不再各持跨类槽，改为「页面 provide `useNestedDetails` 栈 + 渲染
+> `NestedDetailSlots`，弹窗只调 `openNested(kind, id)`」；`isNested` 上抛分支、`:key` 重建、per-instance
+> 回调都收敛到栈与槽位组件里（`revision` / `safeSynced` 两个信号供宿主详情订阅）。
 
 **要修的问题**：图像详情 → 相似结果页 → 点提示词结果 → 打开的提示词详情是**嵌套态**（父级传了 `is-nested`），
 其内容右键的菜单项被 `v-if="similarityEnabled && !isNested"` 挡掉 → 右键弹出的是**空盒子**（看起来没反应）。
