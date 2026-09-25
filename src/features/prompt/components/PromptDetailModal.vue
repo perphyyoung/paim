@@ -45,7 +45,10 @@ const props = defineProps<{
   initialIndex: number;
   tagNames: Record<string, string[]>;
   allTags: TagItem[];
-  /** 被图像详情嵌套打开时为 true，禁用「查看图像详情」入口，禁止二级跳转 */
+  /**
+   * 嵌套态（由上层详情打开）：结果跳转落进**槽位**而不是换底层详情（第 0 层永不被替换）。
+   * 入口不再禁用：「查看图像详情」会落进图像槽，每类槽至多一个（模型见 docs/开发经验.md 第 5 节）
+   */
   isNested?: boolean;
   /** 主页搜索词：打开详情时自动带入查找条，命中处直接高亮（主页命中 → 开详情看到在哪） */
   initialKeyword?: string;
@@ -657,14 +660,8 @@ async function onPickerImported() {
                 </div>
                 <button
                   type="button"
-                  class="absolute left-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full group-hover:flex"
-                  :class="
-                    isNested
-                      ? 'cursor-not-allowed bg-black/30 text-gray-500'
-                      : 'bg-black/50 text-white hover:bg-black/70'
-                  "
-                  :title="isNested ? '禁止二级跳转' : '查看图像详情'"
-                  :disabled="isNested"
+                  class="absolute left-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 group-hover:flex"
+                  title="查看图像详情"
                   @click.stop="viewImage(img)"
                 >
                   <svg

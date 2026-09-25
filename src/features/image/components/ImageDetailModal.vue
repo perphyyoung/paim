@@ -36,7 +36,10 @@ const props = defineProps<{
   order: string[];
   initialIndex: number;
   thumbs: Record<string, string>;
-  /** 被提示词详情嵌套打开时为 true，禁用「编辑/新建」入口，禁止二级跳转 */
+  /**
+   * 嵌套态（由上层详情打开）：结果跳转落进**槽位**而不是换底层详情（第 0 层永不被替换）。
+   * 入口不再禁用：「编辑/新建提示词」会落进提示词槽，每类槽至多一个（模型见 docs/开发经验.md 第 5 节）
+   */
   isNested?: boolean;
   /** 主页搜索词：打开详情时自动带入查找条，命中处直接高亮 */
   initialKeyword?: string;
@@ -609,14 +612,8 @@ const fmtSize = (bytes: number) => {
               </div>
               <button
                 type="button"
-                :class="[
-                  'inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs',
-                  isNested
-                    ? 'cursor-not-allowed border-gray-700 bg-gray-800 text-gray-600'
-                    : 'border-gray-600 text-gray-300 hover:bg-gray-700',
-                ]"
-                :title="isNested ? '禁止二级跳转' : currentPrompt ? '编辑提示词' : '新建提示词'"
-                :disabled="isNested"
+                class="inline-flex items-center gap-1 rounded border border-gray-600 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-700"
+                :title="currentPrompt ? '编辑提示词' : '新建提示词'"
                 @click="currentPrompt ? openEditPrompt() : openCreatePrompt()"
               >
                 <svg
