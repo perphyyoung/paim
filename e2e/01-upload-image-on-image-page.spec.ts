@@ -65,11 +65,26 @@ test("两张图像附带同一提示词，应只创建一个提示词并关联�
   writePng(secondPath);
   const promptContent = `e2e 同一提示词两张图 ${Date.now()}`;
 
-  await invokeCommand(page, "import_images", {
+  const batch = await invokeCommand<{
+    results: Array<{ image: { id: string }; is_duplicate: boolean }>;
+    errors: Array<{ path: string; message: string }>;
+  }>(page, "import_images", {
     paths: [firstPath, secondPath],
     prompt: promptContent,
   });
   e2eLog.info("[step] 两张图已导入");
+
+  // 先钉「两个文件各自入库为一条记录」：内容相同会被应用的 MD5 去重（只留一条），
+  // 于是后面「关联两张」的断言会以「少一张」这种难查的形式失败（根因见 docs/lessons.md 第 27 节）
+  expect(batch.errors, "导入不应有任何错误（含「关联提示词失败」）").toEqual([]);
+  expect(
+    batch.results.map((r) => r.image.id),
+    "两个文件应入库为两条不同记录（同内容会被去重）",
+  ).toHaveLength(2);
+  expect(
+    batch.results.every((r) => !r.is_duplicate),
+    "两次写入的 mock 图内容应互不相同",
+  ).toBe(true);
 
   // 回归断言：同一提示词内容只应有一个提示词（bug 下会按图重复创建为两个）
   const prompts = await listPrompts(page);

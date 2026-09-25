@@ -928,8 +928,18 @@ function pngChunk(type: string, data: Buffer): Buffer {
 
 /// 在 filePath 写一张内容唯一的 2×2 truecolor png（颜色取自时间戳，
 /// md5 不与既有图像撞车）。引用数据目录内文件前现写一份，不假设旧文件仍在。
+/// mock 图写入序号与上次写出的字节。
+/// 只靠 `Date.now()` 不够：同一毫秒内的两次调用会写出**完全相同**的字节，而应用按 MD5 去重
+/// （同内容判「重复导入」并复用同一条记录）→「一批两张图」会只剩一条记录，
+/// 用例结论变成「少一张图」（e2e/01「两张图像附带同一提示词」就这么红过：期望 2 收到 1；
+/// e2e/12、e2e/14 的「每次导入前覆写」也是靠这里的内容唯一才成立）。
+let pngSeq = 0;
+let lastPngBytes: Buffer | null = null;
+
 export function writePng(filePath: string): void {
-  const seed = Date.now() % 0xffffff;
+  // 序号 + 时间 + 随机三重混合：同进程内每次调用内容必不同（仅毫秒精度会撞车）
+  pngSeq += 1;
+  const seed = (Date.now() + pngSeq * 0x9e37 + Math.floor(Math.random() * 0xffffff)) % 0xffffff;
   const r = (seed >> 16) & 0xff;
   const g = (seed >> 8) & 0xff;
   const b = seed & 0xff;
@@ -956,6 +966,15 @@ export function writePng(filePath: string): void {
     pngChunk("IDAT", zlib.deflateSync(raw)),
     pngChunk("IEND", Buffer.alloc(0)),
   ]);
+  // 兜底自检：内容重复会被应用的 MD5 去重静默吞掉（表现成「少一张图」这种怪断言），
+  // 这里直接抛错指出根因。删掉写入同一内容的能力是刻意的 —— 要「同一张图」就别再调 writePng。
+  if (lastPngBytes !== null && png.equals(lastPngBytes)) {
+    throw new Error(
+      `writePng 连续两次写出了相同内容：${filePath}（应用按 MD5 判「重复导入」只会留一条记录，` +
+        `用例会变成「少一张图」这种难查的失败；请检查 seed 构造是否退化成只依赖毫秒时间戳）`,
+    );
+  }
+  lastPngBytes = png;
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, png);
 }

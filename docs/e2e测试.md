@@ -148,7 +148,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 断言 toast | 用 `.first()`——同一 worker 里前一用例的同文案 toast 可能未消失，直接断言会严格模式冲突（resolved to 2 elements）；`expectToast`/`expectToastAndDismiss` 内部已处理 |
 | 用例间状态复位 | page fixture 已内置：**每个文件的首个用例跳过 reload**（该文件实例刚启动、无残留，且 reload 会打断初始加载的 IPC 请求导致回调失联）；同文件其余用例开始自动 `reload`（上一用例残留的弹窗随之关闭）。用例内不要再自行 `reload`。reload 超时 8s，失败会记 `[diag] 用例间复位 reload 失败` 并走崩溃恢复（reload → goto）——看到该行即说明是页面失联，不是用例步骤的问题。**注意 reload 只重载页面、不清进程内内存状态**（如 SelfHeal 的 checked Set）；需要「进程级重启」清空内存的场景用 `restartApp`，不要用 reload 凑合 |
 | 用新定位 API | 先查类型定义。playwright 1.62 已移除 `getByDisplayValue` 等旧 API；e2e 目录已纳入 `pnpm check` 的类型检查（`tsc --noEmit -p e2e`），方法名写错会在 check 时暴露 |
-| 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每文件实例独立目录；导入会让数据目录改名，不假设旧文件仍在）。`uploadImageWithPrompt` 内部每次上传前都会覆写 mock 内容（md5 唯一），避免同实例已导入过同路径图时被判重复导入 |
+| 上传/引用文件 | mock 图与数据目录内文件都用 `writePng` **现写一份**（每文件实例独立目录；导入会让数据目录改名，不假设旧文件仍在）。`writePng` 保证**每次内容唯一**（序号 + 时间 + 随机三重混合；只靠毫秒时间戳会在同毫秒撞车）并在连续写出相同内容时直接抛错 —— 应用按 MD5 去重，同内容的「一批多张」只会入库一条；`uploadImageWithPrompt` 每次上传前都覆写 mock 内容正是为了绕开这条去重 |
 | 文件选择 | 复用 `select_images` 测试缝（`launchApp` 已把 mock 路径写入实例环境）；替换图像等单选场景需自行校验返回数量 |
 | 多窗口 | 全屏查看器是**独立窗口**（`image-fullscreen`），其 url 与主窗口相同（同一份 index.html）——找页面必须按窗口 label 区分（`findPageByWindowLabel`），不能按 url；「隐藏复用」类窗口的关闭断言走 `e2e_is_window_visible` 测试缝（页面侧 `document.visibilityState` 不变） |
 
@@ -167,3 +167,8 @@ pnpm e2e --grep 上传  # 单个用例
    `1 error was not a part of any test`，用例清单**与该 worker 跑过的文件完全吻合**——那不是用例失败，
    是 teardown（清理数据目录）报错。查 `paim.log`：看该 worker 最后一个实例有没有 `[app] 进程退出` 行、
    以及 `[cleanup]` / `[global-setup]` 前缀的行；根因、顺序契约与兜底策略见 [lessons.md](./lessons.md) 第 21 节。
+4. **「一批 N 张只入库 / 只关联了更少」**：先怀疑 mock 图内容相同 —— 应用按 MD5 去重（同内容复用一条记录），
+   `paim.log` 里 `PagedBlocks:image] total 更新` 的增量也会比预期少；注意 `total` 是**同一实例**的累计值，
+   同文件上一个用例留下的图会让它看起来「正常」。`writePng` 现已保证每次内容唯一并在连续重复时直接抛错，
+   所以这类失败要么是新造的 helper 自己写了固定内容，要么是绕过 `writePng` 复用了旧文件；
+   根因与量化证据见 [lessons.md](./lessons.md) 第 27 节。
