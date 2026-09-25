@@ -47,7 +47,7 @@ test("图像详情右键搜索：源文案取关联提示词 + 两栏独立重�
   app,
 }) => {
   // 步骤最多（两栏各 10 次阈值步进 + 两个详情弹窗），放宽到 20s 避免逼近默认 10s 预算
-  test.setTimeout(20_000);
+  test.setTimeout(15_000);
   const { source, other } = makeContentPair("A");
   // 两张图各带一条提示词：左栏（相似图像）需要「源自身以外」的图才有结果，右栏（相似提示词）两条都可命中
   await uploadImageWithPrompt(page, source, app.mockImagePath);
@@ -132,7 +132,7 @@ test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底�
   app,
 }) => {
   // 步骤多（两层嵌套 + 两次搜索 + 逐层关闭），放宽到 30s
-  test.setTimeout(30_000);
+  test.setTimeout(15_000);
   const { source, other } = makeContentPair("C");
   await uploadImageWithPrompt(page, source, app.mockImagePath);
   await uploadImageWithPrompt(page, other, app.mockImagePath);

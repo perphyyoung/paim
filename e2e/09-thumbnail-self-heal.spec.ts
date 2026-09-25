@@ -35,7 +35,7 @@ test("提示词主页：关闭应用后手动删缩略图，重开后 SelfHeal �
 }) => {
   // 包含进程级 restart（关进程 + 等端口释放 + 重新 spawn + 连 CDP），固有耗时近 5s，
   // 超出默认 10s 预算，单独放宽。
-  test.setTimeout(30_000);
+  test.setTimeout(15_000);
   // 1. upload → SelfHeal 首轮（checked 填充）→ 缩略图在磁盘。
   //    此时卡片处于健康态：采集 before 作为基线（src 为纯路径、无 cache-buster，naturalWidth>0）。
   await gotoPromptsPage(page);

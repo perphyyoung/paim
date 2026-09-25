@@ -98,7 +98,7 @@ pnpm e2e --grep 上传  # 单个用例
 | 下沉判据 | 出现第 2 个用例/文件要用同一段代码 → 下沉。单次使用且紧耦合本场景的步骤（如「右键替换图像」）留在 spec 内 |
 | 命名 | 名字要能自解释、带动作对象：`createPromptViaDialog` / `openPromptDetail` / `getItemTagNames` / `expectToastAndDismiss` / `uploadImageWithPrompt`。**不要**用 `helper`、`util`、`doIt` 这类无信息量的名字，也不要用缩写 |
 | 内容分块 | ① 应用实例 fixture（`test` / `AppHandle`）② 页面操作（导航、建数据、开弹窗、toast 等待）③ 后端直查（`invokeCommand` + 语义化封装）④ PNG 生成。**新增内容按块归位，不随手追加到文件末尾** |
-| 进程级重启 | `restartApp(app, afterCloseHook?)` 属于①应用实例 fixture：关掉本实例进程→（可选 afterCloseHook 在文件句柄释放后做外部改动）→用同 dataDir/同 CDP 端口重新 spawn 并连上。**专用于「关闭应用后外部改数据 → 重开验证」**（如 e2e/09 删缩略图）；与 mock 图相关的 app.child/app.browser/app.page 引用会被原地更新。**含重启的用例必须单独放宽超时**（`test.setTimeout(30_000)`）：关进程 + 等端口释放 + 重新 spawn + 连 CDP 固有耗时近 5s，超出默认 10s 预算 |
+| 进程级重启 | `restartApp(app, afterCloseHook?)` 属于①应用实例 fixture：关掉本实例进程→（可选 afterCloseHook 在文件句柄释放后做外部改动）→用同 dataDir/同 CDP 端口重新 spawn 并连上。**专用于「关闭应用后外部改数据 → 重开验证」**（如 e2e/09 删缩略图）；与 mock 图相关的 app.child/app.browser/app.page 引用会被原地更新。**含重启等复杂步骤的用例，运行确实超出默认的10秒时，可以考虑拆分，或者单独放宽超时，最多不得超过15秒**（`test.setTimeout(15_000)`）：关进程 + 等端口释放 + 重新 spawn + 连 CDP 固有耗时近 5s，超出默认 10s 预算 |
 | 调后端命令 | 一律走 `invokeCommand<T>(page, cmd, args?)`，不要在 spec 里重复写 `window.__TAURI_INTERNALS__` 访问样板；常用命令再封一层语义化函数（如 `listPrompts` / `getImagePromptsMap` / `getItemTagNames` / `listTrashedImageIds`） |
 | 封装里的断言 | helper 可以做**前置校验断言**（如 `findPromptIdByContent` 找不到就 fail 并带内容），但不要替 spec 做被测行为的断言 |
 | 副作用 | 会改数据的 helper（建提示词/上传图像）在文档注释里写明改了什么；点击类 helper（`expectToastAndDismiss`）说明为什么要点掉（toast 居中且本体 `pointer-events-auto`，不消失会挡住后续点击） |

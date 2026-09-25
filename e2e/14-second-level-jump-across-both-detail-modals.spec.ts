@@ -27,8 +27,6 @@ test("二级跳转（提示词主页）：嵌套图像详情可「编辑提示�
   page,
   app,
 }) => {
-  // 步骤多（两次导入 + 两层嵌套 + 换槽 + 逐层关闭），放宽预算
-  test.setTimeout(30_000);
   const content = `e2e 二级跳转 ${Date.now()}`;
   await createPromptViaDialog(page, content);
   const bottom = await openPromptDetail(page, content);
@@ -84,7 +82,6 @@ test("二级跳转（图像主页）：嵌套提示词详情可「查看图像�
   page,
   app,
 }) => {
-  test.setTimeout(30_000);
   const promptContent = `e2e 二级跳转图像 ${Date.now()}`;
   await uploadImageWithPrompt(page, promptContent, app.mockImagePath);
   const bottom = await openImageDetail(page, promptContent);
@@ -129,8 +126,6 @@ test("三级链路（图像→提示词→图像）：第三跳目标已在槽�
   page,
   app,
 }) => {
-  // 三级链路 + 置顶断言，步骤多，放宽预算
-  test.setTimeout(30_000);
   const promptContent = `e2e 三级置顶 ${Date.now()}`;
   await uploadImageWithPrompt(page, promptContent, app.mockImagePath); // 1 张图 + 关联 1 条提示词
   const bottom = await openImageDetail(page, promptContent);
@@ -161,7 +156,6 @@ test("三级链路（提示词→图像→提示词）：第三跳目标已在�
   page,
   app,
 }) => {
-  test.setTimeout(30_000);
   const content = `e2e 三级置顶反向 ${Date.now()}`;
   await gotoPromptsPage(page); // 上一条用例把应用留在了图像主页，回到提示词主页再建
   await createPromptViaDialog(page, content);
