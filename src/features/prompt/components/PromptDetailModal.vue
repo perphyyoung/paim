@@ -50,6 +50,11 @@ const props = defineProps<{
    * 入口不再禁用：「查看图像详情」会落进图像槽，每类槽至多一个（模型见 docs/开发经验.md 第 5 节）
    */
   isNested?: boolean;
+  /**
+   * 遮罩层级（默认 50，与单开时一致）：槽位叠放时由栈给「最近打开 / 刚被点中的那一层」更高的值。
+   * 只用到 51 —— 55 以下才不盖住弹窗自己的子对话框（InlineDialog z-[60]、右键菜单 z-[70]）
+   */
+  z?: number;
   /** 主页搜索词：打开详情时自动带入查找条，命中处直接高亮（主页命中 → 开详情看到在哪） */
   initialKeyword?: string;
 }>();
@@ -554,6 +559,7 @@ async function onPickerImported() {
     <div
       v-if="open"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: props.z ?? 50 }"
       role="dialog"
       aria-modal="true"
       aria-label="提示词详情"

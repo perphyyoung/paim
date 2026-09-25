@@ -25,6 +25,7 @@ const nested = useNestedDetails();
     :order="[nested.image.value.card.id]"
     :initial-index="0"
     :thumbs="nested.image.value.thumbs"
+    :z="nested.imageZ.value"
     is-nested
     @close="nested.closeNested('image')"
     @update="nested.reportChanged()"
@@ -42,6 +43,7 @@ const nested = useNestedDetails();
     :initial-index="0"
     :tag-names="nested.prompt.value.tagNames"
     :all-tags="nested.prompt.value.allTags"
+    :z="nested.promptZ.value"
     is-nested
     @close="nested.closeNested('prompt')"
     @updated="nested.reportChanged()"

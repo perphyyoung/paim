@@ -14,6 +14,7 @@ import {
   closeDetail,
   createPromptViaDialog,
   expectToastAndDismiss,
+  gotoPromptsPage,
   openImageDetail,
   openPromptDetail,
   test,
@@ -117,4 +118,76 @@ test("二级跳转（图像主页）：嵌套提示词详情可「查看图像�
   await expect(bottom).toBeVisible();
   await closeDetail(bottom);
   e2eLog.info("[step] 逐层关闭后，底部图像详情仍在");
+});
+
+// —— 三级链路的第三跳：目标**已在某个槽里**时必须把它抬到最上 ——
+// 槽位按挂载顺序叠放（同一 z-50，后挂载的在上）。若第三跳的目标已被另一类槽持有，只是「赋值同一个 id」
+// → 槽的 `:key` 不变、不重建、也不置顶 → 它仍被上方的槽盖住：按钮没置灰却「点了没反应」。
+// 断言用「能否直接关掉目标槽」：它在上面时关闭钮的可点性成立，被遮罩压住的则被拦下（修复前 timeout）。
+
+test("三级链路（图像→提示词→图像）：第三跳目标已在槽里时应置顶，而不是点了没反应", async ({
+  page,
+  app,
+}) => {
+  // 三级链路 + 置顶断言，步骤多，放宽预算
+  test.setTimeout(30_000);
+  const promptContent = `e2e 三级置顶 ${Date.now()}`;
+  await uploadImageWithPrompt(page, promptContent, app.mockImagePath); // 1 张图 + 关联 1 条提示词
+  const bottom = await openImageDetail(page, promptContent);
+
+  // 第 1 层：底部图像详情「编辑提示词」→ 嵌套提示词槽（就是这张图关联的那条）
+  await bottom.getByTitle("编辑提示词").click();
+  const promptSlot = page.getByRole("dialog", { name: "提示词详情" });
+  await expect(promptSlot).toHaveCount(1);
+
+  // 第 2 层：嵌套提示词槽「查看图像详情」→ 图像槽（同一张图，但槽是独立实例）
+  await promptSlot.locator("img").first().hover(); // 入口按钮 group-hover 才可见
+  await promptSlot.getByTitle("查看图像详情").first().click();
+  const imageSlot = page.getByRole("dialog", { name: "图像详情" }).nth(1);
+  await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 图像槽
+  e2eLog.info("[step] 三级链路就位：底部图像详情 / 提示词槽 / 图像槽");
+
+  // 第三跳：图像槽「编辑提示词」→ 目标提示词已在提示词槽里 → 应把它抬到最上
+  await imageSlot.getByTitle("编辑提示词").click();
+  await expect(promptSlot).toBeVisible();
+  await closeDetail(promptSlot); // 修复前：提示词槽被图像槽的遮罩压住 → 关闭钮点不到（timeout）
+  e2eLog.info("[step] 提示词槽已置顶（可直接操作其关闭钮）");
+
+  await closeDetail(imageSlot);
+  await closeDetail(bottom);
+});
+
+test("三级链路（提示词→图像→提示词）：第三跳目标已在槽里时应置顶，而不是点了没反应", async ({
+  page,
+  app,
+}) => {
+  test.setTimeout(30_000);
+  const content = `e2e 三级置顶反向 ${Date.now()}`;
+  await gotoPromptsPage(page); // 上一条用例把应用留在了图像主页，回到提示词主页再建
+  await createPromptViaDialog(page, content);
+  const bottom = await openPromptDetail(page, content);
+  writePng(app.mockImagePath); // 每次导入前覆写：同 md5 会被判「重复导入」
+  await bottom.getByRole("button", { name: "从外界导入图像" }).click();
+  await expectToastAndDismiss(page, "已导入并关联 1 张图像");
+
+  // 第 1 层：底部提示词详情「查看图像详情」→ 图像槽
+  await bottom.locator("img").first().hover();
+  await bottom.getByTitle("查看图像详情").first().click();
+  const imageSlot = page.getByRole("dialog", { name: "图像详情" });
+  await expect(imageSlot).toHaveCount(1);
+
+  // 第 2 层：图像槽「编辑提示词」→ 提示词槽（内容与底部同一条，槽是独立实例）
+  await imageSlot.getByTitle("编辑提示词").click();
+  const promptSlot = page.getByRole("dialog", { name: "提示词详情" }).nth(1);
+  await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(2); // 底部 + 提示词槽
+
+  // 第三跳：提示词槽「查看图像详情」→ 目标那张图已在图像槽里 → 应把图像槽抬到最上
+  await promptSlot.locator("img").first().hover();
+  await promptSlot.getByTitle("查看图像详情").first().click();
+  await expect(imageSlot).toBeVisible();
+  await closeDetail(imageSlot); // 修复前：图像槽被提示词槽的遮罩压住 → 关闭钮点不到（timeout）
+  e2eLog.info("[step] 图像槽已置顶（可直接操作其关闭钮）");
+
+  await closeDetail(promptSlot);
+  await closeDetail(bottom);
 });

@@ -33,6 +33,9 @@ export interface NestedPromptSlot {
 export interface NestedDetails {
   image: Ref<NestedImageSlot | null>;
   prompt: Ref<NestedPromptSlot | null>;
+  /** 槽的遮罩层级（50/51）：最近被打开或被点中的那一层更高 —— 传给详情弹窗的 `z` */
+  imageZ: ComputedRef<number>;
+  promptZ: ComputedRef<number>;
   /** 任一类槽打开：底层据此放行 Ctrl+F、停用导航胶囊（它们的监听是 document 级、不区分层级） */
   anyOpen: ComputedRef<boolean>;
   /** 槽内容变化的计数（编辑 / 换图 / 安全联动）：宿主详情据此重拉自己的关联数据 */
@@ -62,7 +65,14 @@ export function createNestedDetails(
   const prompt = ref<NestedPromptSlot | null>(null);
   const revision = ref(0);
   const safeSynced = ref<{ at: number; isSafe: boolean } | null>(null);
+  /// 当前压在最上的槽。三级链路（图像→提示词→图像）的第三跳可能点到「已经在另一个槽里」的目标：
+  /// 那时只是重新赋值的话 `:key` 不变 → 不重建、也不置顶 → 按钮可用却「点了没反应」，
+  /// 所以这里要显式抬升，并跳过重复拉取（见 docs/lessons.md 第 26 节）
+  const front = ref<NestedKind | null>(null);
   const anyOpen = computed(() => image.value !== null || prompt.value !== null);
+  // 只有两档：50（在下）/ 51（在上）—— 都低于 InlineDialog 的 60，不会盖住弹窗自己的子对话框
+  const imageZ = computed(() => (front.value === "image" ? 51 : 50));
+  const promptZ = computed(() => (front.value === "prompt" ? 51 : 50));
 
   function reportChanged(): void {
     revision.value += 1;
@@ -70,10 +80,21 @@ export function createNestedDetails(
 
   async function openNested(kind: NestedKind, id: string): Promise<void> {
     if (!id) return;
+    // 目标已经在这一类槽里：**只抬到最上**（不重复拉取，避免白换 props）。
+    // 这是三级链路第三跳的常见情形（图像→提示词→图像，第三跳的目标往往就是上面那层已展示的那条）
+    if (kind === "image" && image.value?.card.id === id) {
+      front.value = "image";
+      return;
+    }
+    if (kind === "prompt" && prompt.value?.cards[0]?.id === id) {
+      front.value = "prompt";
+      return;
+    }
     if (kind === "image") {
       try {
         const detail = await commands.getImageDetail(id);
         image.value = { card: detail, thumbs: {} };
+        front.value = "image";
       } catch {
         showToast("打开图像详情失败", "error");
       }
@@ -94,6 +115,7 @@ export function createNestedDetails(
         tagNames: { [id]: tags.map((t) => t.name) },
         allTags: data.tags ?? [],
       };
+      front.value = "prompt";
     } catch {
       showToast("打开提示词详情失败", "error");
     }
@@ -101,22 +123,27 @@ export function createNestedDetails(
 
   function replaceNestedImage(img: Image): void {
     image.value = { card: img, thumbs: {} };
+    front.value = "image";
     reportChanged();
   }
 
   function closeNested(kind: NestedKind): void {
     if (kind === "image") image.value = null;
     else prompt.value = null;
+    if (front.value === kind) front.value = null;
   }
 
   function closeAll(): void {
     image.value = null;
     prompt.value = null;
+    front.value = null;
   }
 
   return {
     image,
     prompt,
+    imageZ,
+    promptZ,
     anyOpen,
     revision,
     safeSynced,
