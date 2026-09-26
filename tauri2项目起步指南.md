@@ -38,6 +38,11 @@
 - Rust 侧「分层即目录名」，三层单向依赖：`commands/`（命令层）→ `domain/`（领域）→ `infra/`（基础设施），入口只有 `lib.rs` + `main.rs`（paim 在 `lib.rs` 顶部用注释声明该约定）。
 - 前端按「特征切片」：`src/features/<业务>/`，与后端 `commands/`、`domain/` 下的同名文件对齐。
 - **不用 `mod.rs`**：从 Rust 2018 起用「同名文件 + 同名目录」组织子模块——paim 是 `commands.rs` + `commands/`、`domain.rs` + `domain/`、`infra.rs` + `infra/`（全仓 `mod.rs` 数为 0），子模块声明与共用小工具都写在同名文件里（如 `commands.rs` 顶部的 `pub mod image;` 与 `db_blocking()`）。理由：`mod.rs` 满屏同名，编辑器标签、搜索结果与 diff 里无法一眼分辨属于哪一层，深层嵌套还会把路径越拉越长。
+- **测试文件与源文件平铺，命名固定**（三层同一原则：好 grep、在编辑器标签里能分辨是谁）：
+  - Rust：`<源文件>.test.rs`（`db.rs` ↔ `db.test.rs`，同目录平铺），源文件**末尾**用 `#[cfg(test)]` + `#[path = "<源文件>.test.rs"]` + `mod tests;` 声明（paim 现有 16 处声明都是这个形状）；不内联 `mod tests { ... }` 块，也不用同名目录下的 `tests.rs`——同名文件在 grep / 编辑器标签里同样分不清（`*.test.rs` 靠「谁测谁」的前缀一眼可辨）。
+  - 前端：`<源文件>.test.ts`（`usePagedBlocks.test.ts`），与源文件平铺，vitest 跑（`src/**/*.test.ts`，node 环境，配置独立于 `vite.config.ts`）。
+  - e2e：`e2e/<序号>-<功能>-<介词>-<作用页面>.spec.ts`（kebab-case，长没关系、精确优先）：**功能** token 取按钮/命令的真实语义（`upload-image` / `import-external-image` / `replace-image` / `create-prompt`），**介词**区分入口形态（`on` 主页、`in` 弹窗与详情、`across` 多入口、`global` 全局组件），**页面** token 对齐组件名（`image-page` / `prompt-page` / `image-detail-modal` / `prompt-detail-modal` / `both-detail-modals`）；**序号一旦分配不复用、不重排**（日志前缀、数据目录、外部引用都依赖它），其它文档引用一律只写 `e2e/<序号>`。
+  - 该测哪一层也是约定（详见第 12 节）：纯逻辑 → 前端单测；领域/服务/SQL → Rust 单测；只有跨端真实链路才进 e2e。**需要注入失败/延迟的场景一律放前端单测**，不要在 e2e 里包装 IPC——真实 Tauri 的 `window.__TAURI_INTERNALS__` 及其成员由注入脚本用 `defineProperty` 创建，不可写不可配置。
 - 跨层禁令（paim 用 `.sentrux/rules.toml` + `sentrux check .` 强制，**可不同**）：Rust 三层 + Web 五层（bindings / shared / features / views / app）+ e2e 共 8 个 order；三条点名禁令读作「左边不得依赖右边」：`components/** ✗ features/**`、`bindings.ts ✗ src/**`、`src/** ✗ e2e/**`。
 - `src/bindings.ts` 是**生成物**：不手改、不格式化（paim 在 `.oxfmtrc.json` 里把它加进 `ignorePatterns`），也不得反向依赖 `src/**`（它本身就是前端侧的接口契约）。
 
@@ -355,6 +360,7 @@ dist/
 - [ ] 根 `Cargo.toml`：workspace + `[profile.release]` 体积优化段
 - [ ] `src-tauri/Cargo.toml`：`[lib]` 独立 crate 名、tauri 特性、specta 三件套精确版本
 - [ ] Rust 模块组织：同名 `.rs` + 同名目录（**不用 `mod.rs`**），子模块声明写在同名文件里
+- [ ] 测试文件命名：Rust `*.test.rs`（源文件末尾 `#[path]` 声明）、前端 `*.test.ts`、e2e `序号-<功能>-<介词>-<页面>.spec.ts`（序号不复用）
 - [ ] `specta_builder()` + 两条导出路径（导出即退 / debug 启动）+ `scripts/gen-bindings.mjs`
 - [ ] `tauri.conf.json`：identifier、CSP/devCsp、`assetProtocol` 空 scope、`removeUnusedCommands`、bundle targets 与图标
 - [ ] `capabilities/default.json`：精确权限清单 + `windows` 列全
