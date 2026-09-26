@@ -37,6 +37,7 @@
 
 - Rust 侧「分层即目录名」，三层单向依赖：`commands/`（命令层）→ `domain/`（领域）→ `infra/`（基础设施），入口只有 `lib.rs` + `main.rs`（paim 在 `lib.rs` 顶部用注释声明该约定）。
 - 前端按「特征切片」：`src/features/<业务>/`，与后端 `commands/`、`domain/` 下的同名文件对齐。
+- **不用 `mod.rs`**：从 Rust 2018 起用「同名文件 + 同名目录」组织子模块——paim 是 `commands.rs` + `commands/`、`domain.rs` + `domain/`、`infra.rs` + `infra/`（全仓 `mod.rs` 数为 0），子模块声明与共用小工具都写在同名文件里（如 `commands.rs` 顶部的 `pub mod image;` 与 `db_blocking()`）。理由：`mod.rs` 满屏同名，编辑器标签、搜索结果与 diff 里无法一眼分辨属于哪一层，深层嵌套还会把路径越拉越长。
 - 跨层禁令（paim 用 `.sentrux/rules.toml` + `sentrux check .` 强制，**可不同**）：Rust 三层 + Web 五层（bindings / shared / features / views / app）+ e2e 共 8 个 order；三条点名禁令读作「左边不得依赖右边」：`components/** ✗ features/**`、`bindings.ts ✗ src/**`、`src/** ✗ e2e/**`。
 - `src/bindings.ts` 是**生成物**：不手改、不格式化（paim 在 `.oxfmtrc.json` 里把它加进 `ignorePatterns`），也不得反向依赖 `src/**`（它本身就是前端侧的接口契约）。
 
@@ -353,6 +354,7 @@ dist/
 - [ ] `pnpm-workspace.yaml`：`allowBuilds` / `onlyBuiltDependencies`
 - [ ] 根 `Cargo.toml`：workspace + `[profile.release]` 体积优化段
 - [ ] `src-tauri/Cargo.toml`：`[lib]` 独立 crate 名、tauri 特性、specta 三件套精确版本
+- [ ] Rust 模块组织：同名 `.rs` + 同名目录（**不用 `mod.rs`**），子模块声明写在同名文件里
 - [ ] `specta_builder()` + 两条导出路径（导出即退 / debug 启动）+ `scripts/gen-bindings.mjs`
 - [ ] `tauri.conf.json`：identifier、CSP/devCsp、`assetProtocol` 空 scope、`removeUnusedCommands`、bundle targets 与图标
 - [ ] `capabilities/default.json`：精确权限清单 + `windows` 列全
