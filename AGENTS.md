@@ -35,7 +35,7 @@
 
 ## 环境要点（防踩坑）
 
-- **target 在项目根**：根目录 Cargo.toml 是 workspace 根，cargo 默认 target-dir 即 `<项目根>/target`（曾用 CARGO_TARGET_DIR 指向共享目录，2026-09-11 已删除该环境变量）；`scripts/gen-bindings.mjs` 与 `e2e/e2e-helpers.ts` 的 exe 兜底路径均为 `<项目根>/target/debug/paim.exe`，找产物去那里。
+- **target 在共享目录（CARGO_TARGET_DIR，2026-09-26 起重新启用）**：环境变量为 Machine 级 `CARGO_TARGET_DIR=D:\cargo-shared-target`（多个 tauri 项目共用 target），产物在 `$env:CARGO_TARGET_DIR\debug\paim.exe`，**项目根下不再有 `target/`**。`scripts/gen-bindings.mjs` 与 `e2e/e2e-helpers.ts` 都按 `process.env.CARGO_TARGET_DIR ?? <项目根>/target` 解析（两边须保持一致；路径类怪问题先查这条）。命令行按 **PowerShell 7** 写：取变量用 `$env:CARGO_TARGET_DIR`，串联用 `&&`（失败短路）/ `||`（兜底）——实测 `pnpm check` / `pnpm e2e` / `pnpm test:rs` 均正常。注意共享 target 是**全局一把锁**：两个项目同时 build 时后者只会 `Blocking waiting for file lock`（等待，不是失败）。历史上该变量曾掩盖兜底路径错误，见 docs/lessons.md 第 16 节。
 - `pnpm check` 链路：format → build:rs → **gen:bindings（自动复写 src/bindings.ts）** → typecheck → build；改了 Rust 命令签名记得跑 pnpm check 或 pnpm dev；验证须 grep warning 和 error 双查。
 - bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。

@@ -500,6 +500,9 @@ vue-tsc 又报 3 处类型失配。
 - 辅助链路（`gen-bindings.mjs`、e2e 的 exePath）对 target 位置的假设要与环境一致：
   本仓 target 在 workspace 根（根目录 Cargo.toml 是 workspace 根），曾依赖
   `CARGO_TARGET_DIR` 掩盖错误兜底路径，环境变量删除后即暴露。
+  （2026-09-26 起该变量**重新启用**为 Machine 级 `D:\cargo-shared-target`（多项目共用 target）；
+  上面两处辅助链路都已按 `process.env.CARGO_TARGET_DIR ?? <项目根>/target` 解析，
+  环境再变只动环境变量即可，不必改代码。）
 
 ## 17. 孤儿文件扫描把所有文件误判为孤儿：路径比较的两个必对项
 
