@@ -1,7 +1,7 @@
 {
   "name": "paim",
   "private": true,
-  "version": "0.4.3",
+  "version": "0.4.4",
   "packageManager": "pnpm@12.4.2",
   "type": "module",
   "scripts": {
@@ -24,14 +24,14 @@
     "check": "pnpm format && pnpm build:rs && pnpm gen:bindings && pnpm typecheck && pnpm build"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
+    "@tauri-apps/api": "^2.12.0",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "vue": "^3.5",
     "vue-router": "4"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
-    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli": "^2.12.0",
     "@types/node": "^26.4.1",
     "@vitejs/plugin-vue": "^5",
     "autoprefixer": "^10.4",
