@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | 包管理 | pnpm 12 + `packageManager` pin | 建议统一 |
 | 版本单一事实源 | `src-tauri/tauri.conf.json` 的 `version` 指向 `../package.json` | 建议统一 |
+| tauri 版本栈 | Rust `tauri 2.12.0` / `tauri-build 2.7.0`；npm `@tauri-apps/api`、`@tauri-apps/cli` 均 2.12.0（CLI 须与 tauri 同 minor）；直接依赖 `windows` 跟随 tauri（0.62） | 建议统一 |
 | Rust 目录分层 | `src-tauri/src/{commands,domain,infra}`（分层即目录名） | 建议统一 |
 | cargo target | `CARGO_TARGET_DIR` 指向共享目录；辅助脚本必须读该环境变量 | 建议统一 |
 | bindings | tauri-specta rc.25 + **运行期导出**（含 `PAIM_EXPORT_BINDINGS` 导出即退） | 建议统一 |
@@ -32,6 +33,12 @@
 - Node：`package.json` 里不必写 `engines`；Node ≥ 22.13 只在使用 npm 安装 pnpm 时需要（pnpm 12 自身不依赖 Node）。
 - **版本号只维护一处**：`package.json.version`；`tauri.conf.json` 用 `"version": "../package.json"` 引用它（paim 做法）。`src-tauri/Cargo.toml` 的 `version` 不参与发布，paim 里长期是初始值 `0.1.0`，保持一致即可。
 - 改版本号后**必须重启 vite**：paim 的 vite watch 白名单不含 `package.json`，否则前端 `__APP_VERSION__` 仍是旧值。
+- **tauri 版本栈按同一 minor 对齐**：Rust 侧 `tauri = "2.12.0"` / `tauri-build = "2.7.0"`，npm 侧 `@tauri-apps/api`、`@tauri-apps/cli` 同为 2.12.0；CLI 与 tauri 主版本不一致时，`pnpm dev` 启动会报版本不匹配（paim 的 tauri 特性开关见第 5 节末）。
+- **声明值是区间下限，不是实际版本**：`tauri = "2.12.0"` 等价 `^2.12.0`（≥2.12.0、<3.0.0），实际用哪一版由 `Cargo.lock` 决定——带 lock 构建时根本读不到 manifest 的下限，所以**应用类项目的 `Cargo.lock` 必须入库**（paim 已入库），它才是防版本漂移的主力，不该写进 `.gitignore`。
+- **下限只在「重解析」时起作用**：新项目照抄 manifest 却没带 lock、lock 被删、`cargo update`（全量或 `-p`）、新增依赖触发重算——这几种场景下限才决定「最低能取到哪一版」；`cargo update --precise` 指定低于下限的版本会被直接拒绝。
+- **升级后要不要跟着抬下限**：不抬也能跑（2.12 落在 `^2.10.3` 区间内，重算 lock 即可），但抬到与实际一致能消除「声明 ≠ 实测」的歧义，也避免丢 lock 的环境解析出另一套 tauri 栈（共享 target 会把两套产物并存，白占磁盘）。抬下限**挡不住往上漂**（新版本发布后重解析照旧浮上去），要绝对锁死得写成 `=2.12.0`；tauri 是主框架，不建议——保持 caret 才能自动吃到 patch 级安全修复（这一点与 specta 三件套刻意精确锁版不同）。
+- **升级方式与连锁**：`cargo update -p tauri --precise 2.12.0`；tauri 前移会连带 wry 0.57 / tao 0.37 / windows 0.62 同批前移，属正常现象，不要手改 `Cargo.lock`。
+- **直接依赖 `windows` 的版本跟着 tauri 走**：paim 用 `windows` 调 Shell API 定位文件，声明与 tauri 依赖的 windows 同 minor（2.12 系 → `windows = "0.62"`），否则同一 crate 会被编两份；升级 tauri 后用 `cargo tree -i windows` 核对只剩一份。
 
 ## 2. 目录与分层（建议统一）
 
@@ -203,6 +210,8 @@ app.asset_protocol_scope().allow_directory(db::temp_dir(app.handle()), true)?;
   运行时才知道数据目录在哪（用户可选/可迁移）时，空 scope + `allow_directory` 比在配置里写死路径稳。
 
 - paim 另有一份 `src-tauri/tauri.e2e.conf.json`，内容只有 `build.devUrl = http://localhost:1430`，**当前仓库里没有任何引用**（e2e 用内嵌前端跑、不需要 devServer）——新项目**可以不要**它。
+- **tauri-build ≥2.7 起 `STATIC_VCRUNTIME` 环境变量通道废弃**：静态链接 VC 运行时改在配置里声明 `"build": { "windows": { "staticVCRuntime": true } }`（默认即 true，显式写只固定意图）；paim 从未依赖该变量，升级后无废弃警告、无需迁移，但老项目升到 ≥2.7 时会撞上这个告警。
+- **2.12 CLI 构建时打印的 `Removed unused commands from ...` 不是告警**：那是 `build.removeUnusedCommands: true` 的正常代码生成输出（2.12 CLI 新增的打印），别当错误去排查。
 - 特性开关在 `Cargo.toml` 侧：paim 开 `tauri` 的 `protocol-asset` 与 `tray-icon`；不用托盘就别开 `tray-icon`。
 
 ## 6. capabilities 权限（建议统一）
@@ -238,6 +247,8 @@ app.asset_protocol_scope().allow_directory(db::temp_dir(app.handle()), true)?;
 | `tauri` 的 `tray-icon` 特性 | 托盘 | 不用就别开 |
 
 **「什么时候跳过单例/热键」的判断依据，建议统一成「实例标识环境变量是否存在」**（paim 用 `PAIM_DATA_DIR`）：`if std::env::var("PAIM_DATA_DIR").is_err() { /* 注册单例与热键 */ }`。这样 e2e/多实例启动不会互相踢掉，也不必为测试写第二套代码。
+
+- **插件的两侧版本保持同 minor**：有 npm 对应包的插件，npm 包与 Rust crate 用同一 minor（paim 的 dialog 双侧都是 2.7.2）；`pnpm dev` 启动时 CLI 会列出所有不匹配项，按提示 `pnpm add @tauri-apps/plugin-xxx@~<crate版本>` 对齐即可。无 npm 侧对应包的（`tauri-plugin-log` / `global-shortcut` / `single-instance`）跟随其 crate 版本，不参与两侧对齐。
 
 ## 8. 日志与配置（建议统一）
 
@@ -358,7 +369,7 @@ dist/
 - [ ] `package.json`：pnpm pin 版本、`type` 为 module、scripts 照抄（改名）、依赖按需裁剪
 - [ ] `pnpm-workspace.yaml`：`allowBuilds` / `onlyBuiltDependencies`
 - [ ] 根 `Cargo.toml`：workspace + `[profile.release]` 体积优化段
-- [ ] `src-tauri/Cargo.toml`：`[lib]` 独立 crate 名、tauri 特性、specta 三件套精确版本
+- [ ] `src-tauri/Cargo.toml`：`[lib]` 独立 crate 名、`tauri 2.12.0` / `tauri-build 2.7.0`（与 `@tauri-apps/api`、`cli` 2.12.0 对齐）、tauri 特性、直接依赖 `windows` 与 tauri 同 minor（0.62）、specta 三件套精确版本；`Cargo.lock` 入库（不写进 `.gitignore`）
 - [ ] Rust 模块组织：同名 `.rs` + 同名目录（**不用 `mod.rs`**），子模块声明写在同名文件里
 - [ ] 测试文件命名：Rust `*.test.rs`（源文件末尾 `#[path]` 声明）、前端 `*.test.ts`、e2e `序号-<功能>-<介词>-<页面>.spec.ts`（序号不复用）
 - [ ] `specta_builder()` + 两条导出路径（导出即退 / debug 启动）+ `scripts/gen-bindings.mjs`
