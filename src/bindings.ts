@@ -14,6 +14,10 @@ export const commands = {
 	promptSpecialTagsCounts: () => __TAURI_INVOKE<{ [key in string]: number }>("prompt_special_tags_counts"),
 	createPrompt: (content: string, title: string | null) => __TAURI_INVOKE<Prompt>("create_prompt", { content, title }),
 	deletePrompt: (id: string) => __TAURI_INVOKE<null>("delete_prompt", { id }),
+	/**  合并两条提示词前的预览（差异由前端做词级对齐，这里给两侧原文与并集口径）。 */
+	previewMergePrompts: (aId: string, bId: string) => __TAURI_INVOKE<MergePromptsPreview>("preview_merge_prompts", { aId, bId }),
+	/**  合并两条提示词：新建一条（标题用新 id、译文空、note 合并），图像/标签取并集，原两条软删。 */
+	mergePrompts: (aId: string, bId: string, content: string) => __TAURI_INVOKE<Prompt>("merge_prompts", { aId, bId, content }),
 	/**  更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。 */
 	updatePromptDetail: (id: string, title: string | null, content: string | null, contentTranslate: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Prompt>("update_prompt_detail", { id, title, content, contentTranslate, note, isFavorite, isSafe }),
 	/**  新建提示词（内容必需）；image_paths 非空时上传并关联到该提示词。 */
@@ -468,6 +472,28 @@ export type ListQuery = {
 
 /**  日志级别变更事件（payload 为新级别小写字符串），前端监听后刷新本地缓存。 */
 export type LogLevelChanged = string;
+
+export type MergePromptSide = {
+	content: string,
+	note: string,
+};
+
+export type MergePromptsPreview = {
+	a: MergePromptSide,
+	b: MergePromptSide,
+	/**  两侧标签并集（标签名，按名排序） */
+	tag_names: string[],
+	/**  去重后的关联图像总数 */
+	image_total: number,
+	image_a: number,
+	image_b: number,
+	/**  两侧共有的关联图像数 */
+	image_shared: number,
+	/**  合并后的 note（两侧去重空行拼接），直接展示给用户确认 */
+	merged_note: string,
+	is_favorite: boolean,
+	is_safe: boolean,
+};
 
 /**
  *  结果页的查询源：图像（图像↔图像同模态、图像↔提示词跨模态）或提示词（反之亦然）。

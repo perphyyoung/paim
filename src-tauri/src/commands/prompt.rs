@@ -4,6 +4,7 @@
 use crate::commands::db_blocking;
 use crate::domain::image_service;
 use crate::domain::list_query::ListQuery;
+use crate::domain::prompt_merge;
 use crate::domain::prompt_service;
 use crate::domain::thumbnail_service;
 use crate::infra::db::BkDb;
@@ -138,6 +139,31 @@ pub fn create_prompt(
 pub fn delete_prompt(db: State<BkDb>, id: String) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::remove(&conn, &id).map_err(|e| AppError::Message(e.to_string()))
+}
+
+/// 合并两条提示词前的预览（差异由前端做词级对齐，这里给两侧原文与并集口径）。
+#[tauri::command]
+#[specta::specta]
+pub fn preview_merge_prompts(
+    db: State<BkDb>,
+    a_id: String,
+    b_id: String,
+) -> Result<prompt_merge::MergePromptsPreview, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    prompt_merge::preview(&conn, &a_id, &b_id).map_err(|e| AppError::Message(e.to_string()))
+}
+
+/// 合并两条提示词：新建一条（标题用新 id、译文空、note 合并），图像/标签取并集，原两条软删。
+#[tauri::command]
+#[specta::specta]
+pub fn merge_prompts(
+    db: State<BkDb>,
+    a_id: String,
+    b_id: String,
+    content: String,
+) -> Result<prompt_service::Prompt, AppError> {
+    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
+    prompt_merge::merge(&conn, &a_id, &b_id, &content).map_err(|e| AppError::Message(e.to_string()))
 }
 
 /// 列出回收站中的提示词（已软删除）。

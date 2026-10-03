@@ -7,6 +7,7 @@ pub mod list_query;
 pub mod orphan_file_service;
 pub mod paim_backup_service;
 pub mod pm_backup_service;
+pub mod prompt_merge;
 pub mod prompt_service;
 pub mod similarity_service;
 pub mod statistics_service;

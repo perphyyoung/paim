@@ -17,7 +17,7 @@ const props = defineProps<{
   /** 提示词内容：给了就按「图像模式」之外的提示词布局渲染（内容占最大空间） */
   content?: string;
 }>();
-const emit = defineEmits<{ open: [] }>();
+const emit = defineEmits<{ open: []; contextmenu: [ev: MouseEvent] }>();
 
 const scoreText = computed(() => (props.score === undefined ? "" : props.score.toFixed(3)));
 /// 有内容 → 提示词布局；无内容 → 图像布局
@@ -32,6 +32,7 @@ const isPromptLayout = computed(() => props.content !== undefined);
       score === undefined ? name : `${name}（相似度 ${scoreText}）${content ? `\n${content}` : ''}`
     "
     @click="emit('open')"
+    @contextmenu="emit('contextmenu', $event)"
   >
     <img v-if="thumb" :src="thumb" alt="" class="absolute inset-0 h-full w-full object-cover" />
     <svg

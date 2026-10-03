@@ -484,6 +484,12 @@ function closeDetail() {
   loadPrompts({ keepContent: true });
   loadTagFilter();
 }
+/** 详情（含嵌套槽）内完成提示词合并：原两条进回收站、新条已建，收起全部详情并回主页刷新 */
+function onPromptsMerged() {
+  detailDirty.value = true;
+  showToast("已合并为 1 条提示词", "success");
+  closeDetail();
+}
 // 重载：标签映射先取，随后重拉首屏块与特殊标签计数；
 // 缩略图映射不整体重取——清空请求记忆后由 `pageItems` watch 按块补齐（规模随块缓存有界）
 async function loadPrompts(options?: { keepContent?: boolean }) {
@@ -812,10 +818,11 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       @close="closeDetail"
       @updated="onModalUpdated"
       @ensure-index="ensureDetailIndex"
+      @merged="onPromptsMerged"
     />
 
     <!-- 嵌套详情槽（图像 / 提示词各至多一个；详情内发起的跳转——同类 / 跨类——都落在槽上） -->
-    <NestedDetailSlots />
+    <NestedDetailSlots @merged="onPromptsMerged" />
 
     <!-- 删除确认 -->
     <ConfirmDialog

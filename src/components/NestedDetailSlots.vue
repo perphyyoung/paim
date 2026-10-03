@@ -13,6 +13,9 @@ import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vu
 import { useNestedDetails } from "@/composables/useNestedDetails";
 
 const nested = useNestedDetails();
+
+// 槽内提示词作为源完成合并：转发给页面（页面统一收起详情、刷新主页）
+const emit = defineEmits<{ (e: "merged", newId: string): void }>();
 </script>
 
 <template>
@@ -46,5 +49,6 @@ const nested = useNestedDetails();
     @close="nested.closeNested('prompt')"
     @updated="nested.reportChanged()"
     @safe-synced="(s) => nested.reportSafeSynced(s)"
+    @merged="(id) => emit('merged', id)"
   />
 </template>

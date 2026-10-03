@@ -521,6 +521,12 @@ function closeDetail() {
   loadImages({ keepContent: true });
   loadTagFilter();
 }
+/** 嵌套的提示词槽里发生合并：关联图像被 touch 且关联提示词集合变化，收起详情并回主页刷新 */
+function onPromptMergedInNested() {
+  detailDirty.value = true;
+  showToast("已合并为 1 条提示词", "success");
+  closeDetail();
+}
 function onDetailUpdate(updated: ImageCard) {
   detailDirty.value = true;
   // 同步回当前已加载块（占位项不参与）
@@ -1003,7 +1009,7 @@ function onUploadDone() {
     />
 
     <!-- 嵌套详情槽（图像 / 提示词各至多一个；详情内发起的跳转——同类 / 跨类——都落在槽上） -->
-    <NestedDetailSlots />
+    <NestedDetailSlots @merged="onPromptMergedInNested" />
 
     <!-- 标签管理（独立组件，图像域） -->
     <TagManagerModal

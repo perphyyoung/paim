@@ -62,6 +62,8 @@ const emit = defineEmits<{
   (e: "safe-synced", isSafe: boolean): void;
   /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
   (e: "ensure-index", index: number): void;
+  /** 本提示词作为源与相似结果合并完成：宿主应收起全部详情、刷新主页 */
+  (e: "merged", newId: string): void;
 }>();
 
 const { showToast } = useToast();
@@ -452,6 +454,12 @@ function onOpenSimilarPrompt(id: string) {
 function onOpenSimilarImage(id: string) {
   similarOpen.value = false;
   void nested.openNested("image", id);
+}
+/// 本提示词作为源被合并：源与目标都已进回收站，收起相似页与全部槽，交宿主回主页刷新
+function onMerged(newId: string) {
+  similarOpen.value = false;
+  nested.closeAll();
+  emit("merged", newId);
 }
 // 切换条目 / 进入编辑态时收起相似结果（弹窗里查的已是另一条内容）
 watch([() => current.value?.id, edit], () => {
@@ -995,6 +1003,7 @@ async function onPickerImported() {
     @close="similarOpen = false"
     @open-prompt="onOpenSimilarPrompt"
     @open-image="onOpenSimilarImage"
+    @merged="onMerged"
   />
 
   <!-- 右键菜单：提示词内容 → 搜索相似的图像和提示词（设置里可关闭）。

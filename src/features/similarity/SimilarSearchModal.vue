@@ -13,6 +13,7 @@ import { toAssetUrl } from "@/utils/assetUrl";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
 import VirtualGrid from "@/components/VirtualGrid.vue";
+import MergePromptsModal from "@/features/prompt/components/MergePromptsModal.vue";
 import ScoreStepper from "./ScoreStepper.vue";
 import SimilarResultCard from "./SimilarResultCard.vue";
 import { DEFAULT_LIMIT, DEFAULT_MIN_SCORE, LIMIT_RANGE, useSimilaritySettings } from "./settings";
@@ -34,6 +35,8 @@ const emit = defineEmits<{
   close: [];
   "open-image": [id: string];
   "open-prompt": [id: string];
+  /** 源提示词与某条结果合并完成（上层负责关闭本弹窗与源详情、刷新主页） */
+  merged: [newId: string];
 }>();
 
 const imageSettings = useSimilaritySettings("image");
@@ -233,8 +236,64 @@ function loadAll() {
 // ESC 关闭：capture + stopPropagation，避免同时触发下层详情弹窗的关闭
 function onKeydown(e: KeyboardEvent) {
   if (e.key !== "Escape") return;
+  // 合并弹窗打开时由它自己处理 Esc；右键菜单打开时先关菜单
+  if (mergeOpen.value) return;
+  if (menuTargetId.value) {
+    closeMenu();
+    return;
+  }
   e.stopPropagation();
   emit("close");
+}
+
+// —— 提示词卡片右键「合并提示词」（仅搜索源为提示词时）——
+const menuTargetId = ref("");
+const menuX = ref(0);
+const menuY = ref(0);
+const mergeOpen = ref(false);
+const mergeBId = ref("");
+
+function openMenu(e: MouseEvent, id: string) {
+  if (props.sourceKind !== "Prompt") return;
+  e.preventDefault();
+  // 简单边界收敛：菜单约 180×36，距视口边 8px
+  menuX.value = Math.min(e.clientX, window.innerWidth - 188);
+  menuY.value = Math.min(e.clientY, window.innerHeight - 44);
+  if (menuTargetId.value) {
+    // 菜单已开（右键到另一张卡）：只换目标与位置，监听不重复注册
+    menuTargetId.value = id;
+    return;
+  }
+  menuTargetId.value = id;
+  // 延迟注册，避免本次右键/点击立刻触发关闭
+  requestAnimationFrame(() => {
+    document.addEventListener("click", onOutsideClick, true);
+    document.addEventListener("contextmenu", onOutsideContextMenu, true);
+  });
+}
+/// 点在菜单外才关（点菜单项时 target 在菜单内，交给按钮自己处理，不能先把目标 id 清空）
+function onOutsideClick(e: MouseEvent) {
+  if (!(e.target instanceof HTMLElement && e.target.closest("[data-merge-menu]"))) closeMenu();
+}
+function onOutsideContextMenu(e: MouseEvent) {
+  // 在菜单内再次右键不关闭（允许就地换目标）；菜单外任意右键关闭
+  if (!(e.target instanceof HTMLElement && e.target.closest("[data-merge-menu]"))) closeMenu();
+}
+function closeMenu() {
+  menuTargetId.value = "";
+  document.removeEventListener("click", onOutsideClick, true);
+  document.removeEventListener("contextmenu", onOutsideContextMenu, true);
+}
+function chooseMerge() {
+  const id = menuTargetId.value;
+  if (!id) return;
+  mergeBId.value = id;
+  closeMenu();
+  mergeOpen.value = true;
+}
+function onMerged(newId: string) {
+  mergeOpen.value = false;
+  emit("merged", newId);
 }
 
 /// 关闭：作废两栏在途请求并清空
@@ -280,7 +339,10 @@ watch(
     loadAll();
   },
 );
-onUnmounted(() => window.removeEventListener("keydown", onKeydown, true));
+onUnmounted(() => {
+  window.removeEventListener("keydown", onKeydown, true);
+  closeMenu();
+});
 
 function pickImage(id: string) {
   emit("open-image", id);
@@ -503,6 +565,7 @@ function pickPrompt(id: string) {
                     :score="item.score"
                     :favorite="item.card.is_favorite"
                     @open="pickPrompt(item.card.id)"
+                    @contextmenu="openMenu($event, item.card.id)"
                   />
                 </template>
               </VirtualGrid>
@@ -512,10 +575,34 @@ function pickPrompt(id: string) {
 
         <p class="mt-2 shrink-0 text-xs text-gray-500">
           两栏的条数 / 阈值 / 重置 /
-          重查互相独立（同模态与跨模态的余弦分布不同）；各栏改完点该栏「重查」生效并记住；点击结果切换到对应详情；点遮罩或按
-          Esc 关闭
+          重查互相独立（同模态与跨模态的余弦分布不同）；各栏改完点该栏「重查」生效并记住；点击结果切换到对应详情；
+          源为提示词时可右键结果卡片合并两条提示词；点遮罩或按 Esc 关闭
         </p>
       </div>
+
+      <!-- 右键菜单（仅提示词源出现）：单项「合并提示词」 -->
+      <div
+        v-if="menuTargetId"
+        data-merge-menu
+        class="fixed z-[118] min-w-[168px] rounded-md border py-1 shadow-lg border-gray-600 bg-gray-800"
+        :style="{ left: menuX + 'px', top: menuY + 'px' }"
+      >
+        <button
+          type="button"
+          class="block w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700"
+          @click="chooseMerge"
+        >
+          合并提示词
+        </button>
+      </div>
+
+      <MergePromptsModal
+        :open="mergeOpen"
+        :a-id="sourceId"
+        :b-id="mergeBId"
+        @close="mergeOpen = false"
+        @merged="onMerged"
+      />
     </div>
   </Teleport>
 </template>
