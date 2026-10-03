@@ -6,7 +6,7 @@
  * - 提示词详情**非编辑态**的提示词内容右键 → 同一结果页；
  * - 两栏的「阈值 / 重查」互相独立：降左栏只影响左栏，右栏结果保持（反之亦然）；
  * - 首行源文案：图像有关联提示词时显示提示词内容，提示词源显示提示词内容；
- * - 点结果：同侧跳该详情、跨模态叠加打开另一类详情。
+ * - 点结果：同类 / 跨模态结果都落嵌套槽，第 0 层原始详情不被替换（逐层关闭可回到出发点）。
  *
  * 向量来自假 embedding（fixture 注入 `PAIM_EMBEDDING_MOCK=1`）：同输入同向量、方向随机 ——
  * 因此这里**只验证通路与交互，不验证语义相关性**（相关性由真实服务的 `scripts/probe-embed.mjs` 负责）。
@@ -194,5 +194,84 @@ test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底�
   await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
   await closeDetail(bottom);
   e2eLog.info("[step] 逐层关闭后，底部详情仍是源图像详情");
+  await clearSimilarityThresholds(page);
+});
+
+// —— 第 0 层的同类结果也必须落槽：修复前这里走 emit 让页面换了底层详情，原始详情第一次跳转就丢了 ——
+test("图像原始详情点同类结果：相似图落槽（计数 2、底部不动），关槽后回到原始详情", async ({
+  page,
+  app,
+}) => {
+  test.setTimeout(15_000);
+  const { source, other } = makeContentPair("D");
+  await uploadImageWithPrompt(page, source, app.mockImagePath);
+  await uploadImageWithPrompt(page, other, app.mockImagePath);
+  await indexBothSimilarityKinds(page);
+
+  // 第 0 层：源图像详情（本用例全程不得被替换）
+  await openImageDetail(page, source);
+  const bottom = page.getByRole("dialog", { name: "图像详情" }).first();
+  const srcBefore = await bottom.locator("img").first().getAttribute("src");
+  await expect(bottom).toBeVisible();
+
+  // 同类结果（左栏；同模态已排除源自身，只剩对照图）→ 落嵌套图像槽，而不是换底部
+  const modal = await openSimilarSearchFromImageDetail(page, bottom);
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal, "image"));
+  await similarResultPane(modal, "image").getByText("e2e-upload.png").first().click();
+  await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2, { timeout: 5_000 });
+  await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(0);
+  // 底部仍是源图像：src 与跳转前完全一致
+  await expect(bottom.locator("img").first()).toHaveAttribute("src", srcBefore ?? "");
+  // 槽里是另一张（真的换上了内容，不是同实例空转）
+  const nested = page.getByRole("dialog", { name: "图像详情" }).nth(1);
+  await expect(nested.locator("img").first()).toHaveAttribute("src", /asset\.localhost/);
+  await expect(nested.locator("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
+  e2eLog.info("[step] 第 0 层同类结果落槽：底部源图像未被替换");
+
+  // 自顶向下关闭后，底部那条仍是原始详情
+  await closeDetail(nested);
+  await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(1);
+  await expect(bottom).toBeVisible();
+  await expect(bottom.locator("img").first()).toHaveAttribute("src", srcBefore ?? "");
+  await closeDetail(bottom);
+  e2eLog.info("[step] 关槽后回到原始图像详情");
+  await clearSimilarityThresholds(page);
+});
+
+test("提示词原始详情点同类结果：相似提示词落槽（计数 2、底部不动），关槽后回到原始详情", async ({
+  page,
+  app,
+}) => {
+  test.setTimeout(15_000);
+  const { source, other } = makeContentPair("E");
+  await uploadImageWithPrompt(page, source, app.mockImagePath);
+  await uploadImageWithPrompt(page, other, app.mockImagePath);
+  await indexBothSimilarityKinds(page);
+
+  // 第 0 层：源提示词详情
+  await gotoPromptsPage(page);
+  await openPromptDetail(page, source);
+  const bottom = page.getByRole("dialog", { name: "提示词详情" }).first();
+  await expect(bottom).toBeVisible();
+  await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
+
+  // 同类结果（右栏；已排除源自身，只剩另一条）→ 落嵌套提示词槽
+  const modal = await openSimilarSearchFromPromptDetail(page, bottom, source);
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal, "prompt"));
+  await similarResultPane(modal, "prompt").getByText(other, { exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(2, { timeout: 5_000 });
+  await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(0);
+  // 底部仍是源提示词：另一条只出现在上层槽
+  await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
+  const nested = page.getByRole("dialog", { name: "提示词详情" }).nth(1);
+  await expect(nested.getByText(other, { exact: true }).first()).toBeVisible();
+  e2eLog.info("[step] 第 0 层同类结果落槽：底部源提示词未被替换");
+
+  // 自顶向下关闭后，底部那条仍是原始详情
+  await closeDetail(nested);
+  await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(1);
+  await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
+  await closeDetail(bottom);
+  e2eLog.info("[step] 关槽后回到原始提示词详情");
   await clearSimilarityThresholds(page);
 });

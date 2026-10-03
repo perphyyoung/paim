@@ -482,29 +482,6 @@ const detailImages = computed<ImageCard[]>(() => {
   return detailExtra.value.length > 0 ? [...loaded, ...detailExtra.value] : loaded;
 });
 
-/** 从相似度结果打开某图详情：以「单图顺序」进入，不并入当前筛选列表（避免索引/导航错位） */
-async function openDetailById(id: string) {
-  nested.closeAll(); // 换底层详情：嵌套槽随之失效（槽挂在底层详情上，不能悬空）
-  try {
-    const [card] = await commands.imageCardsByIds([id]);
-    if (!card) {
-      showToast("图像不存在或已删除", "warning");
-      return;
-    }
-    detailExtra.value = [card];
-    detailOrder.value = [id];
-    detailDirty.value = false;
-    detailIndex.value = 0;
-    // 详情快照不响应顺序变化（useDetailSnapshot 只在初始化时按 order 定位），
-    // 故先卸载再挂载，让详情按「单图顺序」重新初始化
-    detailOpen.value = false;
-    await nextTick();
-    detailOpen.value = true;
-  } catch (e) {
-    showToast(String(e), "error");
-  }
-}
-
 function openDetail(img: ImageCard) {
   nested.closeAll();
   detailExtra.value = [];
@@ -1023,10 +1000,9 @@ function onUploadDone() {
       @update="onDetailUpdate"
       @replaced="onDetailReplaced"
       @ensure-index="ensureDetailIndex"
-      @open-image="openDetailById"
     />
 
-    <!-- 嵌套详情槽（图像 / 提示词各至多一个；跨类结果与嵌套实例的同类结果都落在槽上） -->
+    <!-- 嵌套详情槽（图像 / 提示词各至多一个；详情内发起的跳转——同类 / 跨类——都落在槽上） -->
     <NestedDetailSlots />
 
     <!-- 标签管理（独立组件，图像域） -->

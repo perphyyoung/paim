@@ -26,7 +26,6 @@ const nested = useNestedDetails();
     :initial-index="0"
     :thumbs="nested.image.value.thumbs"
     :z="nested.imageZ.value"
-    is-nested
     @close="nested.closeNested('image')"
     @update="nested.reportChanged()"
     @replaced="(p) => nested.replaceNestedImage(p.image)"
@@ -44,7 +43,6 @@ const nested = useNestedDetails();
     :tag-names="nested.prompt.value.tagNames"
     :all-tags="nested.prompt.value.allTags"
     :z="nested.promptZ.value"
-    is-nested
     @close="nested.closeNested('prompt')"
     @updated="nested.reportChanged()"
     @safe-synced="(s) => nested.reportSafeSynced(s)"

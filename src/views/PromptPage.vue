@@ -455,29 +455,6 @@ function openDetail(i: number) {
   void loadDetailOrder();
 }
 
-/** 从相似提示词结果打开某条提示词详情：以「单条顺序」进入，不并入当前筛选列表（避免索引/导航错位） */
-async function openDetailById(id: string) {
-  nested.closeAll();
-  try {
-    const [card] = await commands.promptCardsByIds([id]);
-    if (!card) {
-      showToast("提示词不存在或已删除", "warning");
-      return;
-    }
-    detailExtra.value = [card];
-    detailOrder.value = [id];
-    detailDirty.value = false;
-    detailIndex.value = 0;
-    // 详情快照不响应顺序变化（useDetailSnapshot 只在初始化时按 order 定位），
-    // 故先卸载再挂载，让详情按「单条顺序」重新初始化
-    detailOpen.value = false;
-    await nextTick();
-    detailOpen.value = true;
-  } catch (e) {
-    showToast(String(e), "error");
-  }
-}
-
 /** 详情顺序补全为全量 id：主页按块懒加载，索引分母与导航范围不应只等于已加载块条数 */
 async function loadDetailOrder() {
   try {
@@ -835,10 +812,9 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       @close="closeDetail"
       @updated="onModalUpdated"
       @ensure-index="ensureDetailIndex"
-      @open-prompt="openDetailById"
     />
 
-    <!-- 嵌套详情槽（图像 / 提示词各至多一个；跨类结果与嵌套实例的同类结果都落在槽上） -->
+    <!-- 嵌套详情槽（图像 / 提示词各至多一个；详情内发起的跳转——同类 / 跨类——都落在槽上） -->
     <NestedDetailSlots />
 
     <!-- 删除确认 -->

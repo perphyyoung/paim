@@ -37,11 +37,6 @@ const props = defineProps<{
   initialIndex: number;
   thumbs: Record<string, string>;
   /**
-   * 嵌套态（由上层详情打开）：结果跳转落进**槽位**而不是换底层详情（第 0 层永不被替换）。
-   * 入口不再禁用：「编辑/新建提示词」会落进提示词槽，每类槽至多一个（模型见 docs/开发经验.md 第 5 节）
-   */
-  isNested?: boolean;
-  /**
    * 遮罩层级（默认 50，与单开时一致）：槽位叠放时由栈给「最近打开 / 刚被点中的那一层」更高的值。
    * 只用到 51 —— 55 以下才不盖住弹窗自己的子对话框（InlineDialog z-[60]、右键菜单 z-[70]）
    */
@@ -59,10 +54,6 @@ const emit = defineEmits<{
   (e: "safe-synced", isSafe: boolean): void;
   /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
   (e: "ensure-index", index: number): void;
-  /** 相似度结果里点开某张图：父级据此切换详情到该图（该图可能不在当前列表里） */
-  (e: "open-image", id: string): void;
-  /** 嵌套实例里点到的提示词结果：本层不叠加，上抛给宿主按槽位替换（见 docs/开发经验.md 第 5 节） */
-  (e: "open-prompt", id: string): void;
 }>();
 
 const { showToast } = useToast();
@@ -90,12 +81,11 @@ function openSimilar() {
   closeCtxMenu();
   similarOpen.value = true;
 }
-/// 图像结果：嵌套实例换「嵌套图像槽」（同类 → 换它自己那层）；底层详情交给父级按 id 重开
-/// （该图可能不在当前列表里，属「列表内换条」的既有语义）
+/// 图像结果（同类）：换「嵌套图像槽」（已有内容即替换）——底层原始详情永不被换，
+/// 第 0 层的换条只剩主页列表的左右翻页（槽位模型见 docs/开发经验.md 第 5 节）
 function onOpenSimilarImage(id: string) {
   similarOpen.value = false;
-  if (props.isNested) void nested.openNested("image", id);
-  else emit("open-image", id);
+  void nested.openNested("image", id);
 }
 /// 提示词结果（跨模态命中）：一律交给页面的「嵌套提示词槽」（每类至多一个，已有内容即替换）
 function onOpenSimilarPrompt(id: string) {
