@@ -580,15 +580,18 @@ function pickPrompt(id: string) {
         </p>
       </div>
 
-      <!-- 右键菜单（仅提示词源出现）：单项「合并提示词」 -->
+      <!-- 右键菜单（仅提示词源出现）：单项「合并提示词」。data-merge-menu 仅供点外关闭判定 -->
       <div
         v-if="menuTargetId"
         data-merge-menu
+        role="menu"
+        aria-label="提示词结果操作"
         class="fixed z-[118] min-w-[168px] rounded-md border py-1 shadow-lg border-gray-600 bg-gray-800"
         :style="{ left: menuX + 'px', top: menuY + 'px' }"
       >
         <button
           type="button"
+          role="menuitem"
           class="block w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700"
           @click="chooseMerge"
         >

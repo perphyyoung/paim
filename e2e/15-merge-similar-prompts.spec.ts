@@ -65,24 +65,43 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
 
   // 右键目标卡片 → 单项菜单
   await promptPane.getByText(other, { exact: true }).click({ button: "right" });
-  const menu = page.locator("[data-merge-menu]");
+  const menu = page.getByRole("menu", { name: "提示词结果操作" });
   await expect(menu).toBeVisible({ timeout: 3_000 });
-  await menu.getByRole("button", { name: "合并提示词" }).click();
+  await menu.getByRole("menuitem", { name: "合并提示词" }).click();
   e2eLog.info("[step] 右键菜单 → 合并提示词");
 
   // 合并弹窗
   const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
   await expect(mergeDialog).toBeVisible({ timeout: 3_000 });
-  // 原文经词级 diff 拆成多段（整句不在单一元素里）：公共词两侧可见，独有词各着红
-  await expect(mergeDialog.getByText("solo dress").first()).toBeVisible();
-  await expect(mergeDialog.locator("[class*='bg-red']", { hasText: "alpha" })).toBeVisible();
-  await expect(mergeDialog.locator("[class*='bg-red']", { hasText: "beta" })).toBeVisible();
+  // 顶部两侧原文各是命名 region：公共词可见，独有词在对应侧作为 mark 高亮
+  const sourceRegion = mergeDialog.getByRole("region", { name: "源提示词原文" });
+  const targetRegion = mergeDialog.getByRole("region", { name: "目标提示词原文" });
+  await expect(sourceRegion.getByText("solo dress")).toBeVisible();
+  await expect(sourceRegion.getByText("alpha", { exact: true })).toBeVisible();
+  await expect(targetRegion.getByText("beta", { exact: true })).toBeVisible();
   // 合并内容预填了公共部分（非空）；关联图像并集计数
-  const contentBox = mergeDialog.locator("textarea");
+  const contentBox = mergeDialog.getByRole("textbox", { name: "合并后内容" });
   await expect(contentBox).not.toHaveValue("");
   await expect(mergeDialog.getByText(/共\s*2\s*张/)).toBeVisible();
   await expect(mergeDialog.getByText(/重复\s*0\s*张去重/)).toBeVisible();
-  e2eLog.info("[step] 合并弹窗：差异标红、公共预填、共享图像计数正确");
+  e2eLog.info("[step] 合并弹窗：差异标红、公共预填、图像并集计数正确");
+
+  // 右侧差异片段：两个命名 group，点击片段插到光标处（字母间自动补空格），且公共内容不丢
+  const sourceOnlyGroup = mergeDialog.getByRole("group", { name: "源独有" });
+  const targetOnlyGroup = mergeDialog.getByRole("group", { name: "目标独有" });
+  const betaBtn = targetOnlyGroup.getByRole("button", { name: "beta" });
+  const alphaBtn = sourceOnlyGroup.getByRole("button", { name: "alpha" });
+  await expect(betaBtn).toBeVisible();
+  await expect(alphaBtn).toBeVisible();
+  // 把光标放到公共前缀 "e2e merge A" 之后（11 个字符），插入点确定
+  await contentBox.click();
+  await contentBox.press("Home");
+  for (let i = 0; i < 11; i++) await contentBox.press("ArrowRight");
+  await betaBtn.click();
+  await expect(contentBox).toHaveValue(/^e2e merge A beta  solo dress/);
+  await alphaBtn.click(); // 连续插入：焦点回到 textarea、光标在 beta 之后
+  await expect(contentBox).toHaveValue(/^e2e merge A beta alpha  solo dress/);
+  e2eLog.info("[step] 右侧差异片段按光标位置依次插入，自动补空格");
 
   const mergedContent = await contentBox.inputValue();
   await mergeDialog.getByRole("button", { name: "合并" }).click();
@@ -121,7 +140,7 @@ test("图像源：右键提示词结果卡片不出现合并菜单（仅提示�
   await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });
 
   await promptPane.getByText(other, { exact: true }).click({ button: "right" });
-  await expect(page.locator("[data-merge-menu]")).toHaveCount(0);
+  await expect(page.getByRole("menu")).toHaveCount(0);
   e2eLog.info("[step] 图像源不提供合并入口");
 
   await clearSimilarityThresholds(page);

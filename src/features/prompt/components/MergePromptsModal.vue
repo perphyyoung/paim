@@ -3,9 +3,14 @@
 // 全程不出现标题：新建时标题由后端用新 id 生成。
 // 上：源 / 目标原文，词级对齐后独有部分红底；中：合并内容（预填公共部分，差异人工补回）；
 // 下：标签并集、关联图像并集、合并后的备注与安全/收藏口径。确认后新建一条、原两条进回收站。
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { commands, type MergePromptsPreview } from "@/bindings";
-import { commonText, diffTokens, type DiffToken } from "@/features/prompt/promptDiff";
+import {
+  commonText,
+  diffTokens,
+  type DiffKind,
+  type DiffToken,
+} from "@/features/prompt/promptDiff";
 
 const props = defineProps<{
   open: boolean;
@@ -21,6 +26,9 @@ const saving = ref(false);
 const error = ref("");
 const preview = ref<MergePromptsPreview | null>(null);
 const mergedContent = ref("");
+const contentInput = ref<HTMLTextAreaElement | null>(null);
+/// 最近一次光标位置（点右侧片段会让 textarea 失焦，故 blur 时也保留；null = 从未聚焦，插到末尾）
+const caret = ref<number | null>(null);
 
 const diff = computed<DiffToken[]>(() =>
   preview.value ? diffTokens(preview.value.a.content, preview.value.b.content) : [],
@@ -29,6 +37,43 @@ const diff = computed<DiffToken[]>(() =>
 const aSegs = computed(() => diff.value.filter((s) => s.kind !== "added"));
 /// 目标侧段：公共 + 目标独有（added）
 const bSegs = computed(() => diff.value.filter((s) => s.kind !== "removed"));
+/// 右侧片段面板：只收非空白的独有段，相同文本去重（同一词在多处出现只列一次）
+function onlySegments(kind: DiffKind): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of diff.value) {
+    if (s.kind !== kind || !s.text.trim() || seen.has(s.text)) continue;
+    seen.add(s.text);
+    out.push(s.text);
+  }
+  return out;
+}
+const aOnlySegs = computed(() => onlySegments("removed"));
+const bOnlySegs = computed(() => onlySegments("added"));
+
+function syncCaret() {
+  const el = contentInput.value;
+  if (el) caret.value = el.selectionStart;
+}
+/// 点击差异片段：插到记录的光标处（有选区则替换选区；从未聚焦插到末尾），并自动补一个防粘连空格
+function insertSegment(seg: string) {
+  const value = mergedContent.value;
+  const start = caret.value ?? value.length;
+  const end = caret.value === null ? start : (contentInput.value?.selectionEnd ?? start);
+  // 插入点前一字符与片段首字符都是字母/数字时补空格，避免 dress+red 粘成 dressred
+  const before = value.slice(0, start);
+  const pad = before && /[\p{L}\p{N}]$/u.test(before) && /^[\p{L}\p{N}]/u.test(seg) ? " " : "";
+  const insert = pad + seg;
+  mergedContent.value = value.slice(0, start) + insert + value.slice(end);
+  const pos = start + insert.length;
+  caret.value = pos;
+  void nextTick(() => {
+    const node = contentInput.value;
+    if (!node) return;
+    node.focus();
+    node.setSelectionRange(pos, pos);
+  });
+}
 
 watch(
   () => props.open,
@@ -38,6 +83,7 @@ watch(
     error.value = "";
     preview.value = null;
     mergedContent.value = "";
+    caret.value = null;
     try {
       const p = await commands.previewMergePrompts(props.aId, props.bId);
       preview.value = p;
@@ -112,49 +158,106 @@ async function doMerge() {
         <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
           <p v-if="loading" class="py-8 text-center text-sm text-gray-400">正在加载两侧内容…</p>
           <template v-else-if="preview">
-            <!-- 两侧原文：红色高亮各自独有片段；占满主体剩余高度，各自内部滚动 -->
-            <div class="grid min-h-[12rem] flex-1 grid-cols-2 gap-3">
-              <div class="flex min-h-0 flex-col">
+            <!-- 两侧原文：内容是已知的，高度由内容决定（grid 行高取两列较高者）；异常长文本才内部滚动。
+                 差异用词级 <mark> 高亮（mark 语义=被标记文本），两侧各为一个命名 region -->
+            <div class="grid grid-cols-2 gap-3">
+              <section aria-label="源提示词原文">
                 <p class="mb-1 text-xs text-gray-400">源提示词</p>
                 <p
-                  class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
+                  class="max-h-[28vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
                 >
                   <template v-for="(s, i) in aSegs" :key="i">
-                    <span v-if="s.kind === 'removed'" class="rounded bg-red-500/25 text-red-300">{{
+                    <mark v-if="s.kind === 'removed'" class="rounded bg-red-500/25 text-red-300">{{
                       s.text
-                    }}</span>
-                    <span v-else>{{ s.text }}</span>
+                    }}</mark>
+                    <template v-else>{{ s.text }}</template>
                   </template>
                 </p>
-              </div>
-              <div class="flex min-h-0 flex-col">
+              </section>
+              <section aria-label="目标提示词原文">
                 <p class="mb-1 text-xs text-gray-400">目标提示词</p>
                 <p
-                  class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
+                  class="max-h-[28vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
                 >
                   <template v-for="(s, i) in bSegs" :key="i">
-                    <span v-if="s.kind === 'added'" class="rounded bg-red-500/25 text-red-300">{{
+                    <mark v-if="s.kind === 'added'" class="rounded bg-red-500/25 text-red-300">{{
                       s.text
-                    }}</span>
-                    <span v-else>{{ s.text }}</span>
+                    }}</mark>
+                    <template v-else>{{ s.text }}</template>
                   </template>
                 </p>
-              </div>
+              </section>
             </div>
             <p class="mt-1 shrink-0 text-xs text-gray-500">
-              红色为该侧独有内容，合并时请人工确认保留方式。
+              红色为该侧独有内容，点击右侧片段可插回合并内容。
             </p>
 
-            <!-- 合并内容：预填公共部分 -->
-            <label class="mb-1 mt-4 block shrink-0 text-sm font-medium text-gray-200">
-              合并后内容 <span class="text-red-500">*</span>
-            </label>
-            <textarea
-              v-model="mergedContent"
-              rows="8"
-              class="textarea-autogrow max-h-[28lh] min-h-[calc(8lh_+_1rem)] w-full shrink-0 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
-              placeholder="已预填两侧公共部分，请补回需要保留的差异内容"
-            ></textarea>
+            <!-- 中部：左编辑合并内容（预填公共部分），右侧差异片段点击插入到光标处 -->
+            <div class="mt-3 grid grid-cols-[minmax(0,1fr)_300px] items-stretch gap-3">
+              <div class="flex min-w-0 flex-col">
+                <label
+                  for="merge-content-input"
+                  class="mb-1 block text-sm font-medium text-gray-200"
+                >
+                  合并后内容 <span class="text-red-500">*</span>
+                </label>
+                <textarea
+                  ref="contentInput"
+                  id="merge-content-input"
+                  v-model="mergedContent"
+                  rows="8"
+                  class="textarea-autogrow max-h-[28lh] min-h-[calc(8lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+                  placeholder="已预填两侧公共部分，请补回需要保留的差异内容"
+                  @click="syncCaret"
+                  @keyup="syncCaret"
+                  @select="syncCaret"
+                  @blur="syncCaret"
+                ></textarea>
+              </div>
+
+              <section
+                aria-label="差异片段"
+                class="flex min-h-[calc(8lh_+_1rem)] min-w-0 flex-col rounded-lg border border-gray-700"
+              >
+                <p class="shrink-0 border-b px-3 py-2 text-xs text-gray-400 border-gray-700">
+                  差异片段（点击插入光标处）
+                </p>
+                <div
+                  v-if="aOnlySegs.length || bOnlySegs.length"
+                  class="min-h-0 flex-1 space-y-2 overflow-auto p-2"
+                >
+                  <div v-if="aOnlySegs.length" role="group" aria-label="源独有">
+                    <p class="px-0.5 text-[11px] text-gray-500">源独有</p>
+                    <button
+                      v-for="(seg, i) in aOnlySegs"
+                      :key="'a' + i"
+                      type="button"
+                      :title="seg.trim()"
+                      class="mt-1 block w-full truncate rounded bg-red-500/25 px-2 py-1 text-left text-sm text-red-300 hover:bg-red-500/40"
+                      @click="insertSegment(seg)"
+                    >
+                      {{ seg.trim() }}
+                    </button>
+                  </div>
+                  <div v-if="bOnlySegs.length" role="group" aria-label="目标独有">
+                    <p class="px-0.5 pt-1 text-[11px] text-gray-500">目标独有</p>
+                    <button
+                      v-for="(seg, i) in bOnlySegs"
+                      :key="'b' + i"
+                      type="button"
+                      :title="seg.trim()"
+                      class="mt-1 block w-full truncate rounded bg-red-500/25 px-2 py-1 text-left text-sm text-red-300 hover:bg-red-500/40"
+                      @click="insertSegment(seg)"
+                    >
+                      {{ seg.trim() }}
+                    </button>
+                  </div>
+                </div>
+                <p v-else class="flex flex-1 items-center justify-center p-3 text-xs text-gray-500">
+                  两侧内容完全相同
+                </p>
+              </section>
+            </div>
 
             <!-- 合并口径预览 -->
             <div
