@@ -10,7 +10,7 @@
 | [lessons.md](./lessons.md) | 排查记录（Lessons Learned）：弹窗残留与初始化、资源管理器定位（`/select,` 竞态与 SHOpenFolderAndSelectItems）、全屏查看器独立窗口（原主窗口全屏往返过渡帧）与键位双监听/叠加层导航穿透（一次按键跳两格）、e2e 收尾与进程退出串行（用例全绿却整轮 exit 1）、打标签后特殊标签计数漏刷（内存聚合值 + 多写入口）、多层详情跳转的静默失效（入口被条件隐藏 + 嵌套层漏接线）、三级链路第三跳「按钮可用却没反应」（目标已在槽里但没被置顶）、e2e mock 图同毫秒写出同内容被 MD5 去重（一批少一张）、tauri-specta 集成返工等，含根因与通用约束；配套的成功做法见 [开发经验.md](./开发经验.md)。 |
 | [日志使用说明.md](./日志使用说明.md) | 极简调试日志：后端 4 个宏 + 前端 `log` 对象（仅 DEV 上报），写入 `paim.log` 的格式与位置、使用建议。 |
 | [优化应用大小.md](./优化应用大小.md) | 对照官方「应用体积」逐条评估后的落地结论：Cargo profile（含必须写在 workspace 根的修正）、`removeUnusedCommands` 与 core 权限收敛的审计结果与维护约束。 |
-| [导入优化.md](./导入优化.md) | pm 备份导入缩略图重建的性能现状（jpeg-encoder SIMD、满核并发）与暂缓的备选方案（turbojpeg / libvips）。 |
+| [导入优化.md](./导入优化.md) | pm 备份导入缩略图重建的性能现状（jpeg-encoder SIMD、满核并发）与暂缓的备选方案（turbojpeg / libvips）；另记向量随整库备份原样恢复（区别于缩略图必重建、旧包 dataVersion 迁移）。 |
 | [虚拟滚动可选优化.md](./虚拟滚动可选优化.md) | VirtualGrid + CustomScrollBar 已落地后的暂缓优化：数据分页演进路径、缩略图缓存穿透、Pinia 引入时机。 |
 | [e2e测试.md](./e2e测试.md) | Playwright e2e（CDP 连真实应用）的运行方式、测试缝、文件命名与索引、失败排查顺序。 |
 | [playwright使用经验.md](./playwright使用经验.md) | Playwright 使用经验：自实现 file 级实例隔离（fixture 只有 test/worker 两级 scope）、fixture 独立 timeout、素材唯一化、等待策略与定位坑。 |

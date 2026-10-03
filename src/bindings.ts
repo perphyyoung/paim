@@ -302,6 +302,10 @@ export type BackupInfo = {
 	trashed_image_count: number,
 	prompt_tag_count: number,
 	image_tag_count: number,
+	/**  已带相似度向量（`vec` 非空）的图像数；pm 包与无 vec 列的旧 paim 包恒为 0 */
+	indexed_image_count: number,
+	/**  已带相似度向量的提示词数（同上） */
+	indexed_prompt_count: number,
 };
 
 /**

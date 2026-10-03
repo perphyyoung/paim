@@ -74,10 +74,19 @@ const importTitle = computed(() =>
 const confirmMessage = computed(() => {
   const info = importInfo.value;
   if (!info) return "";
+  const vecLine =
+    info.app === "paim"
+      ? `向量索引：图像 ${info.indexed_image_count}/${info.image_count}、提示词 ${info.indexed_prompt_count}/${info.prompt_count}` +
+        (info.indexed_image_count + info.indexed_prompt_count === 0
+          ? "（本备份不含向量，恢复后需在设置页重建相似度索引）"
+          : "（随备份恢复，无需重建）") +
+        "。"
+      : "";
   return (
     `识别为 ${info.app === "pm" ? "prompt-manager" : "paim"} 备份，` +
     `将导入 ${info.prompt_count} 条提示词、${info.image_count} 张图像` +
     `（回收站：提示词 ${info.trashed_prompt_count} 条、图像 ${info.trashed_image_count} 张）。` +
+    vecLine +
     "原数据目录将整体备份（含缩略图）后替换。"
   );
 });

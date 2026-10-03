@@ -69,6 +69,9 @@ pub fn inspect(zip_path: &str) -> Result<BackupInfo, String> {
             trashed_image_count: count("SELECT COUNT(*) FROM images WHERE is_deleted = 1")?,
             prompt_tag_count: count("SELECT COUNT(*) FROM prompt_tags")?,
             image_tag_count: count("SELECT COUNT(*) FROM image_tags")?,
+            // pm 包无相似度向量代际
+            indexed_image_count: 0,
+            indexed_prompt_count: 0,
         })
     })();
     let _ = std::fs::remove_dir_all(&tmp);

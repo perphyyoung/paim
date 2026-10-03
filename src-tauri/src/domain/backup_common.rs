@@ -24,6 +24,10 @@ pub struct BackupInfo {
     pub trashed_image_count: i64,
     pub prompt_tag_count: i64,
     pub image_tag_count: i64,
+    /// 已带相似度向量（`vec` 非空）的图像数；pm 包与无 vec 列的旧 paim 包恒为 0
+    pub indexed_image_count: i64,
+    /// 已带相似度向量的提示词数（同上）
+    pub indexed_prompt_count: i64,
 }
 
 /// 备份导出结果摘要。

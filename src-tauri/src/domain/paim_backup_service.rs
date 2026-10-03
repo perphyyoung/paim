@@ -1,6 +1,8 @@
 //! paim 自有全量备份导出/导入服务。
 //! 备份包结构（本服务导出）：
 //!   manifest.json + database/paim.db + files/images/**（缩略图不导出，导入端重建）。
+//! 相似度向量是 images/prompts 的库内 BLOB 列，随整库快照原样同行，无需单独搬运；
+//! dataVersion=2 标记带该列的代际，v1 包无此列，导入重开库时 db::init 补 NULL。
 //! 导出：统计 → manifest → `VACUUM INTO` 生成库快照（原子、自动合并 WAL，不断库）
 //!   → 复制 images → ZipWriter 压缩，全程在临时目录暂存。
 //! 导入语义与 pm 一致：整体替换当前数据——整目录让位（同级 `paim-data_{时间戳}`）
@@ -21,7 +23,9 @@ use crate::infra::db::{self, BkDb};
 use crate::{log_error, log_info};
 
 /// 当前支持的数据格式版本；导入接受 ≤ 该版本（旧备份重开库时由迁移升级）。
-const CURRENT_DATA_VERSION: i64 = 1;
+/// v2（2026-10）：图像/提示词表带 `vec` 相似度向量列（列在库内，整库快照天然随行；
+/// v1 包没有该列，重开库时由 db::init 幂等补 NULL，恢复后需重新索引相似度）。
+const CURRENT_DATA_VERSION: i64 = 2;
 
 /// paim 备份包内的固定布局。
 const DB_ENTRY: &str = "database/paim.db";
@@ -43,6 +47,26 @@ struct BackupManifest {
 fn count(conn: &Connection, sql: &str) -> Result<i64, String> {
     conn.query_row(sql, [], |r| r.get(0))
         .map_err(|e| format!("统计数据失败: {e}"))
+}
+
+/// 统计某表已带相似度向量（`vec` 非空）的行数；v1 备份库没有 vec 列，按 0 处理。
+fn count_indexed(conn: &Connection, table: &str) -> Result<i64, String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|e| format!("读取备份表结构失败: {e}"))?;
+    let has_vec = stmt
+        .query_map([], |r| r.get::<_, String>(1))
+        .map_err(|e| format!("读取备份表结构失败: {e}"))?
+        .filter_map(Result::ok)
+        .any(|name| name == "vec");
+    drop(stmt);
+    if !has_vec {
+        return Ok(0);
+    }
+    count(
+        conn,
+        &format!("SELECT COUNT(*) FROM {table} WHERE vec IS NOT NULL"),
+    )
 }
 
 /// 解析备份包，返回内容概览（不改动任何本地数据）。
@@ -73,6 +97,8 @@ pub fn inspect(zip_path: &str) -> Result<BackupInfo, String> {
             trashed_image_count: count(&conn, "SELECT COUNT(*) FROM images WHERE is_deleted = 1")?,
             prompt_tag_count: count(&conn, "SELECT COUNT(*) FROM prompt_tags")?,
             image_tag_count: count(&conn, "SELECT COUNT(*) FROM image_tags")?,
+            indexed_image_count: count_indexed(&conn, "images")?,
+            indexed_prompt_count: count_indexed(&conn, "prompts")?,
         })
     })();
     let _ = std::fs::remove_dir_all(&tmp);
