@@ -73,26 +73,22 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   // 合并弹窗
   const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
   await expect(mergeDialog).toBeVisible({ timeout: 3_000 });
-  // 顶部两侧原文各是命名 region：公共词可见，独有词在对应侧作为 mark 高亮
+  // 顶部两侧原文各是命名 region：公共词可见，独有词在对应侧作为可点击的红底按钮
   const sourceRegion = mergeDialog.getByRole("region", { name: "源提示词原文" });
   const targetRegion = mergeDialog.getByRole("region", { name: "目标提示词原文" });
   await expect(sourceRegion.getByText("solo dress")).toBeVisible();
-  await expect(sourceRegion.getByText("alpha", { exact: true })).toBeVisible();
-  await expect(targetRegion.getByText("beta", { exact: true })).toBeVisible();
+  const alphaBtn = sourceRegion.getByRole("button", { name: "alpha" });
+  const betaBtn = targetRegion.getByRole("button", { name: "beta" });
+  await expect(alphaBtn).toBeVisible();
+  await expect(betaBtn).toBeVisible();
   // 合并内容预填了公共部分（非空）；关联图像并集计数
   const contentBox = mergeDialog.getByRole("textbox", { name: "合并后内容" });
   await expect(contentBox).not.toHaveValue("");
   await expect(mergeDialog.getByText(/共\s*2\s*张/)).toBeVisible();
   await expect(mergeDialog.getByText(/重复\s*0\s*张去重/)).toBeVisible();
-  e2eLog.info("[step] 合并弹窗：差异标红、公共预填、图像并集计数正确");
+  e2eLog.info("[step] 合并弹窗：差异标红可点、公共预填、图像并集计数正确");
 
-  // 右侧差异片段：两个命名 group，点击片段插到光标处（字母间自动补空格），且公共内容不丢
-  const sourceOnlyGroup = mergeDialog.getByRole("group", { name: "源独有" });
-  const targetOnlyGroup = mergeDialog.getByRole("group", { name: "目标独有" });
-  const betaBtn = targetOnlyGroup.getByRole("button", { name: "beta" });
-  const alphaBtn = sourceOnlyGroup.getByRole("button", { name: "alpha" });
-  await expect(betaBtn).toBeVisible();
-  await expect(alphaBtn).toBeVisible();
+  // 点击上方红段插到光标处（字母间自动补空格），且公共内容不丢
   // 把光标放到公共前缀 "e2e merge A" 之后（11 个字符），插入点确定
   await contentBox.click();
   await contentBox.press("Home");
