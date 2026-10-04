@@ -45,7 +45,7 @@ describe("collectPreferences", () => {
     stubStorage({
       fontScale: "120",
       fontFamily: "SimHei",
-      cardInfoVisible: "0",
+      homeCardInfoVisible: "0",
       "paim.blockSize": "50",
       "prompt.sortBy": "createdAt",
       "image.columns": "6",
@@ -55,7 +55,7 @@ describe("collectPreferences", () => {
     expect(collectPreferences()).toEqual({
       fontScale: "120",
       fontFamily: "SimHei",
-      cardInfoVisible: "0",
+      homeCardInfoVisible: "0",
       "paim.blockSize": "50",
       "prompt.sortBy": "createdAt",
       "image.columns": "6",

@@ -11,7 +11,7 @@
 import { applyFontFamily, applyFontScale } from "@/utils/font";
 
 /** 不在域前缀下的孤立偏好键 */
-const PREF_EXACT_KEYS = ["fontScale", "fontFamily", "cardInfoVisible", "paim.blockSize"];
+const PREF_EXACT_KEYS = ["fontScale", "fontFamily", "homeCardInfoVisible", "paim.blockSize"];
 /** 按域前缀批量纳入的偏好键（两个主页与标签筛选的视图状态） */
 const PREF_KEY_PREFIXES = ["prompt.", "image."];
 

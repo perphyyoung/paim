@@ -6,7 +6,7 @@ import { initFontFamily, initFontScale } from "@/utils/font";
 import SettingsView from "@/views/SettingsView.vue";
 import StatsModal from "@/components/StatsModal.vue";
 import ToastHost from "@/components/ToastHost.vue";
-import { cardInfoVisible, toggleCardInfo } from "@/utils/cardInfo";
+import { homeCardInfoVisible, toggleHomeCardInfo } from "@/utils/homeCardInfo";
 
 // 应用启动即应用持久化的全局字号缩放与字体家族
 initFontScale();
@@ -15,20 +15,20 @@ initFontFamily();
 // 全局快捷键（系统级，Rust 侧 tauri-plugin-global-shortcut 注册 Ctrl+,）：
 // 收到事件即切换设置面板开关
 let unlistenGlobalShortcut: (() => void) | undefined;
-function onCardInfoKeydown(e: KeyboardEvent) {
+function onHomeCardInfoKeydown(e: KeyboardEvent) {
   if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyI") {
     e.preventDefault();
-    toggleCardInfo();
+    toggleHomeCardInfo();
   }
 }
 onMounted(async () => {
-  document.addEventListener("keydown", onCardInfoKeydown);
+  document.addEventListener("keydown", onHomeCardInfoKeydown);
   unlistenGlobalShortcut = await events.globalShortcut.listen(() => {
     settingsOpen.value = !settingsOpen.value;
   });
 });
 onUnmounted(() => {
-  document.removeEventListener("keydown", onCardInfoKeydown);
+  document.removeEventListener("keydown", onHomeCardInfoKeydown);
   unlistenGlobalShortcut?.();
 });
 
@@ -111,17 +111,17 @@ function reloadAll() {
           />
         </svg>
       </button>
-      <!-- 卡片信息开关：关闭后卡片仅剩背景图（对齐 pm 的「信息」按钮，Alt+I） -->
+      <!-- 主页卡片信息开关：关闭后主页卡片仅剩背景图（对齐 pm 的「信息」按钮，Alt+I） -->
       <button
         type="button"
-        :title="`${cardInfoVisible ? '隐藏' : '显示'}卡片信息 (Alt+I)`"
+        :title="`${homeCardInfoVisible ? '隐藏' : '显示'}主页卡片信息 (Alt+I)`"
         class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
         :class="
-          cardInfoVisible
+          homeCardInfoVisible
             ? 'text-gray-300 hover:bg-gray-700'
             : 'bg-gray-700 text-gray-500 hover:bg-gray-600'
         "
-        @click="toggleCardInfo"
+        @click="toggleHomeCardInfo"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
