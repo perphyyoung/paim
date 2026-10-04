@@ -5,6 +5,8 @@
  * - 有背景图时整张盖一层半透明黑遮罩（CARD_OVERLAY_OPACITY 单点调节），所有文字都在恒定暗底上，
  *   一律不加 text-shadow；无图时是 bg-gray-800 灰底，不叠遮罩。
  * - 多行正文左对齐（放得下垂直居中、放不下顶对齐，超出裁掉）；标签行与底部单行标题居中。
+ * - 「显示卡片信息」开关（cardInfoVisible）只作用于 home：关闭时正文/标签/标题与遮罩一起隐去，
+ *   只剩背景图；similar/trash 恒显，不受开关影响（见 showCardInfo）。
  * 三种变体只差异顶行与角标：
  * - home：勾选/收藏/复制/删除 4 钮，点击卡片打开详情；
  * - similar：相似度结果卡，无顶行，左上相似度角标，点击打开、支持右键；
@@ -12,7 +14,7 @@
  */
 import CardTagRow from "@/components/CardTagRow.vue";
 import { cardInfoVisible } from "@/utils/cardInfo";
-import { nextTick, onMounted, onUpdated, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUpdated, ref, watch } from "vue";
 
 /// 背景遮罩透明度（0 = 完全不压暗，1 = 全黑）；想提亮/压暗只改这一个值
 const CARD_OVERLAY_OPACITY = 0.5;
@@ -73,6 +75,10 @@ const emit = defineEmits<{
   (e: "cardClick", ev: MouseEvent, index: number, id: string): void;
   (e: "contextmenu", ev: MouseEvent): void;
 }>();
+
+// 卡片信息开关（App 左下角/Alt+I）只作用于主页：关闭时主页卡的文字与整卡遮罩一起隐去，
+// 只剩背景图；相似度结果与回收站始终展示信息与遮罩，不受开关影响。
+const showCardInfo = computed(() => props.variant !== "home" || cardInfoVisible.value);
 
 // Shift/Ctrl+修饰点击在 mousedown 阶段拦截，避免浏览器文本选择（否则卡片内容被选中变蓝）
 function onMouseDown(e: MouseEvent) {
@@ -148,9 +154,10 @@ const scoreText = (s: number) => s.toFixed(3);
       />
     </svg>
 
-    <!-- 整卡遮罩：只在有背景图时叠加，透明度由 CARD_OVERLAY_OPACITY 单点控制 -->
+    <!-- 整卡遮罩：有背景图且卡片信息可见时叠加（主页关闭信息时随文字一起隐去），
+         透明度由 CARD_OVERLAY_OPACITY 单点控制 -->
     <div
-      v-if="thumb"
+      v-if="thumb && showCardInfo"
       class="pointer-events-none absolute inset-0"
       :style="{ backgroundColor: `rgba(0, 0, 0, ${CARD_OVERLAY_OPACITY})` }"
       aria-hidden="true"
@@ -282,9 +289,9 @@ const scoreText = (s: number) => s.toFixed(3);
       </div>
     </div>
 
-    <!-- 正文行：左对齐；垂直方向容得下居中 / 溢出顶对齐；卡片信息关闭时隐藏 -->
+    <!-- 正文行：左对齐；垂直方向容得下居中 / 溢出顶对齐；卡片信息关闭时（仅主页）隐藏 -->
     <div
-      v-if="cardInfoVisible"
+      v-if="showCardInfo"
       ref="contentRowRef"
       class="relative z-[1] mx-1 mb-0.5 flex min-h-0 flex-1 flex-col overflow-hidden px-1.5 py-1"
       :class="isContentFit ? 'justify-center' : 'justify-start'"
@@ -298,17 +305,17 @@ const scoreText = (s: number) => s.toFixed(3);
       </p>
     </div>
 
-    <!-- 标签行：水平居中（组件内截断，剩余显示 +n） -->
+    <!-- 标签行：水平居中（组件内截断，剩余显示 +n）；卡片信息关闭时（仅主页）隐藏 -->
     <CardTagRow
-      v-if="cardInfoVisible && tags.length"
+      v-if="showCardInfo && tags.length"
       :tags="tags"
       :card-size="cardSize"
       class="relative z-[1]"
     />
 
-    <!-- 底部单行标题 / 副标题：居中、截断 -->
+    <!-- 底部单行标题 / 副标题：居中、截断；卡片信息关闭时（仅主页）隐藏 -->
     <div
-      v-if="cardInfoVisible && (title || subTitle)"
+      v-if="showCardInfo && (title || subTitle)"
       class="relative z-[1] px-1.5 py-0.5 text-center"
     >
       <p

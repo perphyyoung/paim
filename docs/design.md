@@ -268,7 +268,8 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 
 ### 背景与遮罩
 
-- 有缩略图（`thumb` 非空）时图片铺满方卡，整张盖一层半透明黑遮罩 `rgba(0,0,0,0.5)`，让所有文字落在恒定暗底上；透明度由组件顶部常量 `CARD_OVERLAY_OPACITY` **单点调节**，要提亮/压暗只改这一个值。
+- 有缩略图（`thumb` 非空）且卡片信息可见时图片铺满方卡，整张盖一层半透明黑遮罩 `rgba(0,0,0,0.5)`，让所有文字落在恒定暗底上；透明度由组件顶部常量 `CARD_OVERLAY_OPACITY` **单点调节**，要提亮/压暗只改这一个值。
+- 遮罩与文字共用 `showCardInfo` 条件，同生共隐：主页关闭「显示卡片信息」时遮罩随正文/标签/标题一起消失，只剩背景图；相似度与回收站恒显遮罩，不受开关影响。
 - 遮罩之上的所有文字**一律不加 text-shadow**（暗底已保证对比，描边只会发糊）。
 - 无缩略图时是 `bg-gray-800` 灰底加居中占位图标，**不叠遮罩**。
 - 收藏态边框 `border-amber-500`，其余 `border-gray-700`；选中态叠 `bg-indigo-500/15` 遮罩（见「颜色」章选中态）。
@@ -278,7 +279,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 - 正文行（`content`）：多行、`whitespace-pre-wrap`、**左对齐**；垂直方向放得下时居中、放不下时顶对齐并裁掉开头以下部分（运行时测量，组件更新后重测）。
 - 标签行（CardTagRow）：水平居中，超出由组件汇聚为「+n」。
 - 底部标题（`title`）：居中单行截断，悬停 title 提示全文（主页传 `titleTip`，文案为「排序字段：值」）；其下副标题（`subTitle`）为灰色小字，回收站固定传「删除于 …」。
-- 无 `title` / `subTitle` / `content` 时对应区域整块不渲染；卡片信息总开关关闭时（`cardInfoVisible`）文字区整体隐藏。
+- 无 `title` / `subTitle` / `content` 时对应区域整块不渲染；「显示卡片信息」总开关（`cardInfoVisible`，App 左下角 / Alt+I）只作用于两个主页的 `home` 变体——关闭时文字区与遮罩整体隐藏；相似度结果与回收站始终展示，不读开关。组件内统一由派生量 `showCardInfo = variant !== "home" || cardInfoVisible` 控制。
 
 ### 场景 props 映射
 
