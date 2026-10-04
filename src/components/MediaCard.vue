@@ -53,7 +53,14 @@ function measureContentFit() {
   const row = contentRowRef.value;
   if (!row) return;
   const p = row.querySelector("p");
-  isContentFit.value = !p || p.getBoundingClientRect().height <= row.clientHeight;
+  if (!p) {
+    isContentFit.value = true;
+    return;
+  }
+  // 遮罩块自带 py 内边距，可用高度要扣掉上下 padding 再比
+  const cs = getComputedStyle(row);
+  const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  isContentFit.value = p.getBoundingClientRect().height <= row.clientHeight - pad;
 }
 
 let rafId = 0;
@@ -103,8 +110,8 @@ onUpdated(scheduleMeasure);
       />
     </svg>
 
-    <!-- 覆盖层（白字统一加重阴影，亮色图上也清晰；文字区渐变压暗在其下） -->
-    <div class="absolute inset-0 flex flex-col [&_p]:drop-shadow-[0_1px_2px_rgba(0,0,0,.9)]">
+    <!-- 覆盖层：多行正文走半透明遮罩块、单行文字走 text-shadow（见内容行与排序行） -->
+    <div class="absolute inset-0 flex flex-col">
       <!-- row1 按钮行：绝对悬浮于顶部，不占布局空间；悬停/批量模式显示 -->
       <div
         class="absolute inset-x-0 top-0 z-[3] grid grid-cols-4 items-center py-0.5 transition-opacity duration-150"
@@ -186,15 +193,16 @@ onUpdated(scheduleMeasure);
         </div>
       </div>
 
-      <!-- row2 内容行（容得下居中 / 溢出时开头对齐保证可读；content 为空时保留占位高度）；
+      <!-- row2 内容行（多行正文 → 整块半透明遮罩，任意背景上对比度稳定；
+           容得下居中 / 溢出时开头对齐保证可读；content 为空时保留占位高度但不显示空遮罩）；
            卡片信息关闭时隐藏（仅剩背景图，对齐 pm 信息开关） -->
       <div
         v-if="cardInfoVisible"
         ref="contentRowRef"
-        class="relative flex flex-1 overflow-hidden px-1.5 pt-1"
-        :class="isContentFit ? 'items-center' : 'items-start'"
+        class="relative mx-1 mb-0.5 flex min-h-0 flex-1 flex-col overflow-hidden rounded px-1.5 py-1"
+        :class="[isContentFit ? 'justify-center' : 'justify-start', content ? 'bg-black/50' : '']"
       >
-        <p v-if="content" class="text-[length:var(--fs-10)] leading-4 text-white">
+        <p v-if="content" class="text-[length:var(--fs-10)] leading-4 text-gray-100">
           {{ content }}
         </p>
       </div>
@@ -202,10 +210,10 @@ onUpdated(scheduleMeasure);
       <!-- row3 标签（组件内截断，剩余显示 +n） -->
       <CardTagRow v-if="cardInfoVisible && tags.length" :tags="tags" :card-size="cardSize" />
 
-      <!-- row4 排序字段 -->
+      <!-- row4 排序字段（单行，白字 + text-shadow 压图） -->
       <div v-if="cardInfoVisible" class="px-1.5 py-0.5 text-center">
         <p
-          class="truncate text-[length:var(--fs-11)] text-white"
+          class="truncate text-[length:var(--fs-11)] text-white [text-shadow:0_1px_2px_rgba(0,0,0,.9)]"
           :title="`${sortInfo.label}：${sortInfo.value}`"
         >
           {{ sortInfo.value }}

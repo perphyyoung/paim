@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 结果页卡片：与主页卡片同「形」（圆角描边 + 背景图铺满 + 文字带阴影），但不参与批量选择 / 标签 / 排序行。
+// 结果页卡片：与主页卡片同「形」（圆角描边 + 背景图铺满；多行正文走 bg-black/50 遮罩、单行文字走 text-shadow），
+// 但不参与批量选择 / 标签 / 排序行。
 // 两种内容布局（由是否给 `content` 决定）：
 // - 图像：背景图 + 相似度角标 + 文件名（底部一行，压在渐变上）；
 // - 提示词：背景图 + 相似度角标 → **内容占卡片最大空间** → 标题（底部一行）。
@@ -62,9 +63,7 @@ const isPromptLayout = computed(() => props.content !== undefined);
     <!-- 提示词布局：角标 → 内容（占最大空间，超出裁掉）→ 标题 -->
     <div v-if="isPromptLayout" class="absolute inset-0 z-[1] flex flex-col pt-7">
       <div class="mx-1 min-h-0 flex-1 overflow-hidden rounded bg-black/50 px-1.5 py-1">
-        <p
-          class="whitespace-pre-wrap text-[11px] leading-4 text-gray-100 [text-shadow:0_1px_2px_rgba(0,0,0,.9)]"
-        >
+        <p class="whitespace-pre-wrap text-[11px] leading-4 text-gray-100">
           {{ content }}
         </p>
       </div>
