@@ -558,15 +558,33 @@ function onTagManagerSaved() {
 // —— 回收站 ——
 const trashOpen = ref(false);
 const trashPrompts = shallowRef<PromptCard[]>([]);
+/// 回收站卡片背景：独立于主页 thumbs——主页映射只取未删图像且随块淘汰（pruneThumbs），
+/// 回收站是「关系还在就显示」（关联图像也在回收站里仍显示），故单独拉取、随开关释放。
+const trashThumbs = shallowRef<Record<string, string>>({});
+/// 回收站一次性拉全量，背景按批取，避免万级数据拼出超大 IN 子句
+const TRASH_THUMB_BATCH = 500;
 const emptyTrashOpen = ref(false);
 const purgeTarget = ref<PromptCard | null>(null);
 const purgeConfirmOpen = ref(false);
 
 async function loadTrash() {
   try {
-    trashPrompts.value = await commands.listTrashedPrompts();
+    const [items, dir] = await Promise.all([
+      commands.listTrashedPrompts(),
+      dataDir.value ? Promise.resolve(dataDir.value) : commands.getDataDir(),
+    ]);
+    dataDir.value = dir;
+    trashPrompts.value = items;
+    const map: Record<string, string> = {};
+    for (let i = 0; i < items.length; i += TRASH_THUMB_BATCH) {
+      const ids = items.slice(i, i + TRASH_THUMB_BATCH).map((p) => p.id);
+      const raw = await commands.getTrashedPromptThumbs(ids);
+      for (const k of Object.keys(raw)) map[k] = relativePathToAssetUrl(dir, raw[k]);
+    }
+    trashThumbs.value = map;
   } catch {
     trashPrompts.value = [];
+    trashThumbs.value = {};
   }
 }
 function openTrash() {
@@ -577,6 +595,7 @@ function closeTrash() {
   trashOpen.value = false;
   // 回收站是随开随用的临时集合，关闭即释放；下次 openTrash 会重新拉取
   trashPrompts.value = [];
+  trashThumbs.value = {};
 }
 
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
@@ -601,6 +620,7 @@ async function doEmptyTrash() {
   try {
     const r = await commands.emptyPromptTrash();
     trashPrompts.value = [];
+    trashThumbs.value = {};
     await loadPrompts();
     markPageStale("images");
     showToast(
@@ -628,6 +648,7 @@ async function restorePrompt(p: PromptCard) {
   try {
     await commands.restorePrompt(p.id);
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);
+    delete trashThumbs.value[p.id];
     await loadPrompts();
     // 恢复的提示词重新出现在图像主页的关联文案里
     markPageStale("images");
@@ -643,6 +664,7 @@ async function purgePrompt(p: PromptCard) {
     // 关联关系级联删除，图像主页的关联提示词文案已变化
     markPageStale("images");
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);
+    delete trashThumbs.value[p.id];
     showToast(`已彻底删除「${p.title}」`, "success");
   } catch (e) {
     showToast(`删除失败：${e}`, "error");
@@ -887,7 +909,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         <MediaCard
           variant="trash"
           :item="p"
-          :thumb="thumbs[p.id] ?? ''"
+          :thumb="trashThumbs[p.id] ?? ''"
           :content="p.content"
           :title="p.title"
           :sub-title="`删除于 ${formatLocalTime(p.deleted_at)}`"

@@ -1,8 +1,8 @@
 //! 图像领域服务单元测试：搜索 WHERE 子句拼接（filter_sql）、导入、替换图像、详情更新。
 
 use super::{
-    filter_sql, import_with, list_ids, list_page, list_related_prompts, replace_image_with,
-    special_tags_counts, update_detail, ImageReplaceOutcome, PaginatedImages,
+    filter_sql, first_prompts_for_trashed, import_with, list_ids, list_page, list_related_prompts,
+    replace_image_with, special_tags_counts, update_detail, ImageReplaceOutcome, PaginatedImages,
 };
 use crate::domain::list_query::ListQuery;
 use crate::infra::db;
@@ -731,4 +731,74 @@ fn list_ids_and_special_tags_counts_share_the_same_filter() {
     assert_eq!(counts.get("无标"), Some(&1));
     assert_eq!(counts.get("未引"), Some(&2));
     assert_eq!(counts.get("安全"), Some(&2), "is_safe 默认 1");
+}
+
+/// 回收站特殊语义：图像与关联提示词**两边都已软删**时，回收站映射仍返回该提示词内容
+/// （关系还在就显示）；没有任何关联的图像不进映射。
+#[test]
+fn first_prompts_for_trashed_includes_prompts_also_trashed() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path, is_deleted, deleted_at)
+         VALUES ('i1', 'a.png', 'a.png', 'images/202610/a.png', 1, '2026-10-04T00:00:00Z'),
+                ('i2', 'b.png', 'b.png', 'images/202610/b.png', 1, '2026-10-04T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content, is_deleted, deleted_at)
+         VALUES ('p1', 't', '关联内容', 1, '2026-10-04T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', 'i1')",
+        [],
+    )
+    .unwrap();
+
+    let map = first_prompts_for_trashed(&conn, &["i1".to_string(), "i2".to_string()]).unwrap();
+    assert_eq!(
+        map.get("i1").map(String::as_str),
+        Some("关联内容"),
+        "图像与提示词都在回收站里，关系还在就显示"
+    );
+    assert!(!map.contains_key("i2"), "无关联的回收站图像不进映射");
+    assert!(
+        first_prompts_for_trashed(&conn, &[]).unwrap().is_empty(),
+        "空 ids 应直接返回空映射"
+    );
+}
+
+/// 多条关联时取 created_at 最早的提示词内容（与主页 imagePrompts[id][0] 同口径）。
+#[test]
+fn first_prompts_for_trashed_picks_earliest_created_prompt() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path, is_deleted)
+         VALUES ('i1', 'a.png', 'a.png', 'images/202610/a.png', 1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content, created_at)
+         VALUES ('p1', 't', '较早', '2026-10-01T00:00:00Z'),
+                ('p2', 't', '较晚', '2026-10-03T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p2', 'i1'), ('p1', 'i1')",
+        [],
+    )
+    .unwrap();
+
+    let map = first_prompts_for_trashed(&conn, &["i1".to_string()]).unwrap();
+    assert_eq!(
+        map.get("i1").map(String::as_str),
+        Some("较早"),
+        "应取 created_at 最早的关联提示词，与关系插入顺序无关"
+    );
 }

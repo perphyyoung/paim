@@ -909,6 +909,41 @@ pub fn list_related_prompts(conn: &Connection, image_id: &str) -> Result<Vec<Lin
     Ok(list)
 }
 
+/// 回收站图像卡片正文：{imageId: 首条关联提示词内容}。
+/// 「首条」口径与主页 `get_image_prompts_map` 后取 `[0]` 一致（按提示词 created_at 最早）；
+/// 差异是**不过滤提示词删除态**——回收站特殊语义：只要关联关系还在，
+/// 即使关联提示词本身也在提示词回收站里，正文仍然显示。
+pub fn first_prompts_for_trashed(
+    conn: &Connection,
+    ids: &[String],
+) -> Result<HashMap<String, String>> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = format!(
+        "SELECT image_id, content
+         FROM (
+            SELECT pir.image_id AS image_id, pr.content AS content,
+                   ROW_NUMBER() OVER (PARTITION BY pir.image_id ORDER BY pr.created_at, pir.rowid) AS rn
+            FROM prompt_image_relations pir
+            JOIN prompts pr ON pr.id = pir.prompt_id
+            WHERE pir.image_id IN ({placeholders})
+         )
+         WHERE rn = 1"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut map: HashMap<String, String> = HashMap::new();
+    for row in rows {
+        let (image_id, content) = row?;
+        map.insert(image_id, content);
+    }
+    Ok(map)
+}
+
 #[cfg(test)]
 #[path = "image_service.test.rs"]
 mod tests;

@@ -407,6 +407,22 @@ pub async fn get_image_prompts_map(
     .await
 }
 
+/// 回收站图像卡片正文：{imageId: 首条关联提示词内容}。
+/// 与主页 `get_image_prompts_map` 的差异是纳入已软删的关联提示词
+/// （回收站特殊语义：关系还在就显示，哪怕提示词也在提示词回收站里）；按 id 批量取，只回首条。
+#[tauri::command]
+#[specta::specta]
+pub async fn get_trashed_image_first_prompts(
+    db: State<'_, BkDb>,
+    ids: Vec<String>,
+) -> Result<std::collections::HashMap<String, String>, AppError> {
+    db_blocking(&db, move |conn| {
+        image_service::first_prompts_for_trashed(conn, &ids)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
+}
+
 /// 返回单张图像关联的提示词列表（含标题/内容/翻译/备注/标签），供详情页左侧展示。
 #[tauri::command]
 #[specta::specta]

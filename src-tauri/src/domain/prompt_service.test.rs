@@ -2,7 +2,7 @@
 
 use super::{
     ensure_prompt_thumbnails, list_ids, list_page, list_related_images_with,
-    set_prompt_first_image, special_tags_counts, thumbs_for, update_detail,
+    set_prompt_first_image, special_tags_counts, thumbs_for, thumbs_for_trashed, update_detail,
 };
 use crate::domain::list_query::ListQuery;
 use crate::infra::db;
@@ -862,6 +862,43 @@ fn thumbs_for_limits_result_to_requested_prompts() {
     assert!(
         thumbs_for(&conn, &[]).unwrap().is_empty(),
         "空 ids 应直接返回空映射"
+    );
+}
+
+/// 回收站特殊语义：提示词与关联图像**两边都已软删**时，主页映射不返回该提示词，
+/// 回收站映射仍返回其首图缩略图（关系还在就显示）。
+#[test]
+fn thumbs_for_trashed_includes_images_also_trashed() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    // 提示词 p1 已软删，唯一关联图 i1 也已软删，但有缩略图
+    conn.execute(
+        "INSERT INTO prompts(id, title, content, is_deleted, deleted_at)
+         VALUES ('p1', 't', 'c', 1, '2026-10-04T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path, thumbnail_path, is_deleted, deleted_at)
+         VALUES ('i1', 'a.png', 'a.png', 'images/202610/a.png', 'thumbnails/202610/a.jpg', 1, '2026-10-04T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id) VALUES ('p1', 'i1')",
+        [],
+    )
+    .unwrap();
+
+    assert!(
+        thumbs_for(&conn, &["p1".to_string()]).unwrap().is_empty(),
+        "主页映射不得纳入已删除图像"
+    );
+    let trashed = thumbs_for_trashed(&conn, &["p1".to_string()]).unwrap();
+    assert_eq!(
+        trashed.get("p1").map(String::as_str),
+        Some("thumbnails/202610/a.jpg"),
+        "回收站映射：关系还在就显示，哪怕关联图像也在回收站里"
     );
 }
 

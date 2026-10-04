@@ -314,6 +314,11 @@ function closeCtxMenu() {
 const trashOpen = ref(false);
 const trashImages = shallowRef<ImageCard[]>([]);
 const trashThumbs = shallowRef<Record<string, string>>({});
+/// 回收站卡片正文（首条关联提示词内容）：「关系还在就显示」，
+/// 含关联提示词也在提示词回收站里的情形，故不能复用主页 imagePrompts（只含未删提示词）。
+const trashFirstPrompts = shallowRef<Record<string, string>>({});
+/// 回收站一次性拉全量，按 id 的关联查询分批，避免万级数据拼出超大 IN 子句
+const TRASH_BATCH = 500;
 const emptyTrashOpen = ref(false);
 const purgeTarget = ref<ImageCard | null>(null);
 const purgeConfirmOpen = ref(false);
@@ -331,6 +336,12 @@ async function loadTrash() {
     if (img.thumbnail_path) map[img.id] = relativePathToAssetUrl(dir, img.thumbnail_path);
   }
   trashThumbs.value = map;
+  const firstPrompts: Record<string, string> = {};
+  for (let i = 0; i < items.length; i += TRASH_BATCH) {
+    const ids = items.slice(i, i + TRASH_BATCH).map((img) => img.id);
+    Object.assign(firstPrompts, await commands.getTrashedImageFirstPrompts(ids));
+  }
+  trashFirstPrompts.value = firstPrompts;
 }
 function openTrash() {
   trashOpen.value = true;
@@ -341,6 +352,7 @@ function closeTrash() {
   // 回收站是随开随用的临时集合，关闭即释放；下次 openTrash 会重新拉取
   trashImages.value = [];
   trashThumbs.value = {};
+  trashFirstPrompts.value = {};
 }
 
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
@@ -366,6 +378,7 @@ async function doEmptyTrash() {
     const r = await commands.emptyImageTrash();
     trashImages.value = [];
     trashThumbs.value = {};
+    trashFirstPrompts.value = {};
     await loadImages();
     markPageStale("prompts");
     showToast(
@@ -399,6 +412,7 @@ async function openSavedLocation() {
 async function restoreImage(img: ImageCard) {
   await commands.restoreImage(img.id);
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
+  delete trashFirstPrompts.value[img.id];
   await loadImages(); // 刷新主列表，使恢复的图回到图像页
   // 恢复的图像重新成为提示词卡片的候选背景图
   markPageStale("prompts");
@@ -410,6 +424,7 @@ async function purgeImage(img: ImageCard) {
   // 关联关系级联删除，提示词主页的关联图像计数已变化
   markPageStale("prompts");
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
+  delete trashFirstPrompts.value[img.id];
   showToast(`已彻底删除「${img.file_name}」`, "success");
 }
 
@@ -890,6 +905,7 @@ function onUploadDone() {
           variant="trash"
           :item="img"
           :thumb="trashThumbs[img.id] ?? ''"
+          :content="trashFirstPrompts[img.id] ?? ''"
           :title="img.file_name"
           :sub-title="`删除于 ${fmtLocal(img.deleted_at)}`"
           :card-size="200"

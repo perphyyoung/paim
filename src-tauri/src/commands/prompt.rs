@@ -227,6 +227,20 @@ pub async fn get_prompt_thumbs(
     .await
 }
 
+/// 回收站提示词卡片背景：{promptId: relPath}。与 `get_prompt_thumbs` 的差异是
+/// 纳入已软删的关联图像（回收站特殊语义：关系还在就显示，哪怕图像也在图像回收站里）。
+#[tauri::command]
+#[specta::specta]
+pub async fn get_trashed_prompt_thumbs(
+    db: State<'_, BkDb>,
+    ids: Vec<String>,
+) -> Result<std::collections::HashMap<String, String>, AppError> {
+    db_blocking(&db, move |conn| {
+        prompt_service::thumbs_for_trashed(conn, &ids).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
+}
+
 /// 提示词卡片背景懒自愈：可见窗口稳定后按提示词校验其关联图像的缩略图，缺图按需生成。
 /// 返回与图像侧对称的 ThumbnailEnsureResult（fixed + missing）。
 #[tauri::command]

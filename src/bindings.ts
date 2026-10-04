@@ -40,6 +40,11 @@ export const commands = {
 	 */
 	getPromptThumbs: (ids: string[]) => __TAURI_INVOKE<{ [key in string]: string }>("get_prompt_thumbs", { ids }),
 	/**
+	 *  回收站提示词卡片背景：{promptId: relPath}。与 `get_prompt_thumbs` 的差异是
+	 *  纳入已软删的关联图像（回收站特殊语义：关系还在就显示，哪怕图像也在图像回收站里）。
+	 */
+	getTrashedPromptThumbs: (ids: string[]) => __TAURI_INVOKE<{ [key in string]: string }>("get_trashed_prompt_thumbs", { ids }),
+	/**
 	 *  提示词卡片背景懒自愈：可见窗口稳定后按提示词校验其关联图像的缩略图，缺图按需生成。
 	 *  返回与图像侧对称的 ThumbnailEnsureResult（fixed + missing）。
 	 */
@@ -99,6 +104,12 @@ export const commands = {
 	emptyImageTrash: () => __TAURI_INVOKE<TrashBatchResult>("empty_image_trash"),
 	/**  返回非删除图像到其关联提示词内容的映射：{imageId: [content,...]}，供卡片 row2 显示。 */
 	getImagePromptsMap: () => __TAURI_INVOKE<{ [key in string]: string[] }>("get_image_prompts_map"),
+	/**
+	 *  回收站图像卡片正文：{imageId: 首条关联提示词内容}。
+	 *  与主页 `get_image_prompts_map` 的差异是纳入已软删的关联提示词
+	 *  （回收站特殊语义：关系还在就显示，哪怕提示词也在提示词回收站里）；按 id 批量取，只回首条。
+	 */
+	getTrashedImageFirstPrompts: (ids: string[]) => __TAURI_INVOKE<{ [key in string]: string }>("get_trashed_image_first_prompts", { ids }),
 	/**  返回单张图像关联的提示词列表（含标题/内容/翻译/备注/标签），供详情页左侧展示。 */
 	getImageRelatedPrompts: (id: string) => __TAURI_INVOKE<LinkedPrompt[]>("get_image_related_prompts", { id }),
 	/**

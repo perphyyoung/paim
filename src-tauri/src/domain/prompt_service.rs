@@ -543,15 +543,24 @@ pub fn list_related_images_with(
     Ok(out)
 }
 
-/// 提示词卡片背景缩略图：{promptId: 相对路径}，取每个提示词第一张**有缩略图**的关联（未删除）图像。
-/// 返回 `images.thumbnail_path` 原值（相对数据目录），由调用方拼绝对路径（命令层给前端、
-/// 自愈内部比对都基于它）。thumbnail_path 为 NULL 的记录（如导入时无法解码的文件）自动跳过，
-/// 让位给后续可用图像，且不会因 NULL 阻塞整个映射。
-/// `ids` 为当前已加载块内的提示词（主页按块取，不做全量映射）。
-pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, String>> {
+/// 提示词卡片背景映射的共享实现：{promptId: 相对路径}，取每个提示词第一张**有缩略图**
+/// 的关联图像（thumbnail_path 为 NULL 的记录自动跳过、让位给后续图像）。
+/// `include_deleted_images` 控制是否纳入已软删的关联图像：
+/// - false（主页）：只取未删除图像；
+/// - true（回收站）：只要关联关系还在就显示，即使关联图像本身也在图像回收站里。
+fn thumbs_map(
+    conn: &Connection,
+    ids: &[String],
+    include_deleted_images: bool,
+) -> Result<HashMap<String, String>> {
     if ids.is_empty() {
         return Ok(HashMap::new());
     }
+    let deleted_filter = if include_deleted_images {
+        ""
+    } else {
+        "AND img.is_deleted = 0"
+    };
     let placeholders = vec!["?"; ids.len()].join(",");
     let sql = format!(
         "SELECT prompt_id, thumbnail_path
@@ -560,7 +569,7 @@ pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, S
                    ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.sort_order, pir.rowid) AS rn
             FROM prompt_image_relations pir
             JOIN images img ON img.id = pir.image_id
-            WHERE img.is_deleted = 0 AND img.thumbnail_path IS NOT NULL
+            WHERE img.thumbnail_path IS NOT NULL {deleted_filter}
               AND pir.prompt_id IN ({placeholders})
          )
          WHERE rn = 1"
@@ -575,6 +584,19 @@ pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, S
         map.insert(pid, thumb_rel);
     }
     Ok(map)
+}
+
+/// 主页提示词卡片背景：{promptId: 相对路径}，只取关联的**未删除**图像。
+/// 返回 `images.thumbnail_path` 原值（相对数据目录），由调用方拼绝对路径（命令层给前端、
+/// 自愈内部比对都基于它）。`ids` 为当前已加载块内的提示词（主页按块取，不做全量映射）。
+pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, String>> {
+    thumbs_map(conn, ids, false)
+}
+
+/// 回收站提示词卡片背景：取数/排序口径与 `thumbs_for` 一致，但纳入已软删的关联图像
+/// （回收站特殊语义：关系还在就显示）。
+pub fn thumbs_for_trashed(conn: &Connection, ids: &[String]) -> Result<HashMap<String, String>> {
+    thumbs_map(conn, ids, true)
 }
 
 /// 提示词卡片背景懒自愈：按提示词展开为关联（未删除）图像，缺缩略图的统一走 thumbnail 服务生成并回写。
