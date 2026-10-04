@@ -43,7 +43,7 @@
 - 测试命令：`pnpm test` 全部单元测试（= `pnpm test:ui` 前端 vitest + `pnpm test:rs` Rust cargo test，前端在前）；`pnpm test:ui` 仅前端单测（vitest，`src/**/*.test.ts`）；`pnpm test:rs` 仅 Rust 单测；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。
 - 万级压测数据：`node scripts/bench-data.mjs seed --dir <数据目录> [--images N] [--prompts N] [--tags N]`（`--tags` 上限 500，与应用的每域标签上限一致；`clean` 清理；只写已有 paim.db 的目录，写激活中的 paim-data 需 `--force`）。
 - **pnpm / Node**：`package.json` 已 pin `packageManager: pnpm@12.4.2`——往 `pnpm-workspace.yaml` 加配置键前**先确认键名**：pnpm 12 会把无法识别的键上报，pin 了版本时直接失败（`ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS`），未 pin 只是警告。构建脚本审批键是 `allowBuilds`（当前放行 esbuild）。Node ≥ 22.13 只在使用 npm 安装 pnpm 时需要，pnpm 12 自身不依赖 Node。
-- **前端 asset URL 拼接**：数据目录（Windows 反斜杠）+ 库内相对路径（数据库统一存正斜杠）禁止手工 `` `${dir}/${rel}` `` 再 `toAssetUrl`——混合分隔符经 `convertFileSrc` 编码后 `%5C`/`%2F` 混杂，e2e 与排障反复踩坑。一律走 `toAssetUrlFromDir(dataDir, rel)`（[src/utils/assetUrl.ts](src/utils/assetUrl.ts)：整条路径归一为正斜杠，Windows 文件层接受；空 rel 按「无图」返空串）；只有**已拿到绝对磁盘路径**时才直接用 `toAssetUrl(path)`（如 `getImageSrc`、detailCache）。e2e 断言 URL 路径时先 `decodeURIComponent(src)` 再按普通路径匹配，不要枚举 `%5C`/`%2F` 编码形态。
+- **前端 asset URL 拼接**：数据目录（Windows 反斜杠）+ 库内相对路径（数据库统一存正斜杠）禁止手工 `` `${dir}/${rel}` `` 再转 asset URL——混合分隔符经 `convertFileSrc` 编码后 `%5C`/`%2F` 混杂，e2e 与排障反复踩坑。相对路径一律走 `relativePathToAssetUrl(dataDir, rel)`（[src/utils/assetUrl.ts](src/utils/assetUrl.ts)：整条路径归一为正斜杠，Windows 文件层接受；空 rel 按「无图」返空串）；已拿到**绝对磁盘路径**时走 `absolutePathToAssetUrl(path)`（如 `getImageSrc`、detailCache）。e2e 断言 URL 路径时先 `decodeURIComponent(src)` 再按普通路径匹配，不要枚举 `%5C`/`%2F` 编码形态。
 - **开发平台**：代码含 Windows 专有实现（`shell_explorer.rs` 的 Shell API 定位、`webview_dir.rs` 的 `%LOCALAPPDATA%` WebView 目录），目前只在 Windows 上开发与测试；跨平台移植的适配点清单见 README 的「开发环境」一节——是「未测试」，不是「不支持」。
 
 ## 根目录文档（动手前先看）

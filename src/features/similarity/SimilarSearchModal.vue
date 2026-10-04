@@ -9,7 +9,7 @@
 // （联合空间，跨模态直接比余弦），因此源是图像时右栏是跨模态的相似提示词，反之亦然。
 import { computed, onUnmounted, ref, watch } from "vue";
 import { commands, type ImageCard, type PromptCard } from "@/bindings";
-import { toAssetUrlFromDir } from "@/utils/assetUrl";
+import { relativePathToAssetUrl } from "@/utils/assetUrl";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
 import VirtualGrid from "@/components/VirtualGrid.vue";
@@ -55,7 +55,7 @@ async function loadSourceThumb() {
     if (props.sourceKind === "Prompt") {
       const rel = (await commands.getPromptThumbs([props.sourceId]))[props.sourceId];
       if (rel) {
-        resolvedSourceThumb.value = toAssetUrlFromDir(dir, rel);
+        resolvedSourceThumb.value = relativePathToAssetUrl(dir, rel);
         return;
       }
       const fixed = await ensurePromptThumbnails([props.sourceId]);
@@ -63,7 +63,7 @@ async function loadSourceThumb() {
     } else {
       const [card] = await commands.imageCardsByIds([props.sourceId]);
       if (card?.thumbnail_path) {
-        resolvedSourceThumb.value = toAssetUrlFromDir(dir, card.thumbnail_path);
+        resolvedSourceThumb.value = relativePathToAssetUrl(dir, card.thumbnail_path);
         return;
       }
       const fixed = await commands.ensureImageThumbnails([props.sourceId]);
@@ -152,7 +152,8 @@ async function loadImages(over?: { limit: number; minScore: number }) {
     const dir = await commands.getDataDir();
     const map: Record<string, string> = {};
     for (const r of imageRows.value) {
-      if (r.card.thumbnail_path) map[r.card.id] = toAssetUrlFromDir(dir, r.card.thumbnail_path);
+      if (r.card.thumbnail_path)
+        map[r.card.id] = relativePathToAssetUrl(dir, r.card.thumbnail_path);
     }
     imageThumbs.value = map;
     const need = imageRows.value.filter((r) => !map[r.card.id]).map((r) => r.card.id);
@@ -195,7 +196,7 @@ async function loadPrompts(over?: { limit: number; minScore: number }) {
     const dir = await commands.getDataDir();
     const raw = await commands.getPromptThumbs(ids);
     const map: Record<string, string> = {};
-    for (const [id, rel] of Object.entries(raw)) map[id] = toAssetUrlFromDir(dir, rel);
+    for (const [id, rel] of Object.entries(raw)) map[id] = relativePathToAssetUrl(dir, rel);
     promptThumbs.value = map;
     const need = ids.filter((id) => !map[id]);
     if (need.length > 0) {

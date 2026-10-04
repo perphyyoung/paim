@@ -1,6 +1,6 @@
 // 提示词/图像主页共用的缩略图 URL 处理。
 import type { ThumbnailEnsureFixed } from "@/bindings";
-import { toAssetUrlFromDir } from "@/utils/assetUrl";
+import { relativePathToAssetUrl } from "@/utils/assetUrl";
 
 /**
  * 把懒自愈重建的缩略图并入 URL 映射，返回新映射（不改入参）。
@@ -14,6 +14,7 @@ export function applyThumbFix(
   fixed: ThumbnailEnsureFixed[],
 ): Record<string, string> {
   const map = { ...cur };
-  for (const f of fixed) map[f.id] = `${toAssetUrlFromDir(dir, f.thumbnail_path)}?t=${Date.now()}`;
+  for (const f of fixed)
+    map[f.id] = `${relativePathToAssetUrl(dir, f.thumbnail_path)}?t=${Date.now()}`;
   return map;
 }

@@ -5,7 +5,7 @@
 // 原图 asset URL 按 id 做模块级缓存，同会话跨弹窗/页面只请求一次。
 import { ref } from "vue";
 import { commands } from "@/bindings";
-import { toAssetUrl } from "@/utils/assetUrl";
+import { absolutePathToAssetUrl } from "@/utils/assetUrl";
 
 const props = withDefaults(
   defineProps<{
@@ -54,7 +54,7 @@ async function onEnter() {
   failed.value = false;
   loading.value = true;
   try {
-    const resolved = toAssetUrl(await commands.getImageSrc(id));
+    const resolved = absolutePathToAssetUrl(await commands.getImageSrc(id));
     urlCache.set(id, resolved);
     if (my === seq) {
       url.value = resolved;

@@ -9,7 +9,7 @@ import { commands, type MergePromptsPreview } from "@/bindings";
 import { commonText, diffTokens, type DiffToken } from "@/features/prompt/promptDiff";
 import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
 import { applyThumbFix } from "@/utils/thumbFix";
-import { toAssetUrlFromDir } from "@/utils/assetUrl";
+import { relativePathToAssetUrl } from "@/utils/assetUrl";
 import HoverImagePreview from "@/components/HoverImagePreview.vue";
 
 const props = defineProps<{
@@ -122,7 +122,7 @@ async function loadThumbs(seq: number) {
   const raw = await commands.getPromptThumbs(ids);
   if (seq !== openSeq) return;
   const map: Record<string, string> = {};
-  for (const [id, rel] of Object.entries(raw)) map[id] = toAssetUrlFromDir(dir, rel);
+  for (const [id, rel] of Object.entries(raw)) map[id] = relativePathToAssetUrl(dir, rel);
   const need = ids.filter((id) => !map[id]);
   if (need.length > 0) {
     const fixed = await ensurePromptThumbnails(need);

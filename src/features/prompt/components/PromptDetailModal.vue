@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 提示词详情弹窗：展示/编辑标题、内容、翻译、备注，标签增删，关联图像网格查看/移除。
 import { computed, ref, toRef, watch } from "vue";
-import { toAssetUrl } from "@/utils/assetUrl";
+import { absolutePathToAssetUrl } from "@/utils/assetUrl";
 import { commands, type PromptCard } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -502,8 +502,8 @@ function requestRemoveImage(img: RelatedImage) {
 }
 
 function imgUrl(img: RelatedImage) {
-  // 空串（尚未生成缩略图）由 toAssetUrl 统一兜底为空串
-  return toAssetUrl(img.src);
+  // 空串（尚未生成缩略图）由 absolutePathToAssetUrl 统一兜底为空串
+  return absolutePathToAssetUrl(img.src);
 }
 
 // 查看关联图像详情：交给页面的「嵌套图像槽」（每类至多一个，换内容即换实例，

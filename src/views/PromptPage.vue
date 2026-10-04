@@ -9,7 +9,7 @@ import {
   shallowRef,
   watch,
 } from "vue";
-import { toAssetUrlFromDir } from "@/utils/assetUrl";
+import { relativePathToAssetUrl } from "@/utils/assetUrl";
 import { commands, type Prompt, type PromptCard, type TagGroup, type TagItem } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { log } from "@/utils/logger";
@@ -182,7 +182,7 @@ async function loadThumbsFor(ids: string[]) {
   try {
     const raw = await commands.getPromptThumbs(need);
     const map = { ...thumbs.value };
-    for (const k of Object.keys(raw)) map[k] = toAssetUrlFromDir(dir, raw[k]);
+    for (const k of Object.keys(raw)) map[k] = relativePathToAssetUrl(dir, raw[k]);
     thumbs.value = map;
   } catch {
     return; // 失败不记入 tried，下次窗口变化重试

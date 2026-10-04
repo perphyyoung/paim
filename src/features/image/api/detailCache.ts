@@ -3,7 +3,7 @@
 // 失效只在数据本身变化时做：提示词关联变化、替换图像、标签增删。
 
 import { commands, type LinkedPrompt, type TagLite } from "@/bindings";
-import { toAssetUrl } from "@/utils/assetUrl";
+import { absolutePathToAssetUrl } from "@/utils/assetUrl";
 import { createEntityCache } from "@/utils/entityCache";
 
 /** 图像 id → 关联提示词（含标题/内容/翻译/备注/标签）；单条较大，上限 100（约 1 MB 封顶） */
@@ -27,10 +27,10 @@ export const imageTagsCache = createEntityCache<TagLite[]>(
  */
 export function peekImageSrc(id: string): string | null {
   const cached = imageSrcCache.get(id);
-  return cached ? toAssetUrl(cached) : null;
+  return cached ? absolutePathToAssetUrl(cached) : null;
 }
 
 /** 按 id 取原图 asset URL：发命令（同 id 并发去重）后回填缓存；失败原样抛出，由调用方决定兜底 */
 export async function resolveImageSrc(id: string): Promise<string> {
-  return toAssetUrl(await imageSrcCache.fetch(id));
+  return absolutePathToAssetUrl(await imageSrcCache.fetch(id));
 }
