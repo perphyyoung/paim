@@ -15,3 +15,19 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 export function toAssetUrl(path: string): string {
   return path ? convertFileSrc(path) : "";
 }
+
+/**
+ * 数据目录 + 库内相对路径 → asset URL（缩略图/原图的唯一拼接入）。
+ *
+ * 为什么不能直接 `toAssetUrl(`${dir}/${rel}`)`：Windows 上 `dir` 是反斜杠、
+ * 数据库里的 rel 统一是正斜杠，手工拼出「混合分隔符」路径，convertFileSrc 编码后
+ * `%5C`/`%2F` 混杂——e2e 断言与排障都被迫枚举多种编码形态。这里把整条路径的分隔符
+ * 统一为正斜杠（Windows 文件 API 与 Rust Path 均接受），URL 里只可能出现 `%2F`。
+ * 空 rel（无缩略图/原图）按「无图」返回空串。
+ */
+export function toAssetUrlFromDir(dataDir: string, relPath: string): string {
+  const norm = (p: string) => p.replace(/[\\/]+/g, "/").replace(/^\/+|\/+$/g, "");
+  const dir = norm(dataDir);
+  const rel = norm(relPath);
+  return dir && rel ? convertFileSrc(`${dir}/${rel}`) : "";
+}

@@ -85,13 +85,20 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   await expect(mergeDialog.getByRole("img", { name: "源提示词2 的首图缩略图" })).toBeVisible();
   await expect(mergeDialog.getByRole("separator", { name: "源提示词区域高度" })).toBeVisible();
 
-  // hover 缩略图：浮出原图（按 image id 取，src 指向 images/ 而非 thumbnails/）；移走后消失
+  // hover 缩略图：浮出原图（按 image id 取，解码后指向 images/ 而非 thumbnails/）；
+  // naturalWidth>0 实证统一正斜杠后的 asset URL 在 Windows 上真实可加载；移走后消失
   const thumb1 = mergeDialog.getByRole("img", { name: "源提示词1 的首图缩略图" });
   await thumb1.hover();
   const original1 = page.getByRole("img", { name: "源提示词1 原图预览" });
   await expect(original1).toBeVisible({ timeout: 5_000 });
-  await expect(original1).toHaveAttribute("src", /images%5C|images%2F|images[\\/]/);
-  expect((await original1.getAttribute("src")) ?? "").not.toContain("thumbnail");
+  await expect
+    .poll(async () => original1.evaluate((el) => (el as HTMLImageElement).naturalWidth), {
+      timeout: 5_000,
+    })
+    .toBeGreaterThan(0);
+  const originalSrc = decodeURIComponent((await original1.getAttribute("src")) ?? "");
+  expect(originalSrc).toMatch(/[\\/]images[\\/]/);
+  expect(originalSrc).not.toContain("thumbnail");
   await mergeDialog.hover({ position: { x: 10, y: 10 } });
   await expect(original1).toBeHidden();
   // 目标提示词预填了公共部分（非空）；关联图像并集计数
