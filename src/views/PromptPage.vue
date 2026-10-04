@@ -782,7 +782,8 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
               copy-title="复制内容"
               :content="asCard(p).content"
               :tags="tagNames[asCard(p).id] || []"
-              :sort-info="rowInfo(asCard(p))"
+              :title="rowInfo(asCard(p)).value"
+              :title-tip="`${rowInfo(asCard(p)).label}：${rowInfo(asCard(p)).value}`"
               :card-size="width"
               @fav="toggleFavorite(asCard(p))"
               @copy="copyPrompt(asCard(p))"
@@ -883,74 +884,17 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       @purge="requestPurgePrompt"
     >
       <template #default="{ item: p }">
-        <div
-          class="group relative h-full w-full overflow-hidden rounded-lg border border-gray-700 bg-gray-800"
-        >
-          <img
-            v-if="thumbs[p.id]"
-            :src="thumbs[p.id]"
-            alt=""
-            class="absolute inset-0 h-full w-full object-cover"
-          />
-          <div class="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-center">
-            <p class="truncate text-[length:var(--fs-11)] text-white" :title="p.title">
-              {{ p.title }}
-            </p>
-            <p class="truncate text-[length:var(--fs-10)] text-gray-300">
-              删除于 {{ formatLocalTime(p.deleted_at) }}
-            </p>
-          </div>
-          <div
-            class="absolute inset-x-0 top-0 grid grid-cols-2 items-center py-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-          >
-            <div class="flex items-center justify-center">
-              <button
-                type="button"
-                title="恢复"
-                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-                @click.stop="restorePrompt(p)"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  class="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div class="flex items-center justify-center">
-              <button
-                type="button"
-                title="彻底删除"
-                class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-                @click.stop="requestPurgePrompt(p)"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  class="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
+        <MediaCard
+          variant="trash"
+          :item="p"
+          :thumb="thumbs[p.id] ?? ''"
+          :content="p.content"
+          :title="p.title"
+          :sub-title="`删除于 ${formatLocalTime(p.deleted_at)}`"
+          :card-size="200"
+          @restore="restorePrompt(p)"
+          @purge="requestPurgePrompt(p)"
+        />
       </template>
     </TrashOverlay>
 

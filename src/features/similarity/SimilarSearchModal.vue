@@ -15,7 +15,7 @@ import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import MergePromptsModal from "@/features/prompt/components/MergePromptsModal.vue";
 import ScoreStepper from "./ScoreStepper.vue";
-import SimilarResultCard from "./SimilarResultCard.vue";
+import MediaCard from "@/components/MediaCard.vue";
 import { DEFAULT_LIMIT, DEFAULT_MIN_SCORE, LIMIT_RANGE, useSimilaritySettings } from "./settings";
 
 const props = defineProps<{
@@ -477,13 +477,15 @@ function pickPrompt(id: string) {
                 没有达到阈值的相似图像（可调低左栏阈值后点左栏「重查」）
               </p>
               <VirtualGrid v-else :items="imageRows" :columns="3">
-                <template #default="{ item }">
-                  <SimilarResultCard
-                    :name="item.card.file_name"
-                    :thumb="imageThumbs[item.card.id]"
+                <template #default="{ item, width }">
+                  <MediaCard
+                    variant="similar"
+                    :item="item.card"
+                    :thumb="imageThumbs[item.card.id] ?? ''"
                     :score="item.score"
-                    :favorite="item.card.is_favorite"
-                    @open="pickImage(item.card.id)"
+                    :title="item.card.file_name"
+                    :card-size="width"
+                    @card-click="(_e, _i, id) => pickImage(id)"
                   />
                 </template>
               </VirtualGrid>
@@ -558,14 +560,16 @@ function pickPrompt(id: string) {
                 没有达到阈值的相似提示词（可调低右栏阈值后点右栏「重查」）
               </p>
               <VirtualGrid v-else :items="promptRows" :columns="3">
-                <template #default="{ item }">
-                  <SimilarResultCard
-                    :name="item.card.title"
-                    :content="item.card.content"
-                    :thumb="promptThumbs[item.card.id]"
+                <template #default="{ item, width }">
+                  <MediaCard
+                    variant="similar"
+                    :item="item.card"
+                    :thumb="promptThumbs[item.card.id] ?? ''"
                     :score="item.score"
-                    :favorite="item.card.is_favorite"
-                    @open="pickPrompt(item.card.id)"
+                    :content="item.card.content"
+                    :title="item.card.title"
+                    :card-size="width"
+                    @card-click="(_e, _i, id) => pickPrompt(id)"
                     @contextmenu="openMenu($event, item.card.id)"
                   />
                 </template>

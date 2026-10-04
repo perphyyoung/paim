@@ -65,7 +65,7 @@ onMounted(() => requestAnimationFrame(measure));
 </script>
 
 <template>
-  <div ref="rowRef" class="flex items-center overflow-hidden px-1.5 pb-0.5">
+  <div ref="rowRef" class="flex items-center justify-center overflow-hidden px-1.5 pb-0.5">
     <TagChip v-for="t in tags" :key="t" size="sm" class="card-tag mr-0.5 flex-none">
       {{ t }}
     </TagChip>
