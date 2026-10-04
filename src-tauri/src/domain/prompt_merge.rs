@@ -55,8 +55,8 @@ pub fn preview(conn: &Connection, a_id: &str, b_id: &str) -> Result<MergePrompts
             "不能与自身合并".to_string(),
         ));
     }
-    let a = load_active(conn, a_id, "源")?;
-    let b = load_active(conn, b_id, "目标")?;
+    let a = load_active(conn, a_id, "源提示词1")?;
+    let b = load_active(conn, b_id, "源提示词2")?;
 
     let tag_names: Vec<String> = {
         let mut stmt = conn.prepare(
@@ -126,8 +126,8 @@ pub fn merge(conn: &Connection, a_id: &str, b_id: &str, content: &str) -> Result
             "不能与自身合并".to_string(),
         ));
     }
-    let a = load_active(conn, a_id, "源")?;
-    let b = load_active(conn, b_id, "目标")?;
+    let a = load_active(conn, a_id, "源提示词1")?;
+    let b = load_active(conn, b_id, "源提示词2")?;
 
     let tx = conn.unchecked_transaction()?;
 

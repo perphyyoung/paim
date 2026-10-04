@@ -63,7 +63,7 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   await lowerThresholdToZeroAndRequery(promptPane);
   await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });
 
-  // 右键目标卡片 → 单项菜单
+  // 右键另一条结果卡片 → 单项菜单
   await promptPane.getByText(other, { exact: true }).click({ button: "right" });
   const menu = page.getByRole("menu", { name: "提示词结果操作" });
   await expect(menu).toBeVisible({ timeout: 3_000 });
@@ -73,14 +73,16 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   // 合并弹窗
   const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
   await expect(mergeDialog).toBeVisible({ timeout: 3_000 });
-  // 顶部两侧原文各是命名 region：公共词可见，独有词在对应侧作为可点击的红底按钮
-  const sourceRegion = mergeDialog.getByRole("region", { name: "源提示词原文" });
-  const targetRegion = mergeDialog.getByRole("region", { name: "目标提示词原文" });
-  await expect(sourceRegion.getByText("solo dress")).toBeVisible();
-  const alphaBtn = sourceRegion.getByRole("button", { name: "alpha" });
-  const betaBtn = targetRegion.getByRole("button", { name: "beta" });
+  // 顶部两条源提示词垂直排列，各是命名 region：公共词可见，独有词为可点击红段，右 1/3 为首图缩略图
+  const source1Region = mergeDialog.getByRole("region", { name: "源提示词1 原文" });
+  const source2Region = mergeDialog.getByRole("region", { name: "源提示词2 原文" });
+  await expect(source1Region.getByText("solo dress")).toBeVisible();
+  const alphaBtn = source1Region.getByRole("button", { name: "alpha" });
+  const betaBtn = source2Region.getByRole("button", { name: "beta" });
   await expect(alphaBtn).toBeVisible();
   await expect(betaBtn).toBeVisible();
+  await expect(source1Region.getByRole("img", { name: "源提示词1 的首图缩略图" })).toBeVisible();
+  await expect(source2Region.getByRole("img", { name: "源提示词2 的首图缩略图" })).toBeVisible();
   // 合并内容预填了公共部分（非空）；关联图像并集计数
   const contentBox = mergeDialog.getByRole("textbox", { name: "合并后内容" });
   await expect(contentBox).not.toHaveValue("");
@@ -97,7 +99,7 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   await expect(contentBox).toHaveValue(/^e2e merge A beta  solo dress/);
   await alphaBtn.click(); // 连续插入：焦点回到 textarea、光标在 beta 之后
   await expect(contentBox).toHaveValue(/^e2e merge A beta alpha  solo dress/);
-  e2eLog.info("[step] 右侧差异片段按光标位置依次插入，自动补空格");
+  e2eLog.info("[step] 顶部红段按光标位置依次插入，自动补空格");
 
   const mergedContent = await contentBox.inputValue();
   await mergeDialog.getByRole("button", { name: "合并" }).click();

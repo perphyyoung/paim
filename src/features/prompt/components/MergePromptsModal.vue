@@ -1,11 +1,15 @@
 <script setup lang="ts">
 // 提示词合并弹窗（入口：相似搜索为提示词源时，结果卡片右键「合并提示词」）。
 // 全程不出现标题：新建时标题由后端用新 id 生成。
-// 上：源 / 目标原文，词级对齐后独有部分红底且可点击插回；中：合并内容（预填公共部分，差异人工补回）；
-// 下：标签并集、关联图像并集、合并后的备注与安全/收藏口径。确认后新建一条、原两条进回收站。
+// 上：源提示词1 / 源提示词2 垂直排列（左 2/3 词级对齐原文，独有红段可点插回；右 1/3 首图缩略图）；
+// 中：合并内容（预填公共部分，差异人工补回）占满剩余高度；
+// 下：标签并集、关联图像并集、合并后的备注与安全/收藏口径（固定高）。确认后新建一条、原两条进回收站。
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { commands, type MergePromptsPreview } from "@/bindings";
 import { commonText, diffTokens, type DiffToken } from "@/features/prompt/promptDiff";
+import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
+import { applyThumbFix } from "@/utils/thumbFix";
+import { toAssetUrl } from "@/utils/assetUrl";
 
 const props = defineProps<{
   open: boolean;
@@ -24,6 +28,10 @@ const mergedContent = ref("");
 const contentInput = ref<HTMLTextAreaElement | null>(null);
 /// 最近一次光标位置（点上方红段会让 textarea 失焦，故 blur 时也保留；null = 从未聚焦，插到末尾）
 const caret = ref<number | null>(null);
+/// 两条源提示词的首图缩略图（asset URL），key 为提示词 id；无关联图像则缺键
+const thumbs = ref<Record<string, string>>({});
+/// 打开序号：防止上一轮的缩略图异步结果写回新一轮
+let openSeq = 0;
 
 const diff = computed<DiffToken[]>(() =>
   preview.value ? diffTokens(preview.value.a.content, preview.value.b.content) : [],
@@ -61,15 +69,18 @@ watch(
   () => props.open,
   async (v) => {
     if (!v) return;
+    const seq = ++openSeq;
     loading.value = true;
     error.value = "";
     preview.value = null;
     mergedContent.value = "";
     caret.value = null;
+    thumbs.value = {};
     try {
       const p = await commands.previewMergePrompts(props.aId, props.bId);
       preview.value = p;
       mergedContent.value = commonText(p.a.content, p.b.content);
+      void loadThumbs(seq);
     } catch (e) {
       error.value = String(e);
     } finally {
@@ -77,6 +88,23 @@ watch(
     }
   },
 );
+
+/// 取两条源提示词的首图缩略图（与相似搜索卡片同口径：相对路径拼 asset URL，缺图走一次懒自愈）。
+async function loadThumbs(seq: number) {
+  const ids = [props.aId, props.bId];
+  const dir = await commands.getDataDir();
+  const raw = await commands.getPromptThumbs(ids);
+  if (seq !== openSeq) return;
+  const map: Record<string, string> = {};
+  for (const [id, rel] of Object.entries(raw)) map[id] = toAssetUrl(`${dir}/${rel}`);
+  const need = ids.filter((id) => !map[id]);
+  if (need.length > 0) {
+    const fixed = await ensurePromptThumbnails(need);
+    if (seq !== openSeq) return;
+    Object.assign(map, applyThumbFix(dir, {}, fixed.fixed));
+  }
+  thumbs.value = map;
+}
 
 // Esc 由本层截下（capture + stopPropagation），避免穿透到下层相似搜索弹窗
 function onKeydown(e: KeyboardEvent) {
@@ -137,73 +165,110 @@ async function doMerge() {
           </button>
         </div>
 
-        <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
+        <div class="flex min-h-0 flex-1 flex-col px-4 py-4">
           <p v-if="loading" class="py-8 text-center text-sm text-gray-400">正在加载两侧内容…</p>
           <template v-else-if="preview">
-            <!-- 两侧原文：内容是已知的，高度由内容决定（grid 行高取两列较高者）；异常长文本才内部滚动。
-                 差异用词级 <mark> 高亮（mark 语义=被标记文本）；非空白的独有段本身可点击，插回合并内容光标处；
-                 纯空白差异段不可点。两侧各为一个命名 region -->
-            <div class="grid grid-cols-2 gap-3">
-              <section aria-label="源提示词原文">
-                <p class="mb-1 text-xs text-gray-400">源提示词</p>
-                <p
-                  class="max-h-[28vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
-                >
-                  <template v-for="(s, i) in aSegs" :key="i">
-                    <mark v-if="s.kind === 'removed'" class="rounded bg-red-500/25 text-red-300">
-                      <button
-                        v-if="s.text.trim()"
-                        type="button"
-                        title="插入到光标处"
-                        class="cursor-pointer bg-transparent p-0 text-inherit hover:bg-red-500/40 hover:underline"
-                        @click="insertSegment(s.text)"
-                      >
-                        {{ s.text }}
-                      </button>
+            <!-- 源提示词区：两条垂直排列、平分面板高度；整块可用右下角原生拖柄调高度。
+                 每行左 2/3 为词级对齐原文（独有 <mark> 红段可点击插回合并内容，纯空白段不可点），
+                 右 1/3 为该提示词首图缩略图。各单元格内部滚动 -->
+            <div
+              class="grid h-[220px] max-h-[60vh] min-h-[140px] shrink-0 resize-y grid-rows-2 gap-2 overflow-hidden"
+            >
+              <section
+                aria-label="源提示词1 原文"
+                class="grid min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2"
+              >
+                <div class="flex min-h-0 flex-col">
+                  <p class="mb-1 shrink-0 text-xs text-gray-400">源提示词1</p>
+                  <p
+                    class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
+                  >
+                    <template v-for="(s, i) in aSegs" :key="i">
+                      <mark v-if="s.kind === 'removed'" class="rounded bg-red-500/25 text-red-300">
+                        <button
+                          v-if="s.text.trim()"
+                          type="button"
+                          title="插入到光标处"
+                          class="cursor-pointer bg-transparent p-0 text-inherit hover:bg-red-500/40 hover:underline"
+                          @click="insertSegment(s.text)"
+                        >
+                          {{ s.text }}
+                        </button>
+                        <template v-else>{{ s.text }}</template>
+                      </mark>
                       <template v-else>{{ s.text }}</template>
-                    </mark>
-                    <template v-else>{{ s.text }}</template>
-                  </template>
-                </p>
+                    </template>
+                  </p>
+                </div>
+                <div
+                  class="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
+                >
+                  <img
+                    v-if="thumbs[aId]"
+                    :src="thumbs[aId]"
+                    alt="源提示词1 的首图缩略图"
+                    class="h-full w-full object-cover"
+                  />
+                  <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
+                </div>
               </section>
-              <section aria-label="目标提示词原文">
-                <p class="mb-1 text-xs text-gray-400">目标提示词</p>
-                <p
-                  class="max-h-[28vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
-                >
-                  <template v-for="(s, i) in bSegs" :key="i">
-                    <mark v-if="s.kind === 'added'" class="rounded bg-red-500/25 text-red-300">
-                      <button
-                        v-if="s.text.trim()"
-                        type="button"
-                        title="插入到光标处"
-                        class="cursor-pointer bg-transparent p-0 text-inherit hover:bg-red-500/40 hover:underline"
-                        @click="insertSegment(s.text)"
-                      >
-                        {{ s.text }}
-                      </button>
+
+              <section
+                aria-label="源提示词2 原文"
+                class="grid min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2"
+              >
+                <div class="flex min-h-0 flex-col">
+                  <p class="mb-1 shrink-0 text-xs text-gray-400">源提示词2</p>
+                  <p
+                    class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
+                  >
+                    <template v-for="(s, i) in bSegs" :key="i">
+                      <mark v-if="s.kind === 'added'" class="rounded bg-red-500/25 text-red-300">
+                        <button
+                          v-if="s.text.trim()"
+                          type="button"
+                          title="插入到光标处"
+                          class="cursor-pointer bg-transparent p-0 text-inherit hover:bg-red-500/40 hover:underline"
+                          @click="insertSegment(s.text)"
+                        >
+                          {{ s.text }}
+                        </button>
+                        <template v-else>{{ s.text }}</template>
+                      </mark>
                       <template v-else>{{ s.text }}</template>
-                    </mark>
-                    <template v-else>{{ s.text }}</template>
-                  </template>
-                </p>
+                    </template>
+                  </p>
+                </div>
+                <div
+                  class="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
+                >
+                  <img
+                    v-if="thumbs[bId]"
+                    :src="thumbs[bId]"
+                    alt="源提示词2 的首图缩略图"
+                    class="h-full w-full object-cover"
+                  />
+                  <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
+                </div>
               </section>
             </div>
             <p class="mt-1 shrink-0 text-xs text-gray-500">
-              红色为该侧独有内容，点击可插入到合并内容的光标处。
+              红色为该侧独有内容，点击可插入到合并内容的光标处；右下角可拖动调整上方区域高度。
             </p>
 
-            <!-- 中部：合并内容（预填公共部分，差异点上方红段补回） -->
-            <div class="mt-3">
-              <label for="merge-content-input" class="mb-1 block text-sm font-medium text-gray-200">
+            <!-- 中部：合并内容占满剩余高度（预填公共部分，差异点上方红段补回） -->
+            <div class="mt-3 flex min-h-0 flex-1 flex-col">
+              <label
+                for="merge-content-input"
+                class="mb-1 block shrink-0 text-sm font-medium text-gray-200"
+              >
                 合并后内容 <span class="text-red-500">*</span>
               </label>
               <textarea
                 ref="contentInput"
                 id="merge-content-input"
                 v-model="mergedContent"
-                rows="8"
-                class="textarea-autogrow max-h-[28lh] min-h-[calc(8lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+                class="min-h-0 w-full flex-1 resize-none rounded-lg border px-3 py-2 text-sm leading-6 focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
                 placeholder="已预填两侧公共部分，请补回需要保留的差异内容"
                 @click="syncCaret"
                 @keyup="syncCaret"
@@ -212,14 +277,14 @@ async function doMerge() {
               ></textarea>
             </div>
 
-            <!-- 合并口径预览 -->
+            <!-- 合并口径预览：固定高度，内容多时栏内滚动，不挤占中部编辑区 -->
             <div
-              class="mt-4 shrink-0 space-y-2 rounded-lg border px-3 py-2.5 text-sm text-gray-300 border-gray-700"
+              class="mt-3 h-36 shrink-0 space-y-2 overflow-y-auto rounded-lg border px-3 py-2.5 text-sm text-gray-300 border-gray-700"
             >
               <p>
                 关联图像：共
-                <span class="font-semibold text-gray-100">{{ preview.image_total }}</span> 张（源
-                {{ preview.image_a }} + 目标 {{ preview.image_b }}，重复
+                <span class="font-semibold text-gray-100">{{ preview.image_total }}</span> 张（源1
+                {{ preview.image_a }} + 源2 {{ preview.image_b }}，重复
                 {{ preview.image_shared }} 张去重）
               </p>
               <p class="flex flex-wrap items-center gap-1">
