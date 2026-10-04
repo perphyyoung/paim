@@ -43,11 +43,11 @@ export function useThumbnailSelfHeal(
     const pending = visibleIds.value.filter((id) => !missingThrottle.has(id));
     if (pending.length === 0) return;
     const t0 = performance.now();
-    log.info("[SelfHeal] 开始校验", pending.length, "项");
+    log.debug("[SelfHeal] 开始校验", pending.length, "项");
     inflight = (async () => {
       try {
         const result = await check(pending);
-        log.info(
+        log.debug(
           "[SelfHeal] 校验完成",
           Math.round(performance.now() - t0),
           "ms, fixed=",

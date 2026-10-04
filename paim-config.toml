@@ -5,7 +5,7 @@
 # 修改后重启生效；运行时可用 set_log_level 命令热切（优先级最高）。
 # 环境变量 PAIM_LOG 可临时覆盖本文件（不改文件调试）。
 
-# 开发/e2e（debug 构建）的最低日志级别：debug / info / warn / error
-# 排查问题时改成 debug 可查看全量埋点
-dev-log-level = "debug"
+# 开发（debug 构建）的最低日志级别：debug / info / warn / error
+# 默认 info 降噪；排查问题时改成 debug 查看全量埋点（跑 e2e 时由 PAIM_LOG=debug 覆盖，无需改本文件）
+dev-log-level = "info"
 # dev-log-level = "warn"

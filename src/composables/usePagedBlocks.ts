@@ -135,7 +135,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
           return;
         }
         if (page.total !== total.value) {
-          log.info(tag, "total 更新", total.value, "→", page.total);
+          log.debug(tag, "total 更新", total.value, "→", page.total);
           total.value = page.total;
           resize(page.total);
         }
@@ -187,7 +187,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
 
   async function reload(options?: { keepContent?: boolean }) {
     seq += 1;
-    log.info(tag, "reload 开始", "seq=", seq, "keepContent=", !!options?.keepContent);
+    log.debug(tag, "reload 开始", "seq=", seq, "keepContent=", !!options?.keepContent);
     blocks.clear();
     inflight.clear();
     attempts.clear();
@@ -200,7 +200,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     try {
       await loadBlock(0);
       ensureRange(lastStart, lastEnd);
-      log.info(tag, "reload 完成", "total=", total.value, "items=", items.value.length);
+      log.debug(tag, "reload 完成", "total=", total.value, "items=", items.value.length);
     } finally {
       loading.value = false;
     }

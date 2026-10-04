@@ -35,7 +35,7 @@ fn log_config_rejects_non_string_level() {
 #[test]
 fn config_templates_are_split_per_environment() {
     let dev: LogConfig = toml::from_str(CONFIG_TEMPLATE_DEV).expect("dev 模板应可解析");
-    assert_eq!(dev.dev_log_level.as_deref(), Some("debug"));
+    assert_eq!(dev.dev_log_level.as_deref(), Some("info"));
     assert_eq!(dev.release_log_level, None, "dev 模板不应出现 release 键");
     assert!(level_from_str(dev.dev_log_level.unwrap().as_str()).is_some());
 

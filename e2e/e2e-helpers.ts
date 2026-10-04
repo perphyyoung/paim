@@ -114,6 +114,8 @@ async function launchApp(workerIndex: number, seq: number): Promise<AppHandle> {
   const cdpPort = await freePort();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    // dev 默认级别已降到 info；e2e 排障需要应用侧全量埋点，强制 debug（外部显式设了 PAIM_LOG 则尊重）
+    PAIM_LOG: process.env.PAIM_LOG ?? "debug",
     PAIM_DATA_DIR: dataDir,
     PAIM_E2E_MOCK_IMAGE_PATHS: JSON.stringify([mockImagePath]),
     // 相似度（向量索引 / 检索）走假 embedding：按输入派生确定性伪向量，无需真实 llama.cpp 服务

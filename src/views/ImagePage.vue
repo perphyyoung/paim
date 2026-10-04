@@ -451,11 +451,8 @@ async function loadImages(options?: { keepContent?: boolean }) {
   ]);
   imagePrompts.value = promptsMap;
   dataDir.value = dir;
-  log.info("[ImagePage] 关联映射+dataDir 完成", Math.round(performance.now() - t0), "ms");
   await reloadBlocks(options);
-  log.info("[ImagePage] reloadBlocks 完成", Math.round(performance.now() - t0), "ms");
   await loadSpecialTagsCounts();
-  log.info("[ImagePage] loadSpecialTagsCounts 完成", Math.round(performance.now() - t0), "ms");
   // 数据重载后重置已校验记忆并检查当前可见窗口
   resetThumbChecked();
   scheduleThumbCheck();

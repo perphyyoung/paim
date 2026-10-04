@@ -3,7 +3,8 @@
 //! - 后端关键路径埋点（log_info!/log_warn!/log_error! 宏）
 //! - 前端通过 tauri 命令 `log_msg` 上报（invoke）
 //! 前后端共用一个全局最低级别开关（MIN_LEVEL），启动时按优先级初始化：
-//! PAIM_LOG 环境变量 > paim-config.toml > 内置默认（release=warn，dev=debug）；
+//! PAIM_LOG 环境变量 > paim-config.toml > 内置默认（release=warn，dev=info；e2e 由
+//! playwright.config 注入 PAIM_LOG=debug 保持全量）；
 //! 配置文件按构建类型分离（dev 在项目根、release 在进程工作目录），各自只含本环境的键，
 //! **文件不存在时由 `ensure_config_file` 自动写入对应模板**；
 //! 运行时经 set_log_level 命令热切并 emit 事件同步前端缓存。
@@ -75,9 +76,9 @@ const CONFIG_TEMPLATE_DEV: &str = r#"# paim 开发环境配置（debug 构建读
 # 修改后重启生效；运行时可用 set_log_level 命令热切（优先级最高）。
 # 环境变量 PAIM_LOG 可临时覆盖本文件（不改文件调试）。
 
-# 开发/e2e（debug 构建）的最低日志级别：debug / info / warn / error
-# 排查问题时改成 debug 可查看全量埋点
-dev-log-level = "debug"
+# 开发（debug 构建）的最低日志级别：debug / info / warn / error
+# 默认 info 降噪；排查问题时改成 debug 查看全量埋点（e2e 运行时由 PAIM_LOG=debug 覆盖，无需改本文件）
+dev-log-level = "info"
 "#;
 
 /// 部署环境（release）配置文件模板，见 [`CONFIG_TEMPLATE_DEV`]。
@@ -116,11 +117,11 @@ fn ensure_config_file(path: &Path) {
 }
 
 /// 启动初始化，优先级从高到低：`PAIM_LOG` 环境变量 > `paim-config.toml` > 内置默认
-/// （release=warn，dev=debug）。配置文件缺失视为未配置（静默用默认）；解析失败或
+/// （release=warn，dev=info）。配置文件缺失视为未配置（静默用默认）；解析失败或
 /// 级别值非法按 WARN/ERROR 记录（write 直写不受级别过滤影响，保证总能落盘）。
 pub fn init_from_config() {
     let default = if cfg!(debug_assertions) {
-        Level::Debug
+        Level::Info
     } else {
         Level::Warn
     };
