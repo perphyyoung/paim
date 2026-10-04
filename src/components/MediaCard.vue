@@ -3,7 +3,8 @@
  * MediaCard - 全站唯一的方形媒体卡片（主页 / 相似度结果 / 两个回收站，三种 variant 同一骨架）。
  * 视觉口径：
  * - 有背景图时整张盖一层半透明黑遮罩（CARD_OVERLAY_OPACITY 单点调节），所有文字都在恒定暗底上，
- *   一律不加 text-shadow；无图时是 bg-gray-800 灰底，不叠遮罩。
+ *   一律不加 text-shadow；无图时是 bg-gray-800 灰底，不叠遮罩；相似度图像结果卡无正文，例外不叠
+ *   （showCardOverlay）。
  * - 多行正文左对齐（放得下垂直居中、放不下顶对齐，超出裁掉）；标签行与底部单行标题居中。
  * - 「显示主页卡片信息」开关（homeCardInfoVisible）只作用于 home：关闭时正文/标签/标题与遮罩一起隐去，
  *   只剩背景图；similar/trash 恒显，不受开关影响（见 showHomeCardInfo）。
@@ -80,6 +81,10 @@ const emit = defineEmits<{
 // 一起隐去，只剩背景图；相似度结果与回收站始终展示信息与遮罩，不受开关影响。
 const showHomeCardInfo = computed(() => props.variant !== "home" || homeCardInfoVisible.value);
 
+// 遮罩只服务于压在图上的文字：相似度图像结果卡结构性无正文（不传 content），
+// 不叠遮罩（score 角标自带 bg-black/70 暗底）；其余场景信息可见即叠
+const showCardOverlay = computed(() => props.variant !== "similar" || props.content !== "");
+
 // Shift/Ctrl+修饰点击在 mousedown 阶段拦截，避免浏览器文本选择（否则卡片内容被选中变蓝）
 function onMouseDown(e: MouseEvent) {
   if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault();
@@ -154,10 +159,10 @@ const scoreText = (s: number) => s.toFixed(3);
       />
     </svg>
 
-    <!-- 整卡遮罩：有背景图且卡片信息可见时叠加（主页关闭信息时随文字一起隐去），
-         透明度由 CARD_OVERLAY_OPACITY 单点控制 -->
+    <!-- 整卡遮罩：有背景图、信息可见、且不是「无正文的相似度图像结果卡」时叠加；
+         主页关闭信息时随文字一起隐去；透明度由 CARD_OVERLAY_OPACITY 单点控制 -->
     <div
-      v-if="thumb && showHomeCardInfo"
+      v-if="thumb && showHomeCardInfo && showCardOverlay"
       class="pointer-events-none absolute inset-0"
       :style="{ backgroundColor: `rgba(0, 0, 0, ${CARD_OVERLAY_OPACITY})` }"
       aria-hidden="true"
