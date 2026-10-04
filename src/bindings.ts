@@ -476,6 +476,11 @@ export type LogLevelChanged = string;
 export type MergePromptSide = {
 	content: string,
 	note: string,
+	/**
+	 *  该提示词首图的图像 id（与卡片缩略图同口径：取第一张**有缩略图**的关联未删除图像）。
+	 *  供合并弹窗 hover 缩略图时按 id 取原图；无可用图像为 None。
+	 */
+	first_image_id: string | null,
 };
 
 export type MergePromptsPreview = {

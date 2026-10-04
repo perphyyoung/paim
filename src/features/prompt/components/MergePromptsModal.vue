@@ -35,6 +35,14 @@ const contentInput = ref<HTMLTextAreaElement | null>(null);
 const caret = ref<number | null>(null);
 /// 两条源提示词的首图缩略图（asset URL），key 为提示词 id；无关联图像则缺键
 const thumbs = ref<Record<string, string>>({});
+/// 当前 hover 的缩略图侧（null=未悬停）；thumb 元素引用用于浮层定位
+const hoverSide = ref<"a" | "b" | null>(null);
+const thumbEls = ref<Record<"a" | "b", HTMLElement | null>>({ a: null, b: null });
+/// hover 原图浮层状态：位置 + 原图 asset URL（按需按 image id 取，打开期间缓存）
+const hoverPos = ref<{ left: number; top: number } | null>(null);
+const originalUrls = ref<{ a: string; b: string }>({ a: "", b: "" });
+const originalLoading = ref<{ a: boolean; b: boolean }>({ a: false, b: false });
+const originalError = ref<{ a: boolean; b: boolean }>({ a: false, b: false });
 /// 打开序号：防止上一轮的缩略图异步结果写回新一轮
 let openSeq = 0;
 
@@ -92,7 +100,10 @@ function endSourceDrag() {
 watch(
   () => props.open,
   async (v) => {
-    if (!v) return;
+    if (!v) {
+      onThumbLeave();
+      return;
+    }
     const seq = ++openSeq;
     loading.value = true;
     error.value = "";
@@ -101,6 +112,11 @@ watch(
     caret.value = null;
     thumbs.value = {};
     sourceH.value = 220;
+    hoverSide.value = null;
+    hoverPos.value = null;
+    originalUrls.value = { a: "", b: "" };
+    originalLoading.value = { a: false, b: false };
+    originalError.value = { a: false, b: false };
     try {
       const p = await commands.previewMergePrompts(props.aId, props.bId);
       preview.value = p;
@@ -129,6 +145,36 @@ async function loadThumbs(seq: number) {
     Object.assign(map, applyThumbFix(dir, {}, fixed.fixed));
   }
   thumbs.value = map;
+}
+
+/// hover 缩略图：定位浮层（左侧图贴右、右侧图贴左，纵向居中并钳制不超出视口），按需按 id 取原图。
+async function onThumbEnter(side: "a" | "b") {
+  const el = thumbEls.value[side];
+  const imageId = side === "a" ? preview.value?.a.first_image_id : preview.value?.b.first_image_id;
+  if (!el || !imageId) return;
+  const rect = el.getBoundingClientRect();
+  const halfH = window.innerHeight * 0.35; // 与浮层 max-h-70vh 的半高一致
+  const top = Math.min(
+    window.innerHeight - halfH - 8,
+    Math.max(halfH + 8, rect.top + rect.height / 2),
+  );
+  hoverPos.value = side === "a" ? { left: rect.right + 8, top } : { left: rect.left - 8, top };
+  hoverSide.value = side;
+  if (originalUrls.value[side] || originalLoading.value[side]) return;
+  originalLoading.value[side] = true;
+  originalError.value[side] = false;
+  try {
+    const disk = await commands.getImageSrc(imageId);
+    originalUrls.value[side] = toAssetUrl(disk);
+  } catch {
+    originalError.value[side] = true;
+  } finally {
+    originalLoading.value[side] = false;
+  }
+}
+function onThumbLeave() {
+  hoverSide.value = null;
+  hoverPos.value = null;
 }
 
 // Esc 由本层截下（capture + stopPropagation），避免穿透到下层相似搜索弹窗
@@ -202,7 +248,11 @@ async function doMerge() {
                  独有 <mark> 红段可点击插回目标提示词（纯空白段不可点），各原文格内部滚动 -->
             <div class="flex shrink-0 gap-2" :style="{ height: sourceH + 'px' }">
               <div
+                :ref="(el) => (thumbEls.a = el as HTMLElement | null)"
                 class="flex aspect-square h-full shrink-0 items-center justify-center self-start overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
+                :class="preview.a.first_image_id ? 'cursor-zoom-in' : ''"
+                @mouseenter="onThumbEnter('a')"
+                @mouseleave="onThumbLeave"
               >
                 <img
                   v-if="thumbs[aId]"
@@ -265,7 +315,11 @@ async function doMerge() {
               </div>
 
               <div
+                :ref="(el) => (thumbEls.b = el as HTMLElement | null)"
                 class="flex aspect-square h-full shrink-0 items-center justify-center self-start overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
+                :class="preview.b.first_image_id ? 'cursor-zoom-in' : ''"
+                @mouseenter="onThumbEnter('b')"
+                @mouseleave="onThumbLeave"
               >
                 <img
                   v-if="thumbs[bId]"
@@ -373,6 +427,33 @@ async function doMerge() {
           </button>
         </div>
       </div>
+
+      <!-- hover 缩略图的原图浮层：fixed 跟随缩略图定位，不接收指针事件（移出缩略图即关） -->
+      <Teleport to="body">
+        <div
+          v-if="hoverSide && hoverPos"
+          class="pointer-events-none fixed z-[130] flex items-center justify-center rounded-lg border border-gray-600 bg-gray-900 p-1 shadow-xl"
+          :style="{
+            left: hoverPos.left + 'px',
+            top: hoverPos.top + 'px',
+            transform: hoverSide === 'b' ? 'translate(-100%, -50%)' : 'translateY(-50%)',
+          }"
+        >
+          <img
+            v-if="hoverSide && originalUrls[hoverSide]"
+            :src="originalUrls[hoverSide]"
+            :alt="`源提示词${hoverSide === 'a' ? 1 : 2} 原图预览`"
+            class="max-h-[70vh] max-w-[40vw] rounded object-contain"
+          />
+          <p
+            v-else-if="hoverSide && originalError[hoverSide]"
+            class="px-4 py-3 text-sm text-red-400"
+          >
+            原图加载失败
+          </p>
+          <p v-else class="px-4 py-3 text-sm text-gray-400">加载原图…</p>
+        </div>
+      </Teleport>
     </div>
   </Teleport>
 </template>

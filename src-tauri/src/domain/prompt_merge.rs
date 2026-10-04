@@ -9,13 +9,16 @@
 //! 全程单事务，任一步失败整体回滚。
 
 use crate::domain::prompt_service::{self, Prompt};
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, OptionalExtension, Result};
 use serde::Serialize;
 
 #[derive(Debug, Serialize, specta::Type)]
 pub struct MergePromptSide {
     pub content: String,
     pub note: String,
+    /// 该提示词首图的图像 id（与卡片缩略图同口径：取第一张**有缩略图**的关联未删除图像）。
+    /// 供合并弹窗 hover 缩略图时按 id 取原图；无可用图像为 None。
+    pub first_image_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, specta::Type)]
@@ -83,10 +86,12 @@ pub fn preview(conn: &Connection, a_id: &str, b_id: &str) -> Result<MergePrompts
         a: MergePromptSide {
             content: a.content,
             note: a.note,
+            first_image_id: first_image_id(conn, a_id)?,
         },
         b: MergePromptSide {
             content: b.content,
             note: b.note,
+            first_image_id: first_image_id(conn, b_id)?,
         },
         tag_names,
         image_total,
@@ -97,6 +102,22 @@ pub fn preview(conn: &Connection, a_id: &str, b_id: &str) -> Result<MergePrompts
         is_favorite: a.is_favorite || b.is_favorite,
         is_safe: a.is_safe && b.is_safe,
     })
+}
+
+/// 首图 id：与 `prompt_service::thumbs_for` 同口径——按 sort_order/rowid 取第一张
+/// 有缩略图（thumbnail_path 非 NULL）的关联未删除图像；无则 None。
+fn first_image_id(conn: &Connection, prompt_id: &str) -> Result<Option<String>> {
+    conn.query_row(
+        "SELECT img.id
+         FROM prompt_image_relations pir
+         JOIN images img ON img.id = pir.image_id
+         WHERE pir.prompt_id = ?1 AND img.is_deleted = 0 AND img.thumbnail_path IS NOT NULL
+         ORDER BY pir.sort_order, pir.rowid
+         LIMIT 1",
+        rusqlite::params![prompt_id],
+        |row| row.get(0),
+    )
+    .optional()
 }
 
 fn count_images(conn: &Connection, prompt_id: &str) -> Result<i64> {

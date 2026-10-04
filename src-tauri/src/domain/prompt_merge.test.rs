@@ -16,10 +16,10 @@ fn seed(conn: &rusqlite::Connection) {
         "INSERT INTO prompts(id, title, content, note, is_favorite, is_safe)
          VALUES ('pa', 'ta', '1girl, solo, red dress', 'A 的备注', 0, 1),
                 ('pb', 'tb', '1girl, solo, blue dress', 'B 的备注', 1, 0);
-         INSERT INTO images(id, file_name, stored_name, relative_path)
-         VALUES ('i1', 'a.png', 'a.png', 'x/a.png'),
-                ('i2', 'b.png', 'b.png', 'x/b.png'),
-                ('i3', 's.png', 's.png', 'x/s.png');
+         INSERT INTO images(id, file_name, stored_name, relative_path, thumbnail_path)
+         VALUES ('i1', 'a.png', 'a.png', 'x/a.png', 't/a.png'),
+                ('i2', 'b.png', 'b.png', 'x/b.png', 't/b.png'),
+                ('i3', 's.png', 's.png', 'x/s.png', 't/s.png');
          INSERT INTO prompt_image_relations(prompt_id, image_id, sort_order)
          VALUES ('pa', 'i1', 0), ('pa', 'i3', 1),
                 ('pb', 'i2', 0), ('pb', 'i3', 1);
@@ -45,6 +45,38 @@ fn preview_reports_union_counts_and_flags() {
     assert!(p.is_favorite, "收藏取 OR");
     assert!(!p.is_safe, "安全取 AND：B 标敏感则合并为敏感");
     assert_eq!(p.a.content, "1girl, solo, red dress");
+    assert_eq!(p.a.first_image_id.as_deref(), Some("i1"));
+    assert_eq!(p.b.first_image_id.as_deref(), Some("i2"));
+}
+
+#[test]
+fn preview_first_image_skips_null_thumbnail_and_none_when_no_image() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    seed(&conn);
+
+    // i1 无法解码（thumbnail_path NULL）：顺延到共有图 i3，与 thumbs_for 口径一致
+    conn.execute(
+        "UPDATE images SET thumbnail_path = NULL WHERE id = 'i1'",
+        [],
+    )
+    .unwrap();
+    let p = preview(&conn, "pa", "pb").unwrap();
+    assert_eq!(
+        p.a.first_image_id.as_deref(),
+        Some("i3"),
+        "跳过无缩略图的 i1"
+    );
+    assert_eq!(p.b.first_image_id.as_deref(), Some("i2"));
+
+    // 软删除的关联图像不计入；全部关联图像被软删 → None
+    conn.execute(
+        "UPDATE images SET is_deleted = 1 WHERE id IN ('i2', 'i3')",
+        [],
+    )
+    .unwrap();
+    let p = preview(&conn, "pa", "pb").unwrap();
+    assert_eq!(p.b.first_image_id, None, "pb 仅剩被软删的图，无可用首图");
 }
 
 #[test]
