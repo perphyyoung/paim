@@ -32,7 +32,12 @@ const emit = defineEmits<{
       class="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
       @click.self="emit('cancel')"
     >
-      <div class="w-80 max-w-[90vw] rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800">
+      <div
+        class="w-80 max-w-[90vw] rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
+      >
         <h3 class="text-center text-base font-semibold text-gray-100">
           {{ title }}
         </h3>

@@ -12,6 +12,8 @@ export interface EntityCache<T> {
   fetch(id: string): Promise<T>;
   /** 数据已变化，丢弃该条缓存 */
   invalidate(id: string): void;
+  /** 丢弃全部缓存（含进行中的请求）；批量变化且无法精确枚举受影响 id 时用 */
+  clear(): void;
 }
 
 /** @param maxEntries 缓存条数上限（默认 200），超出按最久未用淘汰 */
@@ -45,16 +47,27 @@ export function createEntityCache<T>(
     invalidate: (id) => {
       cache.delete(id);
     },
+    clear: () => {
+      // 连 inflight 一起丢：已发出的旧请求 resolve 后因守卫（见 fetch）不再回填，
+      // 保证 clear 后第一个 fetch 一定重新读库
+      cache.clear();
+      inflight.clear();
+    },
     fetch: (id) => {
       const pending = inflight.get(id);
       if (pending) return pending;
       const task = load(id)
         .then((value) => {
-          cache.set(id, value);
-          evict();
+          // clear() 可能在请求飞行期间发生：inflight 已清空，旧结果不得回填
+          if (inflight.get(id) === task) {
+            cache.set(id, value);
+            evict();
+          }
           return value;
         })
-        .finally(() => inflight.delete(id));
+        .finally(() => {
+          if (inflight.get(id) === task) inflight.delete(id);
+        });
       inflight.set(id, task);
       return task;
     },

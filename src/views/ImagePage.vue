@@ -40,6 +40,7 @@ import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import type { ThumbnailEnsureFixed } from "@/features/image/api/thumbnails";
+import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
 import {
@@ -355,6 +356,13 @@ function closeTrash() {
   trashFirstPrompts.value = {};
 }
 
+// 图像删除态变化（删除/恢复/彻底删除/清空）会改变任意提示词详情的关联图像结果
+// （get_prompt_related_images 按 is_deleted 过滤），受影响提示词无法精确枚举，整池作废。
+// 注意：对侧实体缓存，不是本页的 thumbs/imagePrompts（那两个随 loadImages 自行刷新）。
+function invalidateRelatedImagesCache() {
+  relatedImagesCache.clear();
+}
+
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
 // 两个入口在回收站为空时按钮即 disabled（TrashOverlay::canOperate），无需再判空
 async function restoreAllTrash() {
@@ -362,6 +370,7 @@ async function restoreAllTrash() {
     const restored = await commands.restoreAllImages();
     await Promise.all([loadTrash(), loadImages()]);
     markPageStale("prompts");
+    invalidateRelatedImagesCache();
     showToast(`已恢复 ${restored} 张图像`, "success");
   } catch (e) {
     showToast(`恢复失败：${e}`, "error");
@@ -381,6 +390,7 @@ async function doEmptyTrash() {
     trashFirstPrompts.value = {};
     await loadImages();
     markPageStale("prompts");
+    invalidateRelatedImagesCache();
     showToast(
       r.failures > 0 ? `已清空 ${r.count} 张（${r.failures} 张失败）` : "回收站已清空",
       "warning",
@@ -416,6 +426,7 @@ async function restoreImage(img: ImageCard) {
   await loadImages(); // 刷新主列表，使恢复的图回到图像页
   // 恢复的图像重新成为提示词卡片的候选背景图
   markPageStale("prompts");
+  invalidateRelatedImagesCache();
   showToast(`已恢复「${img.file_name}」`, "success");
 }
 
@@ -423,6 +434,7 @@ async function purgeImage(img: ImageCard) {
   await commands.purgeImage(img.id);
   // 关联关系级联删除，提示词主页的关联图像计数已变化
   markPageStale("prompts");
+  invalidateRelatedImagesCache();
   trashImages.value = trashImages.value.filter((i) => i.id !== img.id);
   delete trashFirstPrompts.value[img.id];
   showToast(`已彻底删除「${img.file_name}」`, "success");
@@ -625,6 +637,7 @@ async function doSingleDelete() {
     delete thumbs.value[img.id];
     await loadImages();
     markPageStale("prompts");
+    invalidateRelatedImagesCache();
     showToast(`已删除「${img.file_name}」到回收站`, "success");
   } catch (e) {
     showToast(`删除失败：${e}`, "error");
@@ -647,6 +660,7 @@ async function doBatchDelete() {
       await commands.deleteImage(id);
     }
     markPageStale("prompts");
+    invalidateRelatedImagesCache();
     showToast(`已将 ${ids.length} 张图像移入回收站`, "success");
     exitBatch();
     await loadImages();

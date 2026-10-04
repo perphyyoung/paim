@@ -37,6 +37,7 @@ import VirtualGrid from "@/components/VirtualGrid.vue";
 import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
+import { relatedPromptsCache } from "@/features/image/api/detailCache";
 import {
   ensurePromptThumbnails,
   type ThumbnailEnsureFixed,
@@ -356,6 +357,7 @@ async function doSingleDelete() {
     await loadPrompts();
     // 图像主页卡片的关联提示词文案过滤已删除提示词，需重载
     markPageStale("images");
+    invalidateRelatedPromptsCache();
     showToast(`已删除「${p.title}」`, "success");
   } catch (e) {
     showToast(`删除失败：${e}`, "error");
@@ -410,6 +412,7 @@ async function doBatchDelete() {
       await commands.deletePrompt(id);
     }
     markPageStale("images");
+    invalidateRelatedPromptsCache();
     showToast(`已删除 ${ids.length} 个提示词`, "success");
     exitBatch();
     await loadPrompts();
@@ -598,6 +601,13 @@ function closeTrash() {
   trashThumbs.value = {};
 }
 
+// 提示词删除态变化（删除/恢复/彻底删除/清空）会改变任意图像详情的关联提示词结果
+// （get_image_related_prompts 按 is_deleted 过滤），受影响图像无法精确枚举，整池作废。
+// 只清关联提示词缓存；图像自己的原图/标签缓存与提示词删除态无关，不动。
+function invalidateRelatedPromptsCache() {
+  relatedPromptsCache.clear();
+}
+
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
 // 两个入口在回收站为空时按钮即 disabled（TrashOverlay::canOperate），无需再判空
 async function restoreAllTrash() {
@@ -605,6 +615,7 @@ async function restoreAllTrash() {
     const restored = await commands.restoreAllPrompts();
     await Promise.all([loadTrash(), loadPrompts()]);
     markPageStale("images");
+    invalidateRelatedPromptsCache();
     showToast(`已恢复 ${restored} 个提示词`, "success");
   } catch (e) {
     showToast(`恢复失败：${e}`, "error");
@@ -623,6 +634,7 @@ async function doEmptyTrash() {
     trashThumbs.value = {};
     await loadPrompts();
     markPageStale("images");
+    invalidateRelatedPromptsCache();
     showToast(
       r.failures > 0 ? `已清空 ${r.count} 个（${r.failures} 个失败）` : "回收站已清空",
       "warning",
@@ -652,6 +664,7 @@ async function restorePrompt(p: PromptCard) {
     await loadPrompts();
     // 恢复的提示词重新出现在图像主页的关联文案里
     markPageStale("images");
+    invalidateRelatedPromptsCache();
     showToast(`已恢复「${p.title}」`, "success");
   } catch (e) {
     showToast(`恢复失败：${e}`, "error");
@@ -663,6 +676,7 @@ async function purgePrompt(p: PromptCard) {
     await commands.purgePrompt(p.id);
     // 关联关系级联删除，图像主页的关联提示词文案已变化
     markPageStale("images");
+    invalidateRelatedPromptsCache();
     trashPrompts.value = trashPrompts.value.filter((i) => i.id !== p.id);
     delete trashThumbs.value[p.id];
     showToast(`已彻底删除「${p.title}」`, "success");
