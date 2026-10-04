@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // 提示词合并弹窗（入口：相似搜索为提示词源时，结果卡片右键「合并提示词」）。
 // 全程不出现标题：新建时标题由后端用新 id 生成。
-// 上：源提示词1 / 源提示词2 垂直排列（左 2/3 词级对齐原文，独有红段可点插回；右 1/3 首图缩略图）；
-// 中：合并内容（预填公共部分，差异人工补回）占满剩余高度；
-// 下：标签并集、关联图像并集、合并后的备注与安全/收藏口径（固定高）。确认后新建一条、原两条进回收站。
+// 上：源提示词区一行三列（左右首图正方形缩略图，中间源提示词1/2 原文垂直排列；红段可点插回）；
+// 中：目标提示词（合并结果，预填公共部分，差异人工补回）占满剩余高度，与源区间为可拖拽分界面；
+// 下：标签并集、关联图像并集、合并后的备注与安全/收藏口径（内容定高）。确认后新建一条、原两条进回收站。
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { commands, type MergePromptsPreview } from "@/bindings";
 import { commonText, diffTokens, type DiffToken } from "@/features/prompt/promptDiff";
@@ -25,6 +25,11 @@ const saving = ref(false);
 const error = ref("");
 const preview = ref<MergePromptsPreview | null>(null);
 const mergedContent = ref("");
+/// 源提示词区高度（px）：拖动与「目标提示词」编辑区之间的分界面调节；打开时恢复默认
+const sourceH = ref(220);
+const SOURCE_H_MIN = 140;
+const SOURCE_H_MAX_RATIO = 0.6;
+let dragStart: { y: number; h: number } | null = null;
 const contentInput = ref<HTMLTextAreaElement | null>(null);
 /// 最近一次光标位置（点上方红段会让 textarea 失焦，故 blur 时也保留；null = 从未聚焦，插到末尾）
 const caret = ref<number | null>(null);
@@ -65,6 +70,25 @@ function insertSegment(seg: string) {
   });
 }
 
+/// 拖动源提示词区与编辑区之间的水平分界面：pointermove 按纵向位移改源区高度（140px ~ 60vh）。
+function startSourceDrag(e: PointerEvent) {
+  dragStart = { y: e.clientY, h: sourceH.value };
+  window.addEventListener("pointermove", onSourceDrag);
+  window.addEventListener("pointerup", endSourceDrag, { once: true });
+  document.body.classList.add("select-none");
+  e.preventDefault();
+}
+function onSourceDrag(e: PointerEvent) {
+  if (!dragStart) return;
+  const max = window.innerHeight * SOURCE_H_MAX_RATIO;
+  sourceH.value = Math.min(max, Math.max(SOURCE_H_MIN, dragStart.h + (e.clientY - dragStart.y)));
+}
+function endSourceDrag() {
+  dragStart = null;
+  window.removeEventListener("pointermove", onSourceDrag);
+  document.body.classList.remove("select-none");
+}
+
 watch(
   () => props.open,
   async (v) => {
@@ -76,6 +100,7 @@ watch(
     mergedContent.value = "";
     caret.value = null;
     thumbs.value = {};
+    sourceH.value = 220;
     try {
       const p = await commands.previewMergePrompts(props.aId, props.bId);
       preview.value = p;
@@ -119,7 +144,11 @@ watch(
     else window.removeEventListener("keydown", onKeydown, true);
   },
 );
-onUnmounted(() => window.removeEventListener("keydown", onKeydown, true));
+onUnmounted(() => {
+  window.removeEventListener("keydown", onKeydown, true);
+  window.removeEventListener("pointermove", onSourceDrag);
+  document.body.classList.remove("select-none");
+});
 
 async function doMerge() {
   if (!mergedContent.value.trim()) {
@@ -168,19 +197,28 @@ async function doMerge() {
         <div class="flex min-h-0 flex-1 flex-col px-4 py-4">
           <p v-if="loading" class="py-8 text-center text-sm text-gray-400">正在加载两侧内容…</p>
           <template v-else-if="preview">
-            <!-- 源提示词区：两条垂直排列、平分面板高度；整块可用右下角原生拖柄调高度。
-                 每行左 2/3 为词级对齐原文（独有 <mark> 红段可点击插回合并内容，纯空白段不可点），
-                 右 1/3 为该提示词首图缩略图。各单元格内部滚动 -->
-            <div
-              class="grid h-[220px] max-h-[60vh] min-h-[140px] shrink-0 resize-y grid-rows-2 gap-2 overflow-hidden"
-            >
-              <section
-                aria-label="源提示词1 原文"
-                class="grid min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2"
+            <!-- 源提示词区（一行三列）：左/右为两条提示词的首图正方形缩略图（aspect-square + h-full，
+                 拖高时始终保持正方形）；中间列两条原文垂直排列、等高平分。
+                 独有 <mark> 红段可点击插回目标提示词（纯空白段不可点），各原文格内部滚动 -->
+            <div class="flex shrink-0 gap-2" :style="{ height: sourceH + 'px' }">
+              <div
+                class="flex aspect-square h-full shrink-0 items-center justify-center self-start overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
               >
-                <div class="flex min-h-0 flex-col">
-                  <p class="mb-1 shrink-0 text-xs text-gray-400">源提示词1</p>
+                <img
+                  v-if="thumbs[aId]"
+                  :src="thumbs[aId]"
+                  alt="源提示词1 的首图缩略图"
+                  class="h-full w-full object-cover"
+                />
+                <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
+              </div>
+
+              <div class="grid min-w-0 flex-1 grid-rows-2 gap-2">
+                <div class="flex min-h-0 gap-2">
+                  <p class="w-14 shrink-0 pt-2 text-xs text-gray-400">源提示词1</p>
                   <p
+                    role="region"
+                    aria-label="源提示词1 原文"
                     class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
                   >
                     <template v-for="(s, i) in aSegs" :key="i">
@@ -200,26 +238,11 @@ async function doMerge() {
                     </template>
                   </p>
                 </div>
-                <div
-                  class="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
-                >
-                  <img
-                    v-if="thumbs[aId]"
-                    :src="thumbs[aId]"
-                    alt="源提示词1 的首图缩略图"
-                    class="h-full w-full object-cover"
-                  />
-                  <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
-                </div>
-              </section>
-
-              <section
-                aria-label="源提示词2 原文"
-                class="grid min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2"
-              >
-                <div class="flex min-h-0 flex-col">
-                  <p class="mb-1 shrink-0 text-xs text-gray-400">源提示词2</p>
+                <div class="flex min-h-0 gap-2">
+                  <p class="w-14 shrink-0 pt-2 text-xs text-gray-400">源提示词2</p>
                   <p
+                    role="region"
+                    aria-label="源提示词2 原文"
                     class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-sm leading-6 border-gray-600 bg-gray-900 text-gray-200"
                   >
                     <template v-for="(s, i) in bSegs" :key="i">
@@ -239,37 +262,47 @@ async function doMerge() {
                     </template>
                   </p>
                 </div>
-                <div
-                  class="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
-                >
-                  <img
-                    v-if="thumbs[bId]"
-                    :src="thumbs[bId]"
-                    alt="源提示词2 的首图缩略图"
-                    class="h-full w-full object-cover"
-                  />
-                  <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
-                </div>
-              </section>
-            </div>
-            <p class="mt-1 shrink-0 text-xs text-gray-500">
-              红色为该侧独有内容，点击可插入到合并内容的光标处；右下角可拖动调整上方区域高度。
-            </p>
+              </div>
 
-            <!-- 中部：合并内容占满剩余高度（预填公共部分，差异点上方红段补回） -->
-            <div class="mt-3 flex min-h-0 flex-1 flex-col">
+              <div
+                class="flex aspect-square h-full shrink-0 items-center justify-center self-start overflow-hidden rounded-lg border border-gray-700 bg-gray-900"
+              >
+                <img
+                  v-if="thumbs[bId]"
+                  :src="thumbs[bId]"
+                  alt="源提示词2 的首图缩略图"
+                  class="h-full w-full object-cover"
+                />
+                <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
+              </div>
+            </div>
+
+            <!-- 源提示词区 / 目标提示词编辑区的分界面：整条可拖拽（pointer 捕获，140px ~ 60vh） -->
+            <div
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="源提示词区域高度"
+              :aria-valuenow="Math.round(sourceH)"
+              aria-valuemin="140"
+              title="拖动调整源提示词区域高度"
+              class="my-1 h-1.5 shrink-0 cursor-row-resize rounded bg-gray-700 hover:bg-blue-500/70"
+              @pointerdown="startSourceDrag"
+            ></div>
+
+            <!-- 中部：目标提示词（合并结果，预填公共部分，差异点上方红段补回）占满剩余高度 -->
+            <div class="flex min-h-0 flex-1 flex-col">
               <label
                 for="merge-content-input"
                 class="mb-1 block shrink-0 text-sm font-medium text-gray-200"
               >
-                合并后内容 <span class="text-red-500">*</span>
+                目标提示词 <span class="text-red-500">*</span>
               </label>
               <textarea
                 ref="contentInput"
                 id="merge-content-input"
                 v-model="mergedContent"
                 class="min-h-0 w-full flex-1 resize-none rounded-lg border px-3 py-2 text-sm leading-6 focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
-                placeholder="已预填两侧公共部分，请补回需要保留的差异内容"
+                placeholder="已预填两侧公共部分，请补回需要保留的差异内容（点击上方红段插入到光标处）"
                 @click="syncCaret"
                 @keyup="syncCaret"
                 @select="syncCaret"
@@ -277,9 +310,9 @@ async function doMerge() {
               ></textarea>
             </div>
 
-            <!-- 合并口径预览：固定高度，内容多时栏内滚动，不挤占中部编辑区 -->
+            <!-- 合并口径：按内容定高（常规三行），不固定高度、不留空白 -->
             <div
-              class="mt-3 h-36 shrink-0 space-y-2 overflow-y-auto rounded-lg border px-3 py-2.5 text-sm text-gray-300 border-gray-700"
+              class="mt-3 shrink-0 space-y-2 rounded-lg border px-3 py-2.5 text-sm text-gray-300 border-gray-700"
             >
               <p>
                 关联图像：共

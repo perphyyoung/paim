@@ -73,7 +73,7 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   // 合并弹窗
   const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
   await expect(mergeDialog).toBeVisible({ timeout: 3_000 });
-  // 顶部两条源提示词垂直排列，各是命名 region：公共词可见，独有词为可点击红段，右 1/3 为首图缩略图
+  // 源区一行三列：左右正方形缩略图，中间两条原文垂直排列（各是命名 region，独有词为可点击红段）
   const source1Region = mergeDialog.getByRole("region", { name: "源提示词1 原文" });
   const source2Region = mergeDialog.getByRole("region", { name: "源提示词2 原文" });
   await expect(source1Region.getByText("solo dress")).toBeVisible();
@@ -81,10 +81,11 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   const betaBtn = source2Region.getByRole("button", { name: "beta" });
   await expect(alphaBtn).toBeVisible();
   await expect(betaBtn).toBeVisible();
-  await expect(source1Region.getByRole("img", { name: "源提示词1 的首图缩略图" })).toBeVisible();
-  await expect(source2Region.getByRole("img", { name: "源提示词2 的首图缩略图" })).toBeVisible();
-  // 合并内容预填了公共部分（非空）；关联图像并集计数
-  const contentBox = mergeDialog.getByRole("textbox", { name: "合并后内容" });
+  await expect(mergeDialog.getByRole("img", { name: "源提示词1 的首图缩略图" })).toBeVisible();
+  await expect(mergeDialog.getByRole("img", { name: "源提示词2 的首图缩略图" })).toBeVisible();
+  await expect(mergeDialog.getByRole("separator", { name: "源提示词区域高度" })).toBeVisible();
+  // 目标提示词预填了公共部分（非空）；关联图像并集计数
+  const contentBox = mergeDialog.getByRole("textbox", { name: "目标提示词" });
   await expect(contentBox).not.toHaveValue("");
   await expect(mergeDialog.getByText(/共\s*2\s*张/)).toBeVisible();
   await expect(mergeDialog.getByText(/重复\s*0\s*张去重/)).toBeVisible();
