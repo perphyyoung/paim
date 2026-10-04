@@ -32,7 +32,8 @@ const MOCK_FILE_NAME = "e2e-upload.png";
 
 /// 主页卡片点删除钮并在确认弹窗确认，等成功 toast 出现并点掉。
 async function deleteCardViaUi(page: Page, cardId: string, toastText: string): Promise<void> {
-  await cardById(page, cardId).getByTitle("删除").click();
+  // 卡面按钮走 role+exact：正文 <p title=内容> 含同名字样时 getByTitle 会双命中
+  await cardById(page, cardId).getByRole("button", { name: "删除", exact: true }).click();
   // 删除确认统一走 ConfirmDialog：role=dialog + aria-label=title；
   // 卡面删除钮的 accessible name 同样是「删除」，确认钮必须限定在弹窗作用域内
   const confirmDialog = page.getByRole("dialog", { name: "确认删除" });

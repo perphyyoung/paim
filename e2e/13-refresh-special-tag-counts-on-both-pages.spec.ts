@@ -101,10 +101,11 @@ test("提示词主页卡片单张收藏：收藏计数随之刷新（chip 出现
   e2eLog.info("[step] 基线：收藏 chip 不可见");
 
   const card = cardById(page, await findPromptIdByContent(page, content));
-  await card.getByTitle("收藏").click(); // 卡片不带 toast，直接看计数
+  // 卡面按钮走 role+exact：正文 <p title=内容> 含「收藏」字样时 getByTitle 会双命中
+  await card.getByRole("button", { name: "收藏", exact: true }).click(); // 卡片不带 toast，直接看计数
   await expect(specialTagChip(page, "收藏")).toBeVisible(); // 修复前：计数没刷，chip 不出现
 
-  await card.getByTitle("取消收藏").click();
+  await card.getByRole("button", { name: "取消收藏", exact: true }).click();
   await expect(specialTagChip(page, "收藏")).toBeHidden();
   e2eLog.info("[step] 卡片收藏 chip 随单张切换出现并消失");
 });
@@ -119,10 +120,10 @@ test("图像主页卡片单张收藏：收藏计数随之刷新（chip 出现 / 
   e2eLog.info("[step] 基线：收藏 chip 不可见");
 
   const card = cardById(page, imageId);
-  await card.getByTitle("收藏").click();
+  await card.getByRole("button", { name: "收藏", exact: true }).click();
   await expect(specialTagChip(page, "收藏")).toBeVisible();
 
-  await card.getByTitle("取消收藏").click();
+  await card.getByRole("button", { name: "取消收藏", exact: true }).click();
   await expect(specialTagChip(page, "收藏")).toBeHidden();
   e2eLog.info("[step] 卡片收藏 chip 随单张切换出现并消失");
 });
