@@ -74,10 +74,11 @@ fn build_thumbnail_reports_unreadable_image() {
 }
 
 #[test]
-fn rebuild_all_fills_missing_and_preserves_failed() {
+fn rebuild_phases_fill_missing_and_preserve_failed() {
     let root = unique_test_dir("rebuild");
     let data_dir = root.join("data");
-    let thumbs_root = root.join("thumbnails");
+    // 真实布局：thumbnails/ 在数据目录内（健康项的存在性检查按 data_dir + 相对路径解析）
+    let thumbs_root = data_dir.join("thumbnails");
     std::fs::create_dir_all(data_dir.join("images").join("202606")).unwrap();
 
     let db_path = root.join("paim.db");
@@ -117,17 +118,21 @@ fn rebuild_all_fills_missing_and_preserves_failed() {
         Some("thumbnails/202606/old.jpg"),
     );
 
+    // 三阶段（与命令层同序）：短锁取清单 → 无锁生成 → 短锁回写
+    let targets = all_targets(&conn).expect("取清单");
     let progress: Mutex<Vec<(usize, usize, String)>> = Mutex::new(Vec::new());
-    let summary = rebuild_all(&data_dir, &thumbs_root, &conn, |done, total, name| {
+    let outcome = build_missing(&data_dir, &thumbs_root, &targets, 4, |done, total, name| {
         progress
             .lock()
             .unwrap()
             .push((done, total, name.to_string()));
-    })
-    .expect("rebuild ok");
-    assert_eq!(summary.total, 3);
-    assert_eq!(summary.success, 2);
-    assert_eq!(summary.failed, 1);
+    });
+    write_paths(&conn, &outcome.fixed).expect("回写");
+
+    assert_eq!(targets.len(), 3);
+    assert_eq!(outcome.success, 2);
+    assert_eq!(outcome.missing.len(), 1);
+    assert_eq!(outcome.fixed.len(), 1, "只有 img_a 需要回写");
     // 进度按完成数递增，最后一帧应为 (3, 3)
     let last = progress.lock().unwrap().last().unwrap().clone();
     assert_eq!((last.0, last.1), (3, 3));
@@ -171,23 +176,27 @@ fn rebuild_all_fills_missing_and_preserves_failed() {
 }
 
 #[test]
-fn rebuild_all_empty_db_returns_zero() {
+fn all_targets_empty_db_is_empty() {
     let root = unique_test_dir("rebuild-empty");
     let bk = db::init(root.join("paim.db")).expect("init db");
     let conn = bk.0.lock().unwrap();
-    let summary = rebuild_all(
+    let targets = all_targets(&conn).expect("取清单");
+    let outcome = build_missing(
         &root.join("data"),
         &root.join("thumbnails"),
-        &conn,
+        &targets,
+        4,
         |_, _, _| {},
-    )
-    .expect("rebuild ok");
-    assert_eq!((summary.total, summary.success, summary.failed), (0, 0, 0));
+    );
+    assert_eq!(
+        (targets.len(), outcome.success, outcome.missing.len()),
+        (0, 0, 0)
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
-fn ensure_thumbnails_heals_missing_and_reports_unfixable() {
+fn lazy_heal_phases_report_fixed_and_missing() {
     let root = unique_test_dir("ensure");
     let data_dir = root.join("data");
     // 懒自愈的存在性检查按 data_dir + 相对路径解析，缩略图须在数据目录内（真实布局）
@@ -242,18 +251,25 @@ fn ensure_thumbnails_heals_missing_and_reports_unfixable() {
         "img_unknown".to_string(),
     ];
 
-    let result = ensure_thumbnails(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
-    let fixed_ids: Vec<&str> = result.fixed.iter().map(|f| f.id.as_str()).collect();
+    // 三阶段（与命令层同序）：短锁取目标 → 无锁生成 → 短锁回写
+    let (targets, unknown) = targets_by_ids(&conn, &ids).expect("取目标");
+    let outcome = build_missing(&data_dir, &thumbs_root, &targets, 1, |_, _, _| {});
+    write_paths(&conn, &outcome.fixed).expect("回写");
+
+    let fixed_ids: Vec<&str> = outcome.fixed.iter().map(|f| f.id.as_str()).collect();
     assert_eq!(fixed_ids, vec!["img_a", "img_b"]);
     assert_eq!(
-        result.fixed[0].thumbnail_path,
+        outcome.fixed[0].thumbnail_path,
         "thumbnails/202606/thumb_img_a.jpg"
     );
     assert_eq!(
-        result.fixed[1].thumbnail_path,
+        outcome.fixed[1].thumbnail_path,
         "thumbnails/202606/thumb_img_b.jpg"
     );
-    assert_eq!(result.missing, vec!["img_d", "img_unknown"]);
+    let mut missing = unknown;
+    missing.extend(outcome.missing.iter().cloned());
+    missing.sort();
+    assert_eq!(missing, vec!["img_d", "img_unknown"]);
 
     // 回写已落库
     let thumb_of = |id: &str| -> Option<String> {
@@ -275,9 +291,14 @@ fn ensure_thumbnails_heals_missing_and_reports_unfixable() {
     );
 
     // 幂等：再跑一遍无修复项
-    let again = ensure_thumbnails(&data_dir, &thumbs_root, &conn, &ids).expect("ensure ok");
+    let (targets, unknown) = targets_by_ids(&conn, &ids).expect("取目标");
+    let again = build_missing(&data_dir, &thumbs_root, &targets, 1, |_, _, _| {});
+    write_paths(&conn, &again.fixed).expect("回写");
+    let mut missing_again = unknown;
+    missing_again.extend(again.missing.iter().cloned());
+    missing_again.sort();
     assert!(again.fixed.is_empty());
-    assert_eq!(again.missing, vec!["img_d", "img_unknown"]);
+    assert_eq!(missing_again, vec!["img_d", "img_unknown"]);
 
     let _ = std::fs::remove_dir_all(&root);
 }

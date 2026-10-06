@@ -1,12 +1,26 @@
 //! 提示词领域服务单元测试：详情更新（只写传入字段，未传字段保持不变）。
 
 use super::{
-    ensure_prompt_thumbnails, list_ids, list_page, list_related_images_with,
-    set_prompt_first_image, special_tags_counts, thumbs_for, thumbs_for_trashed, update_detail,
+    list_ids, list_page, list_related_images_with, set_prompt_first_image, special_tags_counts,
+    thumb_apply, thumb_plan, thumbs_for, thumbs_for_trashed, update_detail,
 };
 use crate::domain::list_query::ListQuery;
+use crate::domain::thumbnail_service;
 use crate::infra::db;
 use std::path::Path;
+
+/// 懒自愈的三阶段口径与命令层一致：短锁取规划 → 无锁生成 → 短锁回写。
+fn ensure_prompt_thumbnails(
+    conn: &rusqlite::Connection,
+    data_dir: &Path,
+    thumbs_root: &Path,
+    ids: &[String],
+) -> thumbnail_service::ThumbnailEnsureResult {
+    let plan = thumb_plan(conn, ids).expect("取规划");
+    let outcome =
+        thumbnail_service::build_missing(data_dir, thumbs_root, plan.targets(), 1, |_, _, _| {});
+    thumb_apply(conn, ids, plan, &outcome.fixed).expect("回写")
+}
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
 fn setup() -> (std::path::PathBuf, db::BkDb) {
@@ -928,7 +942,7 @@ fn ensure_prompt_thumbnails_fills_missing_and_reports_changed_prompts() {
     .unwrap();
 
     let thumbs_root = dir.join("thumbnails");
-    let result = ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    let result = ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]);
     let fixed = &result.fixed;
     assert_eq!(fixed.len(), 1, "应报告背景发生变化的提示词");
     assert_eq!(fixed[0].id, "p1");
@@ -951,7 +965,7 @@ fn ensure_prompt_thumbnails_fills_missing_and_reports_changed_prompts() {
     assert_eq!(written, fixed[0].thumbnail_path, "路径应回写到 images");
 
     // 幂等：已补齐后不再报告变化
-    let again = ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    let again = ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]);
     assert!(again.fixed.is_empty(), "重复调用不应再报变化");
 
     // 场景 B：DB 有 thumbnail_path 但磁盘文件被删（用户手动清理 / 磁盘异常）
@@ -961,8 +975,7 @@ fn ensure_prompt_thumbnails_fills_missing_and_reports_changed_prompts() {
     std::fs::remove_file(dir.join(&saved_path)).unwrap();
     assert!(!dir.join(&saved_path).is_file(), "缩略图应已删除");
 
-    let after_delete =
-        ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]).unwrap();
+    let after_delete = ensure_prompt_thumbnails(&conn, &dir, &thumbs_root, &["p1".to_string()]);
     assert_eq!(
         after_delete.fixed.len(),
         1,

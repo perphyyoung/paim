@@ -39,6 +39,31 @@ fn seed_image(conn: &Connection, id: &str, updated_at: &str, vec: Option<Vec<f32
     .unwrap();
 }
 
+/// 检索的两阶段口径与命令层一致：短锁取候选 → 锁外打分，返回 (id, score) 降序。
+fn rank_images(
+    conn: &Connection,
+    target: &[f32],
+    exclude_id: &str,
+    limit: usize,
+    min_score: f32,
+    safe_only: bool,
+) -> Vec<(String, f32)> {
+    let rows = image_rank_candidates(conn, target.len(), exclude_id, safe_only).unwrap();
+    score_ranked(&rows, target, limit, min_score)
+}
+
+/// 提示词侧的同一口径（无安全模式）。
+fn rank_prompt_hits(
+    conn: &Connection,
+    target: &[f32],
+    exclude_id: &str,
+    limit: usize,
+    min_score: f32,
+) -> Vec<(String, f32)> {
+    let rows = prompt_rank_candidates(conn, target.len(), exclude_id).unwrap();
+    score_ranked(&rows, target, limit, min_score)
+}
+
 #[test]
 fn blob_roundtrip_ignores_trailing_bytes() {
     let v = vec![0.5f32, -1.25, 3.0];
@@ -204,10 +229,9 @@ fn rank_orders_filters_and_skips_dim_mismatch() {
     );
 
     let ids = |safe_only: bool| -> Vec<String> {
-        rank(&conn, &target, "img_self", 10, 0.5, safe_only)
-            .unwrap()
+        rank_images(&conn, &target, "img_self", 10, 0.5, safe_only)
             .into_iter()
-            .map(|h| h.image_id)
+            .map(|(id, _)| id)
             .collect()
     };
     // 自身排除、维度不同跳过、低于阈值剔除、按余弦降序
@@ -216,9 +240,7 @@ fn rank_orders_filters_and_skips_dim_mismatch() {
     assert_eq!(ids(true), vec!["img_near", "img_mid"]);
     // limit 生效
     assert_eq!(
-        rank(&conn, &target, "img_self", 1, 0.5, false)
-            .unwrap()
-            .len(),
+        rank_images(&conn, &target, "img_self", 1, 0.5, false).len(),
         1
     );
 
@@ -419,10 +441,9 @@ fn rank_prompts_orders_filters_and_skips_dim_mismatch() {
         .unwrap();
 
     let ids = |limit: usize| -> Vec<String> {
-        rank_prompts(&conn, &target, "pr_self", limit, 0.5)
-            .unwrap()
+        rank_prompt_hits(&conn, &target, "pr_self", limit, 0.5)
             .into_iter()
-            .map(|h| h.prompt_id)
+            .map(|(id, _)| id)
             .collect()
     };
     // 自身排除、维度不同跳过、低于阈值剔除、按余弦降序（is_safe = 0 不过滤）
@@ -456,13 +477,13 @@ fn ranks_are_scoped_to_their_own_table() {
         Some(target.clone()),
     );
 
-    let images = rank(&conn, &target, "", 10, 0.5, false).unwrap();
+    let images = rank_images(&conn, &target, "", 10, 0.5, false);
     assert_eq!(images.len(), 1);
-    assert_eq!(images[0].image_id, "img_a");
+    assert_eq!(images[0].0, "img_a");
 
-    let prompts = rank_prompts(&conn, &target, "", 10, 0.5).unwrap();
+    let prompts = rank_prompt_hits(&conn, &target, "", 10, 0.5);
     assert_eq!(prompts.len(), 1);
-    assert_eq!(prompts[0].prompt_id, "pr_a");
+    assert_eq!(prompts[0].0, "pr_a");
 }
 
 #[test]

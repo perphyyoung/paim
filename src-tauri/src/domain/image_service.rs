@@ -109,6 +109,9 @@ fn ext_ok(path: &Path) -> bool {
 /// 复制源图到 images/<年月>/（stored_name 与 pm 一致，为 "{id}{ext}"），
 /// 生成 200×200 居中裁剪的 jpeg 缩略图到 thumbnails/<年月>/thumb_{id}.jpg，入库，返回记录。
 /// 返回 `(记录, 是否重复)`：重复时复用已存在记录且不落新文件。
+///
+/// 单条导入 = 四个阶段串联（批量入口在命令层按阶段交错执行，避免整批重活都在锁内）：
+/// 无锁哈希 → 短锁去重 → 无锁落盘/缩略图 → 短锁入库。
 pub fn import(
     conn: &Connection,
     app: &tauri::AppHandle,
@@ -122,40 +125,89 @@ pub fn import(
     )
 }
 
-/// import 的路径注入版（供测试），app 依赖仅用于定位数据目录。
+/// import 的路径注入版（供测试），四阶段串联，行为与改造前一致。
 pub(crate) fn import_with(
     conn: &Connection,
     images_dir: &Path,
     thumbnails_dir: &Path,
     source: &str,
 ) -> rusqlite::Result<(Image, bool)> {
-    let source = PathBuf::from(source);
-    if !source.is_file() {
+    let (path, md5) = prepare_source(source)?;
+    if let Some(existing) = dedupe_by_md5(conn, &md5)? {
+        return Ok((existing, true));
+    }
+    let prepared = prepare_files(images_dir, thumbnails_dir, &path, &md5)?;
+    insert_prepared(conn, prepared)
+}
+
+/// 无锁阶段 A：校验源文件并计算内容哈希（读文件，不碰库）。
+/// 校验口径与改造前一致：文件必须存在、扩展名在支持列表内。
+pub(crate) fn prepare_source(source: &str) -> rusqlite::Result<(PathBuf, String)> {
+    let path = PathBuf::from(source);
+    if !path.is_file() {
         return Err(rusqlite::Error::InvalidParameterName(
             "源文件不存在".to_string(),
         ));
     }
-    if !ext_ok(&source) {
+    if !ext_ok(&path) {
         return Err(rusqlite::Error::InvalidParameterName(
             "不支持的图片格式".to_string(),
         ));
     }
+    let md5 = file_md5(&path)?;
+    Ok((path, md5))
+}
 
-    // MD5 去重：与已入库图像内容相同则复用（含回收站记录，自动恢复）
-    let md5 = file_md5(&source)?;
-    if let Some(existing) = find_by_md5(conn, &md5)? {
-        let img = if existing.is_deleted {
-            let img = restore(conn, &existing.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
-            img
-        } else {
-            existing
-        };
-        return Ok((img, true));
+/// 短锁阶段 B：按 md5 去重（含回收站记录，命中即恢复），返回已存在的记录。
+pub(crate) fn dedupe_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> {
+    let Some(existing) = find_by_md5(conn, md5)? else {
+        return Ok(None);
+    };
+    if existing.is_deleted {
+        return Ok(Some(
+            restore(conn, &existing.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?,
+        ));
     }
+    Ok(Some(existing))
+}
 
-    // 先解码验证：拒绝扩展名伪装或损坏的文件。解码失败的文件若静默入库，
-    // thumbnail_path 为 NULL，会让提示词页的卡片背景整批失效。
-    let img = open_image(&source).map_err(|e| {
+/// 无锁预处理产物：文件已落盘、缩略图已生成，只差入库。
+/// 入库失败或撞上并发重复时，调用方可用里面的绝对路径清理刚落下的文件。
+pub(crate) struct PreparedImport {
+    pub id: String,
+    pub stored_name: String,
+    pub file_name: String,
+    pub relative_path: String,
+    pub thumbnail_path: Option<String>,
+    pub md5: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub file_size: i64,
+    /// 落盘的原图绝对路径（入库失败时清理）
+    pub dest: PathBuf,
+    /// 落盘的缩略图绝对路径（入库失败时清理）
+    pub thumb_abs: Option<PathBuf>,
+}
+
+impl PreparedImport {
+    /// 丢弃本次预处理落下的文件（入库失败 / 撞上并发重复时调用）。
+    fn discard_files(&self) {
+        let _ = std::fs::remove_file(&self.dest);
+        if let Some(thumb) = &self.thumb_abs {
+            let _ = std::fs::remove_file(thumb);
+        }
+    }
+}
+
+/// 无锁阶段 C：解码校验 → 复制入库文件 → 生成缩略图（重 IO，不碰库）。
+/// 先解码再落盘：拒绝扩展名伪装或损坏的文件（静默入库会让卡片背景整批失效）。
+pub(crate) fn prepare_files(
+    images_dir: &Path,
+    thumbnails_dir: &Path,
+    source: &Path,
+    md5: &str,
+) -> rusqlite::Result<PreparedImport> {
+    let img = open_image(source).map_err(|e| {
         rusqlite::Error::InvalidParameterName(format!(
             "无法解析图像文件（可能已损坏或为不支持的格式；当前支持 {}，AVIF/HEIC/SVG 请先转换）: {e}",
             SUPPORTED_EXT.join(" / ")
@@ -165,7 +217,7 @@ pub(crate) fn import_with(
     std::fs::create_dir_all(images_dir).map_err(io_to_sql)?;
     std::fs::create_dir_all(thumbnails_dir).map_err(io_to_sql)?;
 
-    let md = std::fs::metadata(&source).map_err(io_to_sql)?;
+    let md = std::fs::metadata(source).map_err(io_to_sql)?;
     let file_size = md.len() as i64;
 
     // 6 位年月子目录：images/YYYYMM/
@@ -187,10 +239,11 @@ pub(crate) fn import_with(
     let id = crate::infra::db::gen_id(crate::infra::db::IMAGE_ID_PREFIX);
     let stored_name = format!("{id}.{ext}");
     let dest = month_dir.join(&stored_name);
-    std::fs::copy(&source, &dest).map_err(io_to_sql)?;
+    std::fs::copy(source, &dest).map_err(io_to_sql)?;
 
     // 生成居中裁剪的方图缩略图（生成失败仅缺缩略图，不阻断导入）
-    let (width, height, thumb_rel) = {
+    let mut thumb_abs_out: Option<PathBuf> = None;
+    let (width, height, thumbnail_path) = {
         let (w, h) = img.dimensions();
         match make_center_thumb(&img) {
             Ok(thumb) => {
@@ -198,12 +251,16 @@ pub(crate) fn import_with(
                 let thumb_month_dir = thumbnails_dir.join(&yyyymm);
                 std::fs::create_dir_all(&thumb_month_dir).map_err(io_to_sql)?;
                 let thumb_abs = thumb_month_dir.join(&thumb_name);
-                thumb.save(&thumb_abs).map_err(|e| {
-                    rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("生成缩略图失败: {e}"),
-                    )))
-                })?;
+                if let Err(e) = thumb.save(&thumb_abs) {
+                    let _ = std::fs::remove_file(&dest);
+                    return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                        std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("生成缩略图失败: {e}"),
+                        ),
+                    )));
+                }
+                thumb_abs_out = Some(thumb_abs);
                 (
                     Some(w as i64),
                     Some(h as i64),
@@ -214,28 +271,55 @@ pub(crate) fn import_with(
         }
     };
 
-    let relative_path = format!("images/{yyyymm}/{stored_name}");
     let file_name = source
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(&stored_name)
         .to_string();
-    conn.execute(
+    Ok(PreparedImport {
+        relative_path: format!("images/{yyyymm}/{stored_name}"),
+        id,
+        stored_name,
+        file_name,
+        thumbnail_path,
+        md5: md5.to_string(),
+        width,
+        height,
+        file_size,
+        dest,
+        thumb_abs: thumb_abs_out,
+    })
+}
+
+/// 短锁阶段 D：入库。唯一 md5 冲突（并发导入同一文件）时丢弃刚落下的文件并复用已有记录。
+pub(crate) fn insert_prepared(
+    conn: &Connection,
+    prepared: PreparedImport,
+) -> rusqlite::Result<(Image, bool)> {
+    let result = conn.execute(
         "INSERT INTO images(id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
-            id,
-            file_name,
-            stored_name,
-            relative_path,
-            thumb_rel,
-            md5,
-            width,
-            height,
-            file_size
+            prepared.id,
+            prepared.file_name,
+            prepared.stored_name,
+            prepared.relative_path,
+            prepared.thumbnail_path,
+            prepared.md5,
+            prepared.width,
+            prepared.height,
+            prepared.file_size
         ],
-    )?;
-    let new_img = get_by_id(conn, &id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+    );
+    if let Err(e) = result {
+        prepared.discard_files();
+        // 并发导入同一内容：md5 唯一约束挡下，回退为「已存在」语义
+        if let Some(existing) = dedupe_by_md5(conn, &prepared.md5)? {
+            return Ok((existing, true));
+        }
+        return Err(e);
+    }
+    let new_img = get_by_id(conn, &prepared.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
     Ok((new_img, false))
 }
 
@@ -727,7 +811,7 @@ pub fn replace_image(
     )
 }
 
-/// replace_image 的路径注入版（供测试），app 依赖仅用于定位数据目录。
+/// replace_image 的路径注入版（供测试）：短锁校验 → 导入四阶段 → 短锁迁移。
 pub(crate) fn replace_image_with(
     conn: &Connection,
     images_dir: &Path,
@@ -735,17 +819,30 @@ pub(crate) fn replace_image_with(
     old_id: &str,
     source: &str,
 ) -> std::result::Result<ImageReplaceOutcome, AppError> {
-    // 旧图必须存在，防止对无效 id 操作
-    if get_by_id(conn, old_id)?.is_none() {
-        return Err(AppError::Message(format!("图像 {old_id} 不存在")));
-    }
-
+    replace_ensure_old(conn, old_id)?;
     let (new_img, is_duplicate) =
         import_with(conn, images_dir, thumbnails_dir, source).map_err(AppError::from)?;
     if is_duplicate && new_img.id == old_id {
         return Ok(ImageReplaceOutcome::SameImage);
     }
+    replace_commit(conn, old_id, &new_img)
+}
 
+/// 替换的第一步（**短锁阶段**）：旧图必须存在，防止对无效 id 操作。
+/// 命令层的编排把「导入新图」（重 IO）放在这一步之后、[`replace_commit`] 之前，期间不持锁。
+pub(crate) fn replace_ensure_old(conn: &Connection, old_id: &str) -> Result<(), AppError> {
+    if get_by_id(conn, old_id)?.is_none() {
+        return Err(AppError::Message(format!("图像 {old_id} 不存在")));
+    }
+    Ok(())
+}
+
+/// 替换的最后一步（**短锁阶段**）：软删旧图并迁移关联 / 标签 / 元数据。
+pub(crate) fn replace_commit(
+    conn: &Connection,
+    old_id: &str,
+    new_img: &Image,
+) -> std::result::Result<ImageReplaceOutcome, AppError> {
     let tx = conn.unchecked_transaction()?;
     // 软删旧图（进回收站可恢复）
     tx.execute(

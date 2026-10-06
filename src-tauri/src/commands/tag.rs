@@ -4,12 +4,11 @@
 //! 转调 `domain::tag_service`（查询与关联）与 `domain::tag_manager`（标签本体/分组 CRUD）。
 //! 取代原先分散在 image.rs / prompt.rs / image_tag.rs / prompt_tag.rs 的四套命令。
 
-use crate::commands::db_blocking;
 use crate::domain::tag_manager::{
     self, TagData, TagDomain, TagGroup, TagItem, TagLite, TagNameKind,
 };
 use crate::domain::tag_service;
-use crate::infra::db::BkDb;
+use crate::infra::db::{self, BkDb};
 use crate::infra::error::AppError;
 use std::collections::HashMap;
 use tauri::State;
@@ -20,7 +19,7 @@ use tauri::State;
 #[tauri::command]
 #[specta::specta]
 pub async fn get_tag_data(db: State<'_, BkDb>, domain: TagDomain) -> Result<TagData, AppError> {
-    db_blocking(&db, move |conn| {
+    db::blocking(&db, move |conn| {
         tag_service::load_tag_data(conn, domain).map_err(|e| AppError::Message(e.to_string()))
     })
     .await
@@ -33,7 +32,7 @@ pub async fn get_tags_map(
     db: State<'_, BkDb>,
     domain: TagDomain,
 ) -> Result<HashMap<String, Vec<String>>, AppError> {
-    db_blocking(&db, move |conn| {
+    db::blocking(&db, move |conn| {
         tag_service::load_tags_map(conn, domain).map_err(|e| AppError::Message(e.to_string()))
     })
     .await
@@ -42,13 +41,15 @@ pub async fn get_tags_map(
 /// 单个实体的标签列表（按名称升序）。
 #[tauri::command]
 #[specta::specta]
-pub fn get_item_tags(
-    db: State<BkDb>,
+pub async fn get_item_tags(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     id: String,
 ) -> Result<Vec<TagLite>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_service::load_item_tags(&conn, domain, &id).map_err(|e| AppError::Message(e.to_string()))
+    db::blocking(&db, move |conn| {
+        tag_service::load_item_tags(conn, domain, &id).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 // ============ 关联增删 ============
@@ -56,8 +57,8 @@ pub fn get_item_tags(
 /// 为单个实体添加一个标签（标签不存在则创建），返回该标签并刷新实体 updated_at。
 #[tauri::command]
 #[specta::specta]
-pub fn add_tag(
-    db: State<BkDb>,
+pub async fn add_tag(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     id: String,
     name: String,
@@ -65,15 +66,17 @@ pub fn add_tag(
     if name.trim().is_empty() {
         return Err("标签名不能为空".into());
     }
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_service::add_tag(&conn, domain, &id, &name).map_err(|e| AppError::Message(e.to_string()))
+    db::blocking(&db, move |conn| {
+        tag_service::add_tag(conn, domain, &id, &name).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 为多个实体批量添加同一个标签（单事务），并逐个刷新 updated_at。
 #[tauri::command]
 #[specta::specta]
-pub fn batch_add_tag(
-    db: State<BkDb>,
+pub async fn batch_add_tag(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     ids: Vec<String>,
     name: String,
@@ -81,24 +84,28 @@ pub fn batch_add_tag(
     if name.trim().is_empty() {
         return Err("标签名不能为空".into());
     }
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-    tag_service::batch_add_tag(&conn, domain, &id_refs, &name)
-        .map_err(|e| AppError::Message(e.to_string()))
+    db::blocking(&db, move |conn| {
+        let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
+        tag_service::batch_add_tag(conn, domain, &id_refs, &name)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 移除实体的一个标签关联，并刷新实体 updated_at。
 #[tauri::command]
 #[specta::specta]
-pub fn remove_tag(
-    db: State<BkDb>,
+pub async fn remove_tag(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     id: String,
     tag_id: i64,
 ) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_service::remove_tag(&conn, domain, &id, tag_id)
-        .map_err(|e| AppError::Message(e.to_string()))
+    db::blocking(&db, move |conn| {
+        tag_service::remove_tag(conn, domain, &id, tag_id)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 // ============ 标签管理（标签本体与分组） ============
@@ -106,8 +113,8 @@ pub fn remove_tag(
 /// 新建标签组，返回新组。
 #[tauri::command]
 #[specta::specta]
-pub fn create_tag_group(
-    db: State<BkDb>,
+pub async fn create_tag_group(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     name: String,
     sort_order: Option<i64>,
@@ -115,18 +122,20 @@ pub fn create_tag_group(
     if name.trim().is_empty() {
         return Err("组名不能为空".into());
     }
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::ensure_name_not_dup(&conn, domain, TagNameKind::Group, &name, None)
-        .map_err(AppError::Message)?;
-    tag_manager::create_group(&conn, domain, &name, sort_order)
-        .map_err(|e| AppError::Message(e.to_string()))
+    db::blocking(&db, move |conn| {
+        tag_manager::ensure_name_not_dup(conn, domain, TagNameKind::Group, &name, None)
+            .map_err(AppError::Message)?;
+        tag_manager::create_group(conn, domain, &name, sort_order)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 编辑标签组：更新名称与排序数值。
 #[tauri::command]
 #[specta::specta]
-pub fn update_tag_group(
-    db: State<BkDb>,
+pub async fn update_tag_group(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     id: i64,
     name: String,
@@ -135,30 +144,38 @@ pub fn update_tag_group(
     if name.trim().is_empty() {
         return Err("组名不能为空".into());
     }
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::ensure_name_not_dup(&conn, domain, TagNameKind::Group, &name, Some(id))
-        .map_err(AppError::Message)?;
-    if let Some(so) = sort_order {
-        tag_manager::ensure_group_resort_capacity(&conn, domain, id, so)
+    db::blocking(&db, move |conn| {
+        tag_manager::ensure_name_not_dup(conn, domain, TagNameKind::Group, &name, Some(id))
             .map_err(AppError::Message)?;
-    }
-    tag_manager::update_group(&conn, domain, id, &name, sort_order)
-        .map_err(|e| AppError::Message(e.to_string()))
+        if let Some(so) = sort_order {
+            tag_manager::ensure_group_resort_capacity(conn, domain, id, so)
+                .map_err(AppError::Message)?;
+        }
+        tag_manager::update_group(conn, domain, id, &name, sort_order)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 删除标签组（组内标签交由外键 ON DELETE SET NULL 变为未分组）。
 #[tauri::command]
 #[specta::specta]
-pub fn delete_tag_group(db: State<BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::delete_group(&conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
+pub async fn delete_tag_group(
+    db: State<'_, BkDb>,
+    domain: TagDomain,
+    id: i64,
+) -> Result<(), AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::delete_group(conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 新建标签（可指定所属组），返回新标签；域内标签数达上限时拒绝。
 #[tauri::command]
 #[specta::specta]
-pub fn create_tag(
-    db: State<BkDb>,
+pub async fn create_tag(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     name: String,
     group_id: Option<i64>,
@@ -166,23 +183,25 @@ pub fn create_tag(
     if name.trim().is_empty() {
         return Err("标签名不能为空".into());
     }
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::ensure_name_not_dup(&conn, domain, TagNameKind::Tag, &name, None)
-        .map_err(AppError::Message)?;
-    tag_manager::ensure_tag_capacity(&conn, domain).map_err(AppError::Message)?;
-    if let Some(gid) = group_id {
-        tag_manager::ensure_top_group_capacity(&conn, domain, gid, None)
+    db::blocking(&db, move |conn| {
+        tag_manager::ensure_name_not_dup(conn, domain, TagNameKind::Tag, &name, None)
             .map_err(AppError::Message)?;
-    }
-    tag_manager::create_tag(&conn, domain, &name, group_id)
-        .map_err(|e| AppError::Message(e.to_string()))
+        tag_manager::ensure_tag_capacity(conn, domain).map_err(AppError::Message)?;
+        if let Some(gid) = group_id {
+            tag_manager::ensure_top_group_capacity(conn, domain, gid, None)
+                .map_err(AppError::Message)?;
+        }
+        tag_manager::create_tag(conn, domain, &name, group_id)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 重命名标签。
 #[tauri::command]
 #[specta::specta]
-pub fn rename_tag(
-    db: State<BkDb>,
+pub async fn rename_tag(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     id: i64,
     name: String,
@@ -190,42 +209,57 @@ pub fn rename_tag(
     if name.trim().is_empty() {
         return Err("标签名不能为空".into());
     }
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::ensure_name_not_dup(&conn, domain, TagNameKind::Tag, &name, Some(id))
-        .map_err(AppError::Message)?;
-    tag_manager::rename_tag(&conn, domain, id, &name).map_err(|e| AppError::Message(e.to_string()))
+    db::blocking(&db, move |conn| {
+        tag_manager::ensure_name_not_dup(conn, domain, TagNameKind::Tag, &name, Some(id))
+            .map_err(AppError::Message)?;
+        tag_manager::rename_tag(conn, domain, id, &name)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 删除标签（关联关系由外键 CASCADE 一并清除）。
 #[tauri::command]
 #[specta::specta]
-pub fn delete_tag(db: State<BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::delete_tag(&conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
+pub async fn delete_tag(db: State<'_, BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::delete_tag(conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 将标签移动到指定组（group_id 为 null 表示未分组）。
 #[tauri::command]
 #[specta::specta]
-pub fn move_tag_to_group(
-    db: State<BkDb>,
+pub async fn move_tag_to_group(
+    db: State<'_, BkDb>,
     domain: TagDomain,
     id: i64,
     group_id: Option<i64>,
 ) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    if let Some(gid) = group_id {
-        tag_manager::ensure_top_group_capacity(&conn, domain, gid, Some(id))
-            .map_err(AppError::Message)?;
-    }
-    tag_manager::move_tag(&conn, domain, id, group_id).map_err(|e| AppError::Message(e.to_string()))
+    db::blocking(&db, move |conn| {
+        if let Some(gid) = group_id {
+            tag_manager::ensure_top_group_capacity(conn, domain, gid, Some(id))
+                .map_err(AppError::Message)?;
+        }
+        tag_manager::move_tag(conn, domain, id, group_id)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }
 
 /// 将标签组固定到首位（sort_order 设为当前最小值 - 1）。
 #[tauri::command]
 #[specta::specta]
-pub fn pin_tag_group_to_top(db: State<BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    tag_manager::ensure_group_as_top_capacity(&conn, domain, id).map_err(AppError::Message)?;
-    tag_manager::pin_group_to_top(&conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
+pub async fn pin_tag_group_to_top(
+    db: State<'_, BkDb>,
+    domain: TagDomain,
+    id: i64,
+) -> Result<(), AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::ensure_group_as_top_capacity(conn, domain, id).map_err(AppError::Message)?;
+        tag_manager::pin_group_to_top(conn, domain, id)
+            .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
 }

@@ -7,6 +7,7 @@ pub mod font_family_map;
 pub mod logging;
 pub mod preferences;
 pub mod shell_explorer;
+pub mod task;
 pub mod text_utils;
 pub mod time;
 pub mod webview_dir;

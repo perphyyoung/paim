@@ -3,6 +3,7 @@
 
 use crate::infra::error::AppError;
 use rusqlite::{Connection, OptionalExtension};
+use std::future::Future;
 use std::panic::Location;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -162,6 +163,39 @@ fn holder_desc() -> String {
             h.since.elapsed().as_millis()
         ),
         None => "当前无人持锁（可能刚释放）".to_string(),
+    }
+}
+
+/// 访问数据库的唯一入口：把「等连接锁 + 执行闭包」丢进**专用阻塞线程池**。
+/// 命令层与 infra 自身的命令都用它，避免两份实现。
+///
+/// 为什么必须有这一层（见 docs/lessons.md 第 12 / 28 节）：
+/// - 不带 `async` 的 Tauri 命令在宿主**主线程内联执行**，慢 SQL / 等锁会冻结窗口消息循环；
+/// - `#[tauri::command(async)]` 也不是答案——宏给同步函数体生成的代码只是把它放进
+///   `async_runtime::spawn` 的 async 任务里，阻塞操作会占住 **async 工作线程**（默认按核数），
+///   几条慢命令就能把整个异步运行时拖住；真正该用的是独立阻塞池 `spawn_blocking`。
+///
+/// 取锁带等待/持锁计量（见 [`DbConn::lock_at`]），调用点用 `#[track_caller]` 自动取到，
+/// 所以形态是「非 async 函数返回 future」而不是 `async fn`
+/// （`#[track_caller]` 在 async fn 上是 no-op，rust-lang/rust#110011）。
+#[track_caller]
+pub fn blocking<T, F>(
+    db: &State<'_, BkDb>,
+    f: F,
+) -> impl Future<Output = Result<T, AppError>> + Send + 'static
+where
+    F: FnOnce(&Connection) -> Result<T, AppError> + Send + 'static,
+    T: Send + 'static,
+{
+    let at = Location::caller();
+    let db = Arc::clone(&db.0);
+    async move {
+        tauri::async_runtime::spawn_blocking(move || {
+            let conn = db.lock_at(at)?;
+            f(&conn)
+        })
+        .await
+        .map_err(|e| AppError::Message(format!("数据库任务执行失败: {e}")))?
     }
 }
 
@@ -573,65 +607,64 @@ pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), AppError> {
 /// 按图像 id 查库取得真实 relative_path（与前端拼接解耦，杜绝路径拼错）。
 #[tauri::command]
 #[specta::specta]
-pub fn open_image_location(
+pub async fn open_image_location(
     app: tauri::AppHandle,
     db: State<'_, BkDb>,
     id: String,
 ) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let row: Option<(String, String)> = conn
-        .query_row(
-            "SELECT relative_path, file_name FROM images WHERE id = ?1",
-            rusqlite::params![id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional()
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    drop(conn);
-    let Some((rel, file_name)) = row.filter(|(s, _)| !s.is_empty()) else {
-        return Err(AppError::Message("图像不存在或缺少保存路径".into()));
-    };
-    let full = app_data_path(&app, &rel);
-    if !full.exists() {
-        crate::log_warn!("image_missing: id={id} file_name={file_name} caller=open_image_location");
-    }
-    crate::infra::shell_explorer::reveal_in_explorer(&full)
+    // 查库（短锁）与系统 shell 调用一起放阻塞池：两者都不该占主线程
+    blocking(&db, move |conn| {
+        let row: Option<(String, String)> = conn
+            .query_row(
+                "SELECT relative_path, file_name FROM images WHERE id = ?1",
+                rusqlite::params![id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| AppError::Message(e.to_string()))?;
+        let Some((rel, file_name)) = row.filter(|(s, _)| !s.is_empty()) else {
+            return Err(AppError::Message("图像不存在或缺少保存路径".into()));
+        };
+        let full = app_data_path(&app, &rel);
+        if !full.exists() {
+            crate::log_warn!(
+                "image_missing: id={id} file_name={file_name} caller=open_image_location"
+            );
+        }
+        crate::infra::shell_explorer::reveal_in_explorer(&full)
+    })
+    .await
 }
 
 /// 批量切换收藏（对齐 pm：集合级 `1 - is_favorite` 一次 SQL，收藏↔取消收藏）
-fn toggle_favorite(db: &State<'_, BkDb>, table: &str, ids: Vec<String>) -> Result<usize, AppError> {
+fn toggle_favorite(conn: &Connection, table: &str, ids: &[String]) -> Result<usize, AppError> {
     if ids.is_empty() {
         return Ok(0);
     }
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     let placeholders = vec!["?"; ids.len()].join(",");
-    let n = conn
-        .execute(
-            &format!(
-                "UPDATE {table} SET is_favorite = 1 - is_favorite WHERE id IN ({placeholders})"
-            ),
-            rusqlite::params_from_iter(ids.iter()),
-        )
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(n)
+    conn.execute(
+        &format!("UPDATE {table} SET is_favorite = 1 - is_favorite WHERE id IN ({placeholders})"),
+        rusqlite::params_from_iter(ids.iter()),
+    )
+    .map_err(|e| AppError::Message(e.to_string()))
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn batch_toggle_image_favorite(
+pub async fn batch_toggle_image_favorite(
     db: State<'_, BkDb>,
     ids: Vec<String>,
 ) -> Result<usize, AppError> {
-    toggle_favorite(&db, "images", ids)
+    blocking(&db, move |conn| toggle_favorite(conn, "images", &ids)).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn batch_toggle_prompt_favorite(
+pub async fn batch_toggle_prompt_favorite(
     db: State<'_, BkDb>,
     ids: Vec<String>,
 ) -> Result<usize, AppError> {
-    toggle_favorite(&db, "prompts", ids)
+    blocking(&db, move |conn| toggle_favorite(conn, "prompts", &ids)).await
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 //! e2e 测试缝命令：供 e2e 测试操纵磁盘文件 / 读 DB 状态。
 //! release 构建不门控（命令无害、无 UI 入口），统一简化维护。
 
-use crate::infra::db::BkDb;
+use crate::infra::db::{self, BkDb};
 use crate::infra::error::AppError;
 use rusqlite::OptionalExtension;
 use serde::Serialize;
@@ -20,33 +20,35 @@ pub struct E2EImageRecord {
 /// 返回缩略图相对路径（用于 e2e 断言重建结果），若 DB 里没有 thumbnail_path 则返回 None。
 #[tauri::command]
 #[specta::specta]
-pub fn e2e_delete_image_thumbnail(
+pub async fn e2e_delete_image_thumbnail(
     app: AppHandle,
     db: State<'_, BkDb>,
     image_id: String,
 ) -> Result<Option<String>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let thumb_rel: Option<String> = conn
-        .query_row(
+    // 短锁取路径，文件删除放阻塞池（与真实命令同口径：不在锁内做文件 IO）
+    let thumb_rel: Option<String> = db::blocking(&db, move |conn| {
+        conn.query_row(
             "SELECT thumbnail_path FROM images WHERE id = ?1",
             rusqlite::params![image_id],
             |r| r.get(0),
         )
         .optional()
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    drop(conn);
+        .map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await?;
 
-    let Some(rel) = thumb_rel else {
+    let Some(rel) = thumb_rel.filter(|r| !r.is_empty()) else {
         return Ok(None);
     };
-    if rel.is_empty() {
-        return Ok(None);
-    }
     let full = crate::infra::db::app_data_path(&app, &rel);
-    if full.exists() {
-        std::fs::remove_file(&full)
-            .map_err(|e| AppError::Message(format!("删除缩略图失败: {e}")))?;
-    }
+    crate::infra::task::spawn_blocking("e2e 删除缩略图", move || {
+        if full.exists() {
+            std::fs::remove_file(&full)
+                .map_err(|e| AppError::Message(format!("删除缩略图失败: {e}")))?;
+        }
+        Ok(())
+    })
+    .await?;
     Ok(Some(rel))
 }
 
@@ -54,26 +56,28 @@ pub fn e2e_delete_image_thumbnail(
 /// 不存在则返回 None；thumbnail_path 为 NULL 时空串。
 #[tauri::command]
 #[specta::specta]
-pub fn e2e_get_image_paths(
+pub async fn e2e_get_image_paths(
     db: State<'_, BkDb>,
     image_id: String,
 ) -> Result<Option<E2EImageRecord>, AppError> {
-    let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
-    let row: Option<(String, String, String)> = conn
-        .query_row(
-            "SELECT file_name, relative_path, COALESCE(thumbnail_path, '') FROM images WHERE id = ?1",
-            rusqlite::params![image_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
-        .optional()
-        .map_err(|e| AppError::Message(e.to_string()))?;
-    Ok(row.map(
-        |(file_name, relative_path, thumbnail_path)| E2EImageRecord {
-            file_name,
-            relative_path,
-            thumbnail_path,
-        },
-    ))
+    db::blocking(&db, move |conn| {
+        let row: Option<(String, String, String)> = conn
+            .query_row(
+                "SELECT file_name, relative_path, COALESCE(thumbnail_path, '') FROM images WHERE id = ?1",
+                rusqlite::params![image_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .map_err(|e| AppError::Message(e.to_string()))?;
+        Ok(row.map(
+            |(file_name, relative_path, thumbnail_path)| E2EImageRecord {
+                file_name,
+                relative_path,
+                thumbnail_path,
+            },
+        ))
+    })
+    .await
 }
 
 /// 读指定窗口当前是否可见（不存在则返回 None）。

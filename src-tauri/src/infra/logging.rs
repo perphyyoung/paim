@@ -255,9 +255,10 @@ macro_rules! log_error {
 
 /// 前端上报日志：`rtk invoke("log_msg", { level, message })`。
 /// 经全局级别过滤，被过滤的日志不落盘（前端有本地缓存预判，正常不会走到这）。
+/// 写盘是文件 IO，放阻塞池：这条命令是整个前端日志通道，不能占主线程。
 #[tauri::command]
 #[specta::specta]
-pub fn log_msg(level: String, message: String) {
+pub async fn log_msg(level: String, message: String) {
     let lvl = match level.as_str() {
         "debug" => Level::Debug,
         "warn" => Level::Warn,
@@ -267,7 +268,11 @@ pub fn log_msg(level: String, message: String) {
     if !enabled(lvl) {
         return;
     }
-    write(lvl, format!("[FE] {}", message));
+    let _ = crate::infra::task::spawn_blocking("日志写入", move || {
+        write(lvl, format!("[FE] {}", message));
+        Ok(())
+    })
+    .await;
 }
 
 /// 查询当前全局最低日志级别（小写字符串，供前端启动时同步缓存）。
@@ -286,15 +291,20 @@ pub fn get_log_level() -> String {
 /// 运行时热切全局最低日志级别，并 emit 事件让前端刷新缓存。
 #[tauri::command]
 #[specta::specta]
-pub fn set_log_level(app: tauri::AppHandle, level: String) -> Result<(), String> {
+pub async fn set_log_level(app: tauri::AppHandle, level: String) -> Result<(), String> {
     let lowered = level.to_ascii_lowercase();
     let lvl = level_from_str(&lowered)
         .ok_or_else(|| format!("无效日志级别: {level}（可选 debug/info/warn/error）"))?;
     set_min_level(lvl);
-    write(
-        Level::Info,
-        format!("[log] 最低级别切换为 {}", lvl.as_str()),
-    );
+    // 落盘走阻塞池（同上），失败静默——日志系统的任何失败都不该影响业务
+    let _ = crate::infra::task::spawn_blocking("日志级别切换", move || {
+        write(
+            Level::Info,
+            format!("[log] 最低级别切换为 {}", lvl.as_str()),
+        );
+        Ok(())
+    })
+    .await;
     let _ = LogLevelChanged(lowered).emit(&app);
     Ok(())
 }

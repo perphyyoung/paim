@@ -512,10 +512,16 @@ where
 {
     let data_dir = db::data_dir(app);
     let thumbs_root = db::thumbnails_dir(app);
-    let summary = crate::domain::thumbnail_service::rebuild_all(
+    // 三阶段：短锁取全部图像清单 → 无锁满核生成 → 短锁批量回写（生成期间不持连接）
+    let targets = crate::domain::thumbnail_service::all_targets(conn)?;
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let outcome = crate::domain::thumbnail_service::build_missing(
         &data_dir,
         &thumbs_root,
-        conn,
+        &targets,
+        workers,
         |done, total, file_name| {
             emit(BackupProgress {
                 stage: "thumbnails".into(),
@@ -524,8 +530,9 @@ where
                 detail: Some(file_name.to_string()),
             });
         },
-    )?;
-    Ok(summary.failed)
+    );
+    crate::domain::thumbnail_service::write_paths(conn, &outcome.fixed)?;
+    Ok(outcome.missing.len())
 }
 
 /// 读取 manifest.json 并解析。

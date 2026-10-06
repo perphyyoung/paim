@@ -265,83 +265,71 @@ fn status_in(conn: &Connection, table: &str) -> Result<SimilarityStatus, AppErro
     })
 }
 
-/// 以给定向量检索最相似的图像（id + 余弦分，按分数降序）。
-/// 只比较**维度相同**的向量：换模型后维度不同的旧向量自动跳过（`status.stale` 会提示全量重建）。
-/// `safe_only` 与主页「安全模式」一致地过滤 `is_safe = 0` 的图像。
-pub fn rank(
+/// 短锁阶段产出的候选行：`(id, 已归一化向量的原始 BLOB)`。
+/// 解码 + 点积 + 排序都在锁外做——万级向量时那才是耗时大头（见 docs/lessons.md 第 28 节）。
+pub type RankRow = (String, Vec<u8>);
+
+/// **短锁阶段**：取图像表里参与打分的候选（维度过滤下推 SQL，避免把无用的 BLOB 拉进内存）。
+/// `safe_only` 与主页「安全模式」一致地过滤 `is_safe = 0`；`exclude_id` 传空串表示不排除任何行。
+pub fn image_rank_candidates(
     conn: &Connection,
-    target: &[f32],
+    dim_len: usize,
     exclude_id: &str,
-    limit: usize,
-    min_score: f32,
     safe_only: bool,
-) -> Result<Vec<ImageHit>, AppError> {
-    let hits = rank_in(
-        conn, IMAGES, target, exclude_id, limit, min_score, safe_only,
-    )?;
-    Ok(hits
-        .into_iter()
-        .map(|(id, score)| ImageHit {
-            image_id: id,
-            score,
-        })
-        .collect())
+) -> Result<Vec<RankRow>, AppError> {
+    load_candidates(conn, IMAGES, dim_len, exclude_id, safe_only)
 }
 
-/// 以给定向量检索最相似的提示词（id + 余弦分，按分数降序）。
-/// 提示词没有「安全模式」口径，故不过滤 `is_safe`。
-pub fn rank_prompts(
+/// **短锁阶段**：取提示词表里参与打分的候选（提示词没有「安全模式」口径）。
+pub fn prompt_rank_candidates(
     conn: &Connection,
-    target: &[f32],
+    dim_len: usize,
     exclude_id: &str,
-    limit: usize,
-    min_score: f32,
-) -> Result<Vec<PromptHit>, AppError> {
-    let hits = rank_in(conn, PROMPTS, target, exclude_id, limit, min_score, false)?;
-    Ok(hits
-        .into_iter()
-        .map(|(id, score)| PromptHit {
-            prompt_id: id,
-            score,
-        })
-        .collect())
+) -> Result<Vec<RankRow>, AppError> {
+    load_candidates(conn, PROMPTS, dim_len, exclude_id, false)
 }
 
-/// 通用检索：维度过滤 + 归一化点积 + 阈值 + Top-K，返回 (id, score) 降序。
-fn rank_in(
+fn load_candidates(
     conn: &Connection,
     table: &str,
-    target: &[f32],
+    dim_len: usize,
     exclude_id: &str,
-    limit: usize,
-    min_score: f32,
     safe_only: bool,
-) -> Result<Vec<(String, f32)>, AppError> {
+) -> Result<Vec<RankRow>, AppError> {
     let sql = format!(
         "SELECT id, vec FROM {table}
          WHERE is_deleted = 0 AND vec IS NOT NULL AND id <> ?1 AND length(vec) = ?2{}",
         if safe_only { " AND is_safe = 1" } else { "" }
     );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params![exclude_id, (target.len() * 4) as i64], |r| {
+    let rows = stmt.query_map(params![exclude_id, (dim_len * 4) as i64], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
     })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// **无锁阶段**：归一化点积 + 阈值 + Top-K，返回 (id, score) 降序。
+/// 向量写入前已归一化，故点积即余弦；维度不符的行跳过（换模型后的旧向量）。
+pub fn score_ranked(
+    rows: &[RankRow],
+    target: &[f32],
+    limit: usize,
+    min_score: f32,
+) -> Vec<(String, f32)> {
     let mut hits: Vec<(String, f32)> = Vec::new();
-    for row in rows {
-        let (id, blob) = row?;
-        let v = vec_from_blob(&blob);
+    for (id, blob) in rows {
+        let v = vec_from_blob(blob);
         if v.len() != target.len() {
             continue;
         }
-        // 向量写入前已归一化 → 点积即余弦
         let score: f32 = v.iter().zip(target.iter()).map(|(a, b)| a * b).sum();
         if score >= min_score {
-            hits.push((id, score));
+            hits.push((id.clone(), score));
         }
     }
     hits.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     hits.truncate(limit);
-    Ok(hits)
+    hits
 }
 
 #[cfg(test)]

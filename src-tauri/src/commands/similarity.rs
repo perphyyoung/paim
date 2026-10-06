@@ -14,7 +14,6 @@
 //! 实测 4 路并发仅约 1.2x（预处理与服务端编码可重叠，收益主要来自这一点），
 //! 因此默认不开满；建议不超过服务端 `-np`。
 
-use crate::commands::db_blocking;
 use crate::domain::similarity_service::{self, ImageHit, IndexMode, PromptHit, SimilarityStatus};
 use crate::infra::db::{self, BkDb};
 use crate::infra::embedding_client::{self, EmbeddingServiceInfo};
@@ -93,7 +92,7 @@ async fn resolve_target(
         MixedSource::Image => {
             let id = source_id.to_string();
             if let Some(v) =
-                db_blocking(&db, move |conn| similarity_service::vec_of(conn, &id)).await?
+                db::blocking(&db, move |conn| similarity_service::vec_of(conn, &id)).await?
             {
                 return Ok(v);
             }
@@ -103,21 +102,20 @@ async fn resolve_target(
                 return Err(AppError::Message(msg));
             }
             let id = source_id.to_string();
-            let rel = db_blocking(&db, move |conn| {
+            let rel = db::blocking(&db, move |conn| {
                 similarity_service::relative_path_of(conn, &id)
             })
             .await?
             .ok_or_else(|| AppError::Message(format!("图像 {source_id} 不存在")))?;
             let jpeg = similarity_service::prepare_image(&db::data_path(&db::data_dir(app), &rel))?;
             let url = base_url.to_string();
-            let vec = tauri::async_runtime::spawn_blocking(move || {
+            let vec = crate::infra::task::spawn_blocking("检索", move || {
                 embedding_client::make_embedder(&url).embed_image(&jpeg)
             })
-            .await
-            .map_err(|e| AppError::Message(format!("检索任务执行失败: {e}")))??;
+            .await?;
             let id = source_id.to_string();
             let stored = vec.clone();
-            db_blocking(&db, move |conn| {
+            db::blocking(&db, move |conn| {
                 similarity_service::store(conn, &id, &stored)
             })
             .await?;
@@ -125,7 +123,7 @@ async fn resolve_target(
         }
         MixedSource::Prompt => {
             let id = source_id.to_string();
-            if let Some(v) = db_blocking(&db, move |conn| {
+            if let Some(v) = db::blocking(&db, move |conn| {
                 similarity_service::prompt_vec_of(conn, &id)
             })
             .await?
@@ -137,20 +135,19 @@ async fn resolve_target(
                 return Err(AppError::Message(msg));
             }
             let id = source_id.to_string();
-            let content = db_blocking(&db, move |conn| {
+            let content = db::blocking(&db, move |conn| {
                 similarity_service::prompt_content_of(conn, &id)
             })
             .await?
             .ok_or_else(|| AppError::Message(format!("提示词 {source_id} 不存在")))?;
             let url = base_url.to_string();
-            let vec = tauri::async_runtime::spawn_blocking(move || {
+            let vec = crate::infra::task::spawn_blocking("检索", move || {
                 embedding_client::make_embedder(&url).embed_text(&content)
             })
-            .await
-            .map_err(|e| AppError::Message(format!("检索任务执行失败: {e}")))??;
+            .await?;
             let id = source_id.to_string();
             let stored = vec.clone();
-            db_blocking(&db, move |conn| {
+            db::blocking(&db, move |conn| {
                 similarity_service::store_prompt(conn, &id, &stored)
             })
             .await?;
@@ -187,7 +184,7 @@ pub fn similarity_index_progress(state: State<'_, SimilarityState>) -> Similarit
 #[tauri::command]
 #[specta::specta]
 pub async fn similarity_status(db: State<'_, BkDb>) -> Result<SimilarityStatus, AppError> {
-    db_blocking(&db, similarity_service::status).await
+    db::blocking(&db, similarity_service::status).await
 }
 
 /// 探测 embedding 服务（设置页「测试连通性」）：模型名 / media marker / 维度 / 是否加载视觉塔。
@@ -195,19 +192,18 @@ pub async fn similarity_status(db: State<'_, BkDb>) -> Result<SimilarityStatus, 
 #[tauri::command]
 #[specta::specta]
 pub async fn embedding_service_info(base_url: String) -> Result<EmbeddingServiceInfo, AppError> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::infra::task::spawn_blocking("探测", move || {
         embedding_client::reset_breaker();
         embedding_client::make_embedder(&base_url).info()
     })
     .await
-    .map_err(|e| AppError::Message(format!("探测任务执行失败: {e}")))?
 }
 
 /// 清空全部向量（设置页「清空」，之后可重建）。
 #[tauri::command]
 #[specta::specta]
 pub async fn clear_image_embeddings(db: State<'_, BkDb>) -> Result<usize, AppError> {
-    db_blocking(&db, similarity_service::clear_all).await
+    db::blocking(&db, similarity_service::clear_all).await
 }
 
 /// 请求取消正在跑的图像索引：任务在下一个条目边界收尾（在途请求跑完为止）。
@@ -239,7 +235,7 @@ pub async fn index_image_embeddings(
     // 线程内需要 `'static` 的 AppHandle：`state` 借用了 `app`，故克隆一份交给任务
     let task_app = app.clone();
     let workers = concurrency.clamp(1, 8);
-    let result = tauri::async_runtime::spawn_blocking(move || {
+    let result = crate::infra::task::spawn_blocking("图像索引", move || {
         // 用户显式点了索引：先复位断路器，再探测一次服务
         embedding_client::reset_breaker();
         embedding_client::probe(&base_url)?;
@@ -383,10 +379,9 @@ pub async fn index_image_embeddings(
             reason,
         })
     })
-    .await
-    .map_err(|e| AppError::Message(format!("索引任务执行失败: {e}")));
+    .await;
     state.indexing.store(false, Ordering::SeqCst);
-    result?
+    result
 }
 
 /// 任务收尾时的中止原因（空串 = 正常跑完）：用户取消优先于连续失败。
@@ -422,10 +417,18 @@ pub async fn similar_images(
     } else {
         String::new()
     };
-    db_blocking(&db, move |conn| {
-        similarity_service::rank(conn, &target, &exclude, limit, min_score, safe_only)
+    // 短锁取候选 → 锁外打分：万级向量时打分才是大头，不该占着单连接锁
+    let dim_len = target.len();
+    let rows = db::blocking(&db, move |conn| {
+        similarity_service::image_rank_candidates(conn, dim_len, &exclude, safe_only)
     })
-    .await
+    .await?;
+    Ok(
+        similarity_service::score_ranked(&rows, &target, limit, min_score)
+            .into_iter()
+            .map(|(image_id, score)| ImageHit { image_id, score })
+            .collect(),
+    )
 }
 
 // —————————————————————— 提示词向量索引（文本侧） ——————————————————————
@@ -488,14 +491,14 @@ pub fn prompt_index_progress(state: State<'_, PromptIndexState>) -> PromptIndexP
 #[tauri::command]
 #[specta::specta]
 pub async fn prompt_embedding_status(db: State<'_, BkDb>) -> Result<SimilarityStatus, AppError> {
-    db_blocking(&db, similarity_service::prompt_status).await
+    db::blocking(&db, similarity_service::prompt_status).await
 }
 
 /// 清空全部提示词向量（设置页「清空」，之后可重建）。
 #[tauri::command]
 #[specta::specta]
 pub async fn clear_prompt_embeddings(db: State<'_, BkDb>) -> Result<usize, AppError> {
-    db_blocking(&db, similarity_service::clear_prompts).await
+    db::blocking(&db, similarity_service::clear_prompts).await
 }
 
 /// 请求取消正在跑的提示词索引（与图像侧对称）：下一个条目边界收尾；
@@ -526,7 +529,7 @@ pub async fn index_prompt_embeddings(
     state.cancel.store(false, Ordering::SeqCst);
     let task_app = app.clone();
     let workers = concurrency.clamp(1, 8);
-    let result = tauri::async_runtime::spawn_blocking(move || {
+    let result = crate::infra::task::spawn_blocking("提示词索引", move || {
         // 用户显式点了索引：先复位断路器，再探测一次服务（与图像侧对称）
         embedding_client::reset_breaker();
         embedding_client::probe(&base_url)?;
@@ -667,10 +670,9 @@ pub async fn index_prompt_embeddings(
             reason,
         })
     })
-    .await
-    .map_err(|e| AppError::Message(format!("索引任务执行失败: {e}")));
+    .await;
     state.indexing.store(false, Ordering::SeqCst);
-    result?
+    result
 }
 
 /// 提示词索引的中止原因（与图像侧 [`halt_reason`] 对称；状态类型不同故分两个函数）。
@@ -705,8 +707,16 @@ pub async fn similar_prompts(
     } else {
         String::new()
     };
-    db_blocking(&db, move |conn| {
-        similarity_service::rank_prompts(conn, &target, &exclude, limit, min_score)
+    // 短锁取候选 → 锁外打分（与图像侧对称）
+    let dim_len = target.len();
+    let rows = db::blocking(&db, move |conn| {
+        similarity_service::prompt_rank_candidates(conn, dim_len, &exclude)
     })
-    .await
+    .await?;
+    Ok(
+        similarity_service::score_ranked(&rows, &target, limit, min_score)
+            .into_iter()
+            .map(|(prompt_id, score)| PromptHit { prompt_id, score })
+            .collect(),
+    )
 }

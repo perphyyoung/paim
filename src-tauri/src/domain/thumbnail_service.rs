@@ -37,7 +37,7 @@ pub struct ThumbnailEnsureResult {
     pub missing: Vec<String>,
 }
 
-#[derive(Debug, Serialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct ThumbnailEnsureFixed {
     pub id: String,
     pub thumbnail_path: String,
@@ -109,124 +109,25 @@ pub fn build_thumbnail(
     Ok(format!("{thumb_rel_prefix}/{name}"))
 }
 
-/// 全量重建缩略图：扫描全部图像记录，补齐丢失的缩略图文件并批量回写
-/// thumbnail_path（paim 布局：thumbnails/{YYYYMM}/thumb_{stored_name 词干}.jpg）。
-/// 失败的记录保留原有 thumbnail_path 并计数。进度回调参数：(已完成, 总数, 文件名)。
-/// 参照 pm 的并发模型：多工作线程并发生成，结束后单事务批量回写。
-/// 线程数取系统可用并行度（满核跑，不做写死上限），代价是峰值内存
-/// （每线程持有一张解码位图，详见 docs/导入优化.md）。
-pub fn rebuild_all<F>(
-    data_dir: &Path,
-    thumbs_root: &Path,
-    conn: &Connection,
-    on_progress: F,
-) -> Result<ThumbnailRebuildSummary, String>
-where
-    F: Fn(usize, usize, &str) + Sync,
-{
-    std::fs::create_dir_all(thumbs_root).map_err(io_err)?;
-
-    // 先收集再处理，避免边查询边更新同一张表
-    let rows: Vec<(String, String, String)> = {
-        let mut stmt = conn
-            .prepare("SELECT id, relative_path, file_name FROM images")
-            .map_err(|e| format!("读取图像记录失败: {e}"))?;
-        let mapped = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-            .map_err(|e| format!("读取图像记录失败: {e}"))?;
-        mapped
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("读取图像记录失败: {e}"))?
-    };
-    let total = rows.len();
-    if total == 0 {
-        return Ok(ThumbnailRebuildSummary {
-            total: 0,
-            success: 0,
-            failed: 0,
-        });
-    }
-
-    // 并发生成：游标领任务，结果集中收集；进度计数共享，由完成线程直接推送
-    let next = AtomicUsize::new(0);
-    let completed = AtomicUsize::new(0);
-    let results: Mutex<Vec<(String, Result<String, String>)>> =
-        Mutex::new(Vec::with_capacity(total));
-    let workers = total.min(
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4),
-    );
-    std::thread::scope(|scope| {
-        for _ in 0..workers {
-            scope.spawn(|| loop {
-                let idx = next.fetch_add(1, Ordering::Relaxed);
-                if idx >= rows.len() {
-                    break;
-                }
-                let (id, rel, file_name) = &rows[idx];
-                let outcome =
-                    build_thumbnail(data_dir, thumbs_root, rel, Some(id), Some(file_name));
-                results.lock().unwrap().push((id.clone(), outcome));
-                let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                on_progress(done, total, file_name);
-            });
-        }
-    });
-
-    // 单事务批量回写 thumbnail_path（仅成功项；失败项保留原路径并计数）
-    let outcomes = results
-        .into_inner()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    conn.execute_batch("BEGIN IMMEDIATE;")
-        .map_err(|e| format!("开启缩略图回写事务失败: {e}"))?;
-    let mut success = 0usize;
-    let mut failed = 0usize;
-    for (id, outcome) in outcomes {
-        match outcome {
-            Ok(thumb_rel) => {
-                if let Err(e) = conn.execute(
-                    "UPDATE images SET thumbnail_path = ?1 WHERE id = ?2",
-                    rusqlite::params![thumb_rel, id],
-                ) {
-                    let _ = conn.execute_batch("ROLLBACK;");
-                    return Err(format!("更新缩略图路径失败: {e}"));
-                }
-                success += 1;
-            }
-            Err(msg) => {
-                failed += 1;
-                crate::log_warn!("缩略图重建失败 id={id}: {msg}");
-            }
-        }
-    }
-    conn.execute_batch("COMMIT;")
-        .map_err(|e| format!("提交缩略图回写事务失败: {e}"))?;
-    Ok(ThumbnailRebuildSummary {
-        total,
-        success,
-        failed,
-    })
+/// 校验 / 重建所需的单个目标：**短锁阶段**取出的库内数据，不含任何磁盘结论。
+#[derive(Debug, Clone)]
+pub struct ThumbTarget {
+    pub id: String,
+    /// 相对数据目录的原图路径
+    pub rel: String,
+    pub file_name: String,
+    /// 库里的 thumbnail_path（None = 尚未生成）
+    pub current: Option<String>,
 }
 
-fn io_err(e: std::io::Error) -> String {
-    e.to_string()
-}
-
-/// 懒自愈：批量校验指定图像的缩略图文件，缺失且原图存在时按需生成并回写。
-/// 记录的 thumbnail_path 非空且文件存在 → 跳过；否则走 build_thumbnail
-/// （其内部同样跳过已存在文件）。修复项计入 fixed，无法修复的 id 计入 missing。
-/// 调用方为浏览页的可见窗口（一屏项数），顺序执行即可。
-pub fn ensure_thumbnails(
-    data_dir: &Path,
-    thumbs_root: &Path,
+/// 短锁阶段：按 id 取校验所需的库内数据；记录不存在的 id 单独回报（调用方计入 missing）。
+/// 只查库、不碰磁盘——「先 stat 再决定生不生成」属于无锁阶段。
+pub fn targets_by_ids(
     conn: &Connection,
     ids: &[String],
-) -> Result<ThumbnailEnsureResult, String> {
-    let mut result = ThumbnailEnsureResult {
-        fixed: Vec::new(),
-        missing: Vec::new(),
-    };
+) -> Result<(Vec<ThumbTarget>, Vec<String>), String> {
+    let mut targets = Vec::with_capacity(ids.len());
+    let mut unknown = Vec::new();
     for id in ids {
         let row: Option<(String, String, Option<String>)> = conn
             .query_row(
@@ -236,35 +137,156 @@ pub fn ensure_thumbnails(
             )
             .optional()
             .map_err(|e| format!("读取图像记录失败: {e}"))?;
-        let Some((rel, file_name, current)) = row else {
-            result.missing.push(id.clone());
-            continue;
-        };
-        // 已有路径且文件还在 → 无需处理
-        if let Some(cur) = &current {
-            if crate::infra::db::data_path(data_dir, cur).is_file() {
-                continue;
-            }
+        match row {
+            Some((rel, file_name, current)) => targets.push(ThumbTarget {
+                id: id.clone(),
+                rel,
+                file_name,
+                current,
+            }),
+            None => unknown.push(id.clone()),
         }
-        match build_thumbnail(data_dir, thumbs_root, &rel, Some(id), Some(&file_name)) {
-            Ok(thumb_rel) => {
-                conn.execute(
-                    "UPDATE images SET thumbnail_path = ?1 WHERE id = ?2",
-                    rusqlite::params![thumb_rel, id],
-                )
-                .map_err(|e| format!("更新缩略图路径失败: {e}"))?;
-                result.fixed.push(ThumbnailEnsureFixed {
-                    id: id.clone(),
-                    thumbnail_path: thumb_rel,
-                });
-            }
+    }
+    Ok((targets, unknown))
+}
+
+/// 短锁阶段：取全部图像记录（全量重建用）。收集完即可放锁，生成过程不需要连接。
+pub fn all_targets(conn: &Connection) -> Result<Vec<ThumbTarget>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, relative_path, file_name, thumbnail_path FROM images")
+        .map_err(|e| format!("读取图像记录失败: {e}"))?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(ThumbTarget {
+                id: r.get(0)?,
+                rel: r.get(1)?,
+                file_name: r.get(2)?,
+                current: r.get(3)?,
+            })
+        })
+        .map_err(|e| format!("读取图像记录失败: {e}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("读取图像记录失败: {e}"))
+}
+
+/// 无锁阶段的逐项结果。
+pub struct ThumbBuildOutcome {
+    /// 需要回写库的项（新生成，或库内路径缺失但磁盘上已有派生路径）
+    pub fixed: Vec<ThumbnailEnsureFixed>,
+    /// 无法修复的 id（原图缺失 / 解码失败）
+    pub missing: Vec<String>,
+    /// 成功数（已有文件跳过 + 新生成）——全量重建的 success 口径与 pm 的 regenerated 一致
+    pub success: usize,
+}
+
+/// **无锁阶段**：逐个校验目标，缺图才生成（健康项只 stat，不生成、不回写）。
+/// `concurrency` 由调用方按场景给：全量重建可满核（代价是峰值内存，每线程一张解码位图，
+/// 见 docs/导入优化.md）；懒自愈传 1（一屏项数，顺序足够且不抬内存峰值）。
+/// 进度回调参数：(已完成, 总数, 文件名)。
+pub fn build_missing<F>(
+    data_dir: &Path,
+    thumbs_root: &Path,
+    targets: &[ThumbTarget],
+    concurrency: usize,
+    on_progress: F,
+) -> ThumbBuildOutcome
+where
+    F: Fn(usize, usize, &str) + Sync,
+{
+    let _ = std::fs::create_dir_all(thumbs_root);
+    let total = targets.len();
+    let next = AtomicUsize::new(0);
+    let completed = AtomicUsize::new(0);
+    let success = AtomicUsize::new(0);
+    // (id, 生成结果, file_name)：失败项也要带回 file_name 便于日志定位
+    let results: Mutex<Vec<(String, Result<String, String>, String)>> =
+        Mutex::new(Vec::with_capacity(total));
+    let workers = total.min(concurrency.max(1));
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                let idx = next.fetch_add(1, Ordering::Relaxed);
+                if idx >= total {
+                    break;
+                }
+                let target = &targets[idx];
+                // 健康项：库里路径非空、且文件还在 → 只 stat 后跳过
+                if let Some(cur) = &target.current {
+                    if crate::infra::db::data_path(data_dir, cur).is_file() {
+                        success.fetch_add(1, Ordering::Relaxed);
+                        let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                        on_progress(done, total, &target.file_name);
+                        continue;
+                    }
+                }
+                let outcome = build_thumbnail(
+                    data_dir,
+                    thumbs_root,
+                    &target.rel,
+                    Some(&target.id),
+                    Some(&target.file_name),
+                );
+                if outcome.is_ok() {
+                    success.fetch_add(1, Ordering::Relaxed);
+                }
+                results.lock().unwrap().push((
+                    target.id.clone(),
+                    outcome,
+                    target.file_name.clone(),
+                ));
+                let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                on_progress(done, total, &target.file_name);
+            });
+        }
+    });
+
+    let outcomes = results
+        .into_inner()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut fixed = Vec::new();
+    let mut missing = Vec::new();
+    for (id, outcome, file_name) in outcomes {
+        match outcome {
+            Ok(thumbnail_path) => fixed.push(ThumbnailEnsureFixed { id, thumbnail_path }),
             Err(msg) => {
-                crate::log_warn!("缩略图懒自愈失败 id={id}: {msg}");
-                result.missing.push(id.clone());
+                crate::log_warn!("缩略图缺失且无法生成 id={id} file_name={file_name}: {msg}");
+                missing.push(id);
             }
         }
     }
-    Ok(result)
+    // 并发完成顺序不定：按 id 排序，让结果可对账（也便于单测断言）
+    fixed.sort_by(|a, b| a.id.cmp(&b.id));
+    missing.sort();
+    ThumbBuildOutcome {
+        fixed,
+        missing,
+        success: success.load(Ordering::Relaxed),
+    }
+}
+
+/// 短锁阶段：批量回写 thumbnail_path（单事务；只写成功项，失败项保留原路径）。
+pub fn write_paths(conn: &Connection, fixed: &[ThumbnailEnsureFixed]) -> Result<(), String> {
+    if fixed.is_empty() {
+        return Ok(());
+    }
+    conn.execute_batch("BEGIN IMMEDIATE;")
+        .map_err(|e| format!("开启缩略图回写事务失败: {e}"))?;
+    for item in fixed {
+        if let Err(e) = conn.execute(
+            "UPDATE images SET thumbnail_path = ?1 WHERE id = ?2",
+            rusqlite::params![item.thumbnail_path, item.id],
+        ) {
+            let _ = conn.execute_batch("ROLLBACK;");
+            return Err(format!("更新缩略图路径失败: {e}"));
+        }
+    }
+    conn.execute_batch("COMMIT;")
+        .map_err(|e| format!("提交缩略图回写事务失败: {e}"))?;
+    Ok(())
+}
+
+fn io_err(e: std::io::Error) -> String {
+    e.to_string()
 }
 
 #[cfg(test)]

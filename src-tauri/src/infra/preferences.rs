@@ -29,22 +29,28 @@ pub fn validate_preference_file(text: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 导出：把前端序列化好的偏好 JSON 写入指定路径。
+/// 导出：把前端序列化好的偏好 JSON 写入指定路径（文件 IO 走阻塞池）。
 #[tauri::command]
 #[specta::specta]
-pub fn export_preferences(path: String, json: String) -> Result<(), AppError> {
-    validate_preference_file(&json)?;
-    std::fs::write(&path, json).map_err(|e| AppError::Message(format!("写入偏好文件失败: {e}")))
+pub async fn export_preferences(path: String, json: String) -> Result<(), AppError> {
+    crate::infra::task::spawn_blocking("偏好导出", move || {
+        validate_preference_file(&json)?;
+        std::fs::write(&path, json).map_err(|e| AppError::Message(format!("写入偏好文件失败: {e}")))
+    })
+    .await
 }
 
-/// 导入：读文件、校验后原样返回；写回 localStorage 由前端完成。
+/// 导入：读文件、校验后原样返回；写回 localStorage 由前端完成（文件 IO 走阻塞池）。
 #[tauri::command]
 #[specta::specta]
-pub fn import_preferences(path: String) -> Result<String, AppError> {
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| AppError::Message(format!("读取偏好文件失败: {e}")))?;
-    validate_preference_file(&text)?;
-    Ok(text)
+pub async fn import_preferences(path: String) -> Result<String, AppError> {
+    crate::infra::task::spawn_blocking("偏好导入", move || {
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| AppError::Message(format!("读取偏好文件失败: {e}")))?;
+        validate_preference_file(&text)?;
+        Ok(text)
+    })
+    .await
 }
 
 #[cfg(test)]

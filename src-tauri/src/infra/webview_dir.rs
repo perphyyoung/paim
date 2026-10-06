@@ -36,16 +36,20 @@ pub fn get_webview_dir(app: AppHandle) -> Result<String, AppError> {
 
 /// 在资源管理器中打开 WebView 目录：`EBWebView` 存在则打开其父目录并**选中它**
 /// （站在要删的目录里是删不掉自己的，选中后可以直接删）；不存在则退回打开父目录。
+/// 建目录与 shell 调用都是阻塞工作，放阻塞池。
 #[tauri::command]
 #[specta::specta]
-pub fn open_webview_dir(app: AppHandle) -> Result<(), AppError> {
-    let udf = user_data_dir(&app)?;
-    std::fs::create_dir_all(&udf)
-        .map_err(|e| AppError::Message(format!("创建 WebView 目录失败: {e}")))?;
-    let target = webview_dir(&app)?;
-    if target.exists() {
-        crate::infra::shell_explorer::reveal_in_explorer(&target)
-    } else {
-        crate::infra::shell_explorer::open_in_explorer(&udf)
-    }
+pub async fn open_webview_dir(app: AppHandle) -> Result<(), AppError> {
+    crate::infra::task::spawn_blocking("打开 WebView 目录", move || {
+        let udf = user_data_dir(&app)?;
+        std::fs::create_dir_all(&udf)
+            .map_err(|e| AppError::Message(format!("创建 WebView 目录失败: {e}")))?;
+        let target = webview_dir(&app)?;
+        if target.exists() {
+            crate::infra::shell_explorer::reveal_in_explorer(&target)
+        } else {
+            crate::infra::shell_explorer::open_in_explorer(&udf)
+        }
+    })
+    .await
 }

@@ -24,9 +24,15 @@ export const commands = {
 	 *  故成对埋点 + 慢告警（见 `commands::timed`）：卡住时「完成」永不落盘，即第一现场。
 	 */
 	updatePromptDetail: (id: string, title: string | null, content: string | null, contentTranslate: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Prompt>("update_prompt_detail", { id, title, content, contentTranslate, note, isFavorite, isSafe }),
-	/**  新建提示词（内容必需）；image_paths 非空时上传并关联到该提示词。 */
+	/**
+	 *  新建提示词（内容必需）；image_paths 非空时上传并关联到该提示词。
+	 *  与 `import_images` 同口径：提示词入库是短锁，图片走「无锁预处理 + 短锁入库 / 关联」。
+	 */
 	createPromptWithImages: (content: string, title: string | null, imagePaths: string[]) => __TAURI_INVOKE<CreatePromptWithImagesResult>("create_prompt_with_images", { content, title, imagePaths }),
-	/**  为已存在的提示词导入外部图像并关联（复用导入 + 幂等关联），供详情页「从外界导入」。 */
+	/**
+	 *  为已存在的提示词导入外部图像并关联（复用导入 + 幂等关联），供详情页「从外界导入」。
+	 *  图片走「无锁预处理 + 短锁入库 / 关联」，与 `import_images` 同一条管线。
+	 */
 	addImagesToPrompt: (promptId: string, imagePaths: string[]) => __TAURI_INVOKE<ImageImportBatchResult>("add_images_to_prompt", { promptId, imagePaths }),
 	/**  列出回收站中的提示词（已软删除）。 */
 	listTrashedPrompts: () => __TAURI_INVOKE<PromptCard[]>("list_trashed_prompts"),
@@ -51,6 +57,7 @@ export const commands = {
 	/**
 	 *  提示词卡片背景懒自愈：可见窗口稳定后按提示词校验其关联图像的缩略图，缺图按需生成。
 	 *  返回与图像侧对称的 ThumbnailEnsureResult（fixed + missing）。
+	 *  三阶段：**短锁取规划 → 无锁生成 → 短锁回写**（生成期间不持锁，见 docs/lessons.md 第 28 节）。
 	 */
 	ensurePromptThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureResult>("ensure_prompt_thumbnails", { ids }),
 	/**  返回一个提示词关联的（未删除）图像列表（含缩略图与标签），供详情页网格展示。 */
@@ -76,7 +83,10 @@ export const commands = {
 	 *  本批全部图像关联到同一条——此前按图逐张新建，两张图附带同一提示词会生成两个提示词。
 	 */
 	importImages: (paths: string[], prompt: string | null) => __TAURI_INVOKE<ImageImportBatchResult>("import_images", { paths, prompt }),
-	/**  为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。 */
+	/**
+	 *  为上传弹窗提供源图预览缩略图：解码源图生成居中缩略图，写入 data 目录（已在 asset scope 内）。
+	 *  解码 + 编码是重活，放阻塞池（命令层不在主线程上做编解码）。
+	 */
 	getSourceThumbnail: (source: string) => __TAURI_INVOKE<string>("get_source_thumbnail", { source }),
 	listImages: (limit: number | null, search: string | null, tag: string | null) => __TAURI_INVOKE<PaginatedImages>("list_images", { limit, search, tag }),
 	/**  主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。 */
@@ -89,7 +99,10 @@ export const commands = {
 	getImageDetail: (id: string) => __TAURI_INVOKE<Image>("get_image_detail", { id }),
 	/**  返回图像原图磁盘路径，前端配合 convertFileSrc 加载（详情页大图使用）。 */
 	getImageSrc: (id: string) => __TAURI_INVOKE<string>("get_image_src", { id }),
-	/**  替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。 */
+	/**
+	 *  替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。
+	 *  编排与导入同口径：**短锁校验旧图 → 无锁导入新图 → 短锁迁移**，复制与缩略图期间不持锁。
+	 */
 	replaceImage: (oldId: string, source: string) => __TAURI_INVOKE<ImageReplaceOutcome>("replace_image", { oldId, source }),
 	/**  更新图像详情字段（文件名、备注、收藏、安全评级）。埋点口径与提示词详情对称。 */
 	updateImageDetail: (id: string, fileName: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Image>("update_image_detail", { id, fileName, note, isFavorite, isSafe }),
@@ -118,12 +131,14 @@ export const commands = {
 	getImageRelatedPrompts: (id: string) => __TAURI_INVOKE<LinkedPrompt[]>("get_image_related_prompts", { id }),
 	/**
 	 *  设置页「重建缩略图」：扫描全部图像，补齐丢失的缩略图文件并回写路径，
-	 *  进度经 thumbnail-rebuild-progress 事件推送。重 IO 长任务，async + spawn_blocking。
+	 *  进度经 thumbnail-rebuild-progress 事件推送。
+	 *  三阶段：**短锁取清单 → 无锁满核生成 → 短锁批量回写**（生成期间不持锁，见 docs/lessons.md 第 28 节）。
 	 */
 	rebuildThumbnails: () => __TAURI_INVOKE<ThumbnailRebuildSummary>("rebuild_thumbnails"),
 	/**
 	 *  懒自愈：批量校验指定图像的缩略图文件，缺失且原图存在时按需生成并回写。
-	 *  正常路径仅 N 次文件存在性检查；与查询命令同走 spawn_blocking，慢盘时不冻结 UI。
+	 *  正常路径仅 N 次文件存在性检查；同样按「短锁取目标 → 无锁生成 → 短锁回写」推进，
+	 *  生成期间不持锁（懒自愈是最常见的长时间持锁来源）。
 	 */
 	ensureImageThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureResult>("ensure_image_thumbnails", { ids }),
 	/**  打开全屏查看（主窗口调用）。 */
@@ -226,6 +241,7 @@ export const commands = {
 	/**
 	 *  前端上报日志：`rtk invoke("log_msg", { level, message })`。
 	 *  经全局级别过滤，被过滤的日志不落盘（前端有本地缓存预判，正常不会走到这）。
+	 *  写盘是文件 IO，放阻塞池：这条命令是整个前端日志通道，不能占主线程。
 	 */
 	logMsg: (level: string, message: string) => __TAURI_INVOKE<void>("log_msg", { level, message }),
 	/**  查询当前全局最低日志级别（小写字符串，供前端启动时同步缓存）。 */
@@ -239,18 +255,22 @@ export const commands = {
 	 *  按图像 id 查库取得真实 relative_path（与前端拼接解耦，杜绝路径拼错）。
 	 */
 	openImageLocation: (id: string) => __TAURI_INVOKE<null>("open_image_location", { id }),
-	/**  供下拉显示中文名：`英文族名 -> 中文名`。 */
+	/**
+	 *  供下拉显示中文名：`英文族名 -> 中文名`。
+	 *  读文件（必要时写模板）是阻塞工作，放阻塞池。
+	 */
 	getFontFamilyMap: () => __TAURI_INVOKE<{ [key in string]: string }>("get_font_family_map"),
 	/**  供界面显示「重新授权」指引里的具体路径（精确到 `EBWebView`）。 */
 	getWebviewDir: () => __TAURI_INVOKE<string>("get_webview_dir"),
 	/**
 	 *  在资源管理器中打开 WebView 目录：`EBWebView` 存在则打开其父目录并**选中它**
 	 *  （站在要删的目录里是删不掉自己的，选中后可以直接删）；不存在则退回打开父目录。
+	 *  建目录与 shell 调用都是阻塞工作，放阻塞池。
 	 */
 	openWebviewDir: () => __TAURI_INVOKE<null>("open_webview_dir"),
-	/**  导出：把前端序列化好的偏好 JSON 写入指定路径。 */
+	/**  导出：把前端序列化好的偏好 JSON 写入指定路径（文件 IO 走阻塞池）。 */
 	exportPreferences: (path: string, json: string) => __TAURI_INVOKE<null>("export_preferences", { path, json }),
-	/**  导入：读文件、校验后原样返回；写回 localStorage 由前端完成。 */
+	/**  导入：读文件、校验后原样返回；写回 localStorage 由前端完成（文件 IO 走阻塞池）。 */
 	importPreferences: (path: string) => __TAURI_INVOKE<string>("import_preferences", { path }),
 	batchToggleImageFavorite: (ids: string[]) => __TAURI_INVOKE<number>("batch_toggle_image_favorite", { ids }),
 	batchTogglePromptFavorite: (ids: string[]) => __TAURI_INVOKE<number>("batch_toggle_prompt_favorite", { ids }),
@@ -264,7 +284,7 @@ export const commands = {
 	exportBackup: (exportPath: string) => __TAURI_INVOKE<BackupExportSummary>("export_backup", { exportPath }),
 	/**  导入全量备份（自动识别 paim/pm；整体替换当前数据），进度经 backup-progress 事件推送。 */
 	importBackup: (zipPath: string) => __TAURI_INVOKE<BackupImportSummary>("import_backup", { zipPath }),
-	/**  数据完整性检查（阻塞，在 spawn_blocking 内执行） */
+	/**  数据完整性检查（扫描磁盘，重 IO）：走阻塞池，不占主线程，也不占 async 工作线程。 */
 	scanIntegrity: () => __TAURI_INVOKE<IntegrityCheckResult>("scan_integrity"),
 	/**
 	 *  导出并删除孤儿文件。

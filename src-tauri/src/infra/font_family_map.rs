@@ -7,6 +7,7 @@
 //! 位置说明：随数据集切换走（切换是整目录改名），但**不随完整备份包迁移**
 //! （备份只含 manifest + 数据库 + images，见 paim_backup_service）。
 
+use crate::infra::error::AppError;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
@@ -112,10 +113,11 @@ pub fn load_font_family_map(app: &AppHandle) -> HashMap<String, String> {
 }
 
 /// 供下拉显示中文名：`英文族名 -> 中文名`。
+/// 读文件（必要时写模板）是阻塞工作，放阻塞池。
 #[tauri::command]
 #[specta::specta]
-pub fn get_font_family_map(app: AppHandle) -> HashMap<String, String> {
-    load_font_family_map(&app)
+pub async fn get_font_family_map(app: AppHandle) -> Result<HashMap<String, String>, AppError> {
+    crate::infra::task::spawn_blocking("读取字体映射", move || Ok(load_font_family_map(&app))).await
 }
 
 #[cfg(test)]

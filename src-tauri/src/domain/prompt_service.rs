@@ -599,30 +599,58 @@ pub fn thumbs_for_trashed(conn: &Connection, ids: &[String]) -> Result<HashMap<S
     thumbs_map(conn, ids, true)
 }
 
-/// 提示词卡片背景懒自愈：按提示词展开为关联（未删除）图像，缺缩略图的统一走 thumbnail 服务生成并回写。
+/// 提示词卡片背景懒自愈的**规划数据**（短锁阶段产出）：
+/// 写回所需的 before 快照 + 待校验的关联图像目标 + 「本应有背景」的提示词集合。
+pub struct PromptThumbPlan {
+    before: HashMap<String, String>,
+    targets: Vec<thumbnail_service::ThumbTarget>,
+    linked: HashSet<String>,
+}
+
+impl PromptThumbPlan {
+    /// 待校验 / 生成的图像目标（交给无锁阶段，见 [`thumbnail_service::build_missing`]）。
+    pub fn targets(&self) -> &[thumbnail_service::ThumbTarget] {
+        &self.targets
+    }
+}
+
+/// 懒自愈第一步（**短锁阶段**）：按提示词展开关联的未删除图像，取出校验目标与 before 快照。
+/// 生成（解码 + 编码）与回写在无锁 / 后续短锁阶段完成，本函数只查库。
+pub fn thumb_plan(
+    conn: &Connection,
+    ids: &[String],
+) -> std::result::Result<PromptThumbPlan, String> {
+    let before = thumbs_for(conn, ids).map_err(|e| e.to_string())?;
+    let image_ids = related_image_ids(conn, ids).map_err(|e| e.to_string())?;
+    let (targets, unknown) = thumbnail_service::targets_by_ids(conn, &image_ids)?;
+    if !unknown.is_empty() {
+        crate::log_warn!("缩略图自愈：{} 条关联图像记录已不存在", unknown.len());
+    }
+    let linked = linked_undeleted_prompt_ids(conn, ids).map_err(|e| e.to_string())?;
+    Ok(PromptThumbPlan {
+        before,
+        targets,
+        linked,
+    })
+}
+
+/// 懒自愈第三步（**短锁阶段**）：回写关联图像的缩略图路径，再算提示词侧结果。
 /// 返回与图像侧对称的 `ThumbnailEnsureResult`。
 /// `missing` 为「关联了未删除图像（本应有缩略图）但最终取不到」的提示词；
 /// 未关联任何图像的裸提示词不算缺失（卡片本就不需要背景图），不列入 missing。
-pub fn ensure_prompt_thumbnails(
+pub fn thumb_apply(
     conn: &Connection,
-    data_dir: &std::path::Path,
-    thumbs_root: &std::path::Path,
     ids: &[String],
+    plan: PromptThumbPlan,
+    fixed: &[ThumbnailEnsureFixed],
 ) -> std::result::Result<thumbnail_service::ThumbnailEnsureResult, String> {
-    let before = thumbs_for(conn, ids).map_err(|e| e.to_string())?;
-    let image_ids = related_image_ids(conn, ids).map_err(|e| e.to_string())?;
-    let mut rebuilt_image_ids: Vec<String> = Vec::new();
-    if !image_ids.is_empty() {
-        let img_result =
-            thumbnail_service::ensure_thumbnails(data_dir, thumbs_root, conn, &image_ids)?;
-        rebuilt_image_ids = img_result.fixed.iter().map(|f| f.id.clone()).collect();
-    }
+    thumbnail_service::write_paths(conn, fixed)?;
     let after = thumbs_for(conn, ids).map_err(|e| e.to_string())?;
 
     // 1. DB 路径发生变化的提示词（首次补齐 / 首图换了一张）
     let mut changed: Vec<ThumbnailEnsureFixed> = after
         .iter()
-        .filter(|(pid, path)| before.get(*pid) != Some(path))
+        .filter(|(pid, path)| plan.before.get(*pid) != Some(path))
         .map(|(id, thumbnail_path)| ThumbnailEnsureFixed {
             id: id.clone(),
             thumbnail_path: thumbnail_path.clone(),
@@ -630,11 +658,11 @@ pub fn ensure_prompt_thumbnails(
         .collect();
 
     // 2. 关联图像的缩略图文件被重建过的提示词（路径未变但磁盘文件重生成，before/after 比较捕获不到）
+    let rebuilt_image_ids: Vec<String> = fixed.iter().map(|f| f.id.clone()).collect();
     if !rebuilt_image_ids.is_empty() {
         let rebuilt_prompt_ids =
             prompt_ids_by_image_ids(conn, &rebuilt_image_ids).map_err(|e| e.to_string())?;
-        let existing_ids: std::collections::HashSet<String> =
-            changed.iter().map(|f| f.id.clone()).collect();
+        let existing_ids: HashSet<String> = changed.iter().map(|f| f.id.clone()).collect();
         for pid in &rebuilt_prompt_ids {
             if existing_ids.contains(pid) {
                 continue;
@@ -649,12 +677,10 @@ pub fn ensure_prompt_thumbnails(
     }
 
     // missing: 传入的提示词中，「关联了未删除图像（本应有缩略图）但 after 里取不到」的。
-    // 未关联任何图像的裸提示词不是异常（卡片本就不需要背景图），排除在 missing 之外。
-    let linked = linked_undeleted_prompt_ids(conn, ids).map_err(|e| e.to_string())?;
-    let existing_pids: std::collections::HashSet<&String> = after.keys().collect();
+    let existing_pids: HashSet<&String> = after.keys().collect();
     let missing: Vec<String> = ids
         .iter()
-        .filter(|pid| linked.contains(*pid) && !existing_pids.contains(pid))
+        .filter(|pid| plan.linked.contains(*pid) && !existing_pids.contains(pid))
         .cloned()
         .collect();
 
