@@ -263,6 +263,8 @@ pub async fn ensure_prompt_thumbnails(
 }
 
 /// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。
+/// 保存路径**不依赖 embedding 服务**（llama.cpp 开不开都一样），会卡的只有取连接锁与写库，
+/// 故成对埋点 + 慢告警（见 `commands::timed`）：卡住时「完成」永不落盘，即第一现场。
 #[tauri::command]
 #[specta::specta]
 pub fn update_prompt_detail(
@@ -275,6 +277,17 @@ pub fn update_prompt_detail(
     is_favorite: Option<bool>,
     is_safe: Option<bool>,
 ) -> Result<prompt_service::Prompt, AppError> {
+    let _timed = crate::commands::timed("update_prompt_detail");
+    // 只记「哪些字段要写」，不把提示词正文灌进日志
+    crate::log_debug!(
+        "update_prompt_detail 字段 id={id} title={} content={} translate={} note={} favorite={} safe={}",
+        title.is_some(),
+        content.is_some(),
+        content_translate.is_some(),
+        note.is_some(),
+        is_favorite.is_some(),
+        is_safe.is_some()
+    );
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     prompt_service::update_detail(
         &conn,

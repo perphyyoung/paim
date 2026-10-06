@@ -152,14 +152,30 @@ function requestClear() {
 async function runIndex(mode: "Incremental" | "Full") {
   if (running.value) return;
   running.value = true;
-  progress.value = { running: true, current: 0, total: 0, failed: 0, file_name: "", eta_ms: 0 };
+  progress.value = {
+    running: true,
+    current: 0,
+    total: 0,
+    failed: 0,
+    file_name: "",
+    eta_ms: 0,
+    reason: "",
+  };
   syncStatusTimer();
   try {
     const r = await props.api.index(mode);
-    showToast(
-      `索引完成：成功 ${r.indexed} ${props.api.unit}，失败 ${r.failed} ${props.api.unit}`,
-      r.failed > 0 ? "warning" : "success",
-    );
+    // 中止（用户取消 / 连续失败）与正常完成分开报：中止是「服务不可用」这类问题的唯一可见信号
+    if (r.aborted) {
+      showToast(
+        `索引已中止（${r.reason}）：已处理 ${r.indexed} ${props.api.unit}，失败 ${r.failed} ${props.api.unit}`,
+        "warning",
+      );
+    } else {
+      showToast(
+        `索引完成：成功 ${r.indexed} ${props.api.unit}，失败 ${r.failed} ${props.api.unit}`,
+        r.failed > 0 ? "warning" : "success",
+      );
+    }
   } catch (e) {
     showToast(String(e), "error");
   } finally {
@@ -167,6 +183,17 @@ async function runIndex(mode: "Incremental" | "Full") {
     syncStatusTimer();
     await loadStatus();
     await refreshProgress();
+  }
+}
+
+/// 取消索引：任务在下一个条目边界收尾（在途请求跑完为止），
+/// 收尾后会推送 `running = false` 的进度与中止原因，故这里不做本地乐观收尾。
+async function requestCancel() {
+  try {
+    const stillRunning = await props.api.cancel();
+    showToast(stillRunning ? "已请求取消，正在收尾…" : "任务已结束", "info");
+  } catch (e) {
+    showToast(String(e), "error");
   }
 }
 
@@ -250,6 +277,17 @@ async function clearIndex() {
     <p class="mt-1 text-xs text-gray-500">
       可离开本页，任务在后端继续；回来后进度与剩余时间会继续显示
     </p>
+    <div class="mt-2">
+      <button
+        type="button"
+        class="rounded border px-2 py-0.5 text-xs text-gray-200 transition-colors border-gray-600 hover:bg-gray-700"
+        title="在下一个条目边界停止（在途请求跑完为止）"
+        :aria-label="`${api.title}：取消索引`"
+        @click="requestCancel"
+      >
+        取消索引
+      </button>
+    </div>
   </div>
 
   <div v-else-if="progress && progress.total > 0" class="py-2 text-sm">
@@ -257,6 +295,8 @@ async function clearIndex() {
       上次索引：共 {{ progress.total }} {{ api.unit }}，失败 {{ progress.failed }}
       {{ api.unit }}（成功 {{ progress.total - progress.failed }} {{ api.unit }}）
     </p>
+    <!-- 中止原因要留在页面上：服务没起是常态（llama.cpp 不常驻），原因不能只出现在一次性 toast 里 -->
+    <p v-if="progress.reason" class="mt-1 text-xs text-amber-400">{{ progress.reason }}</p>
   </div>
 
   <!-- 索引动作确认（增量 / 全量重建 / 清空；后两者 danger 样式） -->

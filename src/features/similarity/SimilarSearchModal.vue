@@ -470,9 +470,14 @@ function pickPrompt(id: string) {
             </header>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="imageLoading" class="p-2 text-sm text-gray-400">正在检索…</p>
-              <p v-else-if="imageError" class="break-all p-2 text-sm text-red-400">
-                {{ imageError }}
-              </p>
+              <div v-else-if="imageError" class="p-2">
+                <p class="break-all text-sm text-red-400">{{ imageError }}</p>
+                <!-- 服务未启动是常态（llama.cpp 不常驻）：错误之外还要给出下一步去哪 -->
+                <p class="mt-1 text-xs text-gray-500">
+                  检索依赖本地 embedding 服务：到「设置 → 相似度」用「测试」确认服务与地址；
+                  服务未启动不影响其余功能
+                </p>
+              </div>
               <p v-else-if="imageRows.length === 0" class="p-2 text-sm text-gray-400">
                 没有达到阈值的相似图像（可调低左栏阈值后点左栏「重查」）
               </p>
@@ -553,9 +558,13 @@ function pickPrompt(id: string) {
             </header>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="promptLoading" class="p-2 text-sm text-gray-400">正在检索…</p>
-              <p v-else-if="promptError" class="break-all p-2 text-sm text-red-400">
-                {{ promptError }}
-              </p>
+              <div v-else-if="promptError" class="p-2">
+                <p class="break-all text-sm text-red-400">{{ promptError }}</p>
+                <p class="mt-1 text-xs text-gray-500">
+                  检索依赖本地 embedding 服务：到「设置 → 相似度」用「测试」确认服务与地址；
+                  服务未启动不影响其余功能
+                </p>
+              </div>
               <p v-else-if="promptRows.length === 0" class="p-2 text-sm text-gray-400">
                 没有达到阈值的相似提示词（可调低右栏阈值后点右栏「重查」）
               </p>

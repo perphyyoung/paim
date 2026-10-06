@@ -46,6 +46,7 @@ const imageApi: IndexPanelApi = {
   progress: () => commands.similarityIndexProgress(),
   listen: (cb) => events.similarityIndexProgress.listen((e) => cb(e.payload)),
   index: (mode) => commands.indexImageEmbeddings(baseUrl.value, mode, concurrency.value),
+  cancel: () => commands.cancelImageIndex(),
   clear: () => commands.clearImageEmbeddings(),
 };
 
@@ -61,6 +62,7 @@ const promptApi: IndexPanelApi = {
   progress: () => commands.promptIndexProgress(),
   listen: (cb) => events.promptIndexProgress.listen((e) => cb(e.payload)),
   index: (mode) => commands.indexPromptEmbeddings(baseUrl.value, mode, concurrency.value),
+  cancel: () => commands.cancelPromptIndex(),
   clear: () => commands.clearPromptEmbeddings(),
 };
 </script>

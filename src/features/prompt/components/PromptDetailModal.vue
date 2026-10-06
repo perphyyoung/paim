@@ -22,6 +22,7 @@ import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
 import { useSimilaritySettings } from "@/features/similarity/settings";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
 import { markPageStale } from "@/utils/crossPageCache";
+import { log } from "@/utils/logger";
 import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
 
 interface TagItem {
@@ -320,6 +321,16 @@ async function saveFields() {
     return;
   }
   try {
+    // 成对埋点：保存不碰 embedding 服务，卡住只可能是宿主侧（取 db 锁 / 写库）。
+    // 真卡住时「保存完成」永不落盘，配合后端 `db 锁等待/持有` 的 WARN 就能点名到具体命令。
+    const startedAt = performance.now();
+    log.debug("[PromptDetail] 保存开始", {
+      id: p.id,
+      title: nextTitle !== null,
+      content: nextContent !== null,
+      translate: nextTranslate !== null,
+      note: nextNote !== null,
+    });
     const upd = await commands.updatePromptDetail(
       p.id,
       nextTitle,
@@ -338,8 +349,12 @@ async function saveFields() {
     // 内容会显示在图像主页卡片的关联提示词文案里
     markPageStale("images");
     notifyUpdated();
+    const cost = Math.round(performance.now() - startedAt);
+    log.debug("[PromptDetail] 保存完成", cost, "ms");
+    if (cost >= 500) log.warn("[PromptDetail] 保存慢", cost, "ms", p.id);
     showToast("已保存", "success");
   } catch (e) {
+    log.warn("[PromptDetail] 保存失败", String(e));
     showToast(`保存失败：${e}`, "error");
   }
 }

@@ -320,7 +320,7 @@ pub fn get_image_src(
     Ok(full.to_string_lossy().into_owned())
 }
 
-/// 更新图像详情字段（文件名、备注、收藏、安全评级）。
+/// 更新图像详情字段（文件名、备注、收藏、安全评级）。埋点口径与提示词详情对称。
 #[tauri::command]
 #[specta::specta]
 pub fn update_image_detail(
@@ -331,6 +331,14 @@ pub fn update_image_detail(
     is_favorite: Option<bool>,
     is_safe: Option<bool>,
 ) -> Result<Image, AppError> {
+    let _timed = crate::commands::timed("update_image_detail");
+    crate::log_debug!(
+        "update_image_detail 字段 id={id} file_name={} note={} favorite={} safe={}",
+        file_name.is_some(),
+        note.is_some(),
+        is_favorite.is_some(),
+        is_safe.is_some()
+    );
     let conn = db.0.lock().map_err(|e| AppError::Message(e.to_string()))?;
     image_service::update_detail(
         &conn,

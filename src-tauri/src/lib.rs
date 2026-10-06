@@ -94,6 +94,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::similarity::similarity_index_progress,
             commands::similarity::embedding_service_info,
             commands::similarity::index_image_embeddings,
+            commands::similarity::cancel_image_index,
             commands::similarity::clear_image_embeddings,
             commands::similarity::similar_images,
             // —— 提示词相似度（以提示词搜提示词，只算 content 向量，与图像共用同一服务）——
@@ -101,6 +102,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::similarity::prompt_embedding_status,
             commands::similarity::prompt_index_progress,
             commands::similarity::index_prompt_embeddings,
+            commands::similarity::cancel_prompt_index,
             commands::similarity::clear_prompt_embeddings,
             commands::similarity::similar_prompts,
             // —— 标签（图像/提示词合一，按 domain 分发）——

@@ -47,14 +47,19 @@ export function useThumbnailSelfHeal(
     inflight = (async () => {
       try {
         const result = await check(pending);
+        const cost = Math.round(performance.now() - t0);
         log.debug(
           "[SelfHeal] 校验完成",
-          Math.round(performance.now() - t0),
+          cost,
           "ms, fixed=",
           result.fixed.length,
           "missing=",
           result.missing.length,
         );
+        // 慢校验要留 WARN：缩略图是「整批解码 + 编码」且在锁内执行（后端），
+        // 一旦它占住单连接锁，别的命令（如详情保存）会在宿主主线程上排队等锁，
+        // 表现为整个窗口卡住——这条日志是那种卡顿的第一现场（见 docs/lessons.md 第 28 节）。
+        if (cost >= 2000) log.warn("[SelfHeal] 校验慢", cost, "ms,", pending.length, "项");
         if (result.fixed.length > 0) onFixed(result.fixed);
         // 原图缺失的项记短 TTL，窗口内不再请求（避免对损坏原图反复 stat）
         for (const id of result.missing) missingThrottle.set(id, now + MISSING_TTL_MS);

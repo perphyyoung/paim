@@ -196,7 +196,7 @@ where
             }
             Err(msg) => {
                 failed += 1;
-                log::warn!("缩略图重建失败 id={id}: {msg}");
+                crate::log_warn!("缩略图重建失败 id={id}: {msg}");
             }
         }
     }
@@ -259,7 +259,7 @@ pub fn ensure_thumbnails(
                 });
             }
             Err(msg) => {
-                log::warn!("缩略图懒自愈失败 id={id}: {msg}");
+                crate::log_warn!("缩略图懒自愈失败 id={id}: {msg}");
                 result.missing.push(id.clone());
             }
         }

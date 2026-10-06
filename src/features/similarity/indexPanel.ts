@@ -15,13 +15,19 @@ export interface IndexProgressLike {
   failed: number;
   file_name: string;
   eta_ms: number;
+  /** 中止原因（用户取消 / 连续失败）；正常跑完为空串 */
+  reason: string;
 }
 
 /** 索引结果统计（与后端 `SimilarityIndexSummary` 同形）。 */
 export interface IndexSummaryLike {
   total: number;
+  /** 实际处理的条数：中止时小于 total */
   indexed: number;
   failed: number;
+  aborted: boolean;
+  /** 中止原因；正常跑完为空串 */
+  reason: string;
 }
 
 /** 索引状态（与后端 `SimilarityStatus` 同形）。 */
@@ -50,5 +56,7 @@ export interface IndexPanelApi {
   progress: () => Promise<IndexProgressLike>;
   listen: (cb: (p: IndexProgressLike) => void) => Promise<UnlistenFn>;
   index: (mode: "Incremental" | "Full") => Promise<IndexSummaryLike>;
+  /** 请求取消正在跑的索引（下一个条目边界生效）；返回是否确实有任务在跑 */
+  cancel: () => Promise<boolean>;
   clear: () => Promise<number>;
 }

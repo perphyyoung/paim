@@ -18,7 +18,11 @@ export const commands = {
 	previewMergePrompts: (aId: string, bId: string) => __TAURI_INVOKE<MergePromptsPreview>("preview_merge_prompts", { aId, bId }),
 	/**  合并两条提示词：新建一条（标题用新 id、译文空、note 合并），图像/标签取并集，原两条软删。 */
 	mergePrompts: (aId: string, bId: string, content: string) => __TAURI_INVOKE<Prompt>("merge_prompts", { aId, bId, content }),
-	/**  更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。 */
+	/**
+	 *  更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。
+	 *  保存路径**不依赖 embedding 服务**（llama.cpp 开不开都一样），会卡的只有取连接锁与写库，
+	 *  故成对埋点 + 慢告警（见 `commands::timed`）：卡住时「完成」永不落盘，即第一现场。
+	 */
 	updatePromptDetail: (id: string, title: string | null, content: string | null, contentTranslate: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Prompt>("update_prompt_detail", { id, title, content, contentTranslate, note, isFavorite, isSafe }),
 	/**  新建提示词（内容必需）；image_paths 非空时上传并关联到该提示词。 */
 	createPromptWithImages: (content: string, title: string | null, imagePaths: string[]) => __TAURI_INVOKE<CreatePromptWithImagesResult>("create_prompt_with_images", { content, title, imagePaths }),
@@ -87,7 +91,7 @@ export const commands = {
 	getImageSrc: (id: string) => __TAURI_INVOKE<string>("get_image_src", { id }),
 	/**  替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。 */
 	replaceImage: (oldId: string, source: string) => __TAURI_INVOKE<ImageReplaceOutcome>("replace_image", { oldId, source }),
-	/**  更新图像详情字段（文件名、备注、收藏、安全评级）。 */
+	/**  更新图像详情字段（文件名、备注、收藏、安全评级）。埋点口径与提示词详情对称。 */
 	updateImageDetail: (id: string, fileName: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Image>("update_image_detail", { id, fileName, note, isFavorite, isSafe }),
 	/**  为指定图像新建提示词并关联（复用 create_prompt + relate），供图像详情「新建提示词」。 */
 	createPromptForImage: (content: string, imageId: string) => __TAURI_INVOKE<null>("create_prompt_for_image", { content, imageId }),
@@ -139,13 +143,23 @@ export const commands = {
 	similarityStatus: () => __TAURI_INVOKE<SimilarityStatus>("similarity_status"),
 	/**  当前索引进度快照（设置页挂载时查询，事件不重放）。 */
 	similarityIndexProgress: () => __TAURI_INVOKE<SimilarityIndexProgress>("similarity_index_progress"),
-	/**  探测 embedding 服务（设置页「测试连通性」）：模型名 / media marker / 维度 / 是否加载视觉塔。 */
+	/**
+	 *  探测 embedding 服务（设置页「测试连通性」）：模型名 / media marker / 维度 / 是否加载视觉塔。
+	 *  这是用户显式发起的重试，故先复位断路器（冷却不该拦住明确的用户意图）。
+	 */
 	embeddingServiceInfo: (baseUrl: string) => __TAURI_INVOKE<EmbeddingServiceInfo>("embedding_service_info", { baseUrl }),
 	/**
 	 *  建立图像向量索引：`Full` 先清空全部向量再全量，`Incremental` 只补 `vec IS NULL`。
 	 *  `concurrency` 为客户端并发请求数（1~8，建议 ≤ 服务端 `-np`）。
+	 *  开跑前先探测服务（不可用直接失败，**不清空**已有向量）；连续 [`MAX_CONSECUTIVE_FAILURES`]
+	 *  条失败即中止；用户可随时 `cancel_image_index`。
 	 */
 	indexImageEmbeddings: (baseUrl: string, mode: IndexMode, concurrency: number) => __TAURI_INVOKE<SimilarityIndexSummary>("index_image_embeddings", { baseUrl, mode, concurrency }),
+	/**
+	 *  请求取消正在跑的图像索引：任务在下一个条目边界收尾（在途请求跑完为止）。
+	 *  返回当前是否确实有任务在跑（未运行时无副作用，避免误报「已取消」）。
+	 */
+	cancelImageIndex: () => __TAURI_INVOKE<boolean>("cancel_image_index"),
 	/**  清空全部向量（设置页「清空」，之后可重建）。 */
 	clearImageEmbeddings: () => __TAURI_INVOKE<number>("clear_image_embeddings"),
 	/**
@@ -166,8 +180,14 @@ export const commands = {
 	 *  建立提示词向量索引：只对 `prompts.content` 计算向量（不含标题 / 翻译 / 备注）。
 	 *  `Full` 先清空全部向量再全量，`Incremental` 只补 `vec IS NULL`（含内容改过被置空的）。
 	 *  文本请求无视觉编码，比图像侧轻得多，可适当开大并发（仍建议 ≤ 服务端 `-np`）。
+	 *  服务预检 / 连续失败中止 / 取消的口径与图像侧完全一致。
 	 */
 	indexPromptEmbeddings: (baseUrl: string, mode: IndexMode, concurrency: number) => __TAURI_INVOKE<SimilarityIndexSummary>("index_prompt_embeddings", { baseUrl, mode, concurrency }),
+	/**
+	 *  请求取消正在跑的提示词索引（与图像侧对称）：下一个条目边界收尾；
+	 *  返回当前是否确实有任务在跑。
+	 */
+	cancelPromptIndex: () => __TAURI_INVOKE<boolean>("cancel_prompt_index"),
 	/**  清空全部提示词向量（设置页「清空」，之后可重建）。 */
 	clearPromptEmbeddings: () => __TAURI_INVOKE<number>("clear_prompt_embeddings"),
 	/**
@@ -604,6 +624,8 @@ export type PromptIndexProgress = {
 	file_name: string,
 	/**  预估剩余毫秒（尚无足够样本时为 0） */
 	eta_ms: number,
+	/**  中止原因（用户取消 / 连续失败）；正常跑完为空串 */
+	reason: string,
 };
 
 /**  提示词关联的（未删除）图像及其标签，供详情页图像网格展示。 */
@@ -628,13 +650,20 @@ export type SimilarityIndexProgress = {
 	file_name: string,
 	/**  预估剩余毫秒（尚无足够样本时为 0） */
 	eta_ms: number,
+	/**  中止原因（用户取消 / 连续失败）；正常跑完为空串 */
+	reason: string,
 };
 
 /**  索引结果统计。 */
 export type SimilarityIndexSummary = {
 	total: number,
+	/**  实际处理（含失败）的条数：中止时小于 `total` */
 	indexed: number,
 	failed: number,
+	/**  是否被中止（用户取消或连续失败） */
+	aborted: boolean,
+	/**  中止原因；正常跑完为空串 */
+	reason: string,
 };
 
 /**  索引 / 检索状态（设置页展示，图像与提示词各算一份）。 */

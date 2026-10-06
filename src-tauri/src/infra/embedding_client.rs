@@ -8,12 +8,17 @@
 //! - 文本也走 `/embedding`（`{"content": "文本"}`），与图像处于同一向量空间（二期文搜图用）；
 //! - 服务端 `--pooling last` 时返回单条向量、未开时返回逐 token 向量：两种都取**最后一条**
 //!   （Qwen3 系以最后一个 token 为句向量），再统一 L2 归一化，检索端只做点积；
-//! - 传输层失败重试 1 次（服务端单进程易受抖动影响），HTTP 4xx/5xx 不重试，直接给可读错误。
+//! - 传输层失败重试 1 次（服务端单进程易受抖动影响），HTTP 4xx/5xx 不重试，直接给可读错误；
+//! - **失败要「快且可读」**：llama.cpp 不常驻，服务没起时旧口径（总超时 180s × 重试 + 固定
+//!   500ms 退避）会让索引把整表空转数小时。现在连接 1s / 读 45s / 总 60s，且连续传输失败会
+//!   打开 30s 冷却的断路器（[`service_unavailable`] 供命令层动手前预检），
+//!   冷却期内一切调用立即返回可读错误（排查记录见 docs/lessons.md 第 28 节）。
 
 use crate::infra::error::AppError;
 use base64::Engine as _;
 use serde_json::{json, Value};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// 服务信息（设置页展示 + 连通性测试）。
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -69,6 +74,126 @@ fn error_message(body: &str) -> String {
         .unwrap_or_else(|| body.chars().take(200).collect())
 }
 
+/// 是否走假实现（e2e 测试缝）。
+fn mock_enabled() -> bool {
+    std::env::var("PAIM_EMBEDDING_MOCK")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
+// —————————————————————— 断路器：服务不可用时快速失败 ——————————————————————
+// 存在的理由：llama.cpp 不常驻，而索引/检索会在「服务没起」时逐条重试。
+// 一台机器上被拒的连接本身也要 ~2s（实测，见 docs/lessons.md 第 28 节），
+// 万级索引就是数小时空转；断路器让第 2 条之后立即失败，并由命令层据此提前中止任务。
+
+/// 连续传输失败多少次打开断路器。一次请求内部最多重试 1 次，故 3 次 ≈ 两条请求。
+const BREAKER_FAILURES: u32 = 3;
+/// 冷却时长：到点后半开（下一次调用照常发请求，成功即复位）。
+const BREAKER_COOLDOWN: Duration = Duration::from_secs(30);
+
+/// 断路器状态（纯状态机，便于单测；全局实例见 [`BREAKER`]）。
+struct Breaker {
+    consecutive: u32,
+    open_until: Option<Instant>,
+    last_error: String,
+}
+
+impl Breaker {
+    const fn new() -> Self {
+        Self {
+            consecutive: 0,
+            open_until: None,
+            last_error: String::new(),
+        }
+    }
+
+    /// 冷却中返回可读原因（含上次错误），否则 `None`（含冷却到期后的半开）。
+    fn blocked(&self, now: Instant) -> Option<String> {
+        let until = self.open_until?;
+        if now >= until {
+            return None;
+        }
+        let left = (until - now).as_secs().max(1);
+        Some(format!(
+            "embedding 服务不可用（{left}s 后自动重试；上次错误：{}）",
+            self.last_error
+        ))
+    }
+
+    /// 记一次传输失败；达到阈值即进入冷却。
+    fn failure(&mut self, err: &str, now: Instant) -> bool {
+        self.consecutive += 1;
+        self.last_error = err.to_string();
+        if self.consecutive >= BREAKER_FAILURES && self.open_until.is_none() {
+            self.open_until = Some(now + BREAKER_COOLDOWN);
+            return true;
+        }
+        false
+    }
+
+    /// 记一次成功：连计数与冷却一起复位。
+    fn success(&mut self) {
+        self.consecutive = 0;
+        self.open_until = None;
+    }
+}
+
+static BREAKER: Mutex<Breaker> = Mutex::new(Breaker::new());
+
+/// 冷却中的话直接返回可读错误（HTTP 调用入口的第一道闸）。
+fn breaker_guard() -> Result<(), AppError> {
+    if mock_enabled() {
+        return Ok(());
+    }
+    match BREAKER.lock() {
+        Ok(b) => match b.blocked(Instant::now()) {
+            Some(msg) => Err(AppError::Message(msg)),
+            None => Ok(()),
+        },
+        Err(_) => Ok(()), // 中毒不影响请求本身，放行
+    }
+}
+
+fn breaker_failure(err: &str) {
+    let Ok(mut b) = BREAKER.lock() else {
+        return;
+    };
+    if b.failure(err, Instant::now()) {
+        // 打开的那一刻记一条 WARN：release（默认 WARN 级）也能看到服务不可用这件事
+        crate::log_warn!(
+            "embedding 服务连续失败 {BREAKER_FAILURES} 次，进入 {}s 冷却：{err}",
+            BREAKER_COOLDOWN.as_secs()
+        );
+    }
+}
+
+fn breaker_success() {
+    if let Ok(mut b) = BREAKER.lock() {
+        b.success();
+    }
+}
+
+/// 服务当前是否被断路器挡住（`Some(原因)` = 挡住）。
+/// 供命令层在**动手前**做一次廉价预检：例如索引开跑前、检索要现场算向量前，
+/// 免得先解码/预处理再白等一次超时。
+pub fn service_unavailable() -> Option<String> {
+    if mock_enabled() {
+        return None;
+    }
+    BREAKER.lock().ok().and_then(|b| b.blocked(Instant::now()))
+}
+
+/// 主动复位断路器：给「用户显式重试」的入口用（设置页「测试」、点索引按钮），
+/// 冷却不该拦住明确的用户意图——自动路径（检索）不复位，才不会被反复空转拖住。
+pub fn reset_breaker() {
+    breaker_success();
+}
+
+/// 连通性探测（索引任务开跑前的预检）：不可用立刻返回可读错误。
+pub fn probe(base_url: &str) -> Result<EmbeddingServiceInfo, AppError> {
+    make_embedder(base_url).info()
+}
+
 /// 真实 HTTP 实现。
 pub struct HttpEmbedder {
     base_url: String,
@@ -80,8 +205,14 @@ impl HttpEmbedder {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             agent: ureq::AgentBuilder::new()
-                .timeout_connect(Duration::from_secs(3))
-                .timeout(Duration::from_secs(180))
+                // 只连本机服务：连不上就是没起，1s 足够（旧值 3s 偏保守）
+                .timeout_connect(Duration::from_secs(1))
+                // 单次 I/O：图像侧是本地 CPU 编码，读超时给足；文本远快于此
+                .timeout_read(Duration::from_secs(45))
+                .timeout_write(Duration::from_secs(10))
+                // 总预算：超过即视为服务不可用。旧值 180s 叠加重试＝一条请求能拖几分钟，
+                // 服务「接受连接但不回应」时会把索引/检索按分钟计挂住
+                .timeout(Duration::from_secs(60))
                 .build(),
         }
     }
@@ -94,39 +225,55 @@ impl HttpEmbedder {
     }
 
     fn get_json(&self, path: &str) -> Result<Value, AppError> {
+        breaker_guard()?;
         let url = format!("{}{path}", self.base_url);
-        let resp = self
-            .agent
-            .get(&url)
-            .call()
-            .map_err(|e| self.unavailable(&e.to_string()))?;
+        let resp = match self.agent.get(&url).call() {
+            Ok(resp) => {
+                // 服务活着（哪怕随后解析失败）→ 复位断路器
+                breaker_success();
+                resp
+            }
+            Err(e) => {
+                let detail = e.to_string();
+                breaker_failure(&detail);
+                return Err(self.unavailable(&detail));
+            }
+        };
         resp.into_json::<Value>()
             .map_err(|e| AppError::Message(format!("embedding 服务返回无法解析：{e}")))
     }
 
     /// POST 并取回 JSON；传输层失败重试 1 次。
+    /// 退避从 500ms 收到 200ms：失败路径要快（服务没起时每条都在这里白等）。
     fn post_json(&self, path: &str, body: Value) -> Result<Value, AppError> {
         let url = format!("{}{path}", self.base_url);
         let mut last = String::new();
         for attempt in 0..2 {
+            breaker_guard()?;
             match self.agent.post(&url).send_json(body.clone()) {
                 Ok(resp) => {
+                    breaker_success();
                     return resp.into_json::<Value>().map_err(|e| {
                         AppError::Message(format!("embedding 服务返回无法解析：{e}"))
                     });
                 }
                 Err(ureq::Error::Status(code, resp)) => {
-                    // 服务端明确拒绝（pooling 未开、图像 token 超批、多模态未加载…），重试无意义
+                    // 服务端明确拒绝（pooling 未开、图像 token 超批、多模态未加载…），重试无意义；
+                    // 能回 HTTP 状态说明服务是活的 → 复位断路器
+                    breaker_success();
                     let text = resp.into_string().unwrap_or_default();
                     return Err(AppError::Message(format!(
                         "embedding 服务返回 HTTP {code}：{}",
                         error_message(&text)
                     )));
                 }
-                Err(e) => last = e.to_string(),
+                Err(e) => {
+                    last = e.to_string();
+                    breaker_failure(&last);
+                }
             }
             if attempt == 0 {
-                std::thread::sleep(Duration::from_millis(500));
+                std::thread::sleep(Duration::from_millis(200));
             }
         }
         Err(self.unavailable(&last))
@@ -251,12 +398,13 @@ impl Embedder for MockEmbedder {
 
 /// 按环境变量选择实现：`PAIM_EMBEDDING_MOCK=1` 时用假实现（e2e 测试缝）。
 pub fn make_embedder(base_url: &str) -> Box<dyn Embedder> {
-    if std::env::var("PAIM_EMBEDDING_MOCK")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-    {
+    if mock_enabled() {
         Box::new(MockEmbedder::default())
     } else {
         Box::new(HttpEmbedder::new(base_url))
     }
 }
+
+#[cfg(test)]
+#[path = "embedding_client.test.rs"]
+mod tests;

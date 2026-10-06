@@ -3,20 +3,173 @@
 
 use crate::infra::error::AppError;
 use rusqlite::{Connection, OptionalExtension};
+use std::panic::Location;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
+use std::time::{Duration, Instant};
 use tauri::State;
+
+/// 锁等待 / 持锁超过该阈值即记 WARN（落 `paim.log`；release 的默认级别也是 WARN，
+/// 因此线上「某个功能卡住」能直接留下证据——这正是「保存卡住却一条日志都没有」那次事故缺失的东西）。
+const LOCK_WARN: Duration = Duration::from_millis(500);
+
+/// 单元测试里不写锁告警：测试常常整段落持锁（一整段测试就是一个「长持锁」），
+/// 写进 `paim.log` 只会稀释真信号。e2e 与真实运行走应用二进制，不受此影响。
+#[cfg(test)]
+const LOCK_LOGGING: bool = false;
+#[cfg(not(test))]
+const LOCK_LOGGING: bool = true;
+
+/// 当前持锁者的调用点（诊断用）：取锁时写入、guard drop 时清除；
+/// 等待超阈值时打进日志，一眼看出「谁在等、谁占着锁、占了多久」。
+struct Holder {
+    id: u64,
+    at: &'static Location<'static>,
+    since: Instant,
+}
+
+static HOLDER: Mutex<Option<Holder>> = Mutex::new(None);
+static NEXT_GUARD_ID: AtomicU64 = AtomicU64::new(1);
 
 /// 应用持有的数据库连接（单连接 + Mutex），通过 Tauri managed state 注入。
 /// Arc 包装使查询命令能克隆句柄丢进 `spawn_blocking`（见 commands::db_blocking）。
-pub struct BkDb(pub std::sync::Arc<std::sync::Mutex<Connection>>);
+pub struct BkDb(pub Arc<DbConn>);
+
+/// 单连接锁：取锁统一走 [`DbConn::lock`]，带等待 / 持锁时长计量。
+pub struct DbConn(Mutex<Connection>);
+
+/// 连接锁 guard：`Deref` 到 `Connection`；drop 时**先释放锁**再统计持锁时长
+/// （日志是文件 IO，算进持锁时长会把标尺自己搞歪）。
+pub struct DbGuard<'a> {
+    inner: Option<MutexGuard<'a, Connection>>,
+    id: u64,
+    at: &'static Location<'static>,
+    since: Instant,
+}
+
+impl DbConn {
+    pub fn new(conn: Connection) -> Self {
+        Self(Mutex::new(conn))
+    }
+
+    /// 取得连接锁。等待或持锁超过 [`LOCK_WARN`] 记 WARN，日志带各自的调用点
+    /// （`文件:行` 就是出问题的命令，省掉为每个调用点手写名字）。
+    #[track_caller]
+    pub fn lock(&self) -> Result<DbGuard<'_>, AppError> {
+        self.lock_at(Location::caller())
+    }
+
+    /// 同 [`DbConn::lock`]，但调用点由调用方给出（供 `db_blocking` 标注命令自身的调用点）。
+    ///
+    /// 先 `try_lock` 并在 [`LOCK_WARN`] 内短睡重试：μs 级微竞争根本不值得写日志
+    /// （日志是文件 IO，同步命令里等于再占一次主线程）；只有确认等够阈值才留痕并转入阻塞等待。
+    pub fn lock_at(&self, at: &'static Location<'static>) -> Result<DbGuard<'_>, AppError> {
+        let start = Instant::now();
+        let inner = loop {
+            match self.0.try_lock() {
+                Ok(guard) => break guard,
+                // 与改造前一致：中毒直接当错误返回（不做 into_inner 恢复）
+                Err(TryLockError::Poisoned(e)) => return Err(AppError::Message(e.to_string())),
+                Err(TryLockError::WouldBlock) => {
+                    if start.elapsed() < LOCK_WARN {
+                        std::thread::sleep(Duration::from_millis(2));
+                        continue;
+                    }
+                    // 等够阈值：卡住期间（而不是事后）就留下「谁在等 + 谁占着锁 + 占了多久」
+                    if LOCK_LOGGING {
+                        let holder = holder_desc();
+                        crate::log_warn!("db 锁等待中 {} —— {holder}", at_desc(at));
+                    }
+                    let guard = self
+                        .0
+                        .lock()
+                        .map_err(|e| AppError::Message(e.to_string()))?;
+                    if LOCK_LOGGING {
+                        crate::log_warn!(
+                            "db 锁等待 {}ms 后取得 {}",
+                            start.elapsed().as_millis(),
+                            at_desc(at)
+                        );
+                    }
+                    break guard;
+                }
+            }
+        };
+        let id = NEXT_GUARD_ID.fetch_add(1, Ordering::Relaxed);
+        let since = Instant::now();
+        if let Ok(mut slot) = HOLDER.lock() {
+            *slot = Some(Holder { id, at, since });
+        }
+        Ok(DbGuard {
+            inner: Some(inner),
+            id,
+            at,
+            since,
+        })
+    }
+}
+
+impl std::ops::Deref for DbGuard<'_> {
+    type Target = Connection;
+
+    fn deref(&self) -> &Connection {
+        self.inner.as_ref().expect("db guard 只在 drop 中短暂为空")
+    }
+}
+
+impl std::ops::DerefMut for DbGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Connection {
+        self.inner.as_mut().expect("db guard 只在 drop 中短暂为空")
+    }
+}
+
+impl Drop for DbGuard<'_> {
+    fn drop(&mut self) {
+        // 先放锁：日志是文件 IO，不能算进持锁时长
+        drop(self.inner.take());
+        if let Ok(mut slot) = HOLDER.lock() {
+            if slot.as_ref().is_some_and(|cur| cur.id == self.id) {
+                *slot = None;
+            }
+        }
+        let held = self.since.elapsed();
+        if LOCK_LOGGING && held >= LOCK_WARN {
+            crate::log_warn!("db 锁持有 {}ms（{}）", held.as_millis(), at_desc(self.at));
+        }
+    }
+}
+
+/// 调用点文本：`文件名:行`（完整路径会淹掉日志）。
+fn at_desc(at: &'static Location<'static>) -> String {
+    let file = at
+        .file()
+        .rsplit(|c| c == '/' || c == '\\')
+        .next()
+        .unwrap_or(at.file());
+    format!("{file}:{}", at.line())
+}
+
+/// 当前持锁者描述（无人在持锁时给出「可能刚释放」的提示，避免误判）。
+fn holder_desc() -> String {
+    let Ok(slot) = HOLDER.lock() else {
+        return "当前持锁者未知".to_string();
+    };
+    match slot.as_ref() {
+        Some(h) => format!(
+            "当前持有 {} 已 {}ms",
+            at_desc(h.at),
+            h.since.elapsed().as_millis()
+        ),
+        None => "当前无人持锁（可能刚释放）".to_string(),
+    }
+}
 
 /// 打开（必要时创建）数据库并执行 DDL。
 /// 表名与字段名与 prompt-manager 完全一致，便于后续数据导入；
 /// 时间列沿用本项目的 ISO 8601 UTC 约定（详见项目 memory）。
 pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
-    Ok(BkDb(std::sync::Arc::new(std::sync::Mutex::new(
-        open_connection(path)?,
-    ))))
+    Ok(BkDb(Arc::new(DbConn::new(open_connection(path)?))))
 }
 
 /// 打开（必要时创建）数据库并执行 DDL，返回裸连接。
