@@ -597,10 +597,17 @@ pub fn get_data_dir(app: tauri::AppHandle) -> String {
     data_dir(&app).to_string_lossy().into_owned()
 }
 
+/// 在资源管理器中打开数据目录。
+/// 必须 async + 阻塞池：不带 `async` 的命令在宿主主线程内联执行，Shell 调用一旦长时间不返回
+/// 就会冻结窗口消息循环（与 `open_image_location` 同类的「长阻塞放错位置」，见 docs/lessons.md 第 12 / 28 节）。
 #[tauri::command]
 #[specta::specta]
-pub fn open_data_dir(app: tauri::AppHandle) -> Result<(), AppError> {
-    crate::infra::shell_explorer::open_in_explorer(&data_dir(&app))
+pub async fn open_data_dir(app: tauri::AppHandle) -> Result<(), AppError> {
+    let dir = data_dir(&app);
+    crate::infra::task::spawn_blocking("打开数据目录", move || {
+        crate::infra::shell_explorer::open_in_explorer(&dir)
+    })
+    .await
 }
 
 /// 在资源管理器中定位并选中指定图像的本地保存文件（「打开本地保存位置」）。
@@ -612,19 +619,26 @@ pub async fn open_image_location(
     db: State<'_, BkDb>,
     id: String,
 ) -> Result<(), AppError> {
-    // 查库（短锁）与系统 shell 调用一起放阻塞池：两者都不该占主线程
-    blocking(&db, move |conn| {
+    // 锁内只取路径，**绝不**在持锁闭包里做 Shell 调用：
+    // `SHOpenFolderAndSelectItems` 是长阻塞的 STA COM 调用，一旦卡住会把单连接的全局锁一直占住，
+    // 之后所有 DB 命令（首当其冲是详情页保存）全在 `lock_at` 排队等死（见 docs/lessons.md 第 12 / 28 节）。
+    let query_id = id.clone();
+    let (rel, file_name) = blocking(&db, move |conn| {
         let row: Option<(String, String)> = conn
             .query_row(
                 "SELECT relative_path, file_name FROM images WHERE id = ?1",
-                rusqlite::params![id],
+                rusqlite::params![query_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()
             .map_err(|e| AppError::Message(e.to_string()))?;
-        let Some((rel, file_name)) = row.filter(|(s, _)| !s.is_empty()) else {
-            return Err(AppError::Message("图像不存在或缺少保存路径".into()));
-        };
+        row.filter(|(s, _)| !s.is_empty())
+            .ok_or_else(|| AppError::Message("图像不存在或缺少保存路径".into()))
+    })
+    .await?;
+
+    // 锁已释放，再跑 Shell（纯系统调用，走阻塞池而不是主线程 / async 工作线程）
+    crate::infra::task::spawn_blocking("打开本地保存位置", move || {
         let full = app_data_path(&app, &rel);
         if !full.exists() {
             crate::log_warn!(

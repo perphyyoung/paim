@@ -255,6 +255,11 @@ export const commands = {
 	/**  运行时热切全局最低日志级别，并 emit 事件让前端刷新缓存。 */
 	setLogLevel: (level: string) => __TAURI_INVOKE<null>("set_log_level", { level }),
 	getDataDir: () => __TAURI_INVOKE<string>("get_data_dir"),
+	/**
+	 *  在资源管理器中打开数据目录。
+	 *  必须 async + 阻塞池：不带 `async` 的命令在宿主主线程内联执行，Shell 调用一旦长时间不返回
+	 *  就会冻结窗口消息循环（与 `open_image_location` 同类的「长阻塞放错位置」，见 docs/lessons.md 第 12 / 28 节）。
+	 */
 	openDataDir: () => __TAURI_INVOKE<null>("open_data_dir"),
 	/**
 	 *  在资源管理器中定位并选中指定图像的本地保存文件（「打开本地保存位置」）。
