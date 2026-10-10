@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * StatsModal - 数据统计弹窗（侧栏左下角「统计」入口）。
- * 左右两栏各若干项，每次打开实时查询（无缓存）。
+ * 单张二维表格：第一列统计项、第二列提示词、第三列图像；某项在某域不存在时该格显示 `-`。
+ * 每次打开实时查询（无缓存）。
  */
 import { computed, ref, watch } from "vue";
 import { commands, type Statistics } from "@/bindings";
@@ -31,36 +32,44 @@ watch(
   { immediate: true },
 );
 
-// 两栏统计行：基础 4 项 + 特殊标签计数（与基础项同样式直接罗列，无分组标题）。
-// 与特殊标签语义重复的项（已收藏/含图像/有引用）已移除，由特殊标签计数行呈现。
-const promptRows: Array<[string, keyof Statistics]> = [
-  ["总数", "total_prompts"],
-  ["已删除", "deleted_prompts"],
-  ["标签组数", "prompt_tag_groups"],
-  ["标签总数", "total_prompt_tags"],
-];
-const imageRows: Array<[string, keyof Statistics]> = [
-  ["总数", "total_images"],
-  ["已删除", "deleted_images"],
-  ["标签组数", "image_tag_groups"],
-  ["标签总数", "total_image_tags"],
+// 表格行分三段：① 非特殊标签（两域都有）② 两域同名的特殊标签（按提示词域顺序取交集）
+// ③ 仅某一域有的特殊标签（缺的一侧渲染 `-`）。段 ① ② 的末行画一条稍亮的横线标出边界，
+// 不额外加分组标题行（不增行数）。与特殊标签语义重复的项（已收藏/含图像/有引用）已移除。
+/// Statistics 中的数值字段名（避免 keyof 含数组字段，取值时无需再断言）
+type NumberStatKey = {
+  [K in keyof Statistics]: Statistics[K] extends number ? K : never;
+}[keyof Statistics];
+
+const baseRows: Array<[string, NumberStatKey, NumberStatKey]> = [
+  ["总数", "total_prompts", "total_images"],
+  ["已删除", "deleted_prompts", "deleted_images"],
+  ["标签组数", "prompt_tag_groups", "image_tag_groups"],
+  ["标签总数", "total_prompt_tags", "total_image_tags"],
 ];
 
-type StatRow = [string, number];
+/// 一行：两域计数都可缺（缺 ⇒ 该格渲染 `-`）；segEnd 标记分组末行（画稍亮分界线）
+type StatRow = { name: string; prompt?: number; image?: number; segEnd?: boolean };
 
-const promptStatRows = computed<StatRow[]>(() => {
+const statRows = computed<StatRow[]>(() => {
   if (!stats.value) return [];
-  return [
-    ...promptRows.map(([label, key]) => [label, stats.value![key]] as StatRow),
-    ...stats.value.special_prompt_tags.map((c) => [c.name, c.count] as StatRow),
-  ];
-});
-const imageStatRows = computed<StatRow[]>(() => {
-  if (!stats.value) return [];
-  return [
-    ...imageRows.map(([label, key]) => [label, stats.value![key]] as StatRow),
-    ...stats.value.special_image_tags.map((c) => [c.name, c.count] as StatRow),
-  ];
+  const s = stats.value;
+  const promptCounts = new Map(s.special_prompt_tags.map((c) => [c.name, c.count]));
+  const imageCounts = new Map(s.special_image_tags.map((c) => [c.name, c.count]));
+  const base: StatRow[] = baseRows.map(([name, p, i]) => ({ name, prompt: s[p], image: s[i] }));
+  const shared: StatRow[] = s.special_prompt_tags
+    .filter((p) => imageCounts.has(p.name))
+    .map((p) => ({ name: p.name, prompt: p.count, image: imageCounts.get(p.name) }));
+  const promptOnly: StatRow[] = s.special_prompt_tags
+    .filter((p) => !imageCounts.has(p.name))
+    .map((p) => ({ name: p.name, prompt: p.count }));
+  const imageOnly: StatRow[] = s.special_image_tags
+    .filter((i) => !promptCounts.has(i.name))
+    .map((i) => ({ name: i.name, image: i.count }));
+
+  const rows = [...base, ...shared, ...promptOnly, ...imageOnly];
+  if (base.length) rows[base.length - 1].segEnd = true;
+  if (shared.length) rows[base.length + shared.length - 1].segEnd = true;
+  return rows;
 });
 </script>
 
@@ -72,7 +81,7 @@ const imageStatRows = computed<StatRow[]>(() => {
       @click.self="emit('close')"
     >
       <div
-        class="flex max-h-[80vh] min-w-[36rem] max-w-[90vw] flex-col rounded-lg border p-6 shadow-sm border-gray-700 bg-gray-800"
+        class="flex max-h-[80vh] min-w-[21rem] max-w-[90vw] flex-col rounded-lg border p-6 shadow-sm border-gray-700 bg-gray-800"
       >
         <div class="flex items-center justify-between">
           <h3 class="text-base font-semibold text-gray-100">数据统计</h3>
@@ -104,72 +113,46 @@ const imageStatRows = computed<StatRow[]>(() => {
         >
           正在统计...
         </p>
-        <div v-else-if="stats" class="mt-4 grid flex-1 grid-cols-2 gap-4 overflow-y-auto">
-          <!-- 提示词统计 -->
-          <section class="flex flex-col rounded-lg border border-gray-700 p-5">
-            <div class="mx-auto flex w-56 items-center gap-1.5 border-b border-gray-700 pb-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4 text-blue-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
+        <div v-else-if="stats" class="mt-4 flex-1 overflow-y-auto">
+          <table class="mx-auto w-72 table-fixed border-collapse text-sm">
+            <thead>
+              <tr>
+                <th
+                  class="w-1/3 border-t border-b border-gray-500 pb-2 text-center font-medium text-gray-300"
+                >
+                  统计项
+                </th>
+                <th
+                  class="w-1/3 border-t border-b border-gray-500 pb-2 text-center font-medium text-gray-300"
+                >
+                  提示词
+                </th>
+                <th
+                  class="w-1/3 border-t border-b border-gray-500 pb-2 text-center font-medium text-gray-300"
+                >
+                  图像
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(row, i) in statRows"
+                :key="row.name"
+                class="border-b"
+                :class="
+                  row.segEnd || i === statRows.length - 1 ? 'border-b-gray-500' : 'border-gray-700'
+                "
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 3v6h6M10 17h4M10 13h4M7 21h10a2 2 0 002-2V9l-6-6H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                />
-              </svg>
-              <h4 class="text-sm font-medium text-gray-200">提示词统计</h4>
-            </div>
-            <dl class="mx-auto mt-1 flex w-56 flex-1 flex-col divide-y divide-gray-700">
-              <div
-                v-for="[label, value] in promptStatRows"
-                :key="label"
-                class="flex flex-1 items-center justify-between"
-              >
-                <dt class="text-sm text-gray-400">{{ label }}</dt>
-                <dd class="text-base font-medium tabular-nums text-gray-100">
-                  {{ value }}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <!-- 图像统计 -->
-          <section class="flex flex-col rounded-lg border border-gray-700 p-5">
-            <div class="mx-auto flex w-56 items-center gap-1.5 border-b border-gray-700 pb-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4 text-green-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm8.5 3.5 a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-6 9l4-5 3 3 3-4 4 6"
-                />
-              </svg>
-              <h4 class="text-sm font-medium text-gray-200">图像统计</h4>
-            </div>
-            <dl class="mx-auto mt-1 flex w-56 flex-1 flex-col divide-y divide-gray-700">
-              <div
-                v-for="[label, value] in imageStatRows"
-                :key="label"
-                class="flex flex-1 items-center justify-between"
-              >
-                <dt class="text-sm text-gray-400">{{ label }}</dt>
-                <dd class="text-base font-medium tabular-nums text-gray-100">
-                  {{ value }}
-                </dd>
-              </div>
-            </dl>
-          </section>
+                <td class="py-1.5 text-center text-gray-400">{{ row.name }}</td>
+                <td class="py-1.5 text-center tabular-nums text-gray-100">
+                  {{ row.prompt ?? "-" }}
+                </td>
+                <td class="py-1.5 text-center tabular-nums text-gray-100">
+                  {{ row.image ?? "-" }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
