@@ -22,6 +22,7 @@
 - 提示词或图像专用的，一律添加 image/prompt 标识，两者保持对称
 - 测试写在独立的 `*.test.rs` 文件（与源文件平铺，如 `db.test.rs`），源文件末尾用 `#[cfg(test)] #[path = "..."] mod tests;` 声明；不内联测试块，也不用同名目录下的 `tests.rs`（同名文件在 grep/编辑器中无法区分）
 - 前端测试同样与源文件平铺，命名为 `*.test.ts`（如 `usePagedBlocks.test.ts`），用 vitest 跑（`pnpm test:ui`，node 环境，配置见 `vitest.config.ts`）；**需要注入失败/延迟的场景一律放前端单测**，不要试图在 e2e 里包装 IPC——真实 Tauri 的 `window.__TAURI_INTERNALS__` 及其成员由注入脚本 `defineProperty` 创建（不可写不可配置），页面侧改不动（依据见 docs/e2e测试.md）
+- 修改或新增 e2e 用例前先对照 `docs/e2e测试.md`（文件索引与命名规则、序号分配与 `e2e/<序号>` 引用口径、约定速查、helper 副作用说明、超时口径），改完同步该文件的序号说明
 - 按照暗色主题设计，无需考虑亮色主题和主题切换需求
 - 临时脚本以 tmp-* 方式命名，会被 git 忽略
 - 使用 jj (git 的包装) 检查工作区状态: jj st
