@@ -116,11 +116,12 @@ fn statistics_counts_with_trash_edges() {
     assert_eq!(sp("无图"), 1, "p3 在回收站不计，仅 p2 无图");
     assert_eq!(sp("无标"), 1, "p1 挂了标签，仅 p2 无标");
     assert_eq!(sp("单语"), 1, "仅 p2 无译文");
+    assert_eq!(sp("无向"), 2, "未建向量的在册提示词全部计入");
     assert_eq!(sp("安全"), 2);
     assert_eq!(sp("敏感"), 0);
     assert_eq!(
         s.special_prompt_tags.len(),
-        7,
+        8,
         "全部特殊标签都要出现（含 0）"
     );
 
@@ -141,9 +142,10 @@ fn statistics_counts_with_trash_edges() {
     );
     assert_eq!(si("多引"), 0);
     assert_eq!(si("无标"), 2, "仅 i1 挂了标签，i2、i3 无标");
+    assert_eq!(si("无向"), 3, "未建向量的在册图像全部计入");
     assert_eq!(si("安全"), 3);
     assert_eq!(si("敏感"), 0);
-    assert_eq!(s.special_image_tags.len(), 6);
+    assert_eq!(s.special_image_tags.len(), 7);
 }
 
 #[test]
@@ -157,7 +159,7 @@ fn statistics_empty_db_returns_zeros() {
     assert_eq!(s.total_image_tags, 0);
     // 空库时特殊标签计数为 0 且全部出现
     assert!(s.special_prompt_tags.iter().all(|c| c.count == 0));
-    assert_eq!(s.special_prompt_tags.len(), 7);
+    assert_eq!(s.special_prompt_tags.len(), 8);
     assert!(s.special_image_tags.iter().all(|c| c.count == 0));
-    assert_eq!(s.special_image_tags.len(), 6);
+    assert_eq!(s.special_image_tags.len(), 7);
 }

@@ -9,18 +9,21 @@
  * 断言用「无标」chip 的出现/消失：chip 只在计数 > 0 时渲染（TagFilterPanel），于是
  * 「最后一条无标条目被打上标签」等价于 chip 消失——比读数字稳（计数是内存值，直接查库证明不了主页刷新）。
  *
- * 四条用例按「改了会影响特殊计数的数据」的入口分：① 提示词主页批量添加标签 ② 图像主页拖拽添加标签
- * （断言「无标」chip 消失）③④ 两个主页卡片上的**单张收藏**（断言「收藏」chip 出现 / 消失）。
+ * 五条用例按「改了会影响特殊计数的数据」的入口分：① 提示词主页批量添加标签 ② 图像主页拖拽添加标签
+ * （断言「无标」chip 消失）③④ 两个主页卡片上的**单张收藏**（断言「收藏」chip 出现 / 消失）
+ * ⑤ 设置页增量索引（断言「无向」chip 消失）。
  * 用例 2 的拖拽源标签先用批量入口创建（顺带让筛选区出现该标签）；若批量刷新坏了，用例 1 会先红。
  */
 import { expect, type Page } from "@playwright/test";
 import {
   cardById,
+  closeSettings,
   createPromptViaDialog,
   expectToastAndDismiss,
   findPromptIdByContent,
   gotoPromptsPage,
   openBatchAddTagDialog,
+  runSimilarityIndex,
   specialTagChip,
   test,
   uploadImageWithPrompt,
@@ -28,6 +31,7 @@ import {
 import { e2eLog } from "./e2e-logger";
 
 const NO_TAG = "无标";
+const NO_VEC = "无向";
 const TAG = "e2e-计数标签";
 
 /// 从筛选区把普通标签拖到卡片：pointer 拖拽（move → down → 超阈值 move → up），
@@ -126,4 +130,20 @@ test("图像主页卡片单张收藏：收藏计数随之刷新（chip 出现 / 
   await card.getByRole("button", { name: "取消收藏", exact: true }).click();
   await expect(specialTagChip(page, "收藏")).toBeHidden();
   e2eLog.info("[step] 卡片收藏 chip 随单张切换出现并消失");
+});
+
+// 「无向」＝未建立相似度向量（`vec IS NULL`）。它的计数同样只在主页重载时刷新，
+// 而增量索引在设置悬浮层里完成——故这条也验证「设置关闭广播 → 活动页重载」这条链路。
+test("提示词主页增量索引后：无向计数随之刷新（chip 消失）", async ({ page }) => {
+  // 文件内前面的用例停在图像主页，先切回；此处库里的提示词都还没建向量
+  await gotoPromptsPage(page);
+  await expect(specialTagChip(page, NO_VEC)).toBeVisible();
+  e2eLog.info("[step] 基线：无向 chip 可见（存在未建向量的提示词）");
+
+  await runSimilarityIndex(page, "prompt");
+  await closeSettings(page);
+
+  // 增量索引把全部待处理提示词建好向量 → 计数归零、chip 消失（刷新坏了则 chip 仍在）
+  await expect(specialTagChip(page, NO_VEC)).toBeHidden();
+  e2eLog.info("[step] 无向 chip 已消失（计数已刷新）");
 });

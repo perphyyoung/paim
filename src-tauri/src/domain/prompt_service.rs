@@ -194,6 +194,8 @@ fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
                 "NOT EXISTS (SELECT 1 FROM prompt_tag_relations r WHERE r.prompt_id = prompts.id)"
                     .to_string(),
             ),
+            // 无向＝未建立相似度向量；与设置页增量索引的待处理集合（similarity_service::pending_prompts）同集
+            list_query::SP_NO_VEC => conds.push("vec IS NULL".to_string()),
             list_query::SP_SINGLE_LANG => {
                 conds.push("COALESCE(content_translate, '') = ''".to_string())
             }
@@ -276,24 +278,27 @@ pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
            COUNT(CASE WHEN p.is_safe = 0 THEN 1 END),
            COUNT(CASE WHEN COALESCE(p.content_translate, '') = '' THEN 1 END),
            COUNT(CASE WHEN NOT EXISTS (
-             SELECT 1 FROM prompt_tag_relations r WHERE r.prompt_id = p.id) THEN 1 END)
+             SELECT 1 FROM prompt_tag_relations r WHERE r.prompt_id = p.id) THEN 1 END),
+           COUNT(CASE WHEN p.vec IS NULL THEN 1 END)
          FROM prompts p
          LEFT JOIN (SELECT pir.prompt_id, COUNT(*) cnt
                     FROM prompt_image_relations pir
                     JOIN images i ON i.id = pir.image_id AND i.is_deleted = 0
                     GROUP BY pir.prompt_id) pr ON pr.prompt_id = p.id
          WHERE p.is_deleted = 0";
-    let (fav, multi, no_img, safe, unsafe_, single, no_tag) = conn.query_row(sql, [], |r| {
-        Ok((
-            r.get::<_, i64>(0)?,
-            r.get::<_, i64>(1)?,
-            r.get::<_, i64>(2)?,
-            r.get::<_, i64>(3)?,
-            r.get::<_, i64>(4)?,
-            r.get::<_, i64>(5)?,
-            r.get::<_, i64>(6)?,
-        ))
-    })?;
+    let (fav, multi, no_img, safe, unsafe_, single, no_tag, no_vec) =
+        conn.query_row(sql, [], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, i64>(5)?,
+                r.get::<_, i64>(6)?,
+                r.get::<_, i64>(7)?,
+            ))
+        })?;
     let mut m = HashMap::new();
     m.insert(list_query::SP_FAVORITE.to_string(), fav);
     m.insert(list_query::SP_MULTI_IMAGE.to_string(), multi);
@@ -302,6 +307,7 @@ pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
     m.insert(list_query::SP_UNSAFE.to_string(), unsafe_);
     m.insert(list_query::SP_SINGLE_LANG.to_string(), single);
     m.insert(list_query::SP_NO_TAG.to_string(), no_tag);
+    m.insert(list_query::SP_NO_VEC.to_string(), no_vec);
     Ok(m)
 }
 

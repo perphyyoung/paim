@@ -5,6 +5,7 @@ use super::{
     replace_image_with, special_tags_counts, update_detail, ImageReplaceOutcome, PaginatedImages,
 };
 use crate::domain::list_query::ListQuery;
+use crate::domain::similarity_service;
 use crate::infra::db;
 
 /// 生成一张指定颜色的 2×2 png 源图（不同颜色 ⇒ 不同 MD5）。
@@ -731,6 +732,40 @@ fn list_ids_and_special_tags_counts_share_the_same_filter() {
     assert_eq!(counts.get("无标"), Some(&1));
     assert_eq!(counts.get("未引"), Some(&2));
     assert_eq!(counts.get("安全"), Some(&2), "is_safe 默认 1");
+}
+
+/// 无向＝未建立相似度向量（`vec IS NULL`）：筛选只命中未索引的图像，计数与之同口径。
+#[test]
+fn no_vec_filter_and_count_track_missing_vectors() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    insert_image(&conn, "i1", 1, "2026-01-01T00:00:00.000Z", false);
+    insert_image(&conn, "i2", 2, "2026-01-02T00:00:00.000Z", false);
+    similarity_service::store(&conn, "i2", &[1.0, 0.0]).unwrap();
+
+    let no_vec = list_ids(
+        &conn,
+        &ListQuery {
+            tags: vec!["无向".into()],
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(no_vec, vec!["i1"], "只命中未建向量的图像");
+
+    let has_vec = list_ids(
+        &conn,
+        &ListQuery {
+            tags: vec!["无向".into()],
+            inverted: true,
+            ..query("fileSize", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(has_vec, vec!["i2"], "反选「无向」即已建立向量");
+
+    let counts = special_tags_counts(&conn).unwrap();
+    assert_eq!(counts.get("无向"), Some(&1));
 }
 
 /// 回收站特殊语义：图像与关联提示词**两边都已软删**时，回收站映射仍返回该提示词内容

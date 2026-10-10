@@ -238,6 +238,7 @@ const SPECIAL_TAGS = [
   SPECIAL_TAG_NAMES.unreferenced,
   SPECIAL_TAG_NAMES.multiRef,
   SPECIAL_TAG_NAMES.noTag,
+  SPECIAL_TAG_NAMES.noVec,
   SPECIAL_TAG_NAMES.safe,
   SPECIAL_TAG_NAMES.unsafe,
 ];

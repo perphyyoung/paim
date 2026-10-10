@@ -59,6 +59,7 @@ fn prompt_special_tags_counts(conn: &Connection) -> rusqlite::Result<Vec<Special
              WHERE pir.prompt_id = p.id) THEN 1 ELSE 0 END), 0),
            COALESCE(SUM(CASE WHEN NOT EXISTS (
              SELECT 1 FROM prompt_tag_relations ptr WHERE ptr.prompt_id = p.id) THEN 1 ELSE 0 END), 0),
+           COALESCE(SUM(CASE WHEN p.vec IS NULL THEN 1 ELSE 0 END), 0),
            COALESCE(SUM(CASE WHEN COALESCE(p.content_translate, '') = '' THEN 1 ELSE 0 END), 0),
            COALESCE(SUM(CASE WHEN p.is_safe != 0 THEN 1 ELSE 0 END), 0),
            COALESCE(SUM(CASE WHEN p.is_safe = 0 THEN 1 ELSE 0 END), 0)
@@ -73,12 +74,15 @@ fn prompt_special_tags_counts(conn: &Connection) -> rusqlite::Result<Vec<Special
                 r.get::<_, i64>(4)?,
                 r.get::<_, i64>(5)?,
                 r.get::<_, i64>(6)?,
+                r.get::<_, i64>(7)?,
             ))
         },
     )?;
     // 名称与顺序对齐前端 SPECIAL_TAG_NAMES / PromptPage.SPECIAL_TAGS
-    let names = ["收藏", "多图", "无图", "无标", "单语", "安全", "敏感"];
-    let vals = [row.0, row.1, row.2, row.3, row.4, row.5, row.6];
+    let names = [
+        "收藏", "多图", "无图", "无标", "无向", "单语", "安全", "敏感",
+    ];
+    let vals = [row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7];
     Ok(names
         .iter()
         .zip(vals)
@@ -99,6 +103,7 @@ fn image_special_tags_counts(conn: &Connection) -> rusqlite::Result<Vec<SpecialT
            COALESCE(SUM(CASE WHEN COALESCE(pr.cnt, 0) = 0 THEN 1 ELSE 0 END), 0),
            COALESCE(SUM(CASE WHEN COALESCE(pr.cnt, 0) > 1 THEN 1 ELSE 0 END), 0),
            COALESCE(SUM(CASE WHEN COALESCE(tr.cnt, 0) = 0 THEN 1 ELSE 0 END), 0),
+           COALESCE(SUM(CASE WHEN i.vec IS NULL THEN 1 ELSE 0 END), 0),
            COALESCE(SUM(CASE WHEN i.is_safe != 0 THEN 1 ELSE 0 END), 0),
            COALESCE(SUM(CASE WHEN i.is_safe = 0 THEN 1 ELSE 0 END), 0)
          FROM images i
@@ -119,12 +124,13 @@ fn image_special_tags_counts(conn: &Connection) -> rusqlite::Result<Vec<SpecialT
                 r.get::<_, i64>(3)?,
                 r.get::<_, i64>(4)?,
                 r.get::<_, i64>(5)?,
+                r.get::<_, i64>(6)?,
             ))
         },
     )?;
     // 名称与顺序对齐前端 SPECIAL_TAG_NAMES / ImagePage.SPECIAL_TAGS
-    let names = ["收藏", "未引", "多引", "无标", "安全", "敏感"];
-    let vals = [row.0, row.1, row.2, row.3, row.4, row.5];
+    let names = ["收藏", "未引", "多引", "无标", "无向", "安全", "敏感"];
+    let vals = [row.0, row.1, row.2, row.3, row.4, row.5, row.6];
     Ok(names
         .iter()
         .zip(vals)

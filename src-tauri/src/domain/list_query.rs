@@ -20,6 +20,7 @@ pub const SP_MULTI_REF: &str = "多引";
 pub const SP_MULTI_IMAGE: &str = "多图";
 pub const SP_NO_IMAGE: &str = "无图";
 pub const SP_NO_TAG: &str = "无标";
+pub const SP_NO_VEC: &str = "无向";
 pub const SP_SINGLE_LANG: &str = "单语";
 pub const SP_SAFE: &str = "安全";
 pub const SP_UNSAFE: &str = "敏感";

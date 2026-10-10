@@ -5,6 +5,7 @@ use super::{
     thumb_apply, thumb_plan, thumbs_for, thumbs_for_trashed, update_detail,
 };
 use crate::domain::list_query::ListQuery;
+use crate::domain::similarity_service;
 use crate::domain::thumbnail_service;
 use crate::infra::db;
 use std::path::Path;
@@ -748,6 +749,57 @@ fn list_ids_and_special_tags_counts_share_the_same_filter() {
     assert_eq!(counts.get("单语"), Some(&2), "两条译文为空");
     assert_eq!(counts.get("安全"), Some(&2), "is_safe 默认 1");
     assert_eq!(counts.get("多图"), Some(&0));
+}
+
+/// 无向＝未建立相似度向量（`vec IS NULL`）：筛选只命中未索引的提示词，计数与之同口径。
+#[test]
+fn no_vec_filter_and_count_track_missing_vectors() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    insert_prompt(
+        &conn,
+        "p1",
+        "t1",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+        false,
+        "",
+    );
+    insert_prompt(
+        &conn,
+        "p2",
+        "t2",
+        "2026-01-02T00:00:00.000Z",
+        "2026-01-02T00:00:00.000Z",
+        false,
+        "",
+    );
+    similarity_service::store_prompt(&conn, "p2", &[1.0, 0.0]).unwrap();
+
+    let no_vec = list_ids(
+        &conn,
+        &ListQuery {
+            tags: vec!["无向".into()],
+            ..query("createdAt", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(no_vec, vec!["p1"], "只命中未建向量的提示词");
+
+    let has_vec = list_ids(
+        &conn,
+        &ListQuery {
+            tags: vec!["无向".into()],
+            inverted: true,
+            ..query("createdAt", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(has_vec, vec!["p2"], "反选「无向」即已建立向量");
+
+    let counts = special_tags_counts(&conn).unwrap();
+    assert_eq!(counts.get("无向"), Some(&1));
+    assert_eq!(counts.get("无标"), Some(&2), "计数不受向量状态影响");
 }
 
 /// 搜索命中提示词的标签名（与前端 matchesKeyword 含 tagNames 的口径一致）。

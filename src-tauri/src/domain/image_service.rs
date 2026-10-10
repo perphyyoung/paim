@@ -466,6 +466,8 @@ fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
                 "NOT EXISTS (SELECT 1 FROM image_tag_relations r WHERE r.image_id = images.id)"
                     .to_string(),
             ),
+            // 无向＝未建立相似度向量；与设置页增量索引的待处理集合（similarity_service::pending）同集
+            list_query::SP_NO_VEC => conds.push("vec IS NULL".to_string()),
             list_query::SP_SAFE => conds.push("is_safe = 1".to_string()),
             list_query::SP_UNSAFE => conds.push("is_safe = 0".to_string()),
             other => {
@@ -541,7 +543,8 @@ pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
        COUNT(CASE WHEN COALESCE(pr.cnt, 0) > 1 THEN 1 END),
        COUNT(CASE WHEN i.is_safe = 1 THEN 1 END),
        COUNT(CASE WHEN i.is_safe = 0 THEN 1 END),
-       COUNT(CASE WHEN COALESCE(tr.cnt, 0) = 0 THEN 1 END)
+       COUNT(CASE WHEN COALESCE(tr.cnt, 0) = 0 THEN 1 END),
+       COUNT(CASE WHEN i.vec IS NULL THEN 1 END)
      FROM images i
      LEFT JOIN (SELECT pir.image_id, COUNT(*) cnt
                 FROM prompt_image_relations pir
@@ -551,7 +554,7 @@ pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
                 FROM image_tag_relations itr
                 GROUP BY itr.image_id) tr ON tr.image_id = i.id
      WHERE i.is_deleted = 0";
-    let (fav, unref, multi, safe, unsafe_, no_tag) = conn.query_row(sql, [], |r| {
+    let (fav, unref, multi, safe, unsafe_, no_tag, no_vec) = conn.query_row(sql, [], |r| {
         Ok((
             r.get::<_, i64>(0)?,
             r.get::<_, i64>(1)?,
@@ -559,6 +562,7 @@ pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
             r.get::<_, i64>(3)?,
             r.get::<_, i64>(4)?,
             r.get::<_, i64>(5)?,
+            r.get::<_, i64>(6)?,
         ))
     })?;
     let mut m = HashMap::new();
@@ -568,6 +572,7 @@ pub fn special_tags_counts(conn: &Connection) -> Result<HashMap<String, i64>> {
     m.insert(list_query::SP_SAFE.to_string(), safe);
     m.insert(list_query::SP_UNSAFE.to_string(), unsafe_);
     m.insert(list_query::SP_NO_TAG.to_string(), no_tag);
+    m.insert(list_query::SP_NO_VEC.to_string(), no_vec);
     Ok(m)
 }
 

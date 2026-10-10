@@ -12,6 +12,7 @@ export const SPECIAL_TAG_NAMES = {
   multiImage: "多图",
   noImage: "无图",
   noTag: "无标",
+  noVec: "无向",
   singleLang: "单语",
 } as const;
 
