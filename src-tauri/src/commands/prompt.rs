@@ -5,6 +5,7 @@ use crate::domain::image_service;
 use crate::domain::list_query::ListQuery;
 use crate::domain::prompt_merge;
 use crate::domain::prompt_service;
+use crate::domain::similarity_service;
 use crate::domain::thumbnail_service;
 use crate::infra::db::{self, BkDb};
 use crate::infra::error::AppError;
@@ -312,6 +313,15 @@ pub async fn ensure_prompt_thumbnails(
         prompt_service::thumb_apply(conn, &ids, plan, &outcome.fixed).map_err(AppError::Message)
     })
     .await
+}
+
+/// 提示词内容的向量规范化形态（纯本地计算，不依赖 embedding 服务）。
+/// 前端保存编辑前用它比对新旧内容：规范化后相同 = 仅排版调整（空白 / 标点旁空白），
+/// 保存不影响向量；不同则为实质修改，需用户确认后保存。
+#[tauri::command]
+#[specta::specta]
+pub fn canonicalize_prompt_text(content: String) -> String {
+    similarity_service::canonical_text(&content)
 }
 
 /// 更新提示词详情字段（标题/内容/翻译/备注/收藏/安全）。

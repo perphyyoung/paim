@@ -32,6 +32,8 @@ tauri-plugin-single-instance = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff"] }
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 md-5 = "0.10"
+# Unicode 标点类别判定（提示词向量输入规范化用）：纯数据表，无传递依赖
+unicode_categories = "0.1"
 # 本地 embedding 服务（llama.cpp llama-server）调用：只访问 127.0.0.1 明文 HTTP，故关闭 TLS 特性
 ureq = { version = "2", default-features = false, features = ["json"] }
 base64 = "0.22"

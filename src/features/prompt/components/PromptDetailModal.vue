@@ -320,19 +320,46 @@ async function saveFields() {
     showToast("没有改动", "info");
     return;
   }
+  // 向量只认内容的规范化形态（空白规则见后端 canonical_text）：
+  // 规范化后相同 = 仅排版调整，不影响向量、静默保存；不同 = 实质修改，需确认（取消则留在编辑态）
+  if (nextContent !== null) {
+    const [oldCanon, newCanon] = await Promise.all([
+      commands.canonicalizePromptText(p.content ?? ""),
+      commands.canonicalizePromptText(nextContent),
+    ]);
+    if (oldCanon !== newCanon) {
+      ask(
+        "提示词内容已修改了非空白字符，保存后需要在设置页手动增量索引，是否确认保存？",
+        { title: "确认保存", confirmText: "保存" },
+        () => persistFields(p.id, nextTitle, nextContent, nextTranslate, nextNote),
+      );
+      return;
+    }
+  }
+  await persistFields(p.id, nextTitle, nextContent, nextTranslate, nextNote);
+}
+
+/// 实际落库（实质修改经确认后 / 排版调整直接调用）：成功后用后端返回值更新本地模型。
+async function persistFields(
+  id: string,
+  nextTitle: string | null,
+  nextContent: string | null,
+  nextTranslate: string | null,
+  nextNote: string | null,
+) {
   try {
     // 成对埋点：保存不碰 embedding 服务，卡住只可能是宿主侧（取 db 锁 / 写库）。
     // 真卡住时「保存完成」永不落盘，配合后端 `db 锁等待/持有` 的 WARN 就能点名到具体命令。
     const startedAt = performance.now();
     log.debug("[PromptDetail] 保存开始", {
-      id: p.id,
+      id,
       title: nextTitle !== null,
       content: nextContent !== null,
       translate: nextTranslate !== null,
       note: nextNote !== null,
     });
     const upd = await commands.updatePromptDetail(
-      p.id,
+      id,
       nextTitle,
       nextContent,
       nextTranslate,
@@ -340,18 +367,21 @@ async function saveFields() {
       null,
       null,
     );
+    const p = current.value;
     // 用后端返回值更新本地模型，避免未落库的输入值污染 UI
-    p.title = upd.title;
-    p.content = upd.content;
-    p.content_translate = upd.content_translate;
-    p.note = upd.note;
+    if (p) {
+      p.title = upd.title;
+      p.content = upd.content;
+      p.content_translate = upd.content_translate;
+      p.note = upd.note;
+    }
     edit.value = false;
     // 内容会显示在图像主页卡片的关联提示词文案里
     markPageStale("images");
     notifyUpdated();
     const cost = Math.round(performance.now() - startedAt);
     log.debug("[PromptDetail] 保存完成", cost, "ms");
-    if (cost >= 500) log.warn("[PromptDetail] 保存慢", cost, "ms", p.id);
+    if (cost >= 500) log.warn("[PromptDetail] 保存慢", cost, "ms", id);
     showToast("已保存", "success");
   } catch (e) {
     log.warn("[PromptDetail] 保存失败", String(e));

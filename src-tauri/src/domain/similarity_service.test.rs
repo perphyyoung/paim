@@ -540,3 +540,106 @@ fn update_detail_invalidates_vec_only_when_content_changes() {
     );
     assert_eq!(pending_prompts(&conn).unwrap().len(), 1);
 }
+
+#[test]
+fn update_detail_keeps_vec_for_whitespace_only_edits() {
+    let (_dir, conn) = setup("sim-prompt-save-whitespace");
+    // 库内存原文（带排版），向量已建
+    let created = prompt_service::create(&conn, "1girl, solo\nblue eyes", None).unwrap();
+    let id = created.id;
+    store_prompt(&conn, &id, &[1.0, 0.0]).unwrap();
+
+    // 仅排版调整（首尾空白 / 标点旁空白 / 换行折叠）：向量保留、原文照常更新
+    let cases = [
+        "  1girl, solo\nblue eyes  ",
+        "1girl ,  solo\n\nblue  eyes",
+        "1girl,solo blue eyes",
+        "1girl,\nsolo\r\nblue eyes",
+    ];
+    for content in cases {
+        prompt_service::update_detail(
+            &conn,
+            &id,
+            None,
+            Some(content.into()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            prompt_vec_of(&conn, &id).unwrap().is_some(),
+            "仅排版变化不应清空向量：{content:?}"
+        );
+    }
+
+    // 非空白字符变了：向量失效
+    prompt_service::update_detail(
+        &conn,
+        &id,
+        None,
+        Some("1girl, solo, red eyes".into()),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(
+        prompt_vec_of(&conn, &id).unwrap().is_none(),
+        "实质内容变更应让向量失效"
+    );
+}
+
+#[test]
+fn canonical_text_rules() {
+    // 空 / 纯空白 → 空串
+    assert_eq!(canonical_text(""), "");
+    assert_eq!(canonical_text("  \n\t  "), "");
+
+    // 去首尾空白
+    assert_eq!(canonical_text("  abc  "), "abc");
+    assert_eq!(canonical_text("\n\nabc\n"), "abc");
+
+    // 非标点处连续空白（含换行 / Tab）折叠为单个空格，不合并相邻单词
+    assert_eq!(canonical_text("hair\nblue"), "hair blue");
+    assert_eq!(canonical_text("hair\t\tblue"), "hair blue");
+    assert_eq!(canonical_text("a    b"), "a b");
+
+    // 标点紧邻的空白整段删除（左右都查；ASCII 与中文标点）
+    assert_eq!(canonical_text("a , b"), "a,b");
+    assert_eq!(canonical_text("a, b"), "a,b");
+    assert_eq!(canonical_text("a ,b"), "a,b");
+    assert_eq!(canonical_text("a ， b"), "a，b");
+    assert_eq!(canonical_text("（ x ）"), "（x）");
+    assert_eq!(canonical_text("a ; b : c ! d"), "a;b:c!d");
+    // ASCII 符号（Unicode 归 S* 类别）也按标点处理：booru 常见分隔符
+    assert_eq!(canonical_text("a | b"), "a|b");
+    assert_eq!(canonical_text("a ~ b"), "a~b");
+    // 全角标点
+    assert_eq!(canonical_text("a ！ b"), "a！b");
+
+    // 混合：换行被标点吸收 + 词间断行折叠
+    assert_eq!(
+        canonical_text("1girl, solo\nlong hair , blue eyes\n\ngarden"),
+        "1girl,solo long hair,blue eyes garden"
+    );
+
+    // emoji 不是标点：旁边的空白按词间空白折叠
+    assert_eq!(canonical_text("a 😀 b"), "a 😀 b");
+}
+
+#[test]
+fn canonical_text_is_idempotent() {
+    let inputs = [
+        "  1girl,  solo\n\n long hair , blue eyes \n",
+        "a ， b（ c ） | d～e",
+        "\t\thello   world\n",
+        "",
+    ];
+    for input in inputs {
+        let once = canonical_text(input);
+        assert_eq!(canonical_text(&once), once, "输入：{input:?}");
+    }
+}

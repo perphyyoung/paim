@@ -25,6 +25,12 @@ export const commands = {
 	 */
 	updatePromptDetail: (id: string, title: string | null, content: string | null, contentTranslate: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Prompt>("update_prompt_detail", { id, title, content, contentTranslate, note, isFavorite, isSafe }),
 	/**
+	 *  提示词内容的向量规范化形态（纯本地计算，不依赖 embedding 服务）。
+	 *  前端保存编辑前用它比对新旧内容：规范化后相同 = 仅排版调整（空白 / 标点旁空白），
+	 *  保存不影响向量；不同则为实质修改，需用户确认后保存。
+	 */
+	canonicalizePromptText: (content: string) => __TAURI_INVOKE<string>("canonicalize_prompt_text", { content }),
+	/**
 	 *  新建提示词（内容必需）；image_paths 非空时上传并关联到该提示词。
 	 *  与 `import_images` 同口径：提示词入库是短锁，图片走「无锁预处理 + 短锁入库 / 关联」。
 	 */

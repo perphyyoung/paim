@@ -3,11 +3,12 @@
 //! 存储：`images.vec` / `prompts.vec` 单列 BLOB（f32 LE，写入前已 L2 归一化，点积即余弦），
 //! 不另建表、不存模型 / 内容指纹 —— 换 embedding 模型或改预处理规则后，在设置页点「全量重建」即可：
 //! - 图像「增量」= `vec IS NULL`：替换图像会产生新 id（旧图软删），无需指纹列；
-//! - 提示词「增量」同理，且保存时若 `content` 变化会把该行 `vec` 置空
-//!   （见 `prompt_service::update_detail`），因此也不需要内容哈希列。
+//! - 提示词「增量」同理，且保存时仅当 `content` 的**规范化形态**变化（[`canonical_text`]）
+//!   才把该行 `vec` 置空（见 `prompt_service::update_detail`），因此也不需要内容哈希列。
 //!
 //! 两侧共用同一套「状态 / 清空 / 写入 / 检索」实现（表名由本模块内部常量给出，不来自入参）；
-//! 差异只在「待索引清单」的取数：图像取 `relative_path`（再预处理成 JPEG），提示词取 `content` 原文。
+//! 差异只在「待索引清单」的取数：图像取 `relative_path`（再预处理成 JPEG），
+//! 提示词取 `content` 后过 [`canonical_text`] 规范化再送模型。
 //!
 //! 本模块只提供「纯函数 + 单条 SQL」，批量循环留在命令层：万级 × ~0.5s 的长任务
 //! **不能长时间持有 DB 锁**，否则主页查询会被整段卡住。
@@ -83,6 +84,52 @@ pub fn prepare_image(path: &Path) -> Result<Vec<u8>, AppError> {
     let resized = image_ops::resize_long_side(&img, LONG_SIDE);
     image_ops::encode_jpeg(&resized, JPEG_QUALITY)
         .map_err(|e| AppError::Message(format!("JPEG 编码失败：{e}")))
+}
+
+/// 是否为标点 / 符号性字符：全部 ASCII 标点（`is_ascii_punctuation`，含 `|` `~` `+` `=` 等
+/// Unicode 归到 S* 类别、但排版语义上是符号的字符）+ Unicode 标点类别 P*（含中文标点）。
+/// emoji 等其他符号（So）不算——它旁边的空白按普通词间空白折叠。
+fn is_punct_mark(c: char) -> bool {
+    use unicode_categories::UnicodeCategories as _;
+    c.is_ascii_punctuation() || c.is_punctuation()
+}
+
+/// 提示词向量输入的规范化形态：**库内仍存原文，仅向量链路与失效判定用它**。
+///
+/// 规则：
+/// - 去掉首尾空白；
+/// - 删除紧邻标点（[`is_punct_mark`]）的空白整段，如 `"a , b"` → `"a,b"`、`"（ x ）"` → `"（x）"`；
+/// - 其余位置的连续空白（含换行）折叠为单个空格，如 `"hair\n blue"` → `"hair blue"`
+///   （保留一个空格，不会把相邻单词合并成错误 token）。
+///
+/// 幂等：`canonical_text(canonical_text(x)) == canonical_text(x)`。
+/// 改动规则即改变向量口径，存量向量需在设置页全量重建。
+pub fn canonical_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c.is_whitespace() {
+            // 吞掉整段连续空白，再按左右邻居决定「折叠为一个空格」还是「整段删除」
+            while matches!(chars.peek(), Some(w) if w.is_whitespace()) {
+                chars.next();
+            }
+            let left_punct = out.chars().next_back().is_some_and(is_punct_mark);
+            // 右邻是标点 → 删除；段落已到结尾（无右邻）→ 删除（兼去尾空白）；
+            // out 为空 = 段首空白 → 删除（兼去首空白）
+            let drop = out.is_empty()
+                || left_punct
+                || match chars.peek() {
+                    None => true,
+                    Some(r) => is_punct_mark(*r),
+                };
+            if !drop {
+                out.push(' ');
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// f32 向量 → BLOB（小端）。

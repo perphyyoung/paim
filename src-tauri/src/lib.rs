@@ -44,6 +44,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::prompt::preview_merge_prompts,
             commands::prompt::merge_prompts,
             commands::prompt::update_prompt_detail,
+            commands::prompt::canonicalize_prompt_text,
             commands::prompt::create_prompt_with_images,
             commands::prompt::add_images_to_prompt,
             commands::prompt::list_trashed_prompts,

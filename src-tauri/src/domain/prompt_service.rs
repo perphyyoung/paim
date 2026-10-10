@@ -3,6 +3,7 @@
 //! 表结构与字段名与 prompt-manager 一致。
 
 use crate::domain::list_query::{self, ListQuery};
+use crate::domain::similarity_service;
 use crate::domain::tag_manager::{tags_by_owner, TagDomain};
 use crate::domain::thumbnail_service::{self, ThumbnailEnsureFixed};
 use crate::infra::error::AppError;
@@ -435,10 +436,25 @@ pub fn update_detail(
         let v = v.trim().to_string();
         sets.push("content = ?".into());
         params.push(Box::new(v.clone()));
-        // 内容变了 → 该行向量失效（下次「增量索引」补算）。SQLite 的 SET 表达式读的是更新前的旧值，
-        // 故这里用「旧 content IS NOT 新值」判断：仅改标题 / 备注时保留原向量，不做无谓重算
-        sets.push("vec = CASE WHEN content IS NOT ? THEN NULL ELSE vec END".into());
-        params.push(Box::new(v));
+        // 内容的**规范化形态**变了才让向量失效：仅排版调整（首尾空白、标点旁空白、连续空白折叠，
+        // 规则见 similarity_service::canonical_text）不清向量，省掉无谓重算
+        let old_content: Option<String> = conn
+            .query_row(
+                "SELECT content FROM prompts WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        let invalidated = match old_content {
+            Some(old) => {
+                similarity_service::canonical_text(&old) != similarity_service::canonical_text(&v)
+            }
+            None => false,
+        };
+        if invalidated {
+            sets.push("vec = NULL".into());
+        }
     }
     if let Some(v) = content_translate {
         sets.push("content_translate = ?".into());

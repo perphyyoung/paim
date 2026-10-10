@@ -141,6 +141,8 @@ async fn resolve_target(
             .await?
             .ok_or_else(|| AppError::Message(format!("提示词 {source_id} 不存在")))?;
             let url = base_url.to_string();
+            // 与批量索引同口径：向量输入先规范化，排版差异（换行 / 标点旁空白）不改变向量
+            let content = similarity_service::canonical_text(&content);
             let vec = crate::infra::task::spawn_blocking("检索", move || {
                 embedding_client::make_embedder(&url).embed_text(&content)
             })
@@ -582,8 +584,9 @@ pub async fn index_prompt_embeddings(
                         break;
                     }
                     let item = &pending[i];
-                    // 只送内容原文；超长（服务端上下文不足）等原因导致的失败计入 failed 并记日志
-                    let outcome = embedder.embed_text(&item.content);
+                    // 规范化后送模型（与检索现场补算同口径）；超长（服务端上下文不足）等原因的失败计入 failed
+                    let text = similarity_service::canonical_text(&item.content);
+                    let outcome = embedder.embed_text(&text);
                     match outcome {
                         Ok(vec) => match lock() {
                             Ok(conn) => {
