@@ -54,6 +54,58 @@ fn connection_swap_releases_db_for_dir_rename() {
     std::fs::rename(&backup, &dir).expect("改回原名");
 }
 
+/// 有界策略（默认）：连接被长期占用时**到点报错退出**，而不是把命令永久挂住；
+/// 错误文案要点名持锁者，便于线上直接定位（卡死 → 可读的失败 + 证据）。
+#[test]
+fn bounded_lock_times_out_and_names_holder() {
+    let dir = test_temp_dir("bounded-lock-timeout");
+    let bk = init(dir.join("paim.db")).expect("init db");
+    let handle = Arc::clone(&bk.0);
+
+    let holder = std::thread::spawn(move || {
+        let _guard = handle.lock_unbounded().expect("白名单取锁");
+        std::thread::sleep(Duration::from_millis(400));
+    });
+    std::thread::sleep(Duration::from_millis(50)); // 让占用者先拿到锁
+
+    // 用极短超时（而非真等 10s）验证：有界到点即返回 Err
+    let msg = match bk.0.lock_wait(
+        Location::caller(),
+        WaitPolicy::Bounded,
+        Duration::from_millis(50),
+    ) {
+        Ok(_) => panic!("有界等待应在超时后报错"),
+        Err(e) => e.to_string(),
+    };
+    assert!(msg.contains("等待连接锁超过"), "实际：{msg}");
+    assert!(msg.contains("当前持有"), "应点名持锁者，实际：{msg}");
+
+    holder.join().unwrap();
+}
+
+/// 无界策略（白名单，备份导入/导出）：占用者短暂持锁后释放，等待方最终取到锁，不报错。
+#[test]
+fn unbounded_lock_waits_until_released() {
+    let dir = test_temp_dir("unbounded-lock-wait");
+    let bk = init(dir.join("paim.db")).expect("init db");
+    let handle = Arc::clone(&bk.0);
+
+    let holder = std::thread::spawn(move || {
+        let _guard = handle.lock_unbounded().expect("白名单取锁");
+        std::thread::sleep(Duration::from_millis(200));
+    });
+    std::thread::sleep(Duration::from_millis(50));
+
+    let acquired = bk.0.lock_wait(
+        Location::caller(),
+        WaitPolicy::Unbounded,
+        Duration::from_millis(50),
+    );
+    assert!(acquired.is_ok(), "无界等待不应超时：{:?}", acquired.err());
+
+    holder.join().unwrap();
+}
+
 #[test]
 fn missing_base_with_datasets_is_pending() {
     let root = temp_dir("pending");

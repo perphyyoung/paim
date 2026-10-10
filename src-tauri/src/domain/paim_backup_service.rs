@@ -124,7 +124,8 @@ where
     });
     log_info!("备份导出: 开始 to={export_path}");
 
-    let guard = bk.0.lock().map_err(|e| e.to_string())?;
+    // 白名单：导出全程独占连接（整段打包写盘），等待无上限，不被超时打断
+    let guard = bk.0.lock_unbounded().map_err(|e| e.to_string())?;
     let images_dir = db::images_dir(app);
     let result = export_core(&guard, &images_dir, Path::new(export_path), &emit);
     match &result {
@@ -319,8 +320,8 @@ where
     let had_data_dir = data_dir.exists();
 
     // 整目录备份（与 pm 一致）：换成内存连接以关闭真连接、释放 paim.db 文件锁。
-    // 导入全程持有该锁，占位连接不会被其他命令碰到。
-    let mut guard = bk.0.lock().map_err(|e| e.to_string())?;
+    // 导入全程持有该锁，占位连接不会被其他命令碰到；故走白名单取锁（等待无上限，不被超时打断）。
+    let mut guard = bk.0.lock_unbounded().map_err(|e| e.to_string())?;
     if had_data_dir {
         *guard = Connection::open_in_memory().map_err(|e| format!("切换临时连接失败: {e}"))?;
         log_info!("备份导入: 已切换内存连接，开始让位改名 from={data_dir:?} to={backup_dir:?}");

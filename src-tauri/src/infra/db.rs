@@ -22,6 +22,20 @@ const LOCK_LOGGING: bool = false;
 #[cfg(not(test))]
 const LOCK_LOGGING: bool = true;
 
+/// 连接锁等待上限（有界策略）：正常命令 ms 级完成，等超过该值即视为「上游被长期占用」，
+/// 直接报错而不是把命令永久挂住（卡死 → 报错，且文案点名持锁者，见 [`DbConn::lock_wait`]）。
+/// 只有备份导入 / 导出这类设计上整段独占的任务走 [`DbConn::lock_unbounded`]，不受此限。
+const LOCK_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// 取锁等待策略：**区分来源**——默认有界，白名单无界。
+#[derive(Clone, Copy)]
+enum WaitPolicy {
+    /// 默认：等待超过 [`LOCK_TIMEOUT`] 即报错退出（所有 `db::blocking` 走这条）。
+    Bounded,
+    /// 白名单（备份导入 / 导出）：整段任务独占，等待无上限。
+    Unbounded,
+}
+
 /// 当前持锁者的调用点（诊断用）：取锁时写入、guard drop 时清除；
 /// 等待超阈值时打进日志，一眼看出「谁在等、谁占着锁、占了多久」。
 struct Holder {
@@ -54,46 +68,96 @@ impl DbConn {
         Self(Mutex::new(conn))
     }
 
-    /// 取得连接锁。等待或持锁超过 [`LOCK_WARN`] 记 WARN，日志带各自的调用点
+    /// 取得连接锁（**默认有界**：等待超过 [`LOCK_TIMEOUT`] 直接报错，不把命令永久挂住）。
+    /// 等待或持锁超过 [`LOCK_WARN`] 记 WARN，日志带各自的调用点
     /// （`文件:行` 就是出问题的命令，省掉为每个调用点手写名字）。
+    ///
+    /// 新代码一律用它；只有备份导入 / 导出这类**设计上整段独占**的长任务才用
+    /// [`DbConn::lock_unbounded`]——从而「只允许合理的操作长时间占用 db 锁」。
     #[track_caller]
     pub fn lock(&self) -> Result<DbGuard<'_>, AppError> {
-        self.lock_at(Location::caller())
+        self.lock_wait(Location::caller(), WaitPolicy::Bounded, LOCK_TIMEOUT)
     }
 
-    /// 同 [`DbConn::lock`]，但调用点由调用方给出（供 `db_blocking` 标注命令自身的调用点）。
+    /// 白名单取锁：备份导入 / 导出等整段独占任务，等待**无上限**（不会被超时打断）。
+    #[track_caller]
+    pub fn lock_unbounded(&self) -> Result<DbGuard<'_>, AppError> {
+        self.lock_wait(Location::caller(), WaitPolicy::Unbounded, LOCK_TIMEOUT)
+    }
+
+    /// 取锁主实现。先 `try_lock` 并在 [`LOCK_WARN`] 内短睡重试：μs 级微竞争根本不值得写日志
+    /// （日志是文件 IO，同步命令里等于再占一次主线程）；等够阈值先留一次「谁在等 + 谁占着锁」，
+    /// 之后按 `policy` 分叉——有界到 `timeout` 报错退出，无界转入阻塞等待。
     ///
-    /// 先 `try_lock` 并在 [`LOCK_WARN`] 内短睡重试：μs 级微竞争根本不值得写日志
-    /// （日志是文件 IO，同步命令里等于再占一次主线程）；只有确认等够阈值才留痕并转入阻塞等待。
-    pub fn lock_at(&self, at: &'static Location<'static>) -> Result<DbGuard<'_>, AppError> {
+    /// `timeout` 作为入参而非直接读常量，便于单测用极短超时验证（不必真等 10s）。
+    fn lock_wait(
+        &self,
+        at: &'static Location<'static>,
+        policy: WaitPolicy,
+        timeout: Duration,
+    ) -> Result<DbGuard<'_>, AppError> {
         let start = Instant::now();
+        let mut warned = false;
         let inner = loop {
             match self.0.try_lock() {
                 Ok(guard) => break guard,
                 // 与改造前一致：中毒直接当错误返回（不做 into_inner 恢复）
                 Err(TryLockError::Poisoned(e)) => return Err(AppError::Message(e.to_string())),
                 Err(TryLockError::WouldBlock) => {
-                    if start.elapsed() < LOCK_WARN {
+                    let waited = start.elapsed();
+                    // 有界：到点即报错退出——把「卡死」变成可读的失败，并在文案里点名持锁者
+                    if matches!(policy, WaitPolicy::Bounded) && waited >= timeout {
+                        let holder = holder_desc();
+                        if LOCK_LOGGING {
+                            crate::log_warn!(
+                                "db 锁等待超时 {}ms {} —— {holder}",
+                                waited.as_millis(),
+                                at_desc(at)
+                            );
+                        }
+                        return Err(AppError::Message(format!(
+                            "数据库繁忙：等待连接锁超过 {}ms（当前持有 {holder}），请稍后重试",
+                            timeout.as_millis()
+                        )));
+                    }
+                    if waited < LOCK_WARN {
                         std::thread::sleep(Duration::from_millis(2));
                         continue;
                     }
                     // 等够阈值：卡住期间（而不是事后）就留下「谁在等 + 谁占着锁 + 占了多久」
-                    if LOCK_LOGGING {
-                        let holder = holder_desc();
-                        crate::log_warn!("db 锁等待中 {} —— {holder}", at_desc(at));
+                    if !warned && LOCK_LOGGING {
+                        warned = true;
+                        crate::log_warn!("db 锁等待中 {} —— {}", at_desc(at), holder_desc());
                     }
-                    let guard = self
-                        .0
-                        .lock()
-                        .map_err(|e| AppError::Message(e.to_string()))?;
-                    if LOCK_LOGGING {
-                        crate::log_warn!(
-                            "db 锁等待 {}ms 后取得 {}",
-                            start.elapsed().as_millis(),
-                            at_desc(at)
-                        );
+                    match policy {
+                        WaitPolicy::Unbounded => {
+                            let guard = self
+                                .0
+                                .lock()
+                                .map_err(|e| AppError::Message(e.to_string()))?;
+                            if LOCK_LOGGING {
+                                crate::log_warn!(
+                                    "db 锁等待 {}ms 后取得 {}",
+                                    start.elapsed().as_millis(),
+                                    at_desc(at)
+                                );
+                            }
+                            break guard;
+                        }
+                        WaitPolicy::Bounded => {
+                            // 退避轮询：既不空转烧 CPU，也保证锁一释放就尽快拿到
+                            let ms = waited.as_millis();
+                            let backoff: u64 = if ms < 100 {
+                                5
+                            } else if ms < 1000 {
+                                20
+                            } else {
+                                50
+                            };
+                            std::thread::sleep(Duration::from_millis(backoff));
+                            continue;
+                        }
                     }
-                    break guard;
                 }
             }
         };
@@ -175,7 +239,8 @@ fn holder_desc() -> String {
 ///   `async_runtime::spawn` 的 async 任务里，阻塞操作会占住 **async 工作线程**（默认按核数），
 ///   几条慢命令就能把整个异步运行时拖住；真正该用的是独立阻塞池 `spawn_blocking`。
 ///
-/// 取锁带等待/持锁计量（见 [`DbConn::lock_at`]），调用点用 `#[track_caller]` 自动取到，
+/// 取锁走**有界**策略（见 [`DbConn::lock_wait`]，等待超 [`LOCK_TIMEOUT`] 报错而非永久挂住），
+/// 带等待/持锁计量，调用点用 `#[track_caller]` 自动取到，
 /// 所以形态是「非 async 函数返回 future」而不是 `async fn`
 /// （`#[track_caller]` 在 async fn 上是 no-op，rust-lang/rust#110011）。
 #[track_caller]
@@ -191,7 +256,7 @@ where
     let db = Arc::clone(&db.0);
     async move {
         tauri::async_runtime::spawn_blocking(move || {
-            let conn = db.lock_at(at)?;
+            let conn = db.lock_wait(at, WaitPolicy::Bounded, LOCK_TIMEOUT)?;
             f(&conn)
         })
         .await
@@ -621,7 +686,7 @@ pub async fn open_image_location(
 ) -> Result<(), AppError> {
     // 锁内只取路径，**绝不**在持锁闭包里做 Shell 调用：
     // `SHOpenFolderAndSelectItems` 是长阻塞的 STA COM 调用，一旦卡住会把单连接的全局锁一直占住，
-    // 之后所有 DB 命令（首当其冲是详情页保存）全在 `lock_at` 排队等死（见 docs/lessons.md 第 12 / 28 节）。
+    // 之后所有 DB 命令（首当其冲是详情页保存）全在取锁处排队等死（见 docs/lessons.md 第 12 / 28 节）。
     let query_id = id.clone();
     let (rel, file_name) = blocking(&db, move |conn| {
         let row: Option<(String, String)> = conn

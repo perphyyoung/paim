@@ -127,8 +127,8 @@ where
 
     // 整目录备份（与 pm 一致）：换成内存连接以关闭真连接、释放 paim.db 文件锁
     //（关闭时 WAL 自动合并，备份目录里的库文件即完整）。导入全程持有该锁，
-    // 占位连接不会被其他命令碰到。
-    let mut guard = bk.0.lock().map_err(|e| e.to_string())?;
+    // 占位连接不会被其他命令碰到；故走白名单取锁（等待无上限，不被超时打断）。
+    let mut guard = bk.0.lock_unbounded().map_err(|e| e.to_string())?;
     if had_data_dir {
         *guard = Connection::open_in_memory().map_err(|e| format!("切换临时连接失败: {e}"))?;
         log_info!("导入: 已切换内存连接，开始让位改名 from={data_dir:?} to={backup_dir:?}");
