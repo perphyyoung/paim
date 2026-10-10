@@ -16,6 +16,7 @@ import { useNestedDetails } from "@/composables/useNestedDetails";
 import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
+import VecStatusIcon from "@/components/VecStatusIcon.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
@@ -321,8 +322,9 @@ async function saveFields() {
     return;
   }
   // 向量只认内容的规范化形态（空白规则见后端 canonical_text）：
-  // 规范化后相同 = 仅排版调整，不影响向量、静默保存；不同 = 实质修改，需确认（取消则留在编辑态）
-  if (nextContent !== null) {
+  // 规范化后相同 = 仅排版调整，不影响向量、静默保存；
+  // 不同 = 实质修改——仅当当前已索引才需确认（未索引本就无向量可失效，直接保存；取消则留在编辑态）
+  if (nextContent !== null && p.has_vec) {
     const [oldCanon, newCanon] = await Promise.all([
       commands.canonicalizePromptText(p.content ?? ""),
       commands.canonicalizePromptText(nextContent),
@@ -374,6 +376,8 @@ async function persistFields(
       p.content = upd.content;
       p.content_translate = upd.content_translate;
       p.note = upd.note;
+      // 实质修改后后端已把 vec 置空：同步索引标志，后续编辑不再弹失效确认
+      p.has_vec = upd.has_vec;
     }
     edit.value = false;
     // 内容会显示在图像主页卡片的关联提示词文案里
@@ -763,7 +767,7 @@ async function onPickerImported() {
 
         <!-- 右栏：提示词 -->
         <div class="relative flex min-w-0 flex-col overflow-hidden">
-          <!-- 顶部操作栏：查找 / 收藏 / 安全 / 编辑 / 关闭，五组两端对齐、间隔均分 -->
+          <!-- 顶部操作栏：查找 / 收藏 / 安全 / 索引状态 / 编辑 / 关闭，六组两端对齐、间隔均分 -->
           <div class="flex items-center justify-between border-b px-4 py-3 border-gray-700">
             <div class="flex items-center">
               <button
@@ -825,6 +829,10 @@ async function onPickerImported() {
                   :class="current?.is_safe ? 'translate-x-5' : ''"
                 ></span>
               </label>
+            </div>
+            <div class="flex items-center">
+              <!-- 相似度向量索引状态（纯展示，不可点） -->
+              <VecStatusIcon :indexed="!!current?.has_vec" />
             </div>
             <div class="flex items-center">
               <button

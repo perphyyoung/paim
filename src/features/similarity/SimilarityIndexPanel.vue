@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { useConfirm } from "@/components/useConfirm";
 import { useToast } from "@/components/useToast";
 import type { IndexPanelApi, IndexProgressLike, IndexStatusLike } from "./indexPanel";
+import { markPageStale } from "@/utils/crossPageCache";
 
 const props = defineProps<{ api: IndexPanelApi }>();
 
@@ -164,6 +165,8 @@ async function runIndex(mode: "Incremental" | "Full") {
   syncStatusTimer();
   try {
     const r = await props.api.index(mode);
+    // 向量状态变了（全量重建先清空；增量中止也可能已写入部分）→ 主页卡片投影的 has_vec 过期
+    if (mode === "Full" || r.indexed > 0) markPageStale(props.api.pageKey);
     // 中止（用户取消 / 连续失败）与正常完成分开报：中止是「服务不可用」这类问题的唯一可见信号
     if (r.aborted) {
       showToast(
@@ -201,6 +204,8 @@ async function clearIndex() {
   try {
     const n = await props.api.clear();
     progress.value = null;
+    // 清空后所有卡片的 has_vec 翻为 false：主页下次激活时重载
+    markPageStale(props.api.pageKey);
     showToast(`已清空 ${n} 条向量`, "success");
   } catch (e) {
     showToast(String(e), "error");

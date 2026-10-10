@@ -425,6 +425,8 @@ export type Image = {
 	created_at: string,
 	updated_at: string,
 	note: string,
+	/**  相似度向量是否已建立（`vec IS NOT NULL`）：详情页展示索引状态 */
+	has_vec: boolean,
 };
 
 /**
@@ -446,6 +448,8 @@ export type ImageCard = {
 	created_at: string,
 	updated_at: string,
 	deleted_at: string | null,
+	/**  相似度向量是否已建立（`vec IS NOT NULL`）：卡片/详情数据自带索引状态，无额外查询 */
+	has_vec: boolean,
 };
 
 /**  查看器列表项。`src` 允许空串：由查看器窗口按 id 惰性解析（`get_image_src` → `convertFileSrc`）。 */
@@ -610,6 +614,8 @@ export type Prompt = {
 	is_favorite: boolean,
 	is_safe: boolean,
 	note: string,
+	/**  相似度向量是否已建立（`vec IS NOT NULL`）：详情页展示索引状态，保存时据此决定是否弹失效确认 */
+	has_vec: boolean,
 };
 
 /**
@@ -628,6 +634,8 @@ export type PromptCard = {
 	is_favorite: boolean,
 	is_safe: boolean,
 	note: string,
+	/**  相似度向量是否已建立（`vec IS NOT NULL`）：卡片/详情数据自带索引状态，无额外查询 */
+	has_vec: boolean,
 };
 
 /**  提示词相似检索结果（同上，卡片数据按 `prompt_id` 另取）。 */

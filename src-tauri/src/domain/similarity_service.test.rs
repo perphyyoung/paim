@@ -593,6 +593,71 @@ fn update_detail_keeps_vec_for_whitespace_only_edits() {
 }
 
 #[test]
+fn projections_report_has_vec() {
+    let (_dir, conn) = setup("sim-has-vec-projection");
+    use crate::domain::image_service;
+
+    // 提示词：新建无向量 → 详情/卡片投影都为 false；写入后 true；实质修改后 false
+    let id = prompt_service::create(&conn, "has vec test", None)
+        .unwrap()
+        .id;
+    assert!(
+        !prompt_service::get_by_id(&conn, &id)
+            .unwrap()
+            .unwrap()
+            .has_vec
+    );
+    assert!(!prompt_service::cards_by_ids(&conn, &[id.clone()]).unwrap()[0].has_vec);
+
+    store_prompt(&conn, &id, &[1.0, 0.0]).unwrap();
+    assert!(
+        prompt_service::get_by_id(&conn, &id)
+            .unwrap()
+            .unwrap()
+            .has_vec
+    );
+    assert!(prompt_service::cards_by_ids(&conn, &[id.clone()]).unwrap()[0].has_vec);
+
+    prompt_service::update_detail(
+        &conn,
+        &id,
+        None,
+        Some("has vec test changed".into()),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(
+        !prompt_service::get_by_id(&conn, &id)
+            .unwrap()
+            .unwrap()
+            .has_vec
+    );
+    assert!(!prompt_service::cards_by_ids(&conn, &[id.clone()]).unwrap()[0].has_vec);
+
+    // 图像：种子无向量 → 详情/卡片投影 false；写入后 true
+    seed_image(&conn, "img-has-vec", "2026-01-01T00:00:00Z", None, 1);
+    assert!(
+        !image_service::get_by_id(&conn, "img-has-vec")
+            .unwrap()
+            .unwrap()
+            .has_vec
+    );
+    assert!(!image_service::cards_by_ids(&conn, &["img-has-vec".to_string()]).unwrap()[0].has_vec);
+
+    store(&conn, "img-has-vec", &[1.0, 0.0]).unwrap();
+    assert!(
+        image_service::get_by_id(&conn, "img-has-vec")
+            .unwrap()
+            .unwrap()
+            .has_vec
+    );
+    assert!(image_service::cards_by_ids(&conn, &["img-has-vec".to_string()]).unwrap()[0].has_vec);
+}
+
+#[test]
 fn canonical_text_rules() {
     // 空 / 纯空白 → 空串
     assert_eq!(canonical_text(""), "");

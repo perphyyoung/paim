@@ -6,6 +6,7 @@
  * `SimilarityIndexProgress` / `PromptIndexProgress`、`SimilarityIndexSummary` 可直接传入）。
  */
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import type { PageKey } from "@/utils/crossPageCache";
 
 /** 进度载荷：图像 / 提示词两个事件结构同形（提示词侧的 `file_name` 是标题）。 */
 export interface IndexProgressLike {
@@ -52,6 +53,8 @@ export interface IndexPanelApi {
   rebuildHint: string;
   /** 清空向量的影响说明 */
   clearHint: string;
+  /** 变更向量后需要标脏的主页（卡片投影带 has_vec，索引/清空后下次激活时重载） */
+  pageKey: PageKey;
   status: () => Promise<IndexStatusLike>;
   progress: () => Promise<IndexProgressLike>;
   listen: (cb: (p: IndexProgressLike) => void) => Promise<UnlistenFn>;

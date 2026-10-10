@@ -26,6 +26,8 @@ pub struct Prompt {
     pub is_favorite: bool,
     pub is_safe: bool,
     pub note: String,
+    /// 相似度向量是否已建立（`vec IS NOT NULL`）：详情页展示索引状态，保存时据此决定是否弹失效确认
+    pub has_vec: bool,
 }
 
 fn validate_content(content: &str) -> Result<String> {
@@ -60,7 +62,7 @@ pub fn create(conn: &Connection, content: &str, title: Option<String>) -> Result
 
 pub fn get_by_id(conn: &Connection, id: &str) -> Result<Option<Prompt>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note
+        "SELECT id, title, content, content_translate, created_at, updated_at, is_deleted, deleted_at, is_favorite, is_safe, note, vec IS NOT NULL
          FROM prompts WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(rusqlite::params![id], row_to_prompt)?;
@@ -94,6 +96,8 @@ pub struct PromptCard {
     pub is_favorite: bool,
     pub is_safe: bool,
     pub note: String,
+    /// 相似度向量是否已建立（`vec IS NOT NULL`）：卡片/详情数据自带索引状态，无额外查询
+    pub has_vec: bool,
 }
 
 /// 分页提示词列表：items 为本页，total 为符合条件总数。
@@ -104,7 +108,8 @@ pub struct PaginatedPrompts {
 }
 
 /// 卡片投影列：与 `PromptCard` 字段一一对应，顺序即 `row_to_prompt_card` 的取列顺序。
-const PCARD_COLS: &str = "id, title, content, content_translate, created_at, updated_at, deleted_at, is_favorite, is_safe, note";
+const PCARD_COLS: &str =
+    "id, title, content, content_translate, created_at, updated_at, deleted_at, is_favorite, is_safe, note, vec IS NOT NULL";
 
 fn row_to_prompt_card(row: &rusqlite::Row) -> Result<PromptCard> {
     Ok(PromptCard {
@@ -118,6 +123,7 @@ fn row_to_prompt_card(row: &rusqlite::Row) -> Result<PromptCard> {
         is_favorite: row.get(7)?,
         is_safe: row.get(8)?,
         note: row.get(9)?,
+        has_vec: row.get(10)?,
     })
 }
 
@@ -832,6 +838,7 @@ fn row_to_prompt(row: &rusqlite::Row) -> Result<Prompt> {
         is_favorite: row.get::<_, i64>(8)? != 0,
         is_safe: row.get::<_, i64>(9)? != 0,
         note: row.get(10)?,
+        has_vec: row.get(11)?,
     })
 }
 

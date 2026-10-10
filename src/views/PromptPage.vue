@@ -16,6 +16,7 @@ import { log } from "@/utils/logger";
 import { formatLocalTime } from "@/utils/date";
 import { useGridColumns } from "@/utils/gridColumns";
 import { isPlaceholder, usePagedBlocks, type Placeholder } from "@/composables/usePagedBlocks";
+import { usePageStaleReload } from "@/composables/usePageStaleReload";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
@@ -43,7 +44,7 @@ import {
   type ThumbnailEnsureFixed,
 } from "@/features/prompt/api/thumbnails";
 import { applyThumbFix } from "@/utils/thumbFix";
-import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
+import { markPageStale } from "@/utils/crossPageCache";
 import {
   ensureTagCandidates,
   invalidateTagCandidates,
@@ -685,8 +686,12 @@ async function purgePrompt(p: PromptCard) {
   }
 }
 
-// KeepAlive:数据仅在首次进入加载;激活时消费脏标记按需重载,并恢复滚动位置
+// KeepAlive:数据仅在首次进入加载;激活(或设置关闭)时消费脏标记按需重载,并恢复滚动位置
 // (对齐 pm 切页不重载的行为)
+usePageStaleReload("prompts", () => {
+  loadPrompts();
+  loadTagFilter();
+});
 onMounted(() => {
   log.info("[PromptPage] mounted");
   loadPrompts();
@@ -694,10 +699,6 @@ onMounted(() => {
 });
 onActivated(() => {
   cardTagAdd.activate();
-  if (consumePageStale("prompts")) {
-    loadPrompts();
-    loadTagFilter();
-  }
   restoreSaved();
 });
 // 切走主页时退出批量模式，避免误操作；并注销卡片拖拽回调

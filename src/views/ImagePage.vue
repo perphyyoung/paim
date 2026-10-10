@@ -17,6 +17,7 @@ import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime } from "@/utils/date";
 import { useGridColumns } from "@/utils/gridColumns";
 import { isPlaceholder, usePagedBlocks, type Placeholder } from "@/composables/usePagedBlocks";
+import { usePageStaleReload } from "@/composables/usePageStaleReload";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
 import { SPECIAL_TAG_NAMES } from "@/features/tag/specialTags";
 import { useBatchSelection } from "@/composables/useBatchSelection";
@@ -42,7 +43,7 @@ import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import type { ThumbnailEnsureFixed } from "@/features/image/api/thumbnails";
 import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
 import { applyThumbFix } from "@/utils/thumbFix";
-import { consumePageStale, markPageStale } from "@/utils/crossPageCache";
+import { markPageStale } from "@/utils/crossPageCache";
 import {
   ensureTagCandidates,
   invalidateTagCandidates,
@@ -681,7 +682,11 @@ async function onBatchAddTag(tag: string) {
   if (await batchAddTag(tag)) batchBarRef.value?.closeTagDialog();
 }
 
-// KeepAlive:数据仅在首次进入加载;激活时恢复滚动位置并接管外点关闭,失活时释放监听
+// KeepAlive:数据仅在首次进入加载;激活(或设置关闭)时消费脏标记按需重载,并恢复滚动位置
+usePageStaleReload("images", () => {
+  loadImages();
+  loadTagFilter();
+});
 onMounted(() => {
   log.info("[ImagePage] mounted");
   loadImages();
@@ -690,10 +695,6 @@ onMounted(() => {
 onActivated(() => {
   cardTagAdd.activate();
   window.addEventListener("click", closeCtxMenu);
-  if (consumePageStale("images")) {
-    loadImages();
-    loadTagFilter();
-  }
   restoreSaved();
 });
 onDeactivated(() => {

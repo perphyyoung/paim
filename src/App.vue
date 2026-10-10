@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute } from "vue-router";
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { events } from "@/bindings";
 import { initFontFamily, initFontScale } from "@/utils/font";
+import { SETTINGS_CLOSED_EVENT } from "@/utils/crossPageCache";
 import SettingsView from "@/views/SettingsView.vue";
 import StatsModal from "@/components/StatsModal.vue";
 import ToastHost from "@/components/ToastHost.vue";
@@ -52,6 +53,10 @@ const isActive = (path: string) => computed(() => route.path === path);
 
 // 设置悬浮面板开关
 const settingsOpen = ref(false);
+// 关闭设置时广播：当前活动主页据此即时消费脏标记（向量索引/清空、缩略图重建等在设置内完成）
+watch(settingsOpen, (open) => {
+  if (!open) window.dispatchEvent(new CustomEvent(SETTINGS_CLOSED_EVENT));
+});
 
 // 统计弹窗开关
 const statsOpen = ref(false);

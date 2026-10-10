@@ -33,6 +33,8 @@ pub struct Image {
     pub created_at: String,
     pub updated_at: String,
     pub note: String,
+    /// 相似度向量是否已建立（`vec IS NOT NULL`）：详情页展示索引状态
+    pub has_vec: bool,
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -71,6 +73,8 @@ pub struct ImageCard {
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
+    /// 相似度向量是否已建立（`vec IS NOT NULL`）：卡片/详情数据自带索引状态，无额外查询
+    pub has_vec: bool,
 }
 
 /// 分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。
@@ -377,7 +381,7 @@ pub fn count(conn: &Connection, search: Option<&str>, tag: Option<&str>) -> rusq
 }
 
 /// 卡片投影列：与 `ImageCard` 字段一一对应，顺序即 `row_to_card` 的取列顺序。
-const CARD_COLS: &str = "id, file_name, thumbnail_path, width, height, file_size, is_favorite, is_safe, note, created_at, updated_at, deleted_at";
+const CARD_COLS: &str = "id, file_name, thumbnail_path, width, height, file_size, is_favorite, is_safe, note, created_at, updated_at, deleted_at, vec IS NOT NULL";
 
 fn row_to_card(r: &rusqlite::Row) -> rusqlite::Result<ImageCard> {
     Ok(ImageCard {
@@ -393,6 +397,7 @@ fn row_to_card(r: &rusqlite::Row) -> rusqlite::Result<ImageCard> {
         created_at: r.get(9)?,
         updated_at: r.get(10)?,
         deleted_at: r.get(11)?,
+        has_vec: r.get(12)?,
     })
 }
 
@@ -764,7 +769,7 @@ pub(crate) fn purge_with(conn: &Connection, data_dir: &Path, id: &str) -> rusqli
 
 pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
+        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note, vec IS NOT NULL
          FROM images WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(rusqlite::params![id], row_to_image)?;
@@ -773,7 +778,7 @@ pub fn get_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>>
 
 fn find_by_md5(conn: &Connection, md5: &str) -> rusqlite::Result<Option<Image>> {
     let mut stmt = conn.prepare(
-        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note
+        "SELECT id, file_name, stored_name, relative_path, thumbnail_path, md5, width, height, file_size, gen_params, is_deleted, deleted_at, is_favorite, is_safe, created_at, updated_at, note, vec IS NOT NULL
          FROM images WHERE md5 = ?1",
     )?;
     let mut rows = stmt.query_map(rusqlite::params![md5], row_to_image)?;
@@ -916,6 +921,7 @@ fn row_to_image(row: &rusqlite::Row) -> rusqlite::Result<Image> {
         created_at: row.get(14)?,
         updated_at: row.get(15)?,
         note: row.get(16)?,
+        has_vec: row.get(17)?,
     })
 }
 

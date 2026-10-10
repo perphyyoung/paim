@@ -16,6 +16,7 @@ import { useNestedDetails } from "@/composables/useNestedDetails";
 import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
+import VecStatusIcon from "@/components/VecStatusIcon.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { formatLocalTime } from "@/utils/date";
@@ -776,7 +777,7 @@ const fmtSize = (bytes: number) => {
           class="relative flex min-w-0 flex-1 flex-col gap-4 overflow-auto border-l p-4 border-gray-700"
         >
           <div class="flex items-center justify-between">
-            <!-- 顶部操作栏：查找 / 收藏 / 安全 / 编辑 / 关闭，五组两端对齐、间隔均分 -->
+            <!-- 顶部操作栏：查找 / 收藏 / 安全 / 索引状态 / 编辑 / 关闭，六组两端对齐、间隔均分 -->
             <div class="flex items-center">
               <button
                 type="button"
@@ -837,6 +838,10 @@ const fmtSize = (bytes: number) => {
                   :class="current?.is_safe ? 'translate-x-5' : ''"
                 ></span>
               </label>
+            </div>
+            <div class="flex items-center">
+              <!-- 相似度向量索引状态（纯展示，不可点） -->
+              <VecStatusIcon :indexed="!!current?.has_vec" />
             </div>
             <div class="flex items-center">
               <button
