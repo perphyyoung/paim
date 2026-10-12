@@ -6,7 +6,9 @@
  * - 提示词详情**非编辑态**的提示词内容右键 → 同一结果页；
  * - 两栏的「阈值 / 重查」互相独立：降左栏只影响左栏，右栏结果保持（反之亦然）；
  * - 首行源文案：图像有关联提示词时显示提示词内容，提示词源显示提示词内容；
- * - 点结果：同类 / 跨模态结果都落嵌套槽，第 0 层原始详情不被替换（逐层关闭可回到出发点）。
+ * - 点结果：同类 / 跨模态结果都落嵌套槽，第 0 层原始详情不被替换（逐层关闭可回到出发点）；
+ * - 结果页是**页面级单例**：点结果在本页之上叠开详情、本页保留（跳转不再自动收起），
+ *   全局至多一个（从别的详情再搜即就地换源），只能点 ✕ / 遮罩 / Esc 显式关闭。
  *
  * 向量来自假 embedding（fixture 注入 `PAIM_EMBEDDING_MOCK=1`）：同输入同向量、方向随机 ——
  * 因此这里**只验证通路与交互，不验证语义相关性**（相关性由真实服务的 `scripts/probe-embed.mjs` 负责）。
@@ -19,6 +21,7 @@ import { expect } from "@playwright/test";
 import {
   clearSimilarityThresholds,
   closeDetail,
+  closeSimilarResult,
   gotoPromptsPage,
   indexBothSimilarityKinds,
   lowerThresholdToZeroAndRequery,
@@ -27,6 +30,7 @@ import {
   openSimilarSearchFromImageDetail,
   openSimilarSearchFromPromptDetail,
   resetBothPanesAndRequery,
+  similarResultModal,
   similarResultPane,
   test,
   uploadImageWithPrompt,
@@ -46,7 +50,7 @@ test("图像详情右键搜索：源文案取关联提示词 + 两栏独立重�
   page,
   app,
 }) => {
-  // 步骤最多（两栏各 10 次阈值步进 + 两个详情弹窗），放宽到 20s 避免逼近默认 10s 预算
+  // 步骤最多（两栏各 10 次阈值步进 + 两个详情弹窗），放宽到 15s 避免逼近默认 10s 预算
   test.setTimeout(15_000);
   const { source, other } = makeContentPair("A");
   // 两张图各带一条提示词：左栏（相似图像）需要「源自身以外」的图才有结果，右栏（相似提示词）两条都可命中
@@ -82,14 +86,21 @@ test("图像详情右键搜索：源文案取关联提示词 + 两栏独立重�
   await expect(imagePane.getByText("e2e-upload.png").first()).toBeVisible();
   e2eLog.info("[step] 再降右栏：右栏出结果，左栏结果保持");
 
-  // 点跨模态结果（提示词）→ 叠加打开该提示词详情
+  // 点跨模态结果（提示词）→ 在结果页**之上**叠加打开该提示词详情，结果页保留在下面
   await promptPane.getByText(other, { exact: true }).click();
   const promptDetail = page.getByRole("dialog", { name: "提示词详情" });
   await expect(promptDetail).toBeVisible({ timeout: 5_000 });
   await expect(promptDetail.getByText(other, { exact: true }).first()).toBeVisible();
-  e2eLog.info("[step] 跨模态结果点击后打开提示词详情");
+  await expect(modal).toBeVisible(); // 跳转不再自动收起
+  await expect(similarResultModal(page)).toHaveCount(1); // 全局只保留最新一个
+  e2eLog.info("[step] 跨模态结果点在结果页之上开详情，本页保留且只有一个");
 
+  // 关掉目标详情 → 回到结果页（这就是「显式关闭」的意义）
   await closeDetail(promptDetail);
+  await expect(modal).toBeVisible();
+  // 结果页只能显式关闭：关掉后底部那条原始详情仍在（从未被替换）
+  await closeSimilarResult(page);
+  await expect(detail).toBeVisible();
   await closeDetail(detail);
   await clearSimilarityThresholds(page); // 阈值是持久化偏好，收尾还原（同 worker 其它 spec 共用 profile）
 });
@@ -116,22 +127,31 @@ test("提示词详情内容右键搜索：跨模态命中图像并可打开图�
   await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 两栏均出结果（左栏跨模态图像、右栏同模态提示词）");
 
-  // 点图像结果 → 叠加打开图像详情
+  // 点图像结果 → 在结果页之上叠加打开图像详情
   await imagePane.getByText("e2e-upload.png").first().click();
-  await expect(page.getByRole("dialog", { name: "图像详情" })).toBeVisible({ timeout: 5_000 });
-  e2eLog.info("[step] 跨模态结果点击后打开图像详情");
+  const nestedImage = page.getByRole("dialog", { name: "图像详情" });
+  await expect(nestedImage).toBeVisible({ timeout: 5_000 });
+  await expect(modal).toBeVisible(); // 结果页保留在下面，直到被显式关闭
+  e2eLog.info("[step] 跨模态结果点在结果页之上开图像详情，本页保留");
 
+  // 关掉目标详情 → 回到结果页（这就是「显式关闭」的意义：跳转不再自动收起）
+  await closeDetail(nestedImage);
+  await expect(modal).toBeVisible();
+  // 自顶向下关完：结果页 → 它下面的原始提示词详情
+  await closeSimilarResult(page);
+  await closeDetail(detail);
   await clearSimilarityThresholds(page);
 });
 
 // —— 嵌套详情的「槽位」模型：原始详情永不被替换，嵌套的图像/提示词各最多一个（模型见 docs/开发经验.md 第 5 节）——
 // 修复前：嵌套态（`is-nested`）的提示词详情内容右键**没有菜单项**（空盒子），且嵌套层缺 `@open-*` 接线，
-// 于是「在嵌套层里继续搜」这条路是死的。本用例把它钉住：菜单可用 + 两层槽位的收敛行为。
+// 于是「在嵌套层里继续搜」这条路是死的。本用例把它钉住：菜单可用 + 两层槽位的收敛行为 +
+// 结果页是页面级单例（就地换源、不随宿主详情被替换而销毁、只能显式关闭）。
 test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底部详情不动、同类只替换不叠加）", async ({
   page,
   app,
 }) => {
-  // 步骤多（两层嵌套 + 两次搜索 + 逐层关闭），放宽到 30s
+  // 步骤多（两层嵌套 + 三次搜索 + 逐层关闭），放宽到 15s
   test.setTimeout(15_000);
   const { source, other } = makeContentPair("C");
   await uploadImageWithPrompt(page, source, app.mockImagePath);
@@ -144,31 +164,35 @@ test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底�
   const bottom = page.getByRole("dialog", { name: "图像详情" }).first();
   await expect(bottom).toBeVisible();
 
-  // 第 1 层：跨类结果（提示词）→ 嵌套提示词详情
-  const modal1 = await openSimilarSearchFromImageDetail(page, bottom);
-  await lowerThresholdToZeroAndRequery(similarResultPane(modal1, "prompt"));
-  await similarResultPane(modal1, "prompt").getByText(other, { exact: true }).click();
+  // 第 1 层：跨类结果（提示词）→ 嵌套提示词详情；结果页保留在其下（页面级单例）
+  const modal = await openSimilarSearchFromImageDetail(page, bottom);
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal, "prompt"));
+  await similarResultPane(modal, "prompt").getByText(other, { exact: true }).click();
   const nestedPrompt = page.getByRole("dialog", { name: "提示词详情" });
   await expect(nestedPrompt).toBeVisible({ timeout: 5_000 });
-  e2eLog.info("[step] 第 1 层：嵌套提示词详情已打开");
+  await expect(modal).toBeVisible();
+  e2eLog.info("[step] 第 1 层：嵌套提示词详情已打开（结果页保留在下面）");
 
-  // ① 嵌套层的内容右键必须能用：修复前菜单项不存在，这一步会超时
-  const modal2 = await openSimilarSearchFromPromptDetail(page, nestedPrompt, other);
-  e2eLog.info("[step] 嵌套提示词详情的内容右键可用（菜单项已出现）");
+  // ① 嵌套层的内容右键必须能用：修复前菜单项不存在，这一步会超时。
+  //    再搜一次只**就地换源**（结果页是单例，不叠加第二个实例）
+  await openSimilarSearchFromPromptDetail(page, nestedPrompt, other);
+  await expect(similarResultModal(page)).toHaveCount(1);
+  e2eLog.info("[step] 嵌套提示词详情的内容右键可用（结果页就地换源，仍只有一个）");
 
   // ② 跨类结果（图像）→ 落在本层自己的嵌套图像槽：底部与第 1 层都保留（层数 2 + 1）
-  await lowerThresholdToZeroAndRequery(similarResultPane(modal2, "image"));
-  await similarResultPane(modal2, "image").getByText("e2e-upload.png").first().click();
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal, "image"));
+  await similarResultPane(modal, "image").getByText("e2e-upload.png").first().click();
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 本层
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(1); // 第 1 层仍在
+  await expect(modal).toBeVisible();
   e2eLog.info("[step] 第 2 层：跨类结果落在本层槽位（底部详情未动、第 1 层保留）");
 
   // ③ 第 2 层里再搜同类（图像）→ 替换本层，不叠加第 3 个图像详情
   const nestedImage = page.getByRole("dialog", { name: "图像详情" }).nth(1);
   const srcBefore = await nestedImage.locator("img").first().getAttribute("src");
-  const modal3 = await openSimilarSearchFromImageDetail(page, nestedImage);
-  await lowerThresholdToZeroAndRequery(similarResultPane(modal3, "image"));
-  await similarResultPane(modal3, "image").getByText("e2e-upload.png").first().click();
+  await openSimilarSearchFromImageDetail(page, nestedImage);
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal, "image"));
+  await similarResultPane(modal, "image").getByText("e2e-upload.png").first().click();
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 仍是 2：替换而非叠加
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(1);
   // 换槽必须**真的换上新内容**：详情快照按 id 固定（`useDetailSnapshot`），复用同一实例时会停在旧 id →
@@ -179,18 +203,20 @@ test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底�
   e2eLog.info("[step] 同类结果只替换本层槽位（层数不变，且新图已渲染）");
 
   // ④ 嵌套图像里点**提示词**结果 → 替换「嵌套提示词槽」（槽是独立的：图像槽不被牵连，层数不变）
-  const modal4 = await openSimilarSearchFromImageDetail(page, nestedImage);
-  await lowerThresholdToZeroAndRequery(similarResultPane(modal4, "prompt"));
-  await similarResultPane(modal4, "prompt").getByText(source, { exact: true }).click();
+  await openSimilarSearchFromImageDetail(page, nestedImage);
+  await lowerThresholdToZeroAndRequery(similarResultPane(modal, "prompt"));
+  await similarResultPane(modal, "prompt").getByText(source, { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(1); // 仍是那一个槽
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 嵌套图像槽（未被牵连）
   await expect(nestedPrompt.getByText(source, { exact: true }).first()).toBeVisible(); // 内容已换成 source
   e2eLog.info("[step] 跨类结果替换提示词槽（内容换新，各槽互不牵连）");
 
-  // ⑤ 逐个关闭两个槽 + 底部：**自顶向下**关（槽位是叠放的，下层弹窗的关闭钮会被上层遮罩拦下），
-  // 关完确认底部那条「源图像详情」原样还在（没有被任何一次跳转替换掉）
-  await closeDetail(nestedPrompt); // 提示词槽在最上（渲染在图像槽之后）
-  await closeDetail(page.getByRole("dialog", { name: "图像详情" }).nth(1));
+  // ⑤ 自顶向下关：关闭顺序 = 叠放顺序（提示词槽 → 结果页 → 图像槽 → 底部）——
+  // 槽位是叠放的，下层弹窗的关闭钮会被上层遮罩拦下；而结果页**只能显式关闭**（跳转不自动收起），
+  // 它就压在图像槽之上，这里正是它要显式关掉、否则关不到下层的那一步
+  await closeDetail(nestedPrompt); // 最上：提示词槽
+  await closeSimilarResult(page); // 其次：结果页
+  await closeDetail(page.getByRole("dialog", { name: "图像详情" }).nth(1)); // 再次：图像槽
   await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
   await closeDetail(bottom);
   e2eLog.info("[step] 逐层关闭后，底部详情仍是源图像详情");
@@ -227,14 +253,16 @@ test("图像原始详情点同类结果：相似图落槽（计数 2、底部不
   await expect(nested.locator("img").first()).toHaveAttribute("src", /asset\.localhost/);
   await expect(nested.locator("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
   e2eLog.info("[step] 第 0 层同类结果落槽：底部源图像未被替换");
+  await expect(modal).toBeVisible(); // 结果页保留（点结果不再自动收起）
 
-  // 自顶向下关闭后，底部那条仍是原始详情
+  // 自顶向下关：点结果开的详情叠在结果页**之上**（入栈更晚），先关它才够得到结果页
   await closeDetail(nested);
+  await expect(modal).toBeVisible();
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(1);
-  await expect(bottom).toBeVisible();
   await expect(bottom.locator("img").first()).toHaveAttribute("src", srcBefore ?? "");
+  await closeSimilarResult(page);
   await closeDetail(bottom);
-  e2eLog.info("[step] 关槽后回到原始图像详情");
+  e2eLog.info("[step] 关详情与结果页后回到原始图像详情");
   await clearSimilarityThresholds(page);
 });
 
@@ -266,12 +294,15 @@ test("提示词原始详情点同类结果：相似提示词落槽（计数 2、
   const nested = page.getByRole("dialog", { name: "提示词详情" }).nth(1);
   await expect(nested.getByText(other, { exact: true }).first()).toBeVisible();
   e2eLog.info("[step] 第 0 层同类结果落槽：底部源提示词未被替换");
+  await expect(modal).toBeVisible(); // 结果页保留（点结果不再自动收起）
 
-  // 自顶向下关闭后，底部那条仍是原始详情
+  // 自顶向下关：点结果开的详情叠在结果页**之上**（入栈更晚），先关它才够得到结果页
   await closeDetail(nested);
+  await expect(modal).toBeVisible();
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(1);
   await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
+  await closeSimilarResult(page);
   await closeDetail(bottom);
-  e2eLog.info("[step] 关槽后回到原始提示词详情");
+  e2eLog.info("[step] 关详情与结果页后回到原始提示词详情");
   await clearSimilarityThresholds(page);
 });

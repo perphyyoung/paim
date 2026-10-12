@@ -172,7 +172,8 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 
 | z   | 元素                  | 来源                                                                                                                         | 说明                                                         |
 | --- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| 50  | 业务弹窗本体          | ImageDetailModal / PromptDetailModal / TrashOverlay / TagManagerModal / ImagePickerModal / NewPromptModal / ImageUploadModal | 普通弹窗/整页覆盖，最低一层全屏层                            |
+| 50  | 业务弹窗本体          | ImageDetailModal / PromptDetailModal / TrashOverlay / TagManagerModal / ImagePickerModal / NewPromptModal / ImageUploadModal | 第 0 层详情 / 普通弹窗，最低一层全屏层；嵌套详情槽与相似结果页从 51 起（按打开顺序，见「关联关系与注意」）                            |
+| 51–54 | 覆盖层：嵌套详情槽 / 相似结果页 | NestedDetailSlots、ImagePage / PromptPage（`useNestedDetails` 的覆盖层 z 栈） | 按**打开顺序**编号（`z = 50 + 栈内位置 + 1`），至多 4 层；关闭后其余紧凑重排 |
 | 60  | 右键菜单遮罩          | ContextMenu                                                                                                                  | 须盖过全部 z-50 弹窗，点击即关                               |
 | 60  | 设置弹窗              | App.vue                                                                                                                      | 与右键遮罩同层（场景互斥）                                   |
 | 60  | 内嵌子对话框          | InlineDialog（TagManagerModal 内嵌 dlg / ImageDetailModal 新建提示词）                                                       | 弹窗内的子对话框，低于右键菜单本体                           |
@@ -180,7 +181,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | 90  | 标签拖拽跟随浮层      | TagManagerModal                                                                                                              | 纯展示，pointer-events-none                                  |
 | 100 | 批量操作工具条        | BatchActionBar                                                                                                               | 悬浮工具条，不挡操作                                         |
 | 110 | 确认弹窗              | ConfirmDialog / BatchActionBar 内确认                                                                                        | 最高确认层                                                   |
-| 120 | 备份导入 / 缩略图重建 | PmBackupImportModal / ThumbnailRebuildModal                                                                                  | 顶层模态                                                     |
+| 120 | 备份导入 / 缩略图重建 / 合并提示词 | PmBackupImportModal / ThumbnailRebuildModal / MergePromptsModal                                                                                  | 顶层模态                                                     |
 | 125 | 标签自动完成下拉      | TagAutocompleteInput（图像/提示词详情、BatchActionBar）                                                                      | Teleport + fixed 定位，须高于 z-120 顶层模态，低于 Toast     |
 | 130 | Toast                 | ToastHost                                                                                                                    | 永驻最高层；画面正中心；容器不拦截点击，toast 本体可点击关闭 |
 
@@ -200,6 +201,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 
 - **同一层内场景互斥**时可共用 z 值（如 z-60 设置弹窗与右键遮罩、z-50 各业务弹窗），互不叠加出现，DOM 顺序即决定谁在上。
 - **详情内查找条**（PromptDetailModal / ImageDetailModal）：位于弹窗 z-50 遮罩层内部的 `absolute top-2 z-10`（视口顶部居中、弹窗上方空隙），不 Teleport。嵌套打开更高层弹窗（如详情内再开图像/提示词详情）时，被上层遮罩整体盖住属预期；Ctrl+F 归属由 useDetailSearch 的 guard 决定（只作用于最上层弹窗）。
+- **覆盖层（嵌套详情槽 / 相似结果页）的 z 由「打开顺序」决定，不写固定档位**：`useNestedDetails` 里一个覆盖层 z 栈，覆盖层打开即按顺序编号（`z = 50 + 栈内位置 + 1`；第 0 层详情固定 50、不入栈），命中「已在栈里」则抬到最上；关闭出栈、其余紧凑重排。这才能表达「相似结果页压在发起它的详情之上、点结果开的详情又压在结果页之上」。层数有界（≤ 4），不会顶到 InlineDialog(60) / 右键菜单(70)。
 - **弹窗内的浮层（如下拉候选）必须 Teleport 到 body 并用 fixed**：详情弹窗本体是滚动容器，绝对定位会被 `overflow` 裁剪；z 取 120 与 130 之间的空档，保证盖住顶层模态、又不遮 Toast。
 
 ## 六、交互：点击遮罩关闭
@@ -211,6 +213,8 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 
 | 弹窗 / 浮层             | z    | 说明                                                     |
 | ----------------------- | ---- | -------------------------------------------------------- |
+| 相似结果页（SimilarSearchModal） | 51–54 | 点遮罩即关（等同 ✕ / Esc）；仅在自己位于覆盖层最上层时响应 Esc（上面还叠着它点开的详情时不抢） |
+| 合并提示词弹窗（MergePromptsModal） | 120 | 点遮罩即关（保存中不关） |
 | 设置弹窗（App.vue）     | 60   | 点遮罩即关                                               |
 | ContextMenu 遮罩        | 60   | 点击任意处即关（非 .self，菜单本体 z-70 `@click.stop`）  |
 | InlineDialog            | 60   | 默认支持；`closeOnOverlay=false` 时禁用（吞掉点击不关闭） |

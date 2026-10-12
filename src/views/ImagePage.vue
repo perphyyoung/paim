@@ -24,6 +24,7 @@ import { useBatchSelection } from "@/composables/useBatchSelection";
 import { useHomeShortcuts } from "@/composables/useHomeShortcuts";
 import { useItemToggle } from "@/composables/useItemToggle";
 import ImageDetailModal from "@/features/image/components/ImageDetailModal.vue";
+import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
 import NestedDetailSlots from "@/components/NestedDetailSlots.vue";
 import { provideNestedDetails } from "@/composables/useNestedDetails";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
@@ -547,8 +548,8 @@ function closeDetail() {
   loadImages({ keepContent: true });
   loadTagFilter();
 }
-/** 嵌套的提示词槽里发生合并：关联图像被 touch 且关联提示词集合变化，收起详情并回主页刷新 */
-function onPromptMergedInNested() {
+/** 相似结果页里合并提示词：源提示词与目标都进回收站、新条已建，收起结果页与全部详情并回主页刷新 */
+function onSimilarMerged() {
   detailDirty.value = true;
   showToast("已合并为 1 条提示词", "success");
   closeDetail();
@@ -966,7 +967,23 @@ function onUploadDone() {
     />
 
     <!-- 嵌套详情槽（图像 / 提示词各至多一个；详情内发起的跳转——同类 / 跨类——都落在槽上） -->
-    <NestedDetailSlots @merged="onPromptMergedInNested" />
+    <NestedDetailSlots />
+
+    <!-- 相似结果页：页面级全局单例（只保留最新一个，由栈持有查询源）。
+         渲染在页面顶层 → 宿主详情被替换/关闭都不影响它；点结果在本页之上开详情，本页保留在下面 -->
+    <SimilarSearchModal
+      v-if="nested.similar.value"
+      :open="true"
+      :source-kind="nested.similar.value?.sourceKind ?? 'Image'"
+      :source-id="nested.similar.value?.sourceId ?? ''"
+      :source-name="nested.similar.value?.sourceName"
+      :source-text-kind="nested.similar.value?.sourceTextKind"
+      :source-thumb="nested.similar.value?.sourceThumb"
+      @close="nested.closeSimilar()"
+      @open-image="(id) => nested.openNested('image', id)"
+      @open-prompt="(id) => nested.openNested('prompt', id)"
+      @merged="onSimilarMerged"
+    />
 
     <!-- 标签管理（独立组件，图像域） -->
     <TagManagerModal

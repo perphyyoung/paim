@@ -3,8 +3,11 @@
 //   第 1 行 = 搜索源（缩略图 + 名称）+ 关闭
 //   主体左右两栏：左「相似图像」、右「相似提示词」，**两栏的条数 / 阈值 / 重置 / 重查全部独立** ——
 //   各自一套草稿、各自一条命令与请求序号、各自 loading / 空 / 错态，互不阻塞。
-// 尺寸与详情页一致（h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)]），
-// z 取详情页之上（详情页 z-50），点击结果时由调用方先关本页再跳转，避免被本页盖住。
+// 尺寸与详情页一致（h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)]）。
+// z 由「覆盖层 z 栈」（useNestedDetails）按打开顺序分配：点结果在本页之上打开详情（后者入栈更晚 → 更高），
+// 本页保留在下面，关掉详情即回到本页；本页只能显式关闭（✕ / 遮罩 / Esc），跳转不再自动关。
+// 全局只保留最新一个结果页：本组件是**页面级单例**（由页面用 `nested.similar` 渲染），
+// 任何详情再次打开只是就地换源，不叠加实例；也因此不随宿主详情被替换而销毁。
 // 后端同样是「一侧一条命令」：源可以是图像或提示词，两条命令都用同一个查询向量
 // （联合空间，跨模态直接比余弦），因此源是图像时右栏是跨模态的相似提示词，反之亦然。
 import { computed, onUnmounted, ref, watch } from "vue";
@@ -14,6 +17,7 @@ import { applyThumbFix } from "@/utils/thumbFix";
 import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import MergePromptsModal from "@/features/prompt/components/MergePromptsModal.vue";
+import { useNestedDetails } from "@/composables/useNestedDetails";
 import ScoreStepper from "./ScoreStepper.vue";
 import MediaCard from "@/components/MediaCard.vue";
 import { DEFAULT_LIMIT, DEFAULT_MIN_SCORE, LIMIT_RANGE, useSimilaritySettings } from "./settings";
@@ -38,6 +42,11 @@ const emit = defineEmits<{
   /** 源提示词与某条结果合并完成（上层负责关闭本弹窗与源详情、刷新主页） */
   merged: [newId: string];
 }>();
+
+const nested = useNestedDetails();
+/// 结果页是全局单例（页面级渲染，只保留最新一个）。z 由覆盖层栈给出：
+/// 点结果开出的详情后入栈 → 天然盖在本页之上；关掉详情出栈 → 本页重新可见。
+const modalZ = nested.similarZ;
 
 const imageSettings = useSimilaritySettings("image");
 const promptSettings = useSimilaritySettings("prompt");
@@ -243,6 +252,9 @@ function onKeydown(e: KeyboardEvent) {
     closeMenu();
     return;
   }
+  // 上面还叠着「点结果开出的详情」时不响应 Esc：先关掉详情（用它的 ✕）再关本页，
+  // 避免一次 Esc 把被盖住的本页关掉而用户看不到任何变化
+  if (!nested.similarIsTop.value) return;
   e.stopPropagation();
   emit("close");
 }
@@ -357,7 +369,8 @@ function pickPrompt(id: string) {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[115] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: modalZ }"
       role="dialog"
       aria-modal="true"
       aria-label="相似结果"
@@ -589,8 +602,8 @@ function pickPrompt(id: string) {
 
         <p class="mt-2 shrink-0 text-xs text-gray-500">
           两栏的条数 / 阈值 / 重置 /
-          重查互相独立（同模态与跨模态的余弦分布不同）；各栏改完点该栏「重查」生效并记住；点击结果切换到对应详情；
-          源为提示词时可右键结果卡片合并两条提示词；点遮罩或按 Esc 关闭
+          重查互相独立（同模态与跨模态的余弦分布不同）；各栏改完点该栏「重查」生效并记住；点击结果会在本页之上打开对应详情（本页保留，关掉详情即回到这里）；
+          源为提示词时可右键结果卡片合并两条提示词；本页需点 ✕ / 遮罩 / Esc 显式关闭
         </p>
       </div>
 
@@ -600,8 +613,8 @@ function pickPrompt(id: string) {
         data-merge-menu
         role="menu"
         aria-label="提示词结果操作"
-        class="fixed z-[118] min-w-[168px] rounded-md border py-1 shadow-lg border-gray-600 bg-gray-800"
-        :style="{ left: menuX + 'px', top: menuY + 'px' }"
+        class="fixed min-w-[168px] rounded-md border py-1 shadow-lg border-gray-600 bg-gray-800"
+        :style="{ left: menuX + 'px', top: menuY + 'px', zIndex: modalZ + 2 }"
       >
         <button
           type="button"

@@ -27,7 +27,6 @@ import {
   relatedPromptsCache,
   resolveImageSrc,
 } from "@/features/image/api/detailCache";
-import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
 import { useSimilaritySettings } from "@/features/similarity/settings";
 
 const props = defineProps<{
@@ -75,23 +74,19 @@ function closeCtxMenu() {
   ctxMenu.value = null;
 }
 
-// 搜索相似的图像和提示词：入口只在右键菜单（设置里关闭相似度时隐藏该项）
+// 搜索相似的图像和提示词：入口只在右键菜单（设置里关闭相似度时隐藏该项）。
+// 结果页是**页面级全局单例**（只保留最新一个，由页面渲染，见 useNestedDetails）：这里只提交
+// 查询源快照；点结果开的详情由页面转 `openNested`，结果页保留在其下（只显式关闭才收起）
 const { enabled: similarityEnabled } = useSimilaritySettings();
-const similarOpen = ref(false);
 function openSimilar() {
   closeCtxMenu();
-  similarOpen.value = true;
-}
-/// 图像结果（同类）：换「嵌套图像槽」（已有内容即替换）——底层原始详情永不被换，
-/// 第 0 层的换条只剩主页列表的左右翻页（槽位模型见 docs/开发经验.md 第 5 节）
-function onOpenSimilarImage(id: string) {
-  similarOpen.value = false;
-  void nested.openNested("image", id);
-}
-/// 提示词结果（跨模态命中）：一律交给页面的「嵌套提示词槽」（每类至多一个，已有内容即替换）
-function onOpenSimilarPrompt(id: string) {
-  similarOpen.value = false;
-  void nested.openNested("prompt", id);
+  nested.openSimilar({
+    sourceKind: "Image",
+    sourceId: currentId.value,
+    sourceName: currentPrompt.value?.content ?? current.value?.file_name,
+    sourceTextKind: currentPrompt.value ? "content" : "name",
+    sourceThumb: props.thumbs[currentId.value],
+  });
 }
 async function openSavedLocation() {
   const img = current.value;
@@ -425,7 +420,11 @@ const {
 /// 既用于放行 Ctrl+F，也用于**停用底部胶囊的键盘导航** —— 胶囊的 document 监听不区分层级，
 /// 不拦的话 ←/→ 会把本弹窗的条目也一起切走（见 docs/lessons.md 第 22 节）
 const overlayOpen = computed(
-  () => createPromptOpen.value || confirmOpen.value || similarOpen.value || nested.anyOpen.value,
+  () =>
+    createPromptOpen.value ||
+    confirmOpen.value ||
+    nested.similar.value !== null ||
+    nested.anyOpen.value,
 );
 
 // 打开时跳转到初始图并同步编辑字段
@@ -1004,24 +1003,8 @@ const fmtSize = (bytes: number) => {
     </button>
   </ContextMenu>
 
-  <!-- 相似结果页（左图像 / 右提示词；图像结果切到该图详情，提示词结果叠加打开提示词详情）。
-       首行源文案：该图有关联提示词就先显示提示词内容（跟随详情里选中的那条），没有才回落到文件名 -->
-  <SimilarSearchModal
-    v-if="similarOpen"
-    :open="similarOpen"
-    source-kind="Image"
-    :source-id="currentId"
-    :source-name="currentPrompt?.content ?? current?.file_name"
-    :source-text-kind="currentPrompt ? 'content' : 'name'"
-    :source-thumb="thumbs[currentId]"
-    @close="similarOpen = false"
-    @open-image="onOpenSimilarImage"
-    @open-prompt="onOpenSimilarPrompt"
-  />
-
-  <!-- 嵌套的提示词详情（相似结果 / 编辑提示词）由页面统一渲染：
-       <NestedDetailSlots> 持有图像与提示词两个槽（各至多一个，换内容即换实例），
-       槽位模型见 docs/开发经验.md 第 5 节 -->
+  <!-- 相似结果页（左图像 / 右提示词）由页面统一渲染：它是页面级全局单例（只保留最新一个），
+       渲染在页面顶层，宿主详情关掉也不影响它；槽位模型见 docs/开发经验.md 第 5 节 -->
 
   <!-- 标签删除确认 -->
   <ConfirmDialog

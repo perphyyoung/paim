@@ -19,7 +19,6 @@ import TagChip from "@/components/TagChip.vue";
 import VecStatusIcon from "@/components/VecStatusIcon.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
-import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
 import { useSimilaritySettings } from "@/features/similarity/settings";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
 import { markPageStale } from "@/utils/crossPageCache";
@@ -64,8 +63,6 @@ const emit = defineEmits<{
   (e: "safe-synced", isSafe: boolean): void;
   /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
   (e: "ensure-index", index: number): void;
-  /** 本提示词作为源与相似结果合并完成：宿主应收起全部详情、刷新主页 */
-  (e: "merged", newId: string): void;
 }>();
 
 const { showToast } = useToast();
@@ -210,7 +207,8 @@ const {
 /// 既用于放行 Ctrl+F，也用于**停用底部胶囊的键盘导航** —— 胶囊的 document 监听不区分层级，
 /// 不拦的话 ←/→ 会把本弹窗的条目也一起切走（见 docs/lessons.md 第 22 节）
 const overlayOpen = computed(
-  () => pickerOpen.value || confirmOpen.value || similarOpen.value || nested.anyOpen.value,
+  () =>
+    pickerOpen.value || confirmOpen.value || nested.similar.value !== null || nested.anyOpen.value,
 );
 
 watch(
@@ -478,9 +476,10 @@ async function setAsFirst() {
 }
 
 // —— 搜索相似的图像和提示词（入口：非编辑态的「提示词内容」右键）——
-// 查询向量取自当前提示词的 content（只算内容）；参数用提示词自己的一套偏好
+// 查询向量取自当前提示词的 content（只算内容）；参数用提示词自己的一套偏好。
+// 结果页是**页面级全局单例**（只保留最新一个，由页面渲染，见 useNestedDetails）：这里只提交
+// 查询源快照；点结果开的详情由页面转 `openNested`，结果页保留在其下（只显式关闭才收起）
 const { enabled: similarityEnabled } = useSimilaritySettings("prompt");
-const similarOpen = ref(false);
 /// 内容区右键坐标（与关联图像右键各一份状态，互不影响）
 const contentCtxMenu = ref<{ x: number; y: number } | null>(null);
 function openContentCtxMenu(e: MouseEvent) {
@@ -491,29 +490,13 @@ function closeContentCtxMenu() {
 }
 function openSimilarSearch() {
   closeContentCtxMenu();
-  similarOpen.value = true;
+  nested.openSimilar({
+    sourceKind: "Prompt",
+    sourceId: current.value?.id ?? "",
+    sourceName: current.value?.content,
+    sourceTextKind: "content",
+  });
 }
-/// 提示词结果（同类）：换「嵌套提示词槽」（已有内容即替换）——底层原始详情永不被换，
-/// 第 0 层的换条只剩主页列表的左右翻页（槽位模型见 docs/开发经验.md 第 5 节）
-function onOpenSimilarPrompt(id: string) {
-  similarOpen.value = false;
-  void nested.openNested("prompt", id);
-}
-/// 图像结果（跨模态命中）：一律交给「嵌套图像槽」（每类至多一个，已有内容即替换）
-function onOpenSimilarImage(id: string) {
-  similarOpen.value = false;
-  void nested.openNested("image", id);
-}
-/// 本提示词作为源被合并：源与目标都已进回收站，收起相似页与全部槽，交宿主回主页刷新
-function onMerged(newId: string) {
-  similarOpen.value = false;
-  nested.closeAll();
-  emit("merged", newId);
-}
-// 切换条目 / 进入编辑态时收起相似结果（弹窗里查的已是另一条内容）
-watch([() => current.value?.id, edit], () => {
-  similarOpen.value = false;
-});
 
 async function removeImage(img: RelatedImage) {
   const p = current.value;
@@ -1045,19 +1028,8 @@ async function onPickerImported() {
     @cancel="cancelConfirm"
   />
 
-  <!-- 相似结果页（左图像 / 右提示词；提示词结果切到该提示词详情，图像结果叠加打开图像详情） -->
-  <SimilarSearchModal
-    v-if="similarOpen"
-    :open="similarOpen"
-    source-kind="Prompt"
-    :source-id="current?.id ?? ''"
-    :source-name="current?.content"
-    source-text-kind="content"
-    @close="similarOpen = false"
-    @open-prompt="onOpenSimilarPrompt"
-    @open-image="onOpenSimilarImage"
-    @merged="onMerged"
-  />
+  <!-- 相似结果页（左图像 / 右提示词）由页面统一渲染：它是页面级全局单例（只保留最新一个），
+       渲染在页面顶层，宿主详情关掉也不影响它；槽位模型见 docs/开发经验.md 第 5 节 -->
 
   <!-- 右键菜单：提示词内容 → 搜索相似的图像和提示词（设置里可关闭）。
        嵌套态同样可用：结果跳转已收敛为「替换本层槽位 / 上抛给宿主替换其槽位」，不会越点越多

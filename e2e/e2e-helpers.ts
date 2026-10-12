@@ -544,6 +544,21 @@ export function similarResultPane(modal: Locator, kind: "image" | "prompt"): Loc
   return modal.getByRole("region", { name: kind === "image" ? "相似图像" : "相似提示词" });
 }
 
+/// 相似结果页定位器（页面级单例：全局至多一个，`toHaveCount(1)` 即可钉住「只保留最新一个」）
+export function similarResultModal(page: Page): Locator {
+  return page.getByRole("dialog", { name: "相似结果" });
+}
+
+/// 显式关闭相似结果页（点右上 ✕）并等它消失。
+/// 关闭顺序（结果页是**页面级单例**，跳转不再自动收起）：
+/// 先从结果页点开的详情关起（它入栈更晚、盖在结果页之上）→ 再关结果页 → 最后才够得到
+/// 结果页下面的原始详情（结果页盖着它）。
+export async function closeSimilarResult(page: Page): Promise<void> {
+  const modal = similarResultModal(page);
+  await modal.getByTitle("关闭").click();
+  await expect(modal).toBeHidden({ timeout: 5_000 });
+}
+
 /// 从图像详情打开相似结果页：右键大图 → 菜单项「搜索相似的图像和提示词」，返回结果页定位器。
 /// 入口受设置页「启用图像相似度检索」开关控制，关掉时该菜单项不渲染。
 export async function openSimilarSearchFromImageDetail(
@@ -569,7 +584,7 @@ export async function openSimilarSearchFromPromptDetail(
 /// 点菜单项并等结果页出现（两个入口共用）
 async function expectSimilarResultModal(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "搜索相似的图像和提示词" }).click();
-  const modal = page.getByRole("dialog", { name: "相似结果" });
+  const modal = similarResultModal(page);
   await expect(modal).toBeVisible({ timeout: 5_000 });
   return modal;
 }

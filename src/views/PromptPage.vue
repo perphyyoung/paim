@@ -24,6 +24,7 @@ import { useItemToggle } from "@/composables/useItemToggle";
 import { SPECIAL_TAG_NAMES } from "@/features/tag/specialTags";
 import NewPromptModal from "@/features/prompt/components/NewPromptModal.vue";
 import PromptDetailModal from "@/features/prompt/components/PromptDetailModal.vue";
+import SimilarSearchModal from "@/features/similarity/SimilarSearchModal.vue";
 import NestedDetailSlots from "@/components/NestedDetailSlots.vue";
 import { provideNestedDetails } from "@/composables/useNestedDetails";
 import MediaCard from "@/components/MediaCard.vue";
@@ -489,7 +490,7 @@ function closeDetail() {
   loadPrompts({ keepContent: true });
   loadTagFilter();
 }
-/** 详情（含嵌套槽）内完成提示词合并：原两条进回收站、新条已建，收起全部详情并回主页刷新 */
+/** 相似结果页里合并提示词：原两条进回收站、新条已建，收起结果页与全部详情并回主页刷新 */
 function onPromptsMerged() {
   detailDirty.value = true;
   showToast("已合并为 1 条提示词", "success");
@@ -857,11 +858,26 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       @close="closeDetail"
       @updated="onModalUpdated"
       @ensure-index="ensureDetailIndex"
-      @merged="onPromptsMerged"
     />
 
     <!-- 嵌套详情槽（图像 / 提示词各至多一个；详情内发起的跳转——同类 / 跨类——都落在槽上） -->
-    <NestedDetailSlots @merged="onPromptsMerged" />
+    <NestedDetailSlots />
+
+    <!-- 相似结果页：页面级全局单例（只保留最新一个，由栈持有查询源）。
+         渲染在页面顶层 → 宿主详情被替换/关闭都不影响它；点结果在本页之上开详情，本页保留在下面 -->
+    <SimilarSearchModal
+      v-if="nested.similar.value"
+      :open="true"
+      :source-kind="nested.similar.value?.sourceKind ?? 'Prompt'"
+      :source-id="nested.similar.value?.sourceId ?? ''"
+      :source-name="nested.similar.value?.sourceName"
+      :source-text-kind="nested.similar.value?.sourceTextKind"
+      :source-thumb="nested.similar.value?.sourceThumb"
+      @close="nested.closeSimilar()"
+      @open-image="(id) => nested.openNested('image', id)"
+      @open-prompt="(id) => nested.openNested('prompt', id)"
+      @merged="onPromptsMerged"
+    />
 
     <!-- 删除确认 -->
     <ConfirmDialog
