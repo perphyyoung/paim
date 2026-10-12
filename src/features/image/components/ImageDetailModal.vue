@@ -472,10 +472,15 @@ function syncFields() {
   fileName.value = current.value?.file_name ?? "";
   note.value = current.value?.note ?? "";
 }
-// 顶部编辑/取消：取消时恢复字段原值，避免残留未保存的编辑
+/// 取消编辑：退出编辑态并把草稿重置回字段原值，避免残留未保存的编辑（与提示词详情 cancelEdit 对称）
+function cancelEdit() {
+  edit.value = false;
+  syncFields();
+}
+// 顶部编辑/取消 toggle
 function toggleEdit() {
-  if (edit.value) syncFields();
-  edit.value = !edit.value;
+  if (edit.value) cancelEdit();
+  else edit.value = true;
 }
 function close() {
   emit("close");
@@ -957,10 +962,7 @@ const fmtSize = (bytes: number) => {
             <button
               type="button"
               class="rounded-lg border px-4 py-2 text-sm shadow-lg transition-colors border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700"
-              @click="
-                edit = false;
-                syncFields();
-              "
+              @click="cancelEdit"
             >
               取消
             </button>
