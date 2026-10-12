@@ -144,6 +144,17 @@ function syncFields() {
   contentTranslate.value = current.value?.content_translate ?? "";
   note.value = current.value?.note ?? "";
 }
+/// 取消编辑：退出编辑态并**把草稿重置回库内值** —— 否则「取消」只是收起编辑器，草稿会残留到
+/// 下次进编辑态（未落盘的改动就弃不掉，如编辑态的「规范化」）
+function cancelEdit() {
+  edit.value = false;
+  syncFields();
+}
+/// 顶部编辑/取消 toggle：取消时同样恢复字段原值（与图像详情的 toggleEdit 对称）
+function toggleEdit() {
+  if (edit.value) cancelEdit();
+  else edit.value = true;
+}
 
 // ---- 详情内查找（Ctrl+F 或主页搜索词联动）：标题/内容/翻译/备注 高亮 + 计数 + 跳转 ----
 // 复用 useDetailSearch（与图像详情共用）。注意：必须在下方 open watch（immediate: true）
@@ -237,8 +248,7 @@ watch(
 watch(
   () => current.value?.id,
   () => {
-    edit.value = false;
-    syncFields();
+    cancelEdit();
     loadTags();
     loadRelatedImages();
     // 切换提示词后重置到第一个命中并滚动定位
@@ -413,6 +423,24 @@ function copyField(text: string, label: string) {
 }
 function copyContent() {
   copyField(edit.value ? content.value : (current.value?.content ?? ""), "提示词内容");
+}
+
+/// 「规范化」：把内容替换成**向量形态**（空白规则见后端 canonical_text，故仅编辑态提供）。
+/// 只改编辑缓冲、不落库 → 天然可弃：点「取消」即回到库内原文，点「保存」才写入。
+/// 保存闸门不受影响：规范化前后 canonical 相同 → 静默保存、不弹「需重新索引」确认。
+async function normalizeContent() {
+  if (!edit.value) return;
+  const canon = await commands.canonicalizePromptText(content.value);
+  if (!canon) {
+    showToast("提示词内容为空", "warning");
+    return;
+  }
+  if (canon === content.value) {
+    showToast("已是规范化格式", "info");
+    return;
+  }
+  content.value = canon;
+  showToast("已按规范化格式填入，保存后生效", "info");
 }
 function copyTranslate() {
   copyField(edit.value ? contentTranslate.value : (current.value?.content_translate ?? ""), "翻译");
@@ -823,7 +851,7 @@ async function onPickerImported() {
                 class="rounded border px-2 py-1 text-xs border-gray-600 text-gray-300 hover:bg-gray-700"
                 :class="edit ? 'font-medium text-gray-200' : ''"
                 :title="edit ? '取消编辑' : '编辑'"
-                @click="edit = !edit"
+                @click="toggleEdit"
               >
                 {{ edit ? "取消" : "编辑" }}
               </button>
@@ -864,13 +892,24 @@ async function onPickerImported() {
                 <label class="text-xs font-medium uppercase tracking-wide text-gray-500"
                   >提示词内容</label
                 >
-                <button
-                  type="button"
-                  class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
-                  @click="copyContent"
-                >
-                  复制
-                </button>
+                <div class="flex items-center gap-1">
+                  <!-- 规范化只在编辑态出现：它改的是编辑缓冲（未落库），非编辑态没有可规范化的草稿 -->
+                  <button
+                    v-if="edit"
+                    type="button"
+                    class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
+                    @click="normalizeContent"
+                  >
+                    规范化
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
+                    @click="copyContent"
+                  >
+                    复制
+                  </button>
+                </div>
               </div>
               <textarea
                 v-if="edit"
@@ -975,7 +1014,7 @@ async function onPickerImported() {
             <button
               type="button"
               class="rounded-lg border px-4 py-2 text-sm shadow-lg transition-colors border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700"
-              @click="edit = false"
+              @click="cancelEdit"
             >
               取消
             </button>

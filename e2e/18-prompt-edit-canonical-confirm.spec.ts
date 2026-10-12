@@ -9,6 +9,10 @@
  * 索引状态标志（VecStatusIcon，纯展示不可点）：已索引＝蓝色「已建立相似度向量」，
  * 未索引＝灰色「未建立相似度向量」。
  * 向量计数直接查 `prompt_embedding_status`（indexed 字段），不依赖设置页 DOM。
+ *
+ * 另覆盖编辑态的「规范化」按钮（内容字段右上、复制左侧，**仅编辑态**）：它只把 canonical
+ * 形态填回输入框、不落库 →「取消」可弃（取消同时把草稿重置回库内值，重进编辑态看到的是原文）；
+ * 点「保存」才写入，且因规范化前后 canonical 相同 → 无确认框、向量保留。非编辑态没有该入口。
  */
 import { expect, type Locator, type Page } from "@playwright/test";
 import {
@@ -17,6 +21,7 @@ import {
   expectToastAndDismiss,
   gotoPromptsPage,
   invokeCommand,
+  listPrompts,
   openImageDetail,
   openPromptDetail,
   runSimilarityIndex,
@@ -189,4 +194,71 @@ test("图像详情索引标志：索引前灰色，图像增量索引后变蓝",
   detail = await openDetailExpectIcon(page, openImageDetail, promptContent, "已建立相似度向量");
   await expect(detail.getByRole("img", { name: "未建立相似度向量" })).toHaveCount(0);
   e2eLog.info("[step] 图像增量索引后：标志变蓝");
+});
+
+test("编辑态「规范化」按钮：仅编辑态可见、只填回输入框不落盘（取消可弃）、保存后向量保留", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  // 多行 + 标点旁空白 + 连续空白：规范化后换行折叠为空格、逗号旁空白删除、连续空格合一
+  const original = `e2e 规范化按钮 ${stamp}\n第二行  词 , 第三段`;
+  const canonical = `e2e 规范化按钮 ${stamp} 第二行 词,第三段`;
+  await gotoPromptsPage(page);
+  await seedPrompts(page, [original]);
+  await page.getByTitle(/刷新缓存/).click();
+  await runSimilarityIndex(page, "prompt");
+  await closeSettings(page);
+  const before = (await promptStatus(page)).indexed;
+
+  const detail = await openDetailExpectIcon(page, openPromptDetail, original, "已建立相似度向量");
+
+  // 非编辑态：没有这个入口（它改的是编辑缓冲，展示态没有草稿可改）
+  await expect(detail.getByRole("button", { name: "规范化" })).toHaveCount(0);
+  e2eLog.info("[step] 非编辑态不提供「规范化」");
+
+  await detail.getByTitle("编辑").click();
+  const textarea = detail.locator("textarea").first();
+  await expect(textarea).toHaveValue(original);
+  const normalizeBtn = detail.getByRole("button", { name: "规范化" });
+  await expect(normalizeBtn).toBeVisible();
+  e2eLog.info("[step] 编辑态出现「规范化」（复制左侧）");
+
+  // 点击 → 只填回输入框（未落库）
+  await normalizeBtn.click();
+  await expectToastAndDismiss(page, "已按规范化格式填入，保存后生效");
+  await expect(textarea).toHaveValue(canonical);
+  const stillOriginal = (await listPrompts(page)).find((p) => p.content === original);
+  expect(stillOriginal, "点规范化不得落库，库内应仍是原文").toBeTruthy();
+  e2eLog.info("[step] 换行被折叠、逗号旁空白删除；库内仍是原文");
+
+  // 再点：已是规范化格式 → 只提示，不改
+  await normalizeBtn.click();
+  await expectToastAndDismiss(page, "已是规范化格式");
+  await expect(textarea).toHaveValue(canonical);
+
+  // 「取消」丢弃编辑缓冲 → 展示态回到原文（不落盘的实证）
+  // 详情里有两处「取消」（顶部编辑开关同名的 toggle、底部提交条），取底部那条（last）
+  await detail.getByRole("button", { name: "取消", exact: true }).last().click();
+  await expect(textarea).toHaveCount(0);
+  await expect(detail.getByText(original, { exact: true }).first()).toBeVisible();
+  expect((await listPrompts(page)).find((p) => p.content === original)).toBeTruthy();
+  e2eLog.info("[step] 取消后展示态与库内都仍是原文");
+
+  // 再来一次：这次点「保存」→ 落库为规范化形态；规范化前后 canonical 相同 → 无确认框、向量保留
+  await detail.getByTitle("编辑").click();
+  // 取消已把草稿重置回库内值：重进编辑态拿到的是原文，不是规范化后的残留
+  await expect(textarea).toHaveValue(original);
+  await normalizeBtn.click();
+  await expectToastAndDismiss(page, "已按规范化格式填入，保存后生效");
+  await detail.getByRole("button", { name: "保存" }).click();
+  await expect(page.getByRole("dialog", { name: "确认保存" })).toHaveCount(0);
+  await expectToastAndDismiss(page, "已保存");
+  expect((await promptStatus(page)).indexed).toBe(before);
+  await expect(detail.getByRole("img", { name: "已建立相似度向量" })).toBeVisible();
+  await expect(detail.getByText(canonical, { exact: true }).first()).toBeVisible();
+  expect(
+    (await listPrompts(page)).find((p) => p.content === canonical),
+    "保存后库内内容应为规范化形态",
+  ).toBeTruthy();
+  e2eLog.info(`[step] 保存后落库为规范化形态、无确认框、向量保留（indexed=${before}）`);
 });
