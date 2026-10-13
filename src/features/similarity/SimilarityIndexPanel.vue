@@ -133,9 +133,11 @@ const multiDim = computed(() => (status.value?.dims.length ?? 0) > 1);
 function requestIncremental() {
   if (running.value) return;
   const s = status.value;
-  // 多维度并存时增量会一开跑就因维度不一致而终止（后端防线），这里先拦下并引导去清旧维度
+  // 多维度并存时增量会一开跑就因维度不一致而终止（后端防线），这里先拦下。
+  // 处置指引（清旧维度 → 增量索引）不在此复述：它由下方提示块给出，与后端 `dim_conflict_reason`
+  // 同义但只此一份，避免多处各写一份而漂移
   if ((s?.dims.length ?? 0) > 1) {
-    showToast("库里存在多种维度的向量，请先清掉要重建的旧维度，再点「增量索引」", "warning");
+    showToast("库里存在多种维度的向量，暂不能增量索引——处理方式见下方提示", "warning");
     return;
   }
   const pending = (s?.total ?? 0) - (s?.indexed ?? 0);
