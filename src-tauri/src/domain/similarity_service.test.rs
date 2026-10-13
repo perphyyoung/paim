@@ -48,7 +48,7 @@ fn rank_images(
     min_score: f32,
     safe_only: bool,
 ) -> Vec<(String, f32)> {
-    let rows = image_rank_candidates(conn, target.len(), exclude_id, safe_only).unwrap();
+    let (rows, _) = image_rank_candidates(conn, target.len(), exclude_id, safe_only).unwrap();
     score_ranked(&rows, target, limit, min_score)
 }
 
@@ -60,7 +60,7 @@ fn rank_prompt_hits(
     limit: usize,
     min_score: f32,
 ) -> Vec<(String, f32)> {
-    let rows = prompt_rank_candidates(conn, target.len(), exclude_id).unwrap();
+    let (rows, _) = prompt_rank_candidates(conn, target.len(), exclude_id).unwrap();
     score_ranked(&rows, target, limit, min_score)
 }
 
@@ -123,7 +123,9 @@ fn pending_and_status_track_incremental() {
     assert_eq!(ids, vec!["img_a", "img_b"]);
 
     let st = status(&conn).unwrap();
-    assert_eq!((st.total, st.indexed, st.dim, st.stale), (3, 1, 2, 0));
+    assert_eq!((st.total, st.indexed), (3, 1));
+    let dist: Vec<(usize, i64)> = st.dims.iter().map(|d| (d.dim, d.count)).collect();
+    assert_eq!(dist, vec![(2, 1)]);
 
     // 全量：清空后待建覆盖全部
     assert_eq!(clear_all(&conn).unwrap(), 1);
@@ -132,8 +134,9 @@ fn pending_and_status_track_incremental() {
 }
 
 #[test]
-fn status_flags_dimension_mismatch() {
-    let (_dir, conn) = setup("sim-stale");
+fn status_reports_dimension_distribution() {
+    let (_dir, conn) = setup("sim-dims");
+    // 2 维 1 条、4 维 2 条、8 维 2 条：按条数降序、同数按维度升序
     seed_image(
         &conn,
         "img_a",
@@ -148,11 +151,167 @@ fn status_flags_dimension_mismatch() {
         Some(vec![1.0, 0.0, 0.0, 0.0]),
         1,
     );
+    seed_image(
+        &conn,
+        "img_c",
+        "2026-01-01T00:00:00Z",
+        Some(vec![0.0, 1.0, 0.0, 0.0]),
+        1,
+    );
+    seed_image(
+        &conn,
+        "img_d",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0; 8]),
+        1,
+    );
+    seed_image(
+        &conn,
+        "img_e",
+        "2026-01-01T00:00:00Z",
+        Some(vec![0.0; 8]),
+        1,
+    );
+    // 无向量的行不计入分布；软删行整行不计（总数与分布都不含）
+    seed_image(&conn, "img_none", "2026-01-01T00:00:00Z", None, 1);
+    seed_image(
+        &conn,
+        "img_del",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0; 16]),
+        1,
+    );
+    conn.execute("UPDATE images SET is_deleted = 1 WHERE id = 'img_del'", [])
+        .unwrap();
 
     let st = status(&conn).unwrap();
-    assert_eq!(st.indexed, 2);
-    assert!(st.dim == 2 || st.dim == 4, "dim = {}", st.dim);
-    assert_eq!(st.stale, 1, "维度不一致的行应被标记为需重建");
+    assert_eq!((st.total, st.indexed), (6, 5));
+    let dist: Vec<(usize, i64)> = st.dims.iter().map(|d| (d.dim, d.count)).collect();
+    assert_eq!(dist, vec![(4, 2), (8, 2), (2, 1)]);
+}
+
+#[test]
+fn dim_conflict_and_clear_by_dim() {
+    let (_dir, conn) = setup("sim-dim-ops");
+    // 无在用向量 → 无基准，任何新维度都算一致
+    assert!(image_stored_dim(&conn).unwrap().is_none());
+    assert!(!dim_conflict(None, 4));
+
+    // 软删行不参与「已存维度」基准（在用的才有意义）
+    seed_image(
+        &conn,
+        "img_del",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0; 4]),
+        1,
+    );
+    conn.execute("UPDATE images SET is_deleted = 1 WHERE id = 'img_del'", [])
+        .unwrap();
+    assert!(image_stored_dim(&conn).unwrap().is_none());
+
+    seed_image(
+        &conn,
+        "img_a",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0, 0.0]),
+        1,
+    );
+    assert_eq!(image_stored_dim(&conn).unwrap(), Some(2));
+    assert!(dim_conflict(Some(2), 4), "新维度不同于已存 → 冲突");
+    assert!(!dim_conflict(Some(2), 2), "同维度不算冲突");
+
+    // 混入一条 4 维的：按维度清空只动该维度，且**连软删行一起清**（否则恢复出来又成不一致源）
+    seed_image(
+        &conn,
+        "img_old",
+        "2026-01-01T00:00:00Z",
+        Some(vec![0.0, 1.0, 0.0, 0.0]),
+        1,
+    );
+    // 2 维与 4 维并存 → 没有唯一基准，返回 None（不终止；由「按维度清空」交给用户决定）
+    assert!(
+        image_stored_dim(&conn).unwrap().is_none(),
+        "混维时无唯一基准"
+    );
+    assert_eq!(
+        clear_image_dim(&conn, 4).unwrap(),
+        2,
+        "含软删行：img_del + img_old"
+    );
+    let leftover: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM images WHERE vec IS NOT NULL AND length(vec) = 16",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(leftover, 0);
+    assert_eq!(
+        image_stored_dim(&conn).unwrap(),
+        Some(2),
+        "2 维的行不受影响"
+    );
+
+    // 提示词侧对称：两表各算各的（图像有 2 维不影响提示词）
+    seed_prompt(
+        &conn,
+        "pr_a",
+        "A",
+        "a",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0; 4]),
+    );
+    assert_eq!(prompt_stored_dim(&conn).unwrap(), Some(4));
+    assert_eq!(clear_prompt_dim(&conn, 4).unwrap(), 1);
+    assert!(prompt_stored_dim(&conn).unwrap().is_none());
+}
+
+#[test]
+fn candidates_report_dim_mismatch_count() {
+    let (_dir, conn) = setup("sim-mismatch");
+    seed_image(
+        &conn,
+        "img_ok",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0, 0.0]),
+        1,
+    );
+    seed_image(
+        &conn,
+        "img_other",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0; 4]),
+        1,
+    );
+    seed_image(
+        &conn,
+        "img_other_unsafe",
+        "2026-01-01T00:00:00Z",
+        Some(vec![0.0; 4]),
+        0,
+    );
+    seed_image(&conn, "img_none", "2026-01-01T00:00:00Z", None, 1);
+
+    // 目标 2 维：4 维的行进不了候选，但条数要数出来（safe_only=false 含 is_safe=0 的行）
+    let (rows, mismatch) = image_rank_candidates(&conn, 2, "", false).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(mismatch, 2);
+    // safe_only=true：不一致计数同样跟着安全过滤
+    let (_, mismatch_safe) = image_rank_candidates(&conn, 2, "", true).unwrap();
+    assert_eq!(mismatch_safe, 1);
+
+    // 提示词侧对称
+    seed_prompt(
+        &conn,
+        "pr_other",
+        "O",
+        "o",
+        "2026-01-01T00:00:00Z",
+        Some(vec![1.0; 4]),
+    );
+    let (rows, mismatch) = prompt_rank_candidates(&conn, 2, "").unwrap();
+    assert!(rows.is_empty());
+    assert_eq!(mismatch, 1);
 }
 
 #[test]
@@ -314,7 +473,9 @@ fn pending_prompts_and_status_track_incremental() {
     assert_eq!(rows[0].title, "A");
 
     let st = prompt_status(&conn).unwrap();
-    assert_eq!((st.total, st.indexed, st.dim, st.stale), (3, 1, 2, 0));
+    assert_eq!((st.total, st.indexed), (3, 1));
+    let dist: Vec<(usize, i64)> = st.dims.iter().map(|d| (d.dim, d.count)).collect();
+    assert_eq!(dist, vec![(2, 1)]);
 
     // 全量重建 = 清空后待建覆盖全部
     assert_eq!(clear_prompts(&conn).unwrap(), 1);
@@ -323,8 +484,8 @@ fn pending_prompts_and_status_track_incremental() {
 }
 
 #[test]
-fn prompt_status_flags_dimension_mismatch() {
-    let (_dir, conn) = setup("sim-prompt-stale");
+fn prompt_status_reports_dimension_distribution() {
+    let (_dir, conn) = setup("sim-prompt-dims");
     seed_prompt(
         &conn,
         "pr_a",
@@ -341,10 +502,19 @@ fn prompt_status_flags_dimension_mismatch() {
         "2026-01-01T00:00:00Z",
         Some(vec![1.0, 0.0, 0.0, 0.0]),
     );
+    seed_prompt(
+        &conn,
+        "pr_c",
+        "C",
+        "c",
+        "2026-01-01T00:00:00Z",
+        Some(vec![0.0, 1.0, 0.0, 0.0]),
+    );
 
     let st = prompt_status(&conn).unwrap();
-    assert_eq!(st.indexed, 2);
-    assert_eq!(st.stale, 1, "维度不一致的行应被标记为需重建");
+    assert_eq!(st.indexed, 3);
+    let dist: Vec<(usize, i64)> = st.dims.iter().map(|d| (d.dim, d.count)).collect();
+    assert_eq!(dist, vec![(4, 2), (2, 1)]);
 }
 
 #[test]

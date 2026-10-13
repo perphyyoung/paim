@@ -31,12 +31,18 @@ export interface IndexSummaryLike {
   reason: string;
 }
 
+/** 单一维度下的向量条数（与后端 `DimCount` 同形）。 */
+export interface DimCountLike {
+  dim: number;
+  count: number;
+}
+
 /** 索引状态（与后端 `SimilarityStatus` 同形）。 */
 export interface IndexStatusLike {
   total: number;
   indexed: number;
-  dim: number;
-  stale: number;
+  /** 已建立向量的维度分布（按条数降序、同数按维度升序）；空数组 = 尚未建立任何向量 */
+  dims: DimCountLike[];
 }
 
 /** 父组件注入的「类别差异」：命令、事件与文案。 */
@@ -62,4 +68,6 @@ export interface IndexPanelApi {
   /** 请求取消正在跑的索引（下一个条目边界生效）；返回是否确实有任务在跑 */
   cancel: () => Promise<boolean>;
   clear: () => Promise<number>;
+  /** 只清空指定维度的向量（换模型后清掉旧维度再增量，避免整表全量重建）；返回清除条数 */
+  clearDim: (dim: number) => Promise<number>;
 }

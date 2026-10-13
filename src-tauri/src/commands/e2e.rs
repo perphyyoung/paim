@@ -1,6 +1,8 @@
 //! e2e 测试缝命令：供 e2e 测试操纵磁盘文件 / 读 DB 状态。
 //! release 构建不门控（命令无害、无 UI 入口），统一简化维护。
 
+use crate::commands::similarity::MixedSource;
+use crate::domain::similarity_service;
 use crate::infra::db::{self, BkDb};
 use crate::infra::error::AppError;
 use rusqlite::OptionalExtension;
@@ -92,4 +94,44 @@ pub fn e2e_is_window_visible(app: AppHandle, label: String) -> Result<Option<boo
     win.is_visible()
         .map(Some)
         .map_err(|e| AppError::Message(format!("读取窗口可见性失败: {e}")))
+}
+
+/// e2e 测试缝：往指定行写入**指定维度**的确定性伪向量（已 L2 归一化）。
+/// 用途：制造「库里混有不同维度的向量」的场景 —— 真实索引由 mock embedder 产出固定维度，
+/// 无法自己造出旧维度，只能从这里注入。
+/// `kind` 复用检索侧的 [`MixedSource`]（Image / Prompt）表示写哪张表。
+#[tauri::command]
+#[specta::specta]
+pub async fn e2e_store_vector(
+    db: State<'_, BkDb>,
+    kind: MixedSource,
+    id: String,
+    dim: usize,
+) -> Result<(), AppError> {
+    let vec = pseudo_vector(&id, dim);
+    db::blocking(&db, move |conn| match kind {
+        MixedSource::Image => similarity_service::store(conn, &id, &vec),
+        MixedSource::Prompt => similarity_service::store_prompt(conn, &id, &vec),
+    })
+    .await
+}
+
+/// 由 id 派生的确定性单位向量（同 id + 同维度恒等）：FNV 起手，各维取一个固定伪随机值再归一化。
+fn pseudo_vector(id: &str, dim: usize) -> Vec<f32> {
+    let seed = id
+        .bytes()
+        .fold(2166136261u32, |h, b| (h ^ b as u32).wrapping_mul(16777619));
+    let mut v: Vec<f32> = (0..dim)
+        .map(|i| {
+            let x = seed.wrapping_add((i as u32).wrapping_mul(2654435761));
+            (x % 1000) as f32 / 1000.0 + 0.001
+        })
+        .collect();
+    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        for x in &mut v {
+            *x /= norm;
+        }
+    }
+    v
 }

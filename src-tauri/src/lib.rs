@@ -97,6 +97,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::similarity::index_image_embeddings,
             commands::similarity::cancel_image_index,
             commands::similarity::clear_image_embeddings,
+            commands::similarity::clear_image_embeddings_by_dim,
             commands::similarity::similar_images,
             // —— 提示词相似度（以提示词搜提示词，只算 content 向量，与图像共用同一服务）——
             commands::prompt::prompt_cards_by_ids,
@@ -105,6 +106,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::similarity::index_prompt_embeddings,
             commands::similarity::cancel_prompt_index,
             commands::similarity::clear_prompt_embeddings,
+            commands::similarity::clear_prompt_embeddings_by_dim,
             commands::similarity::similar_prompts,
             // —— 标签（图像/提示词合一，按 domain 分发）——
             commands::tag::get_tag_data,
@@ -152,6 +154,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::e2e::e2e_delete_image_thumbnail,
             commands::e2e::e2e_get_image_paths,
             commands::e2e::e2e_is_window_visible,
+            commands::e2e::e2e_store_vector,
         ])
 }
 

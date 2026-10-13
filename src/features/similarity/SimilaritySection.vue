@@ -49,6 +49,7 @@ const imageApi: IndexPanelApi = {
   index: (mode) => commands.indexImageEmbeddings(baseUrl.value, mode, concurrency.value),
   cancel: () => commands.cancelImageIndex(),
   clear: () => commands.clearImageEmbeddings(),
+  clearDim: (dim) => commands.clearImageEmbeddingsByDim(dim),
 };
 
 /// 提示词侧索引面板：只对提示词内容计算向量，走同一服务的文本通路
@@ -66,6 +67,7 @@ const promptApi: IndexPanelApi = {
   index: (mode) => commands.indexPromptEmbeddings(baseUrl.value, mode, concurrency.value),
   cancel: () => commands.cancelPromptIndex(),
   clear: () => commands.clearPromptEmbeddings(),
+  clearDim: (dim) => commands.clearPromptEmbeddingsByDim(dim),
 };
 </script>
 

@@ -103,15 +103,26 @@ const statusText = computed(() => {
   const s = status.value;
   if (!s) return "读取中…";
   const base = `${s.indexed} / ${s.total} ${props.api.unit}已建立向量`;
-  if (s.indexed === 0) return base;
-  const dim = `维度 ${s.dim}`;
-  return s.stale > 0 ? `${base}（${dim}；另有 ${s.stale} 条维度不一致）` : `${base}（${dim}）`;
+  if (s.indexed === 0 || s.dims.length === 0) return base;
+  // 单维度：照旧只报维度；多维度：摆出分布（不猜哪个是「当前」维度，由用户决定清哪个）
+  if (s.dims.length === 1) return `${base}（维度 ${s.dims[0].dim}）`;
+  const dist = s.dims.map((d) => `${d.dim}：${d.count} ${props.api.unit}`).join("，");
+  return `${base}（维度 ${dist}）`;
 });
+
+/// 库里混有多种维度的向量（疑似换过 embedding 模型）：此时要显式提示并给出按维度清空入口
+const multiDim = computed(() => (status.value?.dims.length ?? 0) > 1);
 
 /// 增量索引：先确认（仅统计待处理条数；无待处理时直接提示，不弹框）
 function requestIncremental() {
   if (running.value) return;
-  const pending = (status.value?.total ?? 0) - (status.value?.indexed ?? 0);
+  const s = status.value;
+  // 多维度并存时增量会一开跑就因维度不一致而终止（后端防线），这里先拦下并引导去清旧维度
+  if ((s?.dims.length ?? 0) > 1) {
+    showToast("库里存在多种维度的向量，请先清掉要重建的旧维度，再点「增量索引」", "warning");
+    return;
+  }
+  const pending = (s?.total ?? 0) - (s?.indexed ?? 0);
   if (pending <= 0) {
     showToast(`没有待建立向量的${props.api.label}（如需重算请用「全量重建」）`, "info");
     return;
@@ -213,6 +224,30 @@ async function clearIndex() {
     await loadStatus();
   }
 }
+
+/// 按维度清空：换模型后只清旧维度再增量，比整表全量重建省得多（属破坏性操作，走 danger 确认）
+function requestClearDim(dim: number, count: number) {
+  if (running.value) return;
+  ask(
+    `将删除维度 ${dim} 的 ${count} ${props.api.unit}向量（${props.api.clearHint}），其余维度的向量不受影响。` +
+      `清掉后点「增量索引」即可用当前模型重建这些${props.api.label}。`,
+    { title: `清空维度 ${dim}`, confirmText: "清空", danger: true },
+    () => clearDim(dim),
+  );
+}
+
+async function clearDim(dim: number) {
+  try {
+    const n = await props.api.clearDim(dim);
+    progress.value = null;
+    markPageStale(props.api.pageKey);
+    showToast(`已清空维度 ${dim} 的 ${n} ${props.api.unit}向量`, "success");
+  } catch (e) {
+    showToast(String(e), "error");
+  } finally {
+    await loadStatus();
+  }
+}
 </script>
 
 <template>
@@ -223,7 +258,7 @@ async function clearIndex() {
       <dd class="mt-1 text-xs text-gray-500">
         {{ api.hint }}；换了 embedding 模型（或改了{{ api.rebuildHint }}）后需点
         <span class="text-gray-400">全量重建</span
-        >，增量只补未建立的条目。检索用的返回条数与相似度阈值在结果弹窗里调整
+        >，也可在下方只清掉旧维度再点「增量索引」；增量只补未建立的条目。检索用的返回条数与相似度阈值在结果弹窗里调整
       </dd>
     </div>
     <div class="flex shrink-0 items-center gap-2">
@@ -258,6 +293,32 @@ async function clearIndex() {
         @click="requestClear"
       >
         清空
+      </button>
+    </div>
+  </div>
+
+  <!-- 维度不一致（疑似换过 embedding 模型）：检索只用同一维度的向量，其余会被排除。
+       给出按维度清空入口 —— 清掉旧维度再增量，不必为少数旧向量做整表全量重建 -->
+  <div
+    v-if="multiDim"
+    class="mb-2 rounded border px-3 py-2 text-xs border-amber-500/40 bg-amber-500/5 text-amber-400"
+  >
+    <p>
+      库里存在多种维度的向量（疑似换过 embedding 模型）。检索只会用到同一维度的向量，其余会被排除；
+      请清掉要重建的旧维度，然后点「增量索引」重建。
+    </p>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <button
+        v-for="d in status?.dims ?? []"
+        :key="d.dim"
+        type="button"
+        class="rounded border px-2 py-0.5 transition-colors border-red-500/60 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+        :disabled="running"
+        :aria-label="`${api.title}：清空维度 ${d.dim} 的向量`"
+        :title="`清空维度 ${d.dim}`"
+        @click="requestClearDim(d.dim, d.count)"
+      >
+        清空维度 {{ d.dim }}（{{ d.count }} {{ api.unit }}）
       </button>
     </div>
   </div>

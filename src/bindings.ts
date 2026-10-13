@@ -160,7 +160,7 @@ export const commands = {
 	 *  供「按 id 渲染卡片」的场景使用，如相似度检索结果。
 	 */
 	imageCardsByIds: (ids: string[]) => __TAURI_INVOKE<ImageCard[]>("image_cards_by_ids", { ids }),
-	/**  本地索引状态（不访问服务）：总数 / 已索引 / 维度 / 需重建数。 */
+	/**  本地索引状态（不访问服务）：总数 / 已索引 / 各维度的条数分布。 */
 	similarityStatus: () => __TAURI_INVOKE<SimilarityStatus>("similarity_status"),
 	/**  当前索引进度快照（设置页挂载时查询，事件不重放）。 */
 	similarityIndexProgress: () => __TAURI_INVOKE<SimilarityIndexProgress>("similarity_index_progress"),
@@ -184,16 +184,23 @@ export const commands = {
 	/**  清空全部向量（设置页「清空」，之后可重建）。 */
 	clearImageEmbeddings: () => __TAURI_INVOKE<number>("clear_image_embeddings"),
 	/**
+	 *  只清空**指定维度**的图像向量（设置页维度分布里的「清空 xxxx」）。
+	 *  换模型后旧维度的向量无法参与新维度的检索，清掉它再点「增量索引」即可重建，
+	 *  不必为少数旧向量做整表全量重建。
+	 */
+	clearImageEmbeddingsByDim: (dim: number) => __TAURI_INVOKE<number>("clear_image_embeddings_by_dim", { dim }),
+	/**
 	 *  以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
 	 *  结果页左栏每次只查这一侧，条数 / 阈值由调用方各自传入；`safe_only` 与主页「安全模式」口径一致。
+	 *  返回 `dim`（本次检索维度）与 `dim_mismatch`（本表维度不一致、已被排除的条数），供结果页提醒。
 	 */
-	similarImages: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<ImageHit[]>("similar_images", { baseUrl, source, sourceId, limit, minScore, safeOnly }),
+	similarImages: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<SimilarImageHits>("similar_images", { baseUrl, source, sourceId, limit, minScore, safeOnly }),
 	/**
 	 *  按 id 列表取卡片投影（顺序与入参一致，缺失 / 已软删的跳过）。
 	 *  供「按 id 渲染卡片」的场景使用，如相似度检索结果。
 	 */
 	promptCardsByIds: (ids: string[]) => __TAURI_INVOKE<PromptCard[]>("prompt_cards_by_ids", { ids }),
-	/**  提示词索引状态（不访问服务）：总数 / 已索引 / 维度 / 需重建数。 */
+	/**  提示词索引状态（不访问服务）：总数 / 已索引 / 各维度的条数分布。 */
 	promptEmbeddingStatus: () => __TAURI_INVOKE<SimilarityStatus>("prompt_embedding_status"),
 	/**  当前提示词索引进度快照（设置页挂载时查询，事件不重放）。 */
 	promptIndexProgress: () => __TAURI_INVOKE<PromptIndexProgress>("prompt_index_progress"),
@@ -212,10 +219,17 @@ export const commands = {
 	/**  清空全部提示词向量（设置页「清空」，之后可重建）。 */
 	clearPromptEmbeddings: () => __TAURI_INVOKE<number>("clear_prompt_embeddings"),
 	/**
+	 *  只清空**指定维度**的提示词向量（设置页维度分布里的「清空 xxxx」）。
+	 *  换模型后旧维度的向量无法参与新维度的检索，清掉它再点「增量索引」即可重建，
+	 *  不必为少数旧向量做整表全量重建（口径与图像侧 [`clear_image_embeddings_by_dim`] 对称）。
+	 */
+	clearPromptEmbeddingsByDim: (dim: number) => __TAURI_INVOKE<number>("clear_prompt_embeddings_by_dim", { dim }),
+	/**
 	 *  以任意源检索**提示词表**（相似提示词）：源可以是提示词（同模态）或图像（跨模态）。
 	 *  结果页右栏每次只查这一侧，条数 / 阈值由调用方各自传入；提示词不过滤 `is_safe`。
+	 *  返回 `dim`（本次检索维度）与 `dim_mismatch`（本表维度不一致、已被排除的条数），供结果页提醒。
 	 */
-	similarPrompts: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScore: number | null) => __TAURI_INVOKE<PromptHit[]>("similar_prompts", { baseUrl, source, sourceId, limit, minScore }),
+	similarPrompts: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScore: number | null) => __TAURI_INVOKE<SimilarPromptHits>("similar_prompts", { baseUrl, source, sourceId, limit, minScore }),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
 	getTagData: (domain: TagDomain) => __TAURI_INVOKE<TagData>("get_tag_data", { domain }),
 	/**  未删除实体到其标签名的映射：{itemId: [tagName,...]}，供列表内存过滤与卡片标签行。 */
@@ -325,6 +339,13 @@ export const commands = {
 	 *  `document.visibilityState` 不随窗口隐藏变化，只能从窗口侧判断「是否真的关掉了」。
 	 */
 	e2eIsWindowVisible: (label: string) => __TAURI_INVOKE<boolean | null>("e2e_is_window_visible", { label }),
+	/**
+	 *  e2e 测试缝：往指定行写入**指定维度**的确定性伪向量（已 L2 归一化）。
+	 *  用途：制造「库里混有不同维度的向量」的场景 —— 真实索引由 mock embedder 产出固定维度，
+	 *  无法自己造出旧维度，只能从这里注入。
+	 *  `kind` 复用检索侧的 [`MixedSource`]（Image / Prompt）表示写哪张表。
+	 */
+	e2eStoreVector: (kind: MixedSource, id: string, dim: number) => __TAURI_INVOKE<null>("e2e_store_vector", { kind, id, dim }),
 };
 
 /** Events */
@@ -389,6 +410,12 @@ export type CreatePromptWithImagesResult = {
 	prompt: Prompt,
 	results: ImageImportResult[],
 	errors: ImageImportError[],
+};
+
+/**  单一维度下的向量条数（设置页的维度分布项）。 */
+export type DimCount = {
+	dim: number,
+	count: number,
 };
 
 /**  e2e 测试缝：图像 DB 三列（thumbnail_path 空串表示 NULL）。 */
@@ -677,6 +704,24 @@ export type RelatedImage = {
 };
 
 /**
+ *  图像检索结果 + 本次检索的维度信息。
+ *  `dim_mismatch` 是**本表**维度与查询维度不一致、已被候选筛选排除的条数：被排除的行在打分
+ *  阶段看不见，只能在这里数出来，供结果页提醒（0 表示没有不一致）。
+ */
+export type SimilarImageHits = {
+	hits: ImageHit[],
+	dim: number,
+	dim_mismatch: number,
+};
+
+/**  提示词检索结果（口径同 [`SimilarImageHits`]，字段名与语义逐项对称）。 */
+export type SimilarPromptHits = {
+	hits: PromptHit[],
+	dim: number,
+	dim_mismatch: number,
+};
+
+/**
  *  索引进度：事件推送与命令查询共用同一结构。
  *  `running = false` 时其余字段是上一轮的终值（用于「上次索引」摘要）。
  */
@@ -711,10 +756,12 @@ export type SimilarityStatus = {
 	total: number,
 	/**  已有向量的条目数 */
 	indexed: number,
-	/**  当前向量维度（无向量时为 0） */
-	dim: number,
-	/**  维度与第一行不一致的行数（换模型后应全量重建） */
-	stale: number,
+	/**
+	 *  已建立向量的**维度分布**（按条数降序，同数按维度升序）。
+	 *  刻意不拿「物理第一行」当当前维度：换模型后那个口径会指错维度，
+	 *  多维度并存时只报分布，由用户判断清哪个维度 —— 见 docs/开发经验.md 第 4 节
+	 */
+	dims: DimCount[],
 };
 
 /**  单个特殊标签的命中数（只统计未删除条目，与主页筛选区口径一致） */

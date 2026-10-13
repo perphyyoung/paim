@@ -14,7 +14,9 @@
 //! 实测 4 路并发仅约 1.2x（预处理与服务端编码可重叠，收益主要来自这一点），
 //! 因此默认不开满；建议不超过服务端 `-np`。
 
-use crate::domain::similarity_service::{self, ImageHit, IndexMode, PromptHit, SimilarityStatus};
+use crate::domain::similarity_service::{
+    self, ImageHit, IndexMode, PromptHit, SimilarImageHits, SimilarPromptHits, SimilarityStatus,
+};
 use crate::infra::db::{self, BkDb};
 use crate::infra::embedding_client::{self, EmbeddingServiceInfo};
 use crate::infra::error::AppError;
@@ -182,7 +184,7 @@ pub fn similarity_index_progress(state: State<'_, SimilarityState>) -> Similarit
     state.progress.lock().map(|p| p.clone()).unwrap_or_default()
 }
 
-/// 本地索引状态（不访问服务）：总数 / 已索引 / 维度 / 需重建数。
+/// 本地索引状态（不访问服务）：总数 / 已索引 / 各维度的条数分布。
 #[tauri::command]
 #[specta::specta]
 pub async fn similarity_status(db: State<'_, BkDb>) -> Result<SimilarityStatus, AppError> {
@@ -206,6 +208,21 @@ pub async fn embedding_service_info(base_url: String) -> Result<EmbeddingService
 #[specta::specta]
 pub async fn clear_image_embeddings(db: State<'_, BkDb>) -> Result<usize, AppError> {
     db::blocking(&db, similarity_service::clear_all).await
+}
+
+/// 只清空**指定维度**的图像向量（设置页维度分布里的「清空 xxxx」）。
+/// 换模型后旧维度的向量无法参与新维度的检索，清掉它再点「增量索引」即可重建，
+/// 不必为少数旧向量做整表全量重建。
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_image_embeddings_by_dim(
+    db: State<'_, BkDb>,
+    dim: usize,
+) -> Result<usize, AppError> {
+    db::blocking(&db, move |conn| {
+        similarity_service::clear_image_dim(conn, dim)
+    })
+    .await
 }
 
 /// 请求取消正在跑的图像索引：任务在下一个条目边界收尾（在途请求跑完为止）。
@@ -251,6 +268,12 @@ pub async fn index_image_embeddings(
             let conn = lock()?;
             similarity_service::clear_all(&conn)?;
         }
+        // 索引前读一次本表已存维度（Full 已清空 → None），作增量期新向量的一致性比对基准。
+        // 只比本表 —— 图像与提示词的维度允许不同（两域各自独立的空间）
+        let stored_dim = {
+            let conn = lock()?;
+            similarity_service::image_stored_dim(&conn)?
+        };
         let pending = {
             let conn = lock()?;
             similarity_service::pending(&conn)?
@@ -264,6 +287,8 @@ pub async fn index_image_embeddings(
         // 连续失败计数（成功即清零）与中止标志：服务中途挂掉时不必把整表跑完
         let streak = AtomicUsize::new(0);
         let halted = AtomicBool::new(false);
+        // 检出维度不一致的新向量维度（0 = 未检出）：终止原因里要报出来，故单独留一格
+        let conflict_dim = AtomicUsize::new(0);
 
         publish(
             &task_app,
@@ -298,20 +323,36 @@ pub async fn index_image_embeddings(
                     ))
                     .and_then(|jpeg| embedder.embed_image(&jpeg));
                     match outcome {
-                        Ok(vec) => match lock() {
-                            Ok(conn) => {
-                                if let Err(e) = similarity_service::store(&conn, &item.id, &vec) {
+                        Ok(vec) => {
+                            // 新向量与本表已存维度不一致（疑似换了 embedding 模型）：直接终止，
+                            // 且这条不入库、不计失败、不计已处理 —— 继续写只会把混杂越铺越广
+                            if similarity_service::dim_conflict(stored_dim, vec.len()) {
+                                if conflict_dim.swap(vec.len(), Ordering::SeqCst) == 0 {
+                                    crate::log_warn!(
+                                        "图像索引维度不一致：新向量 {} 维 vs 已存 {:?} 维，已终止",
+                                        vec.len(),
+                                        stored_dim
+                                    );
+                                }
+                                halted.store(true, Ordering::SeqCst);
+                                break;
+                            }
+                            match lock() {
+                                Ok(conn) => {
+                                    if let Err(e) = similarity_service::store(&conn, &item.id, &vec)
+                                    {
+                                        failed.fetch_add(1, Ordering::SeqCst);
+                                        crate::log_warn!("相似度向量写库失败 {}：{e}", item.id);
+                                    } else {
+                                        streak.store(0, Ordering::SeqCst);
+                                    }
+                                }
+                                Err(e) => {
                                     failed.fetch_add(1, Ordering::SeqCst);
                                     crate::log_warn!("相似度向量写库失败 {}：{e}", item.id);
-                                } else {
-                                    streak.store(0, Ordering::SeqCst);
                                 }
                             }
-                            Err(e) => {
-                                failed.fetch_add(1, Ordering::SeqCst);
-                                crate::log_warn!("相似度向量写库失败 {}：{e}", item.id);
-                            }
-                        },
+                        }
                         Err(e) => {
                             failed.fetch_add(1, Ordering::SeqCst);
                             crate::log_warn!("相似度索引失败 {}：{e}", item.id);
@@ -350,7 +391,12 @@ pub async fn index_image_embeddings(
 
         let current = done.load(Ordering::SeqCst);
         let failed = failed.load(Ordering::SeqCst);
-        let reason = halt_reason(&task_state, halted.load(Ordering::SeqCst));
+        let reason = halt_reason(
+            &task_state,
+            halted.load(Ordering::SeqCst),
+            conflict_dim.load(Ordering::SeqCst),
+            stored_dim,
+        );
         let suffix = if reason.is_empty() {
             String::new()
         } else {
@@ -386,10 +432,24 @@ pub async fn index_image_embeddings(
     result
 }
 
-/// 任务收尾时的中止原因（空串 = 正常跑完）：用户取消优先于连续失败。
-fn halt_reason(state: &SimilarityState, halted: bool) -> String {
+/// 任务收尾时的中止原因（空串 = 正常跑完）：用户取消 > 维度不一致 > 连续失败。
+/// `conflict_dim` 为 0 表示未检出维度不一致；`stored_dim` 仅用于把冲突的旧维度报出来。
+fn halt_reason(
+    state: &SimilarityState,
+    halted: bool,
+    conflict_dim: usize,
+    stored_dim: Option<usize>,
+) -> String {
     if state.cancel.load(Ordering::SeqCst) {
         "已取消".to_string()
+    } else if conflict_dim > 0 {
+        let stored = stored_dim
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "?".to_string());
+        format!(
+            "新向量维度 {conflict_dim} 与本表已存维度 {stored} 不一致（疑似换了 embedding 模型），已终止；\
+             设置页会列出各维度条数，清掉旧维度后重试「增量索引」即可（或点「全量重建」）"
+        )
     } else if halted {
         format!("连续 {MAX_CONSECUTIVE_FAILURES} 条失败已中止（疑似 embedding 服务不可用）")
     } else {
@@ -399,6 +459,7 @@ fn halt_reason(state: &SimilarityState, halted: bool) -> String {
 
 /// 以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
 /// 结果页左栏每次只查这一侧，条数 / 阈值由调用方各自传入；`safe_only` 与主页「安全模式」口径一致。
+/// 返回 `dim`（本次检索维度）与 `dim_mismatch`（本表维度不一致、已被排除的条数），供结果页提醒。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_images(
@@ -409,7 +470,7 @@ pub async fn similar_images(
     limit: usize,
     min_score: f32,
     safe_only: bool,
-) -> Result<Vec<ImageHit>, AppError> {
+) -> Result<SimilarImageHits, AppError> {
     let target = resolve_target(&app, &base_url, source, &source_id).await?;
     let db = app.state::<BkDb>();
     let limit = limit.clamp(1, 200);
@@ -419,18 +480,20 @@ pub async fn similar_images(
     } else {
         String::new()
     };
-    // 短锁取候选 → 锁外打分：万级向量时打分才是大头，不该占着单连接锁
+    // 短锁取候选（顺带数出维度不一致的条数）→ 锁外打分：万级向量时打分才是大头，不该占着单连接锁
     let dim_len = target.len();
-    let rows = db::blocking(&db, move |conn| {
+    let (rows, dim_mismatch) = db::blocking(&db, move |conn| {
         similarity_service::image_rank_candidates(conn, dim_len, &exclude, safe_only)
     })
     .await?;
-    Ok(
-        similarity_service::score_ranked(&rows, &target, limit, min_score)
+    Ok(SimilarImageHits {
+        hits: similarity_service::score_ranked(&rows, &target, limit, min_score)
             .into_iter()
             .map(|(image_id, score)| ImageHit { image_id, score })
             .collect(),
-    )
+        dim: dim_len,
+        dim_mismatch,
+    })
 }
 
 // —————————————————————— 提示词向量索引（文本侧） ——————————————————————
@@ -489,7 +552,7 @@ pub fn prompt_index_progress(state: State<'_, PromptIndexState>) -> PromptIndexP
     state.progress.lock().map(|p| p.clone()).unwrap_or_default()
 }
 
-/// 提示词索引状态（不访问服务）：总数 / 已索引 / 维度 / 需重建数。
+/// 提示词索引状态（不访问服务）：总数 / 已索引 / 各维度的条数分布。
 #[tauri::command]
 #[specta::specta]
 pub async fn prompt_embedding_status(db: State<'_, BkDb>) -> Result<SimilarityStatus, AppError> {
@@ -501,6 +564,21 @@ pub async fn prompt_embedding_status(db: State<'_, BkDb>) -> Result<SimilaritySt
 #[specta::specta]
 pub async fn clear_prompt_embeddings(db: State<'_, BkDb>) -> Result<usize, AppError> {
     db::blocking(&db, similarity_service::clear_prompts).await
+}
+
+/// 只清空**指定维度**的提示词向量（设置页维度分布里的「清空 xxxx」）。
+/// 换模型后旧维度的向量无法参与新维度的检索，清掉它再点「增量索引」即可重建，
+/// 不必为少数旧向量做整表全量重建（口径与图像侧 [`clear_image_embeddings_by_dim`] 对称）。
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_prompt_embeddings_by_dim(
+    db: State<'_, BkDb>,
+    dim: usize,
+) -> Result<usize, AppError> {
+    db::blocking(&db, move |conn| {
+        similarity_service::clear_prompt_dim(conn, dim)
+    })
+    .await
 }
 
 /// 请求取消正在跑的提示词索引（与图像侧对称）：下一个条目边界收尾；
@@ -544,6 +622,12 @@ pub async fn index_prompt_embeddings(
             let conn = lock()?;
             similarity_service::clear_prompts(&conn)?;
         }
+        // 索引前读一次本表已存维度（Full 已清空 → None），作增量期新向量的一致性比对基准。
+        // 只比本表 —— 提示词与图像的维度允许不同（两域各自独立的空间）
+        let stored_dim = {
+            let conn = lock()?;
+            similarity_service::prompt_stored_dim(&conn)?
+        };
         let pending = {
             let conn = lock()?;
             similarity_service::pending_prompts(&conn)?
@@ -557,6 +641,8 @@ pub async fn index_prompt_embeddings(
         // 连续失败计数（成功即清零）与中止标志：服务中途挂掉时不必把整表跑完
         let streak = AtomicUsize::new(0);
         let halted = AtomicBool::new(false);
+        // 检出维度不一致的新向量维度（0 = 未检出）：终止原因里要报出来，故单独留一格
+        let conflict_dim = AtomicUsize::new(0);
 
         publish_prompt(
             &task_app,
@@ -588,22 +674,37 @@ pub async fn index_prompt_embeddings(
                     let text = similarity_service::canonical_text(&item.content);
                     let outcome = embedder.embed_text(&text);
                     match outcome {
-                        Ok(vec) => match lock() {
-                            Ok(conn) => {
-                                if let Err(e) =
-                                    similarity_service::store_prompt(&conn, &item.id, &vec)
-                                {
+                        Ok(vec) => {
+                            // 新向量与本表已存维度不一致（疑似换了 embedding 模型）：直接终止，
+                            // 且这条不入库、不计失败、不计已处理 —— 继续写只会把混杂越铺越广
+                            if similarity_service::dim_conflict(stored_dim, vec.len()) {
+                                if conflict_dim.swap(vec.len(), Ordering::SeqCst) == 0 {
+                                    crate::log_warn!(
+                                        "提示词索引维度不一致：新向量 {} 维 vs 已存 {:?} 维，已终止",
+                                        vec.len(),
+                                        stored_dim
+                                    );
+                                }
+                                halted.store(true, Ordering::SeqCst);
+                                break;
+                            }
+                            match lock() {
+                                Ok(conn) => {
+                                    if let Err(e) =
+                                        similarity_service::store_prompt(&conn, &item.id, &vec)
+                                    {
+                                        failed.fetch_add(1, Ordering::SeqCst);
+                                        crate::log_warn!("提示词向量写库失败 {}：{e}", item.id);
+                                    } else {
+                                        streak.store(0, Ordering::SeqCst);
+                                    }
+                                }
+                                Err(e) => {
                                     failed.fetch_add(1, Ordering::SeqCst);
                                     crate::log_warn!("提示词向量写库失败 {}：{e}", item.id);
-                                } else {
-                                    streak.store(0, Ordering::SeqCst);
                                 }
                             }
-                            Err(e) => {
-                                failed.fetch_add(1, Ordering::SeqCst);
-                                crate::log_warn!("提示词向量写库失败 {}：{e}", item.id);
-                            }
-                        },
+                        }
                         Err(e) => {
                             failed.fetch_add(1, Ordering::SeqCst);
                             crate::log_warn!("提示词索引失败 {}：{e}", item.id);
@@ -642,7 +743,12 @@ pub async fn index_prompt_embeddings(
 
         let current = done.load(Ordering::SeqCst);
         let failed = failed.load(Ordering::SeqCst);
-        let reason = prompt_halt_reason(&task_state, halted.load(Ordering::SeqCst));
+        let reason = prompt_halt_reason(
+            &task_state,
+            halted.load(Ordering::SeqCst),
+            conflict_dim.load(Ordering::SeqCst),
+            stored_dim,
+        );
         let suffix = if reason.is_empty() {
             String::new()
         } else {
@@ -679,9 +785,23 @@ pub async fn index_prompt_embeddings(
 }
 
 /// 提示词索引的中止原因（与图像侧 [`halt_reason`] 对称；状态类型不同故分两个函数）。
-fn prompt_halt_reason(state: &PromptIndexState, halted: bool) -> String {
+/// 优先级同图像侧：用户取消 > 维度不一致 > 连续失败。
+fn prompt_halt_reason(
+    state: &PromptIndexState,
+    halted: bool,
+    conflict_dim: usize,
+    stored_dim: Option<usize>,
+) -> String {
     if state.cancel.load(Ordering::SeqCst) {
         "已取消".to_string()
+    } else if conflict_dim > 0 {
+        let stored = stored_dim
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "?".to_string());
+        format!(
+            "新向量维度 {conflict_dim} 与本表已存维度 {stored} 不一致（疑似换了 embedding 模型），已终止；\
+             设置页会列出各维度条数，清掉旧维度后重试「增量索引」即可（或点「全量重建」）"
+        )
     } else if halted {
         format!("连续 {MAX_CONSECUTIVE_FAILURES} 条失败已中止（疑似 embedding 服务不可用）")
     } else {
@@ -691,6 +811,7 @@ fn prompt_halt_reason(state: &PromptIndexState, halted: bool) -> String {
 
 /// 以任意源检索**提示词表**（相似提示词）：源可以是提示词（同模态）或图像（跨模态）。
 /// 结果页右栏每次只查这一侧，条数 / 阈值由调用方各自传入；提示词不过滤 `is_safe`。
+/// 返回 `dim`（本次检索维度）与 `dim_mismatch`（本表维度不一致、已被排除的条数），供结果页提醒。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_prompts(
@@ -700,7 +821,7 @@ pub async fn similar_prompts(
     source_id: String,
     limit: usize,
     min_score: f32,
-) -> Result<Vec<PromptHit>, AppError> {
+) -> Result<SimilarPromptHits, AppError> {
     let target = resolve_target(&app, &base_url, source, &source_id).await?;
     let db = app.state::<BkDb>();
     let limit = limit.clamp(1, 200);
@@ -710,16 +831,18 @@ pub async fn similar_prompts(
     } else {
         String::new()
     };
-    // 短锁取候选 → 锁外打分（与图像侧对称）
+    // 短锁取候选（顺带数出维度不一致的条数）→ 锁外打分（与图像侧对称）
     let dim_len = target.len();
-    let rows = db::blocking(&db, move |conn| {
+    let (rows, dim_mismatch) = db::blocking(&db, move |conn| {
         similarity_service::prompt_rank_candidates(conn, dim_len, &exclude)
     })
     .await?;
-    Ok(
-        similarity_service::score_ranked(&rows, &target, limit, min_score)
+    Ok(SimilarPromptHits {
+        hits: similarity_service::score_ranked(&rows, &target, limit, min_score)
             .into_iter()
             .map(|(prompt_id, score)| PromptHit { prompt_id, score })
             .collect(),
-    )
+        dim: dim_len,
+        dim_mismatch,
+    })
 }

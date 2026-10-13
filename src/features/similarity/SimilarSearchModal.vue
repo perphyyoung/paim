@@ -95,6 +95,11 @@ const imageLoading = ref(false);
 const promptLoading = ref(false);
 const imageError = ref("");
 const promptError = ref("");
+/// 本次检索维度 + 本表维度不一致而被排除的条数（后端随命中一起回传）：非 0 时提示用户重建
+const imageDim = ref(0);
+const imageDimMismatch = ref(0);
+const promptDim = ref(0);
+const promptDimMismatch = ref(0);
 
 /// 两栏各自的参数草稿：与已生效偏好分开，点该栏「重查」才提交
 /// （图像栏 → image.similarity.*，提示词栏 → prompt.similarity.*）
@@ -111,6 +116,19 @@ const promptsDirty = computed(
   () =>
     draftLimitPrompts.value !== promptSettings.limit.value ||
     draftMinPrompts.value !== promptSettings.minScore.value,
+);
+
+/// 维度不一致提醒（空串 = 本栏没有被排除的条目）。结果页只负责提醒，重建在「设置 → 相似度」做：
+/// 被排除的行在打分阶段看不见，只能由后端候选查询顺带数出来（见 docs/开发经验.md 第 4 节）
+const imageDimNotice = computed(() =>
+  imageDimMismatch.value > 0
+    ? `另有 ${imageDimMismatch.value} 张的向量维度不一致（本次检索维度 ${imageDim.value}），已排除；可在「设置 → 相似度」清空该维度后重建`
+    : "",
+);
+const promptDimNotice = computed(() =>
+  promptDimMismatch.value > 0
+    ? `另有 ${promptDimMismatch.value} 条的向量维度不一致（本次检索维度 ${promptDim.value}），已排除；可在「设置 → 相似度」清空该维度后重建`
+    : "",
 );
 /// 重置只改该栏草稿（回到默认条数 / 阈值），仍需点该栏「重查」生效
 function resetImages() {
@@ -140,8 +158,9 @@ async function loadImages(over?: { limit: number; minScore: number }) {
   imageLoading.value = true;
   imageError.value = "";
   imageRows.value = [];
+  imageDimMismatch.value = 0;
   try {
-    const hits = await commands.similarImages(
+    const res = await commands.similarImages(
       baseUrl.value,
       props.sourceKind,
       props.sourceId,
@@ -150,6 +169,10 @@ async function loadImages(over?: { limit: number; minScore: number }) {
       false,
     );
     if (mine !== imageSeq) return;
+    // 维度信息在拿到命中的同时落地：即使一条都没命中，也要能提示「维度不一致」而非误报「没达到阈值」
+    imageDim.value = res.dim;
+    imageDimMismatch.value = res.dim_mismatch;
+    const hits = res.hits;
     const ids = hits.map((h) => h.image_id);
     if (ids.length === 0) return;
     // 卡片数据按相似度顺序取回（后端保持入参顺序、缺失项跳过）
@@ -186,8 +209,9 @@ async function loadPrompts(over?: { limit: number; minScore: number }) {
   promptLoading.value = true;
   promptError.value = "";
   promptRows.value = [];
+  promptDimMismatch.value = 0;
   try {
-    const hits = await commands.similarPrompts(
+    const res = await commands.similarPrompts(
       baseUrl.value,
       props.sourceKind,
       props.sourceId,
@@ -195,6 +219,9 @@ async function loadPrompts(over?: { limit: number; minScore: number }) {
       minScore,
     );
     if (mine !== promptSeq) return;
+    promptDim.value = res.dim;
+    promptDimMismatch.value = res.dim_mismatch;
+    const hits = res.hits;
     const ids = hits.map((h) => h.prompt_id);
     if (ids.length === 0) return;
     const cards = await commands.promptCardsByIds(ids);
@@ -319,6 +346,8 @@ function reset() {
   promptThumbs.value = {};
   imageError.value = "";
   promptError.value = "";
+  imageDimMismatch.value = 0;
+  promptDimMismatch.value = 0;
 }
 
 /// 草稿回到已生效偏好（打开 / 换源时）
@@ -481,6 +510,13 @@ function pickPrompt(id: string) {
                 </button>
               </div>
             </header>
+            <!-- 维度不一致提醒：被排除的行在打分阶段不可见，只能由后端候选查询顺带数出来 -->
+            <p
+              v-if="imageDimNotice && imageRows.length > 0"
+              class="shrink-0 border-b px-3 py-1 text-xs text-amber-400 border-gray-700"
+            >
+              {{ imageDimNotice }}
+            </p>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="imageLoading" class="p-2 text-sm text-gray-400">正在检索…</p>
               <div v-else-if="imageError" class="p-2">
@@ -492,7 +528,7 @@ function pickPrompt(id: string) {
                 </p>
               </div>
               <p v-else-if="imageRows.length === 0" class="p-2 text-sm text-gray-400">
-                没有达到阈值的相似图像（可调低左栏阈值后点左栏「重查」）
+                {{ imageDimNotice || "没有达到阈值的相似图像（可调低左栏阈值后点左栏「重查」）" }}
               </p>
               <VirtualGrid v-else :items="imageRows" :columns="3">
                 <template #default="{ item, width }">
@@ -569,6 +605,13 @@ function pickPrompt(id: string) {
                 </button>
               </div>
             </header>
+            <!-- 维度不一致提醒（口径同左栏：被排除的行看不到，必须由后端数出来） -->
+            <p
+              v-if="promptDimNotice && promptRows.length > 0"
+              class="shrink-0 border-b px-3 py-1 text-xs text-amber-400 border-gray-700"
+            >
+              {{ promptDimNotice }}
+            </p>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="promptLoading" class="p-2 text-sm text-gray-400">正在检索…</p>
               <div v-else-if="promptError" class="p-2">
@@ -579,7 +622,9 @@ function pickPrompt(id: string) {
                 </p>
               </div>
               <p v-else-if="promptRows.length === 0" class="p-2 text-sm text-gray-400">
-                没有达到阈值的相似提示词（可调低右栏阈值后点右栏「重查」）
+                {{
+                  promptDimNotice || "没有达到阈值的相似提示词（可调低右栏阈值后点右栏「重查」）"
+                }}
               </p>
               <VirtualGrid v-else :items="promptRows" :columns="3">
                 <template #default="{ item, width }">
