@@ -312,155 +312,78 @@ pub async fn index_image_embeddings(
         // 开跑前真探测：量服务**当前**实际返回的向量长度（`/v1/models` 的 `meta.n_embd` 不可信，
         // 本机实测声明 512 而真实 768）。与本表基准不符就一条都不算 —— 等算完再拦（逐条兜底）
         // 等于白跑一整遍，还把没跑到的条目显示成「成功」。
-        if let Some(reason) = probe_image_dim_abort_reason(embedder.as_ref(), stored_dim, total > 0)? {
+        if let Some(reason) =
+            probe_image_dim_abort_reason(embedder.as_ref(), stored_dim, total > 0)?
+        {
             return abort_before_run(reason);
         }
         crate::log_info!("图像索引开始 total={total} 并发={workers} mode={mode:?}");
+        // 域的差异点收进钩子，主体遍历交给共用的 run_index（图像与提示词走同一条路径）
+        let hooks: IndexHooks<similarity_service::PendingImage> = IndexHooks {
+            // 路径统一走 db::data_path（relative_path 相对数据目录，勿用 images_dir 再拼）
+            embed: Box::new(|item: &similarity_service::PendingImage| {
+                similarity_service::prepare_image(&db::data_path(&data_dir, &item.relative_path))
+                    .and_then(|jpeg| embedder.embed_image(&jpeg))
+            }),
+            store: Box::new(|item: &similarity_service::PendingImage, vec: &[f32]| {
+                let conn = lock()?;
+                similarity_service::store(&conn, &item.id, vec)
+            }),
+            tag: Box::new(|item: &similarity_service::PendingImage| item.id.clone()),
+            label: Box::new(|item: &similarity_service::PendingImage| item.relative_path.clone()),
+        };
+        let emit = |t: IndexTick| {
+            publish(
+                &task_app,
+                &task_state,
+                SimilarityIndexProgress {
+                    running: t.running,
+                    current: t.current,
+                    total: t.total,
+                    failed: t.failed,
+                    file_name: t.label,
+                    eta_ms: t.eta_ms,
+                    reason: t.reason,
+                },
+            );
+        };
         let started = Instant::now();
-        let cursor = AtomicUsize::new(0);
-        let done = AtomicUsize::new(0);
-        let failed = AtomicUsize::new(0);
-        // 连续失败计数（成功即清零）与中止标志：服务中途挂掉时不必把整表跑完
-        let streak = AtomicUsize::new(0);
-        let halted = AtomicBool::new(false);
-        // 检出维度不一致的新向量维度（0 = 未检出）：终止原因里要报出来，故单独留一格
-        let conflict_dim = AtomicUsize::new(0);
-
-        publish(
-            &task_app,
-            &task_state,
-            SimilarityIndexProgress {
-                running: true,
-                current: 0,
-                total,
-                failed: 0,
-                file_name: String::new(),
-                eta_ms: 0,
-                reason: String::new(),
-            },
-        );
-
-        std::thread::scope(|scope| {
-            for _ in 0..workers {
-                scope.spawn(|| loop {
-                    // 取消 / 已中止：在条目边界退出（在途请求让它跑完）
-                    if halted.load(Ordering::SeqCst) || task_state.cancel.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    let i = cursor.fetch_add(1, Ordering::SeqCst);
-                    if i >= total {
-                        break;
-                    }
-                    let item = &pending[i];
-                    // 路径统一走 db::data_path（relative_path 相对数据目录，勿用 images_dir 再拼）
-                    let outcome = similarity_service::prepare_image(&db::data_path(
-                        &data_dir,
-                        &item.relative_path,
-                    ))
-                    .and_then(|jpeg| embedder.embed_image(&jpeg));
-                    match outcome {
-                        Ok(vec) => {
-                            // 新向量与本表已存维度不一致（疑似换了 embedding 模型）：直接终止，
-                            // 且这条不入库、不计失败、不计已处理 —— 继续写只会把混杂越铺越广
-                            if similarity_service::dim_conflict(stored_dim, vec.len()) {
-                                if conflict_dim.swap(vec.len(), Ordering::SeqCst) == 0 {
-                                    crate::log_warn!(
-                                        "图像索引维度不一致：新向量 {} 维 vs 已存 {:?} 维，已终止",
-                                        vec.len(),
-                                        stored_dim
-                                    );
-                                }
-                                halted.store(true, Ordering::SeqCst);
-                                break;
-                            }
-                            match lock() {
-                                Ok(conn) => {
-                                    if let Err(e) = similarity_service::store(&conn, &item.id, &vec)
-                                    {
-                                        failed.fetch_add(1, Ordering::SeqCst);
-                                        crate::log_warn!("相似度向量写库失败 {}：{e}", item.id);
-                                    } else {
-                                        streak.store(0, Ordering::SeqCst);
-                                    }
-                                }
-                                Err(e) => {
-                                    failed.fetch_add(1, Ordering::SeqCst);
-                                    crate::log_warn!("相似度向量写库失败 {}：{e}", item.id);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            failed.fetch_add(1, Ordering::SeqCst);
-                            crate::log_warn!("相似度索引失败 {}：{e}", item.id);
-                            if streak.fetch_add(1, Ordering::SeqCst) + 1 >= MAX_CONSECUTIVE_FAILURES
-                                && !halted.swap(true, Ordering::SeqCst)
-                            {
-                                crate::log_warn!(
-                                    "图像索引连续 {MAX_CONSECUTIVE_FAILURES} 条失败，已中止（疑似 embedding 服务不可用）"
-                                );
-                            }
-                        }
-                    }
-                    let current = done.fetch_add(1, Ordering::SeqCst) + 1;
-                    let elapsed = started.elapsed().as_millis() as u64;
-                    let eta_ms = if current > 0 {
-                        elapsed / current as u64 * (total - current) as u64
-                    } else {
-                        0
-                    };
-                    publish(
-                        &task_app,
-                        &task_state,
-                        SimilarityIndexProgress {
-                            running: true,
-                            current,
-                            total,
-                            failed: failed.load(Ordering::SeqCst),
-                            file_name: item.relative_path.clone(),
-                            eta_ms,
-                            reason: String::new(),
-                        },
-                    );
-                });
-            }
-        });
-
-        let current = done.load(Ordering::SeqCst);
-        let failed = failed.load(Ordering::SeqCst);
-        let reason = halt_reason(
-            &task_state.cancel,
-            halted.load(Ordering::SeqCst),
-            conflict_dim.load(Ordering::SeqCst),
+        let outcome = run_index(
+            "图像索引",
+            &pending,
             stored_dim,
+            workers,
+            &task_state.cancel,
+            &hooks,
+            &emit,
         );
-        let suffix = if reason.is_empty() {
+        let suffix = if outcome.reason.is_empty() {
             String::new()
         } else {
-            format!("原因={reason}")
+            format!("原因={}", outcome.reason)
         };
         crate::log_info!(
-            "图像索引结束 current={current}/{total} 失败={failed} 耗时={}ms {suffix}",
+            "图像索引结束 current={}/{} 失败={} 耗时={}ms {suffix}",
+            outcome.current,
+            total,
+            outcome.failed,
             started.elapsed().as_millis()
         );
-        publish(
-            &task_app,
-            &task_state,
-            SimilarityIndexProgress {
-                running: false,
-                current,
-                total,
-                failed,
-                file_name: String::new(),
-                eta_ms: 0,
-                reason: reason.clone(),
-            },
-        );
+        emit(IndexTick {
+            running: false,
+            current: outcome.current,
+            total,
+            failed: outcome.failed,
+            label: String::new(),
+            eta_ms: 0,
+            reason: outcome.reason.clone(),
+        });
         Ok(SimilarityIndexSummary {
             total,
-            indexed: current - failed,
-            failed,
-            aborted: !reason.is_empty(),
-            reason,
+            indexed: outcome.current - outcome.failed,
+            failed: outcome.failed,
+            aborted: !outcome.reason.is_empty(),
+            reason: outcome.reason,
         })
     })
     .await;
@@ -514,6 +437,159 @@ fn probe_image_dim_abort_reason(
         .embed_image(&similarity_service::probe_jpeg()?)?
         .len();
     Ok(probe_dim_abort_reason(probe_dim, stored_dim, has_pending))
+}
+
+// —————————————————————— 索引遍历的共用骨架 ——————————————————————
+// 图像与提示词的索引主体只差「条目怎么预处理 + 怎么写回 + 进度事件类型」，其余（三段式节奏、
+// 维度一致性护栏、连续失败中止、取消、ETA、收尾统计）完全同形，故收进 [`run_index`]，
+// 差异经 [`IndexHooks`] 注入 —— 两侧各自只留命令层薄壳。
+
+/// 索引遍历的一步进度快照（域无关）：命令层把它映射成各自的事件结构后发布。
+#[derive(Clone)]
+struct IndexTick {
+    running: bool,
+    current: usize,
+    total: usize,
+    failed: usize,
+    /// 当前条目标签（图像=相对路径，提示词=标题）
+    label: String,
+    eta_ms: u64,
+    reason: String,
+}
+
+/// 索引遍历结束时的统计（命令层据此拼 `SimilarityIndexSummary` 与完成态进度）。
+struct IndexOutcome {
+    current: usize,
+    failed: usize,
+    /// 中止原因（空串 = 正常跑完）
+    reason: String,
+}
+
+/// 索引遍历里「域相关」的钩子：图像 / 提示词各造一份。钩子会跨线程共享，故须 `Sync`；
+/// `store` 由主体在短锁内调用，其余都在无锁段调用。
+struct IndexHooks<'a, Item> {
+    /// 单条处理：预处理 + 请求 embedding 服务 → 向量
+    embed: Box<dyn Fn(&Item) -> Result<Vec<f32>, AppError> + Sync + 'a>,
+    /// 短锁内写回
+    store: Box<dyn Fn(&Item, &[f32]) -> Result<(), AppError> + Sync + 'a>,
+    /// 条目主键（失败日志用）
+    tag: Box<dyn Fn(&Item) -> String + Sync + 'a>,
+    /// 条目标签（进度显示用）
+    label: Box<dyn Fn(&Item) -> String + Sync + 'a>,
+}
+
+/// 索引任务主体（图像 / 提示词共用）：发布起始进度 → 线程池按「短锁取清单 → 无锁请求服务 →
+/// 短锁写回」的节奏遍历 → 收尾统计。维度一致性护栏、连续失败中止、取消、ETA 都在这条共用路径上。
+/// 返回的 `reason` 交给调用方拼进 summary 与完成态进度（空串 = 正常跑完）。
+fn run_index<Item: Sync>(
+    name: &str,
+    pending: &[Item],
+    stored_dim: Option<usize>,
+    workers: usize,
+    cancel: &AtomicBool,
+    hooks: &IndexHooks<'_, Item>,
+    publish: &(dyn Fn(IndexTick) + Sync),
+) -> IndexOutcome {
+    let total = pending.len();
+    let started = Instant::now();
+    let cursor = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
+    let failed = AtomicUsize::new(0);
+    // 连续失败计数（成功即清零）与中止标志：服务中途挂掉时不必把整表跑完
+    let streak = AtomicUsize::new(0);
+    let halted = AtomicBool::new(false);
+    // 检出维度不一致的新向量维度（0 = 未检出）：终止原因里要报出来，故单独留一格
+    let conflict_dim = AtomicUsize::new(0);
+
+    publish(IndexTick {
+        running: true,
+        current: 0,
+        total,
+        failed: 0,
+        label: String::new(),
+        eta_ms: 0,
+        reason: String::new(),
+    });
+
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                // 取消 / 已中止：在条目边界退出（在途请求让它跑完）
+                if halted.load(Ordering::SeqCst) || cancel.load(Ordering::SeqCst) {
+                    break;
+                }
+                let i = cursor.fetch_add(1, Ordering::SeqCst);
+                if i >= total {
+                    break;
+                }
+                let item = &pending[i];
+                match (hooks.embed)(item) {
+                    Ok(vec) => {
+                        // 新向量与本表已存维度不一致（疑似换了 embedding 模型）：直接终止，
+                        // 且这条不入库、不计失败、不计已处理 —— 继续写只会把混杂越铺越广
+                        if similarity_service::dim_conflict(stored_dim, vec.len()) {
+                            if conflict_dim.swap(vec.len(), Ordering::SeqCst) == 0 {
+                                crate::log_warn!(
+                                    "{name}维度不一致：新向量 {} 维 vs 已存 {:?} 维，已终止",
+                                    vec.len(),
+                                    stored_dim
+                                );
+                            }
+                            halted.store(true, Ordering::SeqCst);
+                            break;
+                        }
+                        if let Err(e) = (hooks.store)(item, &vec) {
+                            failed.fetch_add(1, Ordering::SeqCst);
+                            crate::log_warn!("{name}向量写库失败 {}：{e}", (hooks.tag)(item));
+                        } else {
+                            streak.store(0, Ordering::SeqCst);
+                        }
+                    }
+                    Err(e) => {
+                        failed.fetch_add(1, Ordering::SeqCst);
+                        crate::log_warn!("{name}失败 {}：{e}", (hooks.tag)(item));
+                        if streak.fetch_add(1, Ordering::SeqCst) + 1 >= MAX_CONSECUTIVE_FAILURES
+                            && !halted.swap(true, Ordering::SeqCst)
+                        {
+                            crate::log_warn!(
+                                "{name}连续 {MAX_CONSECUTIVE_FAILURES} 条失败，已中止（疑似 embedding 服务不可用）"
+                            );
+                        }
+                    }
+                }
+                let current = done.fetch_add(1, Ordering::SeqCst) + 1;
+                let elapsed = started.elapsed().as_millis() as u64;
+                let eta_ms = if current > 0 {
+                    elapsed / current as u64 * (total - current) as u64
+                } else {
+                    0
+                };
+                publish(IndexTick {
+                    running: true,
+                    current,
+                    total,
+                    failed: failed.load(Ordering::SeqCst),
+                    label: (hooks.label)(item),
+                    eta_ms,
+                    reason: String::new(),
+                });
+            });
+        }
+    });
+
+    let current = done.load(Ordering::SeqCst);
+    let failed = failed.load(Ordering::SeqCst);
+    let reason = halt_reason(
+        cancel,
+        halted.load(Ordering::SeqCst),
+        conflict_dim.load(Ordering::SeqCst),
+        stored_dim,
+    );
+    IndexOutcome {
+        current,
+        failed,
+        reason,
+    }
 }
 
 /// 以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
@@ -723,149 +799,71 @@ pub async fn index_prompt_embeddings(
             return abort_before_run(reason);
         }
         crate::log_info!("提示词索引开始 total={total} 并发={workers} mode={mode:?}");
+        // 域的差异点收进钩子，主体遍历交给共用的 run_index（与图像侧对称）
+        let hooks: IndexHooks<similarity_service::PendingPrompt> = IndexHooks {
+            // 规范化后送模型（与检索现场补算同口径）；超长（服务端上下文不足）等原因的失败计入 failed
+            embed: Box::new(|item: &similarity_service::PendingPrompt| {
+                embedder.embed_text(&similarity_service::canonical_text(&item.content))
+            }),
+            store: Box::new(|item: &similarity_service::PendingPrompt, vec: &[f32]| {
+                let conn = lock()?;
+                similarity_service::store_prompt(&conn, &item.id, vec)
+            }),
+            tag: Box::new(|item: &similarity_service::PendingPrompt| item.id.clone()),
+            label: Box::new(|item: &similarity_service::PendingPrompt| item.title.clone()),
+        };
+        let emit = |t: IndexTick| {
+            publish_prompt(
+                &task_app,
+                &task_state,
+                PromptIndexProgress {
+                    running: t.running,
+                    current: t.current,
+                    total: t.total,
+                    failed: t.failed,
+                    file_name: t.label,
+                    eta_ms: t.eta_ms,
+                    reason: t.reason,
+                },
+            );
+        };
         let started = Instant::now();
-        let cursor = AtomicUsize::new(0);
-        let done = AtomicUsize::new(0);
-        let failed = AtomicUsize::new(0);
-        // 连续失败计数（成功即清零）与中止标志：服务中途挂掉时不必把整表跑完
-        let streak = AtomicUsize::new(0);
-        let halted = AtomicBool::new(false);
-        // 检出维度不一致的新向量维度（0 = 未检出）：终止原因里要报出来，故单独留一格
-        let conflict_dim = AtomicUsize::new(0);
-
-        publish_prompt(
-            &task_app,
-            &task_state,
-            PromptIndexProgress {
-                running: true,
-                current: 0,
-                total,
-                failed: 0,
-                file_name: String::new(),
-                eta_ms: 0,
-                reason: String::new(),
-            },
-        );
-
-        std::thread::scope(|scope| {
-            for _ in 0..workers {
-                scope.spawn(|| loop {
-                    // 取消 / 已中止：在条目边界退出（在途请求让它跑完）
-                    if halted.load(Ordering::SeqCst) || task_state.cancel.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    let i = cursor.fetch_add(1, Ordering::SeqCst);
-                    if i >= total {
-                        break;
-                    }
-                    let item = &pending[i];
-                    // 规范化后送模型（与检索现场补算同口径）；超长（服务端上下文不足）等原因的失败计入 failed
-                    let text = similarity_service::canonical_text(&item.content);
-                    let outcome = embedder.embed_text(&text);
-                    match outcome {
-                        Ok(vec) => {
-                            // 新向量与本表已存维度不一致（疑似换了 embedding 模型）：直接终止，
-                            // 且这条不入库、不计失败、不计已处理 —— 继续写只会把混杂越铺越广
-                            if similarity_service::dim_conflict(stored_dim, vec.len()) {
-                                if conflict_dim.swap(vec.len(), Ordering::SeqCst) == 0 {
-                                    crate::log_warn!(
-                                        "提示词索引维度不一致：新向量 {} 维 vs 已存 {:?} 维，已终止",
-                                        vec.len(),
-                                        stored_dim
-                                    );
-                                }
-                                halted.store(true, Ordering::SeqCst);
-                                break;
-                            }
-                            match lock() {
-                                Ok(conn) => {
-                                    if let Err(e) =
-                                        similarity_service::store_prompt(&conn, &item.id, &vec)
-                                    {
-                                        failed.fetch_add(1, Ordering::SeqCst);
-                                        crate::log_warn!("提示词向量写库失败 {}：{e}", item.id);
-                                    } else {
-                                        streak.store(0, Ordering::SeqCst);
-                                    }
-                                }
-                                Err(e) => {
-                                    failed.fetch_add(1, Ordering::SeqCst);
-                                    crate::log_warn!("提示词向量写库失败 {}：{e}", item.id);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            failed.fetch_add(1, Ordering::SeqCst);
-                            crate::log_warn!("提示词索引失败 {}：{e}", item.id);
-                            if streak.fetch_add(1, Ordering::SeqCst) + 1 >= MAX_CONSECUTIVE_FAILURES
-                                && !halted.swap(true, Ordering::SeqCst)
-                            {
-                                crate::log_warn!(
-                                    "提示词索引连续 {MAX_CONSECUTIVE_FAILURES} 条失败，已中止（疑似 embedding 服务不可用）"
-                                );
-                            }
-                        }
-                    }
-                    let current = done.fetch_add(1, Ordering::SeqCst) + 1;
-                    let elapsed = started.elapsed().as_millis() as u64;
-                    let eta_ms = if current > 0 {
-                        elapsed / current as u64 * (total - current) as u64
-                    } else {
-                        0
-                    };
-                    publish_prompt(
-                        &task_app,
-                        &task_state,
-                        PromptIndexProgress {
-                            running: true,
-                            current,
-                            total,
-                            failed: failed.load(Ordering::SeqCst),
-                            file_name: item.title.clone(),
-                            eta_ms,
-                            reason: String::new(),
-                        },
-                    );
-                });
-            }
-        });
-
-        let current = done.load(Ordering::SeqCst);
-        let failed = failed.load(Ordering::SeqCst);
-        let reason = halt_reason(
-            &task_state.cancel,
-            halted.load(Ordering::SeqCst),
-            conflict_dim.load(Ordering::SeqCst),
+        let outcome = run_index(
+            "提示词索引",
+            &pending,
             stored_dim,
+            workers,
+            &task_state.cancel,
+            &hooks,
+            &emit,
         );
-        let suffix = if reason.is_empty() {
+        let suffix = if outcome.reason.is_empty() {
             String::new()
         } else {
-            format!("原因={reason}")
+            format!("原因={}", outcome.reason)
         };
         crate::log_info!(
-            "提示词索引结束 current={current}/{total} 失败={failed} 耗时={}ms {suffix}",
+            "提示词索引结束 current={}/{} 失败={} 耗时={}ms {suffix}",
+            outcome.current,
+            total,
+            outcome.failed,
             started.elapsed().as_millis()
         );
-        publish_prompt(
-            &task_app,
-            &task_state,
-            PromptIndexProgress {
-                running: false,
-                current,
-                total,
-                failed,
-                file_name: String::new(),
-                eta_ms: 0,
-                reason: reason.clone(),
-            },
-        );
+        emit(IndexTick {
+            running: false,
+            current: outcome.current,
+            total,
+            failed: outcome.failed,
+            label: String::new(),
+            eta_ms: 0,
+            reason: outcome.reason.clone(),
+        });
         Ok(SimilarityIndexSummary {
             total,
-            indexed: current - failed,
-            failed,
-            aborted: !reason.is_empty(),
-            reason,
+            indexed: outcome.current - outcome.failed,
+            failed: outcome.failed,
+            aborted: !outcome.reason.is_empty(),
+            reason: outcome.reason,
         })
     })
     .await;
