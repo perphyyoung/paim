@@ -25,10 +25,24 @@ use std::time::{Duration, Instant};
 pub struct EmbeddingServiceInfo {
     pub model: String,
     pub media_marker: String,
-    /// 服务端模型隐含维度（取自 `/v1/models` 的 `meta.n_embd`，仅用于展示/校验提示）
+    /// 服务**实际**返回的向量长度：由 [`Embedder::info`] 现跑一次短文本量出来。
+    /// 不可改用 `/v1/models` 的 `meta.n_embd` —— 实测该声明值与真实向量长度不符
+    /// （本机 embeddinggemma：声明 512 / 真实 768），拿它当维度基准会让索引与检索的比对全错。
     pub dim: usize,
     /// 是否加载了视觉塔（`/props` 的 `modalities.vision`）——为 false 时图像向量不可用
     pub vision: bool,
+}
+
+impl EmbeddingServiceInfo {
+    /// 视觉塔未加载时的中止原因（`None` = 可用）：图像索引开跑前的预检用。
+    /// 这是 `/props` 里的零成本信息，不该等逐条请求失败才发现整批都做不成。
+    pub fn vision_unsupported_reason(&self) -> Option<String> {
+        (!self.vision).then(|| {
+            "embedding 服务未加载视觉塔（/props 的 modalities.vision=false），图像向量不可用；\
+             请改用带视觉能力的模型启动服务后重试"
+                .to_string()
+        })
+    }
 }
 
 /// 向量来源：真实 HTTP 客户端与单测/e2e 的假实现都实现它，便于注入。
@@ -189,10 +203,9 @@ pub fn reset_breaker() {
     breaker_success();
 }
 
-/// 连通性探测（索引任务开跑前的预检）：不可用立刻返回可读错误。
-pub fn probe(base_url: &str) -> Result<EmbeddingServiceInfo, AppError> {
-    make_embedder(base_url).info()
-}
+/// 量「服务实际返回的向量长度」用的固定短串：`meta.n_embd` 实测不可信，
+/// 只有真跑一次请求数出长度才算得准（[`Embedder::info`] 的 `dim` 来源）。
+const PROBE_TEXT: &str = "paim embedding dimension probe";
 
 /// 真实 HTTP 实现。
 pub struct HttpEmbedder {
@@ -305,11 +318,8 @@ impl Embedder for HttpEmbedder {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
-            dim: first
-                .and_then(|m| m.get("meta"))
-                .and_then(|m| m.get("n_embd"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0) as usize,
+            // 维度取**实测**（见 `EmbeddingServiceInfo::dim` 的注释）：多一次文本请求，换一个可靠的基准
+            dim: self.embed_text(PROBE_TEXT)?.len(),
             vision: props
                 .get("modalities")
                 .and_then(|m| m.get("vision"))
@@ -349,15 +359,29 @@ const MOCK_BIAS: f32 = 0.1;
 /// 供 Rust 单测与 e2e（`PAIM_EMBEDDING_MOCK=1`）使用，不依赖真实服务。
 pub struct MockEmbedder {
     dim: usize,
+    /// 是否宣称加载了视觉塔：可注入，供单测验证图像索引开跑前的 vision 预检
+    vision: bool,
 }
 
 impl Default for MockEmbedder {
     fn default() -> Self {
-        Self { dim: 2048 }
+        Self {
+            dim: 2048,
+            vision: true,
+        }
     }
 }
 
 impl MockEmbedder {
+    /// 造一个「服务未加载视觉塔」的假实现（真实服务只有 true / false 两种，故只需一个反向构造器）
+    #[cfg(test)]
+    pub fn without_vision() -> Self {
+        Self {
+            dim: 2048,
+            vision: false,
+        }
+    }
+
     fn pseudo(&self, seed_bytes: &[u8]) -> Vec<f32> {
         use md5::{Digest, Md5};
         let digest = Md5::digest(seed_bytes);
@@ -383,7 +407,7 @@ impl Embedder for MockEmbedder {
             model: "mock".into(),
             media_marker: "<__media_mock__>".into(),
             dim: self.dim,
-            vision: true,
+            vision: self.vision,
         })
     }
 

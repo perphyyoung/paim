@@ -112,6 +112,17 @@ pub fn prepare_image(path: &Path) -> Result<Vec<u8>, AppError> {
         .map_err(|e| AppError::Message(format!("JPEG 编码失败：{e}")))
 }
 
+/// 维度探测图边长：内容无关、只要一张视觉塔肯接受的图。本机实测 1×1 起就返回正常向量
+/// （768 维），取 32 稍留余量，免得换模型后视觉塔对过小图挑食而让索引整体失败。
+const PROBE_SIZE: u32 = 32;
+
+/// 探测「服务实际返回的向量长度」用的小图（与入库同一编码策略）。
+/// 不依赖服务端声明的 `meta.n_embd` —— 实测该值与真实向量长度不符，只能真跑一次量长度。
+pub fn probe_jpeg() -> Result<Vec<u8>, AppError> {
+    image_ops::probe_jpeg(PROBE_SIZE, JPEG_QUALITY)
+        .map_err(|e| AppError::Message(format!("探测图 JPEG 编码失败：{e}")))
+}
+
 /// 是否为标点 / 符号性字符：全部 ASCII 标点（`is_ascii_punctuation`，含 `|` `~` `+` `=` 等
 /// Unicode 归到 S* 类别、但排版语义上是符号的字符）+ Unicode 标点类别 P*（含中文标点）。
 /// emoji 等其他符号（So）不算——它旁边的空白按普通词间空白折叠。
@@ -361,9 +372,21 @@ fn stored_dim_in(conn: &Connection, table: &str) -> Result<Option<usize>, AppErr
 }
 
 /// 新向量与本表已存维度是否冲突：冲突即应**终止**索引（继续写只会把混杂越铺越广）。
-/// 纯函数，两域共用（图像侧与提示词侧各一份调用）。
+/// 开跑前的「真探测」预检与算完后的逐条兜底共用本判据（两处判据必须同源）。
 pub fn dim_conflict(stored: Option<usize>, new: usize) -> bool {
     matches!(stored, Some(d) if d != new)
+}
+
+/// 维度冲突的可读原因：开跑前预检与逐条兜底共用同一措辞（两处一旦漂移，用户看到的说法就不一致）。
+/// `stored` 为 `None` 只会出现在「检出冲突却没有基准」这类不该发生的情形，渲染成 `?` 兜底。
+pub fn dim_conflict_reason(new_dim: usize, stored: Option<usize>) -> String {
+    let stored = stored
+        .map(|d| d.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    format!(
+        "服务返回的向量维度 {new_dim} 与本表已存维度 {stored} 不一致（疑似换了 embedding 模型），已终止；\
+         设置页会列出各维度条数，清掉旧维度后重试「增量索引」即可（或点「全量重建」）"
+    )
 }
 
 /// 清空指定维度的图像向量（含已软删行：否则回收站恢复出来的旧向量又成了不一致源）。

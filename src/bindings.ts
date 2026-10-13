@@ -429,7 +429,11 @@ export type E2EImageRecord = {
 export type EmbeddingServiceInfo = {
 	model: string,
 	media_marker: string,
-	/**  服务端模型隐含维度（取自 `/v1/models` 的 `meta.n_embd`，仅用于展示/校验提示） */
+	/**
+	 *  服务**实际**返回的向量长度：由 [`Embedder::info`] 现跑一次短文本量出来。
+	 *  不可改用 `/v1/models` 的 `meta.n_embd` —— 实测该声明值与真实向量长度不符
+	 *  （本机 embeddinggemma：声明 512 / 真实 768），拿它当维度基准会让索引与检索的比对全错。
+	 */
 	dim: number,
 	/**  是否加载了视觉塔（`/props` 的 `modalities.vision`）——为 false 时图像向量不可用 */
 	vision: boolean,
@@ -740,11 +744,12 @@ export type SimilarityIndexProgress = {
 
 /**  索引结果统计。 */
 export type SimilarityIndexSummary = {
+	/**  本次任务的待处理条数（中止时未必跑完） */
 	total: number,
-	/**  实际处理（含失败）的条数：中止时小于 `total` */
+	/**  **已建成向量**（成功）的条数：中止时小于 `total - failed`（没轮到的条目算「未处理」） */
 	indexed: number,
 	failed: number,
-	/**  是否被中止（用户取消或连续失败） */
+	/**  是否被中止（用户取消 / 维度不一致 / 连续失败） */
 	aborted: boolean,
 	/**  中止原因；正常跑完为空串 */
 	reason: string,

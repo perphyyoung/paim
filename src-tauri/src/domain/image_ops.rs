@@ -47,3 +47,9 @@ pub(crate) fn encode_jpeg(
     )?;
     Ok(out)
 }
+
+/// 生成 size×size 的纯色小图 JPEG：供「探测服务实际返回的向量长度」用 —— 只有长度有意义，内容无关。
+pub(crate) fn probe_jpeg(size: u32, quality: u8) -> Result<Vec<u8>, jpeg_encoder::EncodingError> {
+    let img = image::DynamicImage::ImageRgb8(image::RgbImage::new(size, size));
+    encode_jpeg(&img, quality)
+}

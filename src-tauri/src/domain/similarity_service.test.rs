@@ -106,6 +106,19 @@ fn prepare_image_scales_long_side_and_transcodes_webp() {
 }
 
 #[test]
+fn probe_jpeg_is_a_small_valid_jpeg() {
+    // 探测图只求「服务端能解出来」：出参走与入库**同一个** `encode_jpeg`（被整条索引链路依赖），
+    // 故这里只钉住「非空 + 标准 JPEG 头 + 体量小」这三条，避免它悄悄退化成空 buffer 或巨大图。
+    let jpeg = probe_jpeg().unwrap();
+    assert_eq!(&jpeg[..2], &[0xFF, 0xD8], "缺少 JPEG SOI 头");
+    assert!(
+        jpeg.len() > 100 && jpeg.len() < 4096,
+        "32×32 纯色图大小异常：{} 字节",
+        jpeg.len()
+    );
+}
+
+#[test]
 fn pending_and_status_track_incremental() {
     let (_dir, conn) = setup("sim-pending");
     seed_image(&conn, "img_b", "2026-01-02T00:00:00Z", None, 1);
@@ -264,6 +277,21 @@ fn dim_conflict_and_clear_by_dim() {
     assert_eq!(prompt_stored_dim(&conn).unwrap(), Some(4));
     assert_eq!(clear_prompt_dim(&conn, 4).unwrap(), 1);
     assert!(prompt_stored_dim(&conn).unwrap().is_none());
+}
+
+#[test]
+fn dim_conflict_reason_reports_both_dims_and_survives_missing_baseline() {
+    // 开跑前预检与逐条兜底共用同一措辞：两处文案漂移过一次（一处说「新向量维度」、一处说「服务返回」），
+    // 用户看到的说法就跟着不一致，故把措辞收口到这里。
+    let reason = dim_conflict_reason(4, Some(2));
+    assert!(reason.contains("向量维度 4"), "{reason}");
+    assert!(reason.contains("与本表已存维度 2 不一致"), "{reason}");
+    assert!(reason.contains("清掉旧维度后重试「增量索引」"), "{reason}");
+    // 理论不该发生的「检出冲突却没有基准」也不能 panic（索引任务收尾路径不允许抛错）
+    assert!(
+        dim_conflict_reason(4, None).contains("已存维度 ?"),
+        "无基准时渲染成 ? 兜底"
+    );
 }
 
 #[test]

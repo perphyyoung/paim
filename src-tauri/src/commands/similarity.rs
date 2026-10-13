@@ -63,11 +63,12 @@ pub struct SimilarityState {
 /// 索引结果统计。
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct SimilarityIndexSummary {
+    /// 本次任务的待处理条数（中止时未必跑完）
     pub total: usize,
-    /// 实际处理（含失败）的条数：中止时小于 `total`
+    /// **已建成向量**（成功）的条数：中止时小于 `total - failed`（没轮到的条目算「未处理」）
     pub indexed: usize,
     pub failed: usize,
-    /// 是否被中止（用户取消或连续失败）
+    /// 是否被中止（用户取消 / 维度不一致 / 连续失败）
     pub aborted: bool,
     /// 中止原因；正常跑完为空串
     pub reason: String,
@@ -255,10 +256,14 @@ pub async fn index_image_embeddings(
     let task_app = app.clone();
     let workers = concurrency.clamp(1, 8);
     let result = crate::infra::task::spawn_blocking("图像索引", move || {
-        // 用户显式点了索引：先复位断路器，再探测一次服务
+        // 用户显式点了索引：先复位断路器，再取一次服务信息（连通性预检 + 视觉塔能力 + 实测维度）
         embedding_client::reset_breaker();
-        embedding_client::probe(&base_url)?;
         let embedder = embedding_client::make_embedder(&base_url);
+        let info = embedder.info()?;
+        // 视觉塔没加载时图像向量根本不可用：在**清空已有向量之前**拦下（全量模式下先毁再中止是最坏的顺序）
+        if let Some(reason) = info.vision_unsupported_reason() {
+            return Err(AppError::Message(reason));
+        }
         let data_dir = db::data_dir(&task_app);
         let bk = task_app.state::<BkDb>();
         let task_state = task_app.state::<SimilarityState>();
@@ -279,6 +284,37 @@ pub async fn index_image_embeddings(
             similarity_service::pending(&conn)?
         };
         let total = pending.len();
+        // 开跑前就中止的统一收尾：一条都不参与计算（已建 / 失败 均 0，未处理 = total）。
+        // 必须发一次完成态 —— 面板「上次索引」读它才显示得出「未处理 N」。
+        let abort_before_run = |reason: String| -> Result<SimilarityIndexSummary, AppError> {
+            crate::log_warn!("图像索引未开始：{reason}");
+            publish(
+                &task_app,
+                &task_state,
+                SimilarityIndexProgress {
+                    running: false,
+                    current: 0,
+                    total,
+                    failed: 0,
+                    file_name: String::new(),
+                    eta_ms: 0,
+                    reason: reason.clone(),
+                },
+            );
+            Ok(SimilarityIndexSummary {
+                total,
+                indexed: 0,
+                failed: 0,
+                aborted: true,
+                reason,
+            })
+        };
+        // 开跑前真探测：量服务**当前**实际返回的向量长度（`/v1/models` 的 `meta.n_embd` 不可信，
+        // 本机实测声明 512 而真实 768）。与本表基准不符就一条都不算 —— 等算完再拦（逐条兜底）
+        // 等于白跑一整遍，还把没跑到的条目显示成「成功」。
+        if let Some(reason) = probe_image_dim_abort_reason(embedder.as_ref(), stored_dim, total > 0)? {
+            return abort_before_run(reason);
+        }
         crate::log_info!("图像索引开始 total={total} 并发={workers} mode={mode:?}");
         let started = Instant::now();
         let cursor = AtomicUsize::new(0);
@@ -444,18 +480,40 @@ fn halt_reason(
     if cancel.load(Ordering::SeqCst) {
         "已取消".to_string()
     } else if conflict_dim > 0 {
-        let stored = stored_dim
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| "?".to_string());
-        format!(
-            "新向量维度 {conflict_dim} 与本表已存维度 {stored} 不一致（疑似换了 embedding 模型），已终止；\
-             设置页会列出各维度条数，清掉旧维度后重试「增量索引」即可（或点「全量重建」）"
-        )
+        similarity_service::dim_conflict_reason(conflict_dim, stored_dim)
     } else if halted {
         format!("连续 {MAX_CONSECUTIVE_FAILURES} 条失败已中止（疑似 embedding 服务不可用）")
     } else {
         String::new()
     }
+}
+
+/// 开跑前的维度探测结论 → 应中止的原因（`None` = 可继续）。图像与提示词共用：
+/// 探测维度由各自拿（图像真跑一张探测图，提示词直接用 `info.dim` —— `info()` 里已实测过）。
+/// 无待处理或没有基准时一律放行，连探测请求都不必发。
+fn probe_dim_abort_reason(
+    probe_dim: usize,
+    stored_dim: Option<usize>,
+    has_pending: bool,
+) -> Option<String> {
+    (has_pending && similarity_service::dim_conflict(stored_dim, probe_dim))
+        .then(|| similarity_service::dim_conflict_reason(probe_dim, stored_dim))
+}
+
+/// 图像侧：先真跑一张探测图量服务**当前**返回的维度，再交给 [`probe_dim_abort_reason`]。
+/// 无待处理或没有基准时跳过，省一次请求（`meta.n_embd` 不可信，只能实测，见 [`similarity_service::probe_jpeg`]）。
+fn probe_image_dim_abort_reason(
+    embedder: &dyn embedding_client::Embedder,
+    stored_dim: Option<usize>,
+    has_pending: bool,
+) -> Result<Option<String>, AppError> {
+    if !has_pending || stored_dim.is_none() {
+        return Ok(None);
+    }
+    let probe_dim = embedder
+        .embed_image(&similarity_service::probe_jpeg()?)?
+        .len();
+    Ok(probe_dim_abort_reason(probe_dim, stored_dim, has_pending))
 }
 
 /// 以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
@@ -611,10 +669,11 @@ pub async fn index_prompt_embeddings(
     let task_app = app.clone();
     let workers = concurrency.clamp(1, 8);
     let result = crate::infra::task::spawn_blocking("提示词索引", move || {
-        // 用户显式点了索引：先复位断路器，再探测一次服务（与图像侧对称）
+        // 用户显式点了索引：先复位断路器，再取一次服务信息（与图像侧对称；
+        // 提示词侧只看实测 dim，不看 vision —— 文本不经过视觉塔）
         embedding_client::reset_breaker();
-        embedding_client::probe(&base_url)?;
         let embedder = embedding_client::make_embedder(&base_url);
+        let info = embedder.info()?;
         let bk = task_app.state::<BkDb>();
         let task_state = task_app.state::<PromptIndexState>();
         let lock = || bk.0.lock().map_err(|e| AppError::Message(e.to_string()));
@@ -634,6 +693,35 @@ pub async fn index_prompt_embeddings(
             similarity_service::pending_prompts(&conn)?
         };
         let total = pending.len();
+        // 开跑前就中止的统一收尾（口径与图像侧一致）：一条都不参与计算，未处理 = total
+        let abort_before_run = |reason: String| -> Result<SimilarityIndexSummary, AppError> {
+            crate::log_warn!("提示词索引未开始：{reason}");
+            publish_prompt(
+                &task_app,
+                &task_state,
+                PromptIndexProgress {
+                    running: false,
+                    current: 0,
+                    total,
+                    failed: 0,
+                    file_name: String::new(),
+                    eta_ms: 0,
+                    reason: reason.clone(),
+                },
+            );
+            Ok(SimilarityIndexSummary {
+                total,
+                indexed: 0,
+                failed: 0,
+                aborted: true,
+                reason,
+            })
+        };
+        // 开跑前真探测（与图像侧对称）：`info()` 里的 `dim` 就是刚跑一次短文本量出来的长度，
+        // 故文本侧不必再多一次请求。与本表基准不符就一条都不算。
+        if let Some(reason) = probe_dim_abort_reason(info.dim, stored_dim, total > 0) {
+            return abort_before_run(reason);
+        }
         crate::log_info!("提示词索引开始 total={total} 并发={workers} mode={mode:?}");
         let started = Instant::now();
         let cursor = AtomicUsize::new(0);
@@ -822,3 +910,7 @@ pub async fn similar_prompts(
         dim_mismatch,
     })
 }
+
+#[cfg(test)]
+#[path = "similarity.test.rs"]
+mod tests;

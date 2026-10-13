@@ -131,7 +131,7 @@ test("增量索引遇维度不一致：直接终止、不入库，并把原因�
   await promptPanelButton(tabpanel, "增量索引").click();
   await page.getByRole("button", { name: "开始", exact: true }).click();
 
-  // 新向量（假 embedding 的 2048 维）与本表已存 8 维冲突 → 一开跑即终止
+  // 新向量（假 embedding 的 2048 维）与本表已存 8 维冲突 → 开跑前的真探测就中止，一条都不算
   const aborted = page.getByText(/索引已中止/);
   await expect(aborted.first()).toBeVisible({ timeout: 5_000 });
   await aborted
@@ -140,11 +140,17 @@ test("增量索引遇维度不一致：直接终止、不入库，并把原因�
     .catch(() => {});
   // 原因要留在页面上（服务相关问题不能只出现在一次性 toast 里）
   await expect(tabpanel.getByText(/与本表已存维度 8 不一致/)).toBeVisible({ timeout: 5_000 });
+  // 计数三态：待处理的一条都没跑 → 已建 0；未处理 = 本次任务的全部待处理条数
+  // （条数按现场查得，别写死：上一条用例被 clearPromptVectors 清过的提示词也会落进待处理）
+  const before = await promptStatus(page);
+  const pendingBefore = before.total - before.indexed;
+  await expect(tabpanel.getByText(/已建 0 条/)).toBeVisible();
+  await expect(tabpanel.getByText(new RegExp(`未处理 ${pendingBefore} 条`))).toBeVisible();
   // 冲突那条不入库、不计失败：分布仍是单一 8 维，待建那条仍无向量
   const st = await promptStatus(page);
   expect(st.dims).toEqual([{ dim: OLD_DIM, count: 1 }]);
   expect(st.indexed).toBe(1);
-  e2eLog.info("[step] 增量已在维度不一致处终止，未续写混杂");
+  e2eLog.info("[step] 增量已在维度不一致处终止，未续写混杂，计数也未把未处理算成已建");
 });
 
 test("检索结果页提醒：本表维度不一致的条目被排除时，对应栏位给出提示", async ({ page, app }) => {

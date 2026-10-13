@@ -75,3 +75,27 @@ fn error_message_prefers_server_message() {
     // 非 JSON 错误体：截断原文兜底
     assert_eq!(error_message("plain text"), "plain text");
 }
+
+#[test]
+fn mock_info_reports_measured_dim_and_injectable_vision() {
+    let mock = MockEmbedder::default();
+    let info = mock.info().unwrap();
+    // dim 口径与真实实现一致：**实测**向量长度（真实侧 `meta.n_embd` 不可信，见 EmbeddingServiceInfo::dim）
+    assert_eq!(info.dim, mock.embed_text("任意文本").unwrap().len());
+    assert!(info.vision, "默认宣称加载了视觉塔");
+    assert!(
+        info.vision_unsupported_reason().is_none(),
+        "视觉塔可用时不该给中止原因"
+    );
+    let no_vision = MockEmbedder::without_vision().info().unwrap();
+    assert!(
+        !no_vision.vision,
+        "视觉塔缺失要能注入，供图像索引的预检用例使用"
+    );
+    assert!(
+        no_vision
+            .vision_unsupported_reason()
+            .is_some_and(|r| r.contains("未加载视觉塔")),
+        "视觉塔缺失要给可读的中止原因"
+    );
+}

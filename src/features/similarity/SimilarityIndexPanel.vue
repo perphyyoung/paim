@@ -99,6 +99,22 @@ function formatEta(ms: number): string {
 }
 const etaText = computed(() => formatEta(progress.value?.eta_ms ?? 0));
 
+/// 上次索引的三态计数：**已建** = 跑过的条目减失败，**未处理** = 总数 - 跑过的条目。
+/// 中止时 `current < total`，必须先算「已建」—— 旧口径拿「total - failed」当成功数，
+/// 会把没跑到的整批（含开跑前预检中止的全部条目）显示成「成功」。
+const lastRun = computed(() => {
+  const p = progress.value;
+  if (!p || p.total <= 0) return null;
+  return {
+    total: p.total,
+    indexed: p.current - p.failed,
+    failed: p.failed,
+    pending: p.total - p.current,
+    // 中止原因（正常跑完为空串）；并进本对象，模板里就不必再单独窄化 progress
+    reason: p.reason,
+  };
+});
+
 const statusText = computed(() => {
   const s = status.value;
   if (!s) return "读取中…";
@@ -178,10 +194,13 @@ async function runIndex(mode: "Incremental" | "Full") {
     const r = await props.api.index(mode);
     // 向量状态变了（全量重建先清空；增量中止也可能已写入部分）→ 主页卡片投影的 has_vec 过期
     if (mode === "Full" || r.indexed > 0) markPageStale(props.api.pageKey);
-    // 中止（用户取消 / 连续失败）与正常完成分开报：中止是「服务不可用」这类问题的唯一可见信号
+    // 中止（用户取消 / 维度不一致 / 连续失败）与正常完成分开报：中止是「服务不可用」这类问题的唯一可见信号。
+    // 「未处理」= 中止时还没轮到的条目（开跑前预检就中止时 = 全部），不能把它算成「已建」
     if (r.aborted) {
+      const pending = r.total - r.indexed - r.failed;
       showToast(
-        `索引已中止（${r.reason}）：已处理 ${r.indexed} ${props.api.unit}，失败 ${r.failed} ${props.api.unit}`,
+        `索引已中止（${r.reason}）：已建 ${r.indexed} ${props.api.unit}，失败 ${r.failed} ${props.api.unit}` +
+          (pending > 0 ? `，未处理 ${pending} ${props.api.unit}` : ""),
         "warning",
       );
     } else {
@@ -356,13 +375,16 @@ async function clearDim(dim: number) {
     </div>
   </div>
 
-  <div v-else-if="progress && progress.total > 0" class="py-2 text-sm">
+  <div v-else-if="lastRun" class="py-2 text-sm">
     <p class="text-gray-200">
-      上次索引：共 {{ progress.total }} {{ api.unit }}，失败 {{ progress.failed }}
-      {{ api.unit }}（成功 {{ progress.total - progress.failed }} {{ api.unit }}）
+      上次索引：共 {{ lastRun.total }} {{ api.unit }}，已建 {{ lastRun.indexed }}
+      {{ api.unit }}，失败 {{ lastRun.failed }} {{ api.unit
+      }}<template v-if="lastRun.pending > 0"
+        >，未处理 {{ lastRun.pending }} {{ api.unit }}</template
+      >
     </p>
     <!-- 中止原因要留在页面上：服务没起是常态（llama.cpp 不常驻），原因不能只出现在一次性 toast 里 -->
-    <p v-if="progress.reason" class="mt-1 text-xs text-amber-400">{{ progress.reason }}</p>
+    <p v-if="lastRun.reason" class="mt-1 text-xs text-amber-400">{{ lastRun.reason }}</p>
   </div>
 
   <!-- 索引动作确认（增量 / 全量重建 / 清空；后两者 danger 样式） -->

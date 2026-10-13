@@ -170,7 +170,9 @@ if (props) {
 
 const models = (await getJson("/v1/models").catch(() => null))?.json;
 const modelId = models?.data?.[0]?.id;
-step(!!modelId, "GET /v1/models", modelId ? `${modelId} n_embd=${models.data[0].meta?.n_embd ?? "?"}` : "（无）");
+/// 服务端**声明**的模型维度（`meta.n_embd`）：仅作对照，不能当向量长度用（见后文对照那一步）
+const declaredDim = models?.data?.[0]?.meta?.n_embd ?? null;
+step(!!modelId, "GET /v1/models", modelId ? `${modelId} n_embd=${declaredDim ?? "?"}` : "（无）");
 if (!modelId) {
   console.log("\n[结论] 服务不可达或没有可用模型，测试中止。");
   process.exit(1);
@@ -228,6 +230,19 @@ step(
   "不同文本区分度",
   t1.vec && t2.vec ? `cos=${cosine(t1.vec, t2.vec).toFixed(4)}` : "跳过",
 );
+// 声明维度 vs 实测向量长度：`meta.n_embd` 是模型隐含维度，**未必等于实际返回的向量长度**
+// （实测 embeddinggemma：声明 512 / 真实 768）。paim 侧的维度基准一律取实测，故这里只作对照展示，
+// 不作为脚本的通过判据。
+if (t1.vec && declaredDim) {
+  const same = declaredDim === t1.vec.length;
+  step(
+    true,
+    "声明维度 vs 实测长度",
+    `n_embd=${declaredDim} 实测=${t1.vec.length}${
+      same ? "" : "（不一致 → 勿拿 n_embd 当维度基准，以实测为准）"
+    }`,
+  );
+}
 
 const oai = await postJson("/v1/embeddings", { model: modelId, input: TEXT });
 const oaiVec = poolVectors(pickVectors(oai.json ?? {}))?.vec;
