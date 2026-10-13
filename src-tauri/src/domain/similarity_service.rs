@@ -65,13 +65,14 @@ pub struct PromptHit {
 }
 
 /// 图像检索结果 + 本次检索的维度信息。
-/// `dim_mismatch` 是**本表**维度与查询维度不一致、已被候选筛选排除的条数：被排除的行在打分
-/// 阶段看不见，只能在这里数出来，供结果页提醒（0 表示没有不一致）。
+/// `dim_mismatch` 是**本表**维度与查询维度不一致、已被候选筛选排除的条数；`pending` 是**本表**
+/// 尚未建立向量的条数。两者在打分阶段都看不见，只能由候选查询数出来，供结果页提醒（0 表示没有）。
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct SimilarImageHits {
     pub hits: Vec<ImageHit>,
     pub dim: usize,
     pub dim_mismatch: usize,
+    pub pending: usize,
 }
 
 /// 提示词检索结果（口径同 [`SimilarImageHits`]，字段名与语义逐项对称）。
@@ -80,6 +81,7 @@ pub struct SimilarPromptHits {
     pub hits: Vec<PromptHit>,
     pub dim: usize,
     pub dim_mismatch: usize,
+    pub pending: usize,
 }
 
 /// 单一维度下的向量条数（设置页的维度分布项）。
@@ -410,15 +412,24 @@ fn clear_dim_in(conn: &Connection, table: &str, dim: usize) -> Result<usize, App
 /// 解码 + 点积 + 排序都在锁外做——万级向量时那才是耗时大头（见 docs/lessons.md 第 28 节）。
 pub type RankRow = (String, Vec<u8>);
 
+/// 短锁阶段的候选集合：参与打分的行，外加两项「没进结果」的计数（结果页据此提醒）——
+/// `dim_mismatch` 是维度不一致被排除的条数，`pending` 是**未建立向量**的条数（压根不参与打分）。
+/// 用命名结构而非 `(rows, usize, usize)`：两个 `usize` 同类型，位置一错就串义。
+pub struct RankCandidates {
+    pub rows: Vec<RankRow>,
+    pub dim_mismatch: usize,
+    pub pending: usize,
+}
+
 /// **短锁阶段**：取图像表里参与打分的候选（维度过滤下推 SQL，避免把无用的 BLOB 拉进内存），
-/// 同时数出**本表维度不一致的条数**（结果页据此提醒：被过滤掉的行在打分阶段是看不见的）。
+/// 同时数出**本表维度不一致的条数**与**未建立向量的条数**（这些行在打分阶段都看不见，只能在这里数）。
 /// `safe_only` 与主页「安全模式」一致地过滤 `is_safe = 0`；`exclude_id` 传空串表示不排除任何行。
 pub fn image_rank_candidates(
     conn: &Connection,
     dim_len: usize,
     exclude_id: &str,
     safe_only: bool,
-) -> Result<(Vec<RankRow>, usize), AppError> {
+) -> Result<RankCandidates, AppError> {
     load_candidates(conn, IMAGES, dim_len, exclude_id, safe_only)
 }
 
@@ -427,7 +438,7 @@ pub fn prompt_rank_candidates(
     conn: &Connection,
     dim_len: usize,
     exclude_id: &str,
-) -> Result<(Vec<RankRow>, usize), AppError> {
+) -> Result<RankCandidates, AppError> {
     load_candidates(conn, PROMPTS, dim_len, exclude_id, false)
 }
 
@@ -437,7 +448,7 @@ fn load_candidates(
     dim_len: usize,
     exclude_id: &str,
     safe_only: bool,
-) -> Result<(Vec<RankRow>, usize), AppError> {
+) -> Result<RankCandidates, AppError> {
     let safe = if safe_only { " AND is_safe = 1" } else { "" };
     let sql = format!(
         "SELECT id, vec FROM {table}
@@ -449,8 +460,8 @@ fn load_candidates(
         Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
     })?;
     let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-    // 同一次短锁里顺带数不一致的行（多一句 COUNT，避免为它再进一次锁）
-    let mismatch: i64 = conn.query_row(
+    // 同一次短锁里顺带数两项「没进结果」的行（多两句 COUNT，避免为它们再进一次锁）
+    let dim_mismatch: i64 = conn.query_row(
         &format!(
             "SELECT COUNT(*) FROM {table}
              WHERE is_deleted = 0 AND vec IS NOT NULL AND length(vec) <> ?1{safe}"
@@ -458,7 +469,17 @@ fn load_candidates(
         params![dim_bytes],
         |r| r.get(0),
     )?;
-    Ok((rows, mismatch as usize))
+    // 未建立向量（vec IS NULL）：这类条目根本不参与打分，用户在结果里看不到它们，也需提醒
+    let pending: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM {table} WHERE is_deleted = 0 AND vec IS NULL{safe}"),
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(RankCandidates {
+        rows,
+        dim_mismatch: dim_mismatch as usize,
+        pending: pending as usize,
+    })
 }
 
 /// **无锁阶段**：归一化点积 + 阈值 + Top-K，返回 (id, score) 降序。

@@ -1,15 +1,17 @@
 /**
  * 向量维度不一致（疑似换过 embedding 模型）的三道防线：
  *   ① 设置页摆出各维度的条数分布 + 按维度清空；② 增量索引时新维度与本表已存（唯一）维度
- *   不一致即终止；③ 检索时把「本表被排除的条数」随命中一起回传，结果页对应栏位提醒。
+ * 不一致即终止；③ 检索时把「本表被排除的条数」（维度不一致 + 尚未建立向量）随命中一起回传，
+ * 结果页对应栏位**并列提醒**。
  *
  * 背景：候选筛选按 `length(vec) = 维度×4` 下推到 SQL，维度不符的行在**打分阶段看不见**，
- * 表现为「静默丢结果」而非报错。故三道防线分别解决「看清现状 / 别再往混杂里续写 / 让人知道被排除了」。
+ * 表现为「静默丢结果」而非报错；未建立向量的行更是压根不参与。故三道防线分别解决
+ * 「看清现状 / 别再往混杂里续写 / 让人知道哪些没进结果」。
  *
  * 测试缝：假 embedding（`PAIM_EMBEDDING_MOCK=1`）固定产出 2048 维，造不出「旧维度」，
  * 因此用命令缝 `e2e_store_vector` 直接给指定行注入任意维度的确定性伪向量（见 e2e-helpers 注释）。
  *
- * 用例按 1~4 顺序在同一实例里跑（数据累积），每个用例开头用直连命令把起点拉回确定状态
+ * 用例按 1~5 顺序在同一实例里跑（数据累积），每个用例开头用直连命令把起点拉回确定状态
  * （用例间只 reload UI，不清库）；assert 一律以「本用例自己造的那份」为准。
  */
 import { expect, type Locator, type Page } from "@playwright/test";
@@ -165,10 +167,34 @@ test("检索结果页提醒：本表维度不一致的条目被排除时，对�
   const detail = await openPromptDetail(page, content);
   const modal = await openSimilarSearchFromPromptDetail(page, detail, content);
 
-  // 左栏（相似图像）：命中为空时，空态文案换成提醒而不是「没达到阈值」
+  // 左栏（相似图像）：维度不一致的条数随命中一起回传，单独一行提醒（空态时该提醒与「没有达到阈值」并存）
   const pane = similarResultPane(modal, "image");
   await expect(pane.getByText(/向量维度不一致/)).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 结果页左栏已提示维度不一致");
+
+  await closeSimilarResult(page);
+  await closeDetail(detail);
+});
+
+test("检索结果页提醒：本表尚未建立向量的条目也在对应栏位提示", async ({ page }) => {
+  await gotoPromptsPage(page);
+  // 源提示词：显式给一个当前维度（2048）的向量，避免检索时现场补算
+  const src = `e2e 未建源 ${Date.now()}`;
+  await createPromptViaDialog(page, src);
+  await storeVector(page, "Prompt", await findPromptIdByContent(page, src), MOCK_DIM);
+  // 另一条保持无向量（新建的提示词默认没有向量）：它是本用例要断言的「未建立向量」项
+  const pending = `e2e 未建向量 ${Date.now()}`;
+  await createPromptViaDialog(page, pending);
+  const st = await promptStatus(page);
+  expect(st.total - st.indexed).toBeGreaterThan(0);
+  e2eLog.info(`[step] 提示词表尚有 ${st.total - st.indexed} 条未建立向量`);
+
+  const detail = await openPromptDetail(page, src);
+  const modal = await openSimilarSearchFromPromptDetail(page, detail, src);
+  // 右栏（相似提示词）：未建立向量的条数随命中一起回传，单独一行提醒（与命中是否为空无关）
+  const pane = similarResultPane(modal, "prompt");
+  await expect(pane.getByText(/尚未建立向量/)).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 结果页右栏已提示存在未建立向量的提示词");
 
   await closeSimilarResult(page);
   await closeDetail(detail);

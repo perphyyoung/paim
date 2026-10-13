@@ -48,8 +48,8 @@ fn rank_images(
     min_score: f32,
     safe_only: bool,
 ) -> Vec<(String, f32)> {
-    let (rows, _) = image_rank_candidates(conn, target.len(), exclude_id, safe_only).unwrap();
-    score_ranked(&rows, target, limit, min_score)
+    let cand = image_rank_candidates(conn, target.len(), exclude_id, safe_only).unwrap();
+    score_ranked(&cand.rows, target, limit, min_score)
 }
 
 /// 提示词侧的同一口径（无安全模式）。
@@ -60,8 +60,8 @@ fn rank_prompt_hits(
     limit: usize,
     min_score: f32,
 ) -> Vec<(String, f32)> {
-    let (rows, _) = prompt_rank_candidates(conn, target.len(), exclude_id).unwrap();
-    score_ranked(&rows, target, limit, min_score)
+    let cand = prompt_rank_candidates(conn, target.len(), exclude_id).unwrap();
+    score_ranked(&cand.rows, target, limit, min_score)
 }
 
 #[test]
@@ -295,7 +295,7 @@ fn dim_conflict_reason_reports_both_dims_and_survives_missing_baseline() {
 }
 
 #[test]
-fn candidates_report_dim_mismatch_count() {
+fn candidates_report_dim_mismatch_and_pending_counts() {
     let (_dir, conn) = setup("sim-mismatch");
     seed_image(
         &conn,
@@ -318,15 +318,26 @@ fn candidates_report_dim_mismatch_count() {
         Some(vec![0.0; 4]),
         0,
     );
+    // 未建立向量（vec IS NULL）：不进候选、不计入维度不一致，单独数成 pending
     seed_image(&conn, "img_none", "2026-01-01T00:00:00Z", None, 1);
+    seed_image(&conn, "img_none_unsafe", "2026-01-01T00:00:00Z", None, 0);
+    // 软删行：两项计数都不该含它
+    seed_image(&conn, "img_none_del", "2026-01-01T00:00:00Z", None, 1);
+    conn.execute(
+        "UPDATE images SET is_deleted = 1 WHERE id = 'img_none_del'",
+        [],
+    )
+    .unwrap();
 
     // 目标 2 维：4 维的行进不了候选，但条数要数出来（safe_only=false 含 is_safe=0 的行）
-    let (rows, mismatch) = image_rank_candidates(&conn, 2, "", false).unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(mismatch, 2);
-    // safe_only=true：不一致计数同样跟着安全过滤
-    let (_, mismatch_safe) = image_rank_candidates(&conn, 2, "", true).unwrap();
-    assert_eq!(mismatch_safe, 1);
+    let cand = image_rank_candidates(&conn, 2, "", false).unwrap();
+    assert_eq!(cand.rows.len(), 1);
+    assert_eq!(cand.dim_mismatch, 2);
+    assert_eq!(cand.pending, 2, "vec IS NULL 的 img_none + img_none_unsafe");
+    // safe_only=true：两项计数同样跟着安全过滤
+    let cand_safe = image_rank_candidates(&conn, 2, "", true).unwrap();
+    assert_eq!(cand_safe.dim_mismatch, 1, "只剩 is_safe=1 的 img_other");
+    assert_eq!(cand_safe.pending, 1, "只剩 is_safe=1 的 img_none");
 
     // 提示词侧对称
     seed_prompt(
@@ -337,9 +348,11 @@ fn candidates_report_dim_mismatch_count() {
         "2026-01-01T00:00:00Z",
         Some(vec![1.0; 4]),
     );
-    let (rows, mismatch) = prompt_rank_candidates(&conn, 2, "").unwrap();
-    assert!(rows.is_empty());
-    assert_eq!(mismatch, 1);
+    seed_prompt(&conn, "pr_none", "N", "n", "2026-01-01T00:00:00Z", None);
+    let cand = prompt_rank_candidates(&conn, 2, "").unwrap();
+    assert!(cand.rows.is_empty());
+    assert_eq!(cand.dim_mismatch, 1);
+    assert_eq!(cand.pending, 1, "pr_none 未建立向量");
 }
 
 #[test]

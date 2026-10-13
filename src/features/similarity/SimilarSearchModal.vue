@@ -95,11 +95,15 @@ const imageLoading = ref(false);
 const promptLoading = ref(false);
 const imageError = ref("");
 const promptError = ref("");
-/// 本次检索维度 + 本表维度不一致而被排除的条数（后端随命中一起回传）：非 0 时提示用户重建
+/// 本次检索维度（后端随命中一起回传）
 const imageDim = ref(0);
-const imageDimMismatch = ref(0);
 const promptDim = ref(0);
+/// 本表两栏「没进结果」的条数（后端随命中一起回传）：
+/// `…DimMismatch` = 维度不一致被排除；`…Pending` = 未建立向量（压根不参与打分）
+const imageDimMismatch = ref(0);
+const imagePending = ref(0);
 const promptDimMismatch = ref(0);
+const promptPending = ref(0);
 
 /// 两栏各自的参数草稿：与已生效偏好分开，点该栏「重查」才提交
 /// （图像栏 → image.similarity.*，提示词栏 → prompt.similarity.*）
@@ -118,16 +122,36 @@ const promptsDirty = computed(
     draftMinPrompts.value !== promptSettings.minScore.value,
 );
 
-/// 维度不一致提醒（空串 = 本栏没有被排除的条目）。结果页只负责提醒，重建在「设置 → 相似度」做：
-/// 被排除的行在打分阶段看不见，只能由后端候选查询顺带数出来（见 docs/开发经验.md 第 4 节）。
-/// 两栏仅单位词不同（图像「张」/ 提示词「条」），故共用一个纯函数。
+/// 结果页的两类提醒（空串 = 本栏无该情况）。只负责提醒，补建 / 重建在「设置 → 相似度」做：
+/// 这两类行在打分阶段都看不见，只能由后端候选查询顺带数出来（见 docs/开发经验.md 第 4 节）。
+/// 两栏仅单位词不同（图像「张」/ 提示词「条」），故共用纯函数。
 function dimNotice(count: number, dim: number, unit: string): string {
   return count > 0
     ? `另有 ${count} ${unit}的向量维度不一致（本次检索维度 ${dim}），已排除；可在「设置 → 相似度」清空该维度后重建`
     : "";
 }
-const imageDimNotice = computed(() => dimNotice(imageDimMismatch.value, imageDim.value, "张"));
-const promptDimNotice = computed(() => dimNotice(promptDimMismatch.value, promptDim.value, "条"));
+/// 未建立向量：这些条目根本不参与打分，用户在结果里看不到它们，也需告知从何处补建
+function pendingNotice(count: number, unit: string): string {
+  return count > 0
+    ? `另有 ${count} ${unit}尚未建立向量，不会出现在本次结果里；可在「设置 → 相似度」点「增量索引」补建`
+    : "";
+}
+/// 两类提醒拼成一行（都空则空串），供模板单行展示
+function joinedNotice(...parts: string[]): string {
+  return parts.filter(Boolean).join(" ");
+}
+const imageNotice = computed(() =>
+  joinedNotice(
+    dimNotice(imageDimMismatch.value, imageDim.value, "张"),
+    pendingNotice(imagePending.value, "张"),
+  ),
+);
+const promptNotice = computed(() =>
+  joinedNotice(
+    dimNotice(promptDimMismatch.value, promptDim.value, "条"),
+    pendingNotice(promptPending.value, "条"),
+  ),
+);
 /// 重置只改该栏草稿（回到默认条数 / 阈值），仍需点该栏「重查」生效
 function resetImages() {
   draftLimitImages.value = DEFAULT_LIMIT;
@@ -157,6 +181,7 @@ async function loadImages(over?: { limit: number; minScore: number }) {
   imageError.value = "";
   imageRows.value = [];
   imageDimMismatch.value = 0;
+  imagePending.value = 0;
   try {
     const res = await commands.similarImages(
       baseUrl.value,
@@ -167,9 +192,10 @@ async function loadImages(over?: { limit: number; minScore: number }) {
       false,
     );
     if (mine !== imageSeq) return;
-    // 维度信息在拿到命中的同时落地：即使一条都没命中，也要能提示「维度不一致」而非误报「没达到阈值」
+    // 维度 / 未向量化信息在拿到命中的同时落地：即使一条都没命中，也要能提示原因而非误报「没达到阈值」
     imageDim.value = res.dim;
     imageDimMismatch.value = res.dim_mismatch;
+    imagePending.value = res.pending;
     const hits = res.hits;
     const ids = hits.map((h) => h.image_id);
     if (ids.length === 0) return;
@@ -208,6 +234,7 @@ async function loadPrompts(over?: { limit: number; minScore: number }) {
   promptError.value = "";
   promptRows.value = [];
   promptDimMismatch.value = 0;
+  promptPending.value = 0;
   try {
     const res = await commands.similarPrompts(
       baseUrl.value,
@@ -219,6 +246,7 @@ async function loadPrompts(over?: { limit: number; minScore: number }) {
     if (mine !== promptSeq) return;
     promptDim.value = res.dim;
     promptDimMismatch.value = res.dim_mismatch;
+    promptPending.value = res.pending;
     const hits = res.hits;
     const ids = hits.map((h) => h.prompt_id);
     if (ids.length === 0) return;
@@ -345,7 +373,9 @@ function reset() {
   imageError.value = "";
   promptError.value = "";
   imageDimMismatch.value = 0;
+  imagePending.value = 0;
   promptDimMismatch.value = 0;
+  promptPending.value = 0;
 }
 
 /// 草稿回到已生效偏好（打开 / 换源时）
@@ -508,12 +538,12 @@ function pickPrompt(id: string) {
                 </button>
               </div>
             </header>
-            <!-- 维度不一致提醒：被排除的行在打分阶段不可见，只能由后端候选查询顺带数出来 -->
+            <!-- 两类「没进结果」提醒（维度不一致被排除 / 尚未建立向量）：打分阶段都不可见，只能由后端候选查询顺带数出来 -->
             <p
-              v-if="imageDimNotice && imageRows.length > 0"
+              v-if="imageNotice"
               class="shrink-0 border-b px-3 py-1 text-xs text-amber-400 border-gray-700"
             >
-              {{ imageDimNotice }}
+              {{ imageNotice }}
             </p>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="imageLoading" class="p-2 text-sm text-gray-400">正在检索…</p>
@@ -526,7 +556,7 @@ function pickPrompt(id: string) {
                 </p>
               </div>
               <p v-else-if="imageRows.length === 0" class="p-2 text-sm text-gray-400">
-                {{ imageDimNotice || "没有达到阈值的相似图像（可调低左栏阈值后点左栏「重查」）" }}
+                没有达到阈值的相似图像（可调低左栏阈值后点左栏「重查」）
               </p>
               <VirtualGrid v-else :items="imageRows" :columns="3">
                 <template #default="{ item, width }">
@@ -603,12 +633,12 @@ function pickPrompt(id: string) {
                 </button>
               </div>
             </header>
-            <!-- 维度不一致提醒（口径同左栏：被排除的行看不到，必须由后端数出来） -->
+            <!-- 两类「没进结果」提醒（口径同左栏：打分阶段看不到，必须由后端数出来） -->
             <p
-              v-if="promptDimNotice && promptRows.length > 0"
+              v-if="promptNotice"
               class="shrink-0 border-b px-3 py-1 text-xs text-amber-400 border-gray-700"
             >
-              {{ promptDimNotice }}
+              {{ promptNotice }}
             </p>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="promptLoading" class="p-2 text-sm text-gray-400">正在检索…</p>
@@ -620,9 +650,7 @@ function pickPrompt(id: string) {
                 </p>
               </div>
               <p v-else-if="promptRows.length === 0" class="p-2 text-sm text-gray-400">
-                {{
-                  promptDimNotice || "没有达到阈值的相似提示词（可调低右栏阈值后点右栏「重查」）"
-                }}
+                没有达到阈值的相似提示词（可调低右栏阈值后点右栏「重查」）
               </p>
               <VirtualGrid v-else :items="promptRows" :columns="3">
                 <template #default="{ item, width }">

@@ -594,7 +594,8 @@ fn run_index<Item: Sync>(
 
 /// 以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
 /// 结果页左栏每次只查这一侧，条数 / 阈值由调用方各自传入；`safe_only` 与主页「安全模式」口径一致。
-/// 返回 `dim`（本次检索维度）与 `dim_mismatch`（本表维度不一致、已被排除的条数），供结果页提醒。
+/// 返回 `dim`（本次检索维度）、`dim_mismatch`（本表维度不一致、已被排除的条数）与
+/// `pending`（本表未建立向量、不会出现在结果里的条数），供结果页提醒。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_images(
@@ -615,19 +616,20 @@ pub async fn similar_images(
     } else {
         String::new()
     };
-    // 短锁取候选（顺带数出维度不一致的条数）→ 锁外打分：万级向量时打分才是大头，不该占着单连接锁
+    // 短锁取候选（顺带数出维度不一致 / 未建立向量的条数）→ 锁外打分：万级向量时打分才是大头，不该占着单连接锁
     let dim_len = target.len();
-    let (rows, dim_mismatch) = db::blocking(&db, move |conn| {
+    let cand = db::blocking(&db, move |conn| {
         similarity_service::image_rank_candidates(conn, dim_len, &exclude, safe_only)
     })
     .await?;
     Ok(SimilarImageHits {
-        hits: similarity_service::score_ranked(&rows, &target, limit, min_score)
+        hits: similarity_service::score_ranked(&cand.rows, &target, limit, min_score)
             .into_iter()
             .map(|(image_id, score)| ImageHit { image_id, score })
             .collect(),
         dim: dim_len,
-        dim_mismatch,
+        dim_mismatch: cand.dim_mismatch,
+        pending: cand.pending,
     })
 }
 
@@ -873,7 +875,8 @@ pub async fn index_prompt_embeddings(
 
 /// 以任意源检索**提示词表**（相似提示词）：源可以是提示词（同模态）或图像（跨模态）。
 /// 结果页右栏每次只查这一侧，条数 / 阈值由调用方各自传入；提示词不过滤 `is_safe`。
-/// 返回 `dim`（本次检索维度）与 `dim_mismatch`（本表维度不一致、已被排除的条数），供结果页提醒。
+/// 返回 `dim`（本次检索维度）、`dim_mismatch`（本表维度不一致、已被排除的条数）与
+/// `pending`（本表未建立向量、不会出现在结果里的条数），供结果页提醒。
 #[tauri::command]
 #[specta::specta]
 pub async fn similar_prompts(
@@ -893,19 +896,20 @@ pub async fn similar_prompts(
     } else {
         String::new()
     };
-    // 短锁取候选（顺带数出维度不一致的条数）→ 锁外打分（与图像侧对称）
+    // 短锁取候选（顺带数出维度不一致 / 未建立向量的条数）→ 锁外打分（与图像侧对称）
     let dim_len = target.len();
-    let (rows, dim_mismatch) = db::blocking(&db, move |conn| {
+    let cand = db::blocking(&db, move |conn| {
         similarity_service::prompt_rank_candidates(conn, dim_len, &exclude)
     })
     .await?;
     Ok(SimilarPromptHits {
-        hits: similarity_service::score_ranked(&rows, &target, limit, min_score)
+        hits: similarity_service::score_ranked(&cand.rows, &target, limit, min_score)
             .into_iter()
             .map(|(prompt_id, score)| PromptHit { prompt_id, score })
             .collect(),
         dim: dim_len,
-        dim_mismatch,
+        dim_mismatch: cand.dim_mismatch,
+        pending: cand.pending,
     })
 }
 

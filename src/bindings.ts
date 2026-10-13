@@ -192,7 +192,8 @@ export const commands = {
 	/**
 	 *  以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
 	 *  结果页左栏每次只查这一侧，条数 / 阈值由调用方各自传入；`safe_only` 与主页「安全模式」口径一致。
-	 *  返回 `dim`（本次检索维度）与 `dim_mismatch`（本表维度不一致、已被排除的条数），供结果页提醒。
+	 *  返回 `dim`（本次检索维度）、`dim_mismatch`（本表维度不一致、已被排除的条数）与
+	 *  `pending`（本表未建立向量、不会出现在结果里的条数），供结果页提醒。
 	 */
 	similarImages: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScore: number | null, safeOnly: boolean) => __TAURI_INVOKE<SimilarImageHits>("similar_images", { baseUrl, source, sourceId, limit, minScore, safeOnly }),
 	/**
@@ -227,7 +228,8 @@ export const commands = {
 	/**
 	 *  以任意源检索**提示词表**（相似提示词）：源可以是提示词（同模态）或图像（跨模态）。
 	 *  结果页右栏每次只查这一侧，条数 / 阈值由调用方各自传入；提示词不过滤 `is_safe`。
-	 *  返回 `dim`（本次检索维度）与 `dim_mismatch`（本表维度不一致、已被排除的条数），供结果页提醒。
+	 *  返回 `dim`（本次检索维度）、`dim_mismatch`（本表维度不一致、已被排除的条数）与
+	 *  `pending`（本表未建立向量、不会出现在结果里的条数），供结果页提醒。
 	 */
 	similarPrompts: (baseUrl: string, source: MixedSource, sourceId: string, limit: number, minScore: number | null) => __TAURI_INVOKE<SimilarPromptHits>("similar_prompts", { baseUrl, source, sourceId, limit, minScore }),
 	/**  域内全部标签数据（标签组 + 带未删除计数的标签）：筛选区与标签管理页共用。 */
@@ -709,13 +711,14 @@ export type RelatedImage = {
 
 /**
  *  图像检索结果 + 本次检索的维度信息。
- *  `dim_mismatch` 是**本表**维度与查询维度不一致、已被候选筛选排除的条数：被排除的行在打分
- *  阶段看不见，只能在这里数出来，供结果页提醒（0 表示没有不一致）。
+ *  `dim_mismatch` 是**本表**维度与查询维度不一致、已被候选筛选排除的条数；`pending` 是**本表**
+ *  尚未建立向量的条数。两者在打分阶段都看不见，只能由候选查询数出来，供结果页提醒（0 表示没有）。
  */
 export type SimilarImageHits = {
 	hits: ImageHit[],
 	dim: number,
 	dim_mismatch: number,
+	pending: number,
 };
 
 /**  提示词检索结果（口径同 [`SimilarImageHits`]，字段名与语义逐项对称）。 */
@@ -723,6 +726,7 @@ export type SimilarPromptHits = {
 	hits: PromptHit[],
 	dim: number,
 	dim_mismatch: number,
+	pending: number,
 };
 
 /**
