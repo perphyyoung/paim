@@ -119,17 +119,15 @@ const promptsDirty = computed(
 );
 
 /// 维度不一致提醒（空串 = 本栏没有被排除的条目）。结果页只负责提醒，重建在「设置 → 相似度」做：
-/// 被排除的行在打分阶段看不见，只能由后端候选查询顺带数出来（见 docs/开发经验.md 第 4 节）
-const imageDimNotice = computed(() =>
-  imageDimMismatch.value > 0
-    ? `另有 ${imageDimMismatch.value} 张的向量维度不一致（本次检索维度 ${imageDim.value}），已排除；可在「设置 → 相似度」清空该维度后重建`
-    : "",
-);
-const promptDimNotice = computed(() =>
-  promptDimMismatch.value > 0
-    ? `另有 ${promptDimMismatch.value} 条的向量维度不一致（本次检索维度 ${promptDim.value}），已排除；可在「设置 → 相似度」清空该维度后重建`
-    : "",
-);
+/// 被排除的行在打分阶段看不见，只能由后端候选查询顺带数出来（见 docs/开发经验.md 第 4 节）。
+/// 两栏仅单位词不同（图像「张」/ 提示词「条」），故共用一个纯函数。
+function dimNotice(count: number, dim: number, unit: string): string {
+  return count > 0
+    ? `另有 ${count} ${unit}的向量维度不一致（本次检索维度 ${dim}），已排除；可在「设置 → 相似度」清空该维度后重建`
+    : "";
+}
+const imageDimNotice = computed(() => dimNotice(imageDimMismatch.value, imageDim.value, "张"));
+const promptDimNotice = computed(() => dimNotice(promptDimMismatch.value, promptDim.value, "条"));
 /// 重置只改该栏草稿（回到默认条数 / 阈值），仍需点该栏「重查」生效
 function resetImages() {
   draftLimitImages.value = DEFAULT_LIMIT;

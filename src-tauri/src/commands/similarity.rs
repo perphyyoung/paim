@@ -392,7 +392,7 @@ pub async fn index_image_embeddings(
         let current = done.load(Ordering::SeqCst);
         let failed = failed.load(Ordering::SeqCst);
         let reason = halt_reason(
-            &task_state,
+            &task_state.cancel,
             halted.load(Ordering::SeqCst),
             conflict_dim.load(Ordering::SeqCst),
             stored_dim,
@@ -434,13 +434,14 @@ pub async fn index_image_embeddings(
 
 /// 任务收尾时的中止原因（空串 = 正常跑完）：用户取消 > 维度不一致 > 连续失败。
 /// `conflict_dim` 为 0 表示未检出维度不一致；`stored_dim` 仅用于把冲突的旧维度报出来。
+/// 图像与提示词的索引状态类型不同，但取消标志都是 `AtomicBool`，故两侧共用本函数（只收取消标志）。
 fn halt_reason(
-    state: &SimilarityState,
+    cancel: &AtomicBool,
     halted: bool,
     conflict_dim: usize,
     stored_dim: Option<usize>,
 ) -> String {
-    if state.cancel.load(Ordering::SeqCst) {
+    if cancel.load(Ordering::SeqCst) {
         "已取消".to_string()
     } else if conflict_dim > 0 {
         let stored = stored_dim
@@ -743,8 +744,8 @@ pub async fn index_prompt_embeddings(
 
         let current = done.load(Ordering::SeqCst);
         let failed = failed.load(Ordering::SeqCst);
-        let reason = prompt_halt_reason(
-            &task_state,
+        let reason = halt_reason(
+            &task_state.cancel,
             halted.load(Ordering::SeqCst),
             conflict_dim.load(Ordering::SeqCst),
             stored_dim,
@@ -782,31 +783,6 @@ pub async fn index_prompt_embeddings(
     .await;
     state.indexing.store(false, Ordering::SeqCst);
     result
-}
-
-/// 提示词索引的中止原因（与图像侧 [`halt_reason`] 对称；状态类型不同故分两个函数）。
-/// 优先级同图像侧：用户取消 > 维度不一致 > 连续失败。
-fn prompt_halt_reason(
-    state: &PromptIndexState,
-    halted: bool,
-    conflict_dim: usize,
-    stored_dim: Option<usize>,
-) -> String {
-    if state.cancel.load(Ordering::SeqCst) {
-        "已取消".to_string()
-    } else if conflict_dim > 0 {
-        let stored = stored_dim
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| "?".to_string());
-        format!(
-            "新向量维度 {conflict_dim} 与本表已存维度 {stored} 不一致（疑似换了 embedding 模型），已终止；\
-             设置页会列出各维度条数，清掉旧维度后重试「增量索引」即可（或点「全量重建」）"
-        )
-    } else if halted {
-        format!("连续 {MAX_CONSECUTIVE_FAILURES} 条失败已中止（疑似 embedding 服务不可用）")
-    } else {
-        String::new()
-    }
 }
 
 /// 以任意源检索**提示词表**（相似提示词）：源可以是提示词（同模态）或图像（跨模态）。
