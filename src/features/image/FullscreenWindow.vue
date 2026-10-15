@@ -50,10 +50,14 @@ async function close() {
   }
 }
 
-// 名称多由载荷预置，这里惰性补标签
+// 名称与标签都按 id 惰性补：载荷里的名称只覆盖「详情弹窗已加载的块」，而顺序快照是全量 id，
+// 跳到未加载的条目（如大库里的第 700+ 项）时载荷没名称，必须在这里按 id 取回来，否则左上角只剩占位「—」。
 async function resolveMeta(id: string) {
-  const tags = await commands.getItemTags("image", id);
-  return { tags: tags.map((t) => t.name) };
+  const [card, tags] = await Promise.all([
+    commands.imageCardsByIds([id]).then((cards) => cards[0]),
+    commands.getItemTags("image", id),
+  ]);
+  return { name: card?.file_name, tags: tags.map((t) => t.name) };
 }
 </script>
 

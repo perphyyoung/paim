@@ -1,5 +1,5 @@
 /**
- * 多图全屏查看的「开场索引 + 键盘翻页 + 序号输入跳转」（独立查看窗口 `image-fullscreen`）。
+ * 多图全屏查看的「开场索引 + 键盘翻页 + 序号输入跳转 + 未加载项的名称回填」（独立查看窗口 `image-fullscreen`）。
  *
  * 背景（docs/lessons.md 第 22 节）：查看器窗口里按一次 → 曾让索引前进两格（跳项）。
  * 原因是键盘导航有两份实现——共用胶囊 `NavAndIndex`（document 监听，详情弹窗与查看器共用）
@@ -12,17 +12,24 @@
  * 本用例覆盖：
  * ① 双击第 N 张缩略图 → 查看器以第 N 张开场（索引与所点一致，不偏一格）；
  * ② ← / → 每次只走一格、末项不越界（修复前 1 / 3 一按就到 3 / 3，反向一按回到 1 / 3）；
- * ③ 序号输入框：输入序号回车跳转、越界夹到边界、非法输入回退原值。
+ * ③ 序号输入框：输入序号回车跳转、越界夹到边界、非法输入回退原值；
+ * ④ 跳到**未加载块**的条目时，左上文件名按 id 补全，不显示占位「—」（见 docs/lessons.md 第 30 节）。
+ *
+ * 注意：④ 会跳到图像主页（用 `uploadImageWithPrompt`），后面的用例各自先把页面带回自己的入口，
+ * 不依赖上一个用例停在哪个主页。
  */
 import { expect, type Locator, type Page } from "@playwright/test";
 import {
+  clearListBlockSize,
   closeFullscreenViewer,
   createPromptViaDialog,
   expectToastAndDismiss,
+  gotoPromptsPage,
   navIndexInput,
   openFullscreenViewer,
   openImageDetail,
   openPromptDetail,
+  setListBlockSize,
   test,
   uploadImageWithPrompt,
   writePng,
@@ -104,12 +111,46 @@ test("查看器序号输入：回车跳转、越界夹到边界、非法输入�
   await closeFullscreenViewer(app, viewer);
 });
 
+// —— 未加载块的条目：名称按 id 惰性补全 ——
+// 跨窗口载荷只带「详情弹窗已加载的块」的名称，而顺序快照是全量 id：跳到未加载的条目时，
+// 载荷里没有它的名称，只有靠查看器按 id 回填才不会显示占位「—」（见 docs/lessons.md 第 30 节）。
+// 复现手法：把主页块大小压到 2（大量数据下主页只加载最早的若干张），造 4 张即可让末项落在未加载块里。
+test("查看器跳到未加载块的条目：左上文件名按 id 补全，不显示占位", async ({ page, app }) => {
+  await clearListBlockSize(page);
+  await setListBlockSize(page, 2);
+  const promptContent = `e2e 未加载块文件名 ${Date.now()}`;
+  for (let i = 0; i < 4; i++) {
+    writePng(app.mockImagePath);
+    await uploadImageWithPrompt(page, promptContent, app.mockImagePath);
+  }
+
+  const detail = await openImageDetail(page, promptContent);
+  const viewer = await openFullscreenViewer(app, detail); // 第 1 张（已加载，名称来自载荷）
+  const idx = navIndexInput(viewer);
+  await expect(idx).toHaveValue("1");
+  await expect(viewer.getByText("e2e-upload.png")).toBeVisible();
+  e2eLog.info("[step] 查看器停在第 1 张，文件名来自载荷");
+
+  // 跳到第 4 张：它属于未加载块，载荷里没有它的名称（修复前这里显示占位「—」）
+  await idx.fill("4");
+  await idx.press("Enter");
+  await expect(idx).toHaveValue("4");
+  await expect(viewer.getByText("—")).toBeHidden();
+  await expect(viewer.getByText("e2e-upload.png")).toBeVisible();
+  await expect(viewer.getByText("e2e-upload.png")).toHaveCount(1, { timeout: 5_000 });
+  e2eLog.info("[step] 跳到未加载块的第 4 张，文件名仍按 id 补全（非占位）");
+
+  await closeFullscreenViewer(app, viewer);
+  await clearListBlockSize(page);
+});
+
 // —— 叠加层不穿透（`NavAndIndex` 的 `disabled`）——
 // 胶囊是 document 级监听、挂载即生效且**不区分层级**：详情弹窗上再叠一层（嵌套详情/导入选择器/
 // 相似结果页/确认框）时，被盖住的底层胶囊若不拦，←/→ 会把底层条目也一起切走（见 docs/lessons.md 第 22 节）。
 // 断言用胶囊的「序号输入框值」作信号（嵌套层 order 恒为 1 条，值不会撞），两条用例分别覆盖两个详情弹窗。
 
 test("叠加层不穿透：嵌套图像详情开着时，→ / ← 不切换底层提示词", async ({ page, app }) => {
+  await gotoPromptsPage(page); // 上面的用例可能把页面留在图像主页，这里把入口带回本用例需要的提示词主页
   // 先建 B 再建 A：A 更新（详情列表按 updated_at 倒序）→ A 在前，→ 有下一条可切，修复前必现跳条
   const contentB = `e2e 叠加层不穿透 B ${Date.now()}`;
   const contentA = `e2e 叠加层不穿透 A ${Date.now()}`;
