@@ -73,7 +73,7 @@ const nested = useNestedDetails();
 const { openImageLocation } = useOpenImageLocation();
 
 // 以「顺序快照」定位当前提示词，避免列表重载/重排后数据或位置漂移
-const { current, currentIndex, nav, goFirst, goLast, init } = useDetailSnapshot<PromptCard>(
+const { current, currentIndex, nav, goFirst, goLast, jump, init } = useDetailSnapshot<PromptCard>(
   () => props.prompts,
   toRef(props, "order"),
 );
@@ -1039,6 +1039,7 @@ async function onPickerImported() {
             @prev="nav(-1)"
             @next="nav(1)"
             @last="goLast"
+            @jump="jump"
           />
         </div>
       </div>

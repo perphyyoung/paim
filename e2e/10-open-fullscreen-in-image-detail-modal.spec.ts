@@ -7,11 +7,13 @@
  *
  * 本用例覆盖两件事：① 查看器窗口里该显示的元素都在（图像 / 文件名 / 标签 / 导航索引 / 关闭图标）；
  * ② 关闭后主窗口的详情弹窗不受影响（主窗口没被改过尺寸、没被重挂载）。
+ * 导航索引现在读「序号输入框」的值（`navIndexInput`）——胶囊不再有整段的 `N / N` 文本。
  */
 import { expect } from "@playwright/test";
 import {
   addItemTag,
   closeFullscreenViewer,
+  navIndexInput,
   openFullscreenViewer,
   openImageDetail,
   test,
@@ -38,8 +40,9 @@ test("双击图像详情大图：查看窗口元素齐全，关闭后详情弹�
   await expect(viewer.getByText("e2e-upload.png")).toBeVisible();
   // 3. 标签：左下信息条，按 id 惰性补全（载荷只带 id）
   await expect(viewer.getByText(TAG_NAME)).toBeVisible();
-  // 4. 导航 + 索引：单张时显示 1 / 1，前后箭头禁用
-  await expect(viewer.getByText("1 / 1")).toBeVisible();
+  // 4. 导航 + 索引：单张时序号为 1（输入框禁用），前后箭头禁用
+  await expect(navIndexInput(viewer)).toHaveValue("1");
+  await expect(navIndexInput(viewer)).toBeDisabled();
   await expect(viewer.getByTitle("上一个")).toBeDisabled();
   await expect(viewer.getByTitle("下一个")).toBeDisabled();
   // 5. 右上关闭钮

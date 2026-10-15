@@ -140,6 +140,10 @@ function goFirst() {
 function goLast() {
   index.value = total.value - 1;
 }
+/// 跳到指定项（0-based）；越界夹到边界（NavAndIndex 已先夹过一遍）
+function jump(i: number) {
+  index.value = Math.min(total.value - 1, Math.max(0, i));
+}
 
 // 滚轮缩放（1x - 5x）
 function onWheel(e: WheelEvent) {
@@ -205,6 +209,7 @@ function onWheel(e: WheelEvent) {
         @prev="nav(-1)"
         @next="nav(1)"
         @last="goLast"
+        @jump="jump"
       />
     </div>
   </div>

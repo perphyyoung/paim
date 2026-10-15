@@ -635,6 +635,13 @@ export async function indexBothSimilarityKinds(page: Page): Promise<void> {
   await closeSimilaritySettings(page);
 }
 
+/// 导航胶囊（`NavAndIndex`）的「序号输入框」：当前索引的读数信号。
+/// 胶囊文案现为「[输入框] / 总数」，不再有 `N / N` 这样的整段文本，故索引断言一律读该输入框的值
+/// （1-based；`orderLength <= 1` 时输入框 disabled，但 `inputValue()` 仍可读）。
+export function navIndexInput(host: Page | Locator): Locator {
+  return host.getByLabel("跳转到指定序号");
+}
+
 /// ---- 全屏查看（独立窗口）----
 
 /// 查看器窗口的 label（与 src-tauri/src/commands/image_fullscreen.rs 的 WINDOW_LABEL 一致）

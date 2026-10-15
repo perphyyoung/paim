@@ -63,7 +63,7 @@ const { showToast } = useToast();
 const nested = useNestedDetails();
 const { openImageLocation } = useOpenImageLocation();
 
-const { current, currentId, currentIndex, nav, goFirst, goLast, init } =
+const { current, currentId, currentIndex, nav, goFirst, goLast, jump, init } =
   useDetailSnapshot<ImageCard>(() => props.images, toRef(props, "order"));
 
 // 右键图像区：弹出「打开本地保存位置」「替换图像」「搜索相似的图像和提示词」菜单
@@ -773,6 +773,7 @@ const fmtSize = (bytes: number) => {
               @prev="nav(-1)"
               @next="nav(1)"
               @last="goLast"
+              @jump="jump"
             />
           </div>
         </div>

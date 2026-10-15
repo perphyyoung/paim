@@ -42,10 +42,17 @@ export function useDetailSnapshot<T extends IdItem>(getItems: () => T[], order: 
     currentId.value = order.value[n - 1];
   }
 
+  /** 跳到快照第 index 项（0-based）；越界夹到边界、空表忽略（与 nav 同一套夹取口径） */
+  function jump(index: number) {
+    const n = order.value.length;
+    if (n === 0) return;
+    currentId.value = order.value[Math.min(n - 1, Math.max(0, index))];
+  }
+
   /** 打开详情时用快照 id 定位初始项；快照缺失时回退到 fallbackId */
   function init(initIdx: number, fallbackId = "") {
     currentId.value = order.value[initIdx] ?? fallbackId ?? "";
   }
 
-  return { currentId, current, currentIndex, nav, goFirst, goLast, init };
+  return { currentId, current, currentIndex, nav, goFirst, goLast, jump, init };
 }

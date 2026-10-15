@@ -105,14 +105,21 @@ const FEATURES: FeatureGroup[] = [
       { name: "标签", detail: "详情内添加或移除标签（输入时自动补全）" },
       { name: "收藏与安全评级", detail: "详情内切换；安全评级在关联的图像与提示词之间联动同步" },
       { name: "详情内搜索", detail: "Ctrl+F 聚焦，Enter / Shift+Enter 跳命中项，Esc 退出" },
-      { name: "导航", detail: "← / → 上一项 / 下一项，Home / End 首项 / 末项（存在叠加层时停用）" },
+      {
+        name: "导航",
+        detail:
+          "← / → 上一项 / 下一项，Home / End 首项 / 末项（存在叠加层时停用）；序号可直接输入跳转",
+      },
     ],
   },
   {
     title: "全屏查看器",
     rows: [
       { name: "独立窗口", detail: "图像详情双击大图打开；关闭后详情弹窗不受影响" },
-      { name: "导航", detail: "← / → 上一张 / 下一张，Home / End 首张 / 末张" },
+      {
+        name: "导航",
+        detail: "← / → 上一张 / 下一张，Home / End 首张 / 末张；序号可直接输入跳转",
+      },
     ],
   },
   {
