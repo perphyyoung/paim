@@ -168,6 +168,15 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 > 目的：统一全屏弹层的堆叠关系，避免「高 z 弹窗盖住低 z 遮罩」导致点不中、关不掉（如右键菜单）。
 > 约定：**遮罩与本体成对出现，遮罩略低于本体；新弹层只能占用「空档」或比当前最高层更高，不得插队同层。**
 > 例外（成组占用同一档）：设置类面板与其**在面板内打开的子窗口**——面板 z-128、子窗口 z-129，成对出现、相对关系固定，见下表。
+>
+> **数值的唯一事实源是 [`src/utils/modalZ.ts`](../src/utils/modalZ.ts)** 的 `ModalZ`（含覆盖层栈公式 `overlayStackZ`）：
+> 本表的数字只是为了说明相对关系，改层级请改该文件；组件里不再写 `z-[NNN]` 类，改用内联 `:style="{ zIndex: ModalZ.xxx }"` 引用。
+> 组件内部的局部层级（见下一小节）与所在组件强耦合，不进常量表，仍就地写。
+>
+> 各层对应的常量键：50 `baseModal`｜60 `contextMenuMask` / `inlineDialog`（同档互斥）｜70 `contextMenu`｜
+> 90 `tagDragGhost`｜100 `batchActionBar`｜110 `batchBarDialog` / `statsModal`（同档互斥）｜120 `mergePromptsModal`｜
+> 125 `tagAutocomplete`｜128 `panelShell`｜129 `panelShellChild`｜130 `hoverImagePreview` / `toast`；
+> 覆盖层栈用 `overlayStackZ(栈内位置)`。
 
 ### 全局弹层（fixed / Teleport to body，从低到高）
 
@@ -185,7 +194,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | 125 | 标签自动完成下拉      | TagAutocompleteInput（图像/提示词详情、BatchActionBar）                                                                      | Teleport + fixed 定位，须高于 z-120 顶层模态，低于 Toast     |
 | 128 | 设置类面板（遮罩 + 面板） | PanelShell（通用设置 / 相似度设置 / 帮助）                                                                                   | 系统级热键可在应用失焦时打开，故须高于全部业务界面（51+ 覆盖层栈、110/120 模态、125 下拉），低于 Toast |
 | 129 | 面板内子窗口          | ConfirmDialog / FontSelect（遮罩 + 菜单）/ BackupImportModal / BackupExportModal / ThumbnailRebuildModal / IntegrityCheckModal | 均 `Teleport to body`，故必须高于面板 z-128，否则会被面板自己盖住；同档内靠 DOM 顺序定先后（遮罩在前、本体在后） |
-| 130 | Toast                 | ToastHost                                                                                                                    | 永驻最高层；画面正中心；容器不拦截点击，toast 本体可点击关闭 |
+| 130 | Toast / 悬停预览      | ToastHost / HoverImagePreview                                                                                                | Toast 永驻最高层（画面正中心；容器不拦截点击，本体可点击关闭）；悬停预览 pointer-events-none，与 Toast 同档（`ModalZ.hoverImagePreview`） |
 
 ### 组件内局部层级（非全屏，仅作用于自身 stacking context）
 

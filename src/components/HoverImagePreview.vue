@@ -6,6 +6,7 @@
 import { ref } from "vue";
 import { commands } from "@/bindings";
 import { absolutePathToAssetUrl } from "@/utils/assetUrl";
+import { ModalZ } from "@/utils/modalZ";
 
 const props = withDefaults(
   defineProps<{
@@ -84,11 +85,12 @@ function onLeave() {
     <Teleport to="body">
       <div
         v-if="visible"
-        class="pointer-events-none fixed z-[130] flex items-center justify-center rounded-lg border border-gray-600 bg-gray-900 p-1 shadow-xl"
+        class="pointer-events-none fixed flex items-center justify-center rounded-lg border border-gray-600 bg-gray-900 p-1 shadow-xl"
         :style="{
           left: pos.left + 'px',
           top: pos.top + 'px',
           transform: placement === 'left' ? 'translate(-100%, -50%)' : 'translateY(-50%)',
+          zIndex: ModalZ.hoverImagePreview,
         }"
       >
         <img

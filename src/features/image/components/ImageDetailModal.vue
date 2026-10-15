@@ -21,6 +21,7 @@ import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { formatLocalTime } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
+import { ModalZ } from "@/utils/modalZ";
 import {
   imageTagsCache,
   peekImageSrc,
@@ -38,7 +39,7 @@ const props = defineProps<{
   thumbs: Record<string, string>;
   /**
    * 遮罩层级（默认 50，与单开时一致）：槽位叠放时由栈给「最近打开 / 刚被点中的那一层」更高的值。
-   * 只用到 51 —— 55 以下才不盖住弹窗自己的子对话框（InlineDialog z-[60]、右键菜单 z-[70]）
+   * 只用到 51 —— 55 以下才不盖住弹窗自己的子对话框（InlineDialog ModalZ.inlineDialog、右键菜单 ModalZ.contextMenu）
    */
   z?: number;
   /** 主页搜索词：打开详情时自动带入查找条，命中处直接高亮 */
@@ -550,8 +551,8 @@ const fmtSize = (bytes: number) => {
     <!-- 详情弹窗：只保留右上 ✕ 关闭，点遮罩不关闭（防误触丢失浏览位置） -->
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      :style="{ zIndex: props.z ?? 50 }"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: props.z ?? ModalZ.baseModal }"
       role="dialog"
       aria-modal="true"
       aria-label="图像详情"
@@ -1019,7 +1020,7 @@ const fmtSize = (bytes: number) => {
     @cancel="cancelConfirm"
   />
 
-  <!-- 新建提示词（无关联时，纯内容输入，创建后关联当前图像；复用公共 InlineDialog，z-[60]；
+  <!-- 新建提示词（无关联时，纯内容输入，创建后关联当前图像；复用公共 InlineDialog，ModalZ.inlineDialog；
        size="lg" 与独立的新建提示词弹窗同宽，长文本输入才有足够宽度） -->
   <InlineDialog
     :open="createPromptOpen"

@@ -10,6 +10,7 @@
  * - 候选点击用 mousedown.prevent，避免输入框 blur 抢先导致选不中。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { ModalZ } from "@/utils/modalZ";
 
 defineOptions({ inheritAttrs: false });
 
@@ -241,12 +242,13 @@ defineExpose({ focus });
       ref="dropdownEl"
       role="listbox"
       aria-label="标签候选"
-      class="fixed z-[125] overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-lg"
+      class="fixed overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-lg"
       :style="{
         top: `${rect.top}px`,
         left: `${rect.left}px`,
         width: `${rect.width}px`,
         maxHeight: `${rect.maxHeight}px`,
+        zIndex: ModalZ.tagAutocomplete,
       }"
     >
       <div

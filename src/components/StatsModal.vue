@@ -6,6 +6,7 @@
  */
 import { computed, ref, watch } from "vue";
 import { commands, type Statistics } from "@/bindings";
+import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
@@ -77,7 +78,8 @@ const statRows = computed<StatRow[]>(() => {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.statsModal }"
       @click.self="emit('close')"
     >
       <div

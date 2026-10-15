@@ -10,6 +10,7 @@ import { ref, watch } from "vue";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { commands, type IntegrityCheckResult } from "@/bindings";
 import { useToast } from "@/components/useToast";
+import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
@@ -78,11 +79,12 @@ async function doExport() {
 </script>
 
 <template>
-  <!-- z-[129]：从通用设置面板打开的子窗口，须高于面板（z-[128]）、低于 Toast（z-[130]） -->
+  <!-- ModalZ.panelShellChild：从通用设置面板打开的子窗口，须高于面板（ModalZ.panelShell）、低于 ModalZ.toast -->
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[129] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      class="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      :style="{ zIndex: ModalZ.panelShellChild }"
       @click.self="emit('close')"
     >
       <div

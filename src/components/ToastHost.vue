@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast, type ToastType } from "./useToast";
+import { ModalZ } from "@/utils/modalZ";
 
 const { toasts, dismissToast } = useToast();
 
@@ -18,9 +19,10 @@ const TYPE_CLASSES: Record<ToastType, string> = {
 <template>
   <Teleport to="body">
     <!-- toast 全部居中显示：底部易被忽略，居中确保被注意到（错误/警告停留 4s） -->
-    <!-- z-[130]：永驻最高层，不被任何界面遮挡（设置面板 128 / 面板内子窗口与确认弹窗 129 / 顶层模态 120 …）；容器不拦截点击，toast 本体可点 -->
+    <!-- ModalZ.toast：永驻最高层，不被任何界面遮挡（设置面板 panelShell / 面板内子窗口与确认弹窗 panelShellChild / 顶层模态 mergePromptsModal …）；容器不拦截点击，toast 本体可点 -->
     <div
-      class="pointer-events-none fixed inset-0 z-[130] flex flex-col items-center justify-center gap-2"
+      class="pointer-events-none fixed inset-0 flex flex-col items-center justify-center gap-2"
+      :style="{ zIndex: ModalZ.toast }"
     >
       <!-- 动画参考 cm：入场弹性上滑，出场下滑淡出 -->
       <!-- 出场（离场）期间 pointer-events-none：淡出中的 toast 不再拦截鼠标点击

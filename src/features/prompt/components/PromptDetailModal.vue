@@ -24,6 +24,7 @@ import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue"
 import { markPageStale } from "@/utils/crossPageCache";
 import { log } from "@/utils/logger";
 import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
+import { ModalZ } from "@/utils/modalZ";
 
 interface TagItem {
   id: number;
@@ -48,7 +49,7 @@ const props = defineProps<{
   allTags: TagItem[];
   /**
    * 遮罩层级（默认 50，与单开时一致）：槽位叠放时由栈给「最近打开 / 刚被点中的那一层」更高的值。
-   * 只用到 51 —— 55 以下才不盖住弹窗自己的子对话框（InlineDialog z-[60]、右键菜单 z-[70]）
+   * 只用到 51 —— 55 以下才不盖住弹窗自己的子对话框（InlineDialog ModalZ.inlineDialog、右键菜单 ModalZ.contextMenu）
    */
   z?: number;
   /** 主页搜索词：打开详情时自动带入查找条，命中处直接高亮（主页命中 → 开详情看到在哪） */
@@ -619,8 +620,8 @@ async function onPickerImported() {
     <!-- 详情弹窗：只保留右上 ✕ 关闭，点遮罩不关闭（防误触丢失浏览位置） -->
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      :style="{ zIndex: props.z ?? 50 }"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: props.z ?? ModalZ.baseModal }"
       role="dialog"
       aria-modal="true"
       aria-label="提示词详情"

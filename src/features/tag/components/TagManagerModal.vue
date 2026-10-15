@@ -6,6 +6,7 @@ import ContextMenu from "@/components/ContextMenu.vue";
 import InlineDialog from "@/components/InlineDialog.vue";
 import TagChip from "@/components/TagChip.vue";
 import { isSpecialTag } from "../specialTags";
+import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{ open: boolean; domain: "image" | "prompt" }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
@@ -449,7 +450,8 @@ function refresh() {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.baseModal }"
       @click.self="emit('close')"
     >
       <div
@@ -664,7 +666,7 @@ function refresh() {
         </div>
       </div>
 
-      <!-- 内嵌输入/确认对话框（复用公共 InlineDialog，z-[60]） -->
+      <!-- 内嵌输入/确认对话框（复用公共 InlineDialog，ModalZ.inlineDialog） -->
       <InlineDialog
         :open="dlg.visible"
         :title="dlg.title"
@@ -707,12 +709,12 @@ function refresh() {
       <!-- 拖拽跟随浮层 -->
       <div
         v-if="drag"
-        class="pointer-events-none fixed z-[90] -translate-x-1/2 -translate-y-full rounded-full bg-blue-600 px-3 py-1 text-xs text-white opacity-90 shadow-lg"
-        :style="{ left: dragX + 'px', top: dragY + 'px' }"
+        class="pointer-events-none fixed -translate-x-1/2 -translate-y-full rounded-full bg-blue-600 px-3 py-1 text-xs text-white opacity-90 shadow-lg"
+        :style="{ left: dragX + 'px', top: dragY + 'px', zIndex: ModalZ.tagDragGhost }"
       >
         {{ drag.name }}
       </div>
-      <!-- 右键菜单：复用公共 ContextMenu（遮罩 z-[60] / 本体 z-[70]） -->
+      <!-- 右键菜单：复用公共 ContextMenu（遮罩 ModalZ.contextMenuMask / 本体 ModalZ.contextMenu） -->
       <ContextMenu :open="ctxMenu.visible" :x="ctxMenu.x" :y="ctxMenu.y" @close="closeCtxMenu">
         <button
           type="button"

@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import TagChip from "@/components/TagChip.vue";
 import { startTagDrag, tagDrag } from "../useTagDragToCard";
+import { ModalZ } from "@/utils/modalZ";
 
 // 拖拽到卡片快捷添加标签：脚本层引用防止格式化工具误删模板绑定
 const dragActive = tagDrag.active;
@@ -344,8 +345,8 @@ const tagSections = computed<TagSection[]>(() => {
     <!-- 拖拽到卡片时跟随光标的浮动标签（pointer-events-none 不挡 elementFromPoint） -->
     <div
       v-if="dragActive"
-      class="pointer-events-none fixed z-[90] -translate-x-1/2 -translate-y-full rounded-full bg-blue-600 px-3 py-1 text-xs text-white opacity-90 shadow-lg"
-      :style="{ left: dragX + 'px', top: dragY + 'px' }"
+      class="pointer-events-none fixed -translate-x-1/2 -translate-y-full rounded-full bg-blue-600 px-3 py-1 text-xs text-white opacity-90 shadow-lg"
+      :style="{ left: dragX + 'px', top: dragY + 'px', zIndex: ModalZ.tagDragGhost }"
     >
       {{ dragName }}
     </div>

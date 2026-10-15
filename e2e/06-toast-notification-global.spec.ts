@@ -7,7 +7,7 @@
  * - 分类型停留时长（success/info 2.5s、warning/error 4s，见 useToast::DEFAULT_DURATION）；
  * - 点击提前关闭（ToastHost 本体 @click=dismissToast）；
  * - 多条堆叠（TransitionGroup + key）与同文案多条（业务用例必须用 .first() 的原因）；
- * - 层级最高（z-[130] 高于弹窗层，容器 pointer-events-none、本体可点）；
+ * - 层级最高（z 取 `ModalZ.toast` = 130，高于全部弹窗层；容器 pointer-events-none、本体可点）；
  * - 离场期间不拦截点击（leave 期 pointer-events-none）。
  *
  * 停留时长是本文件的被测行为，用例内会出现固定等待（waitForTimeout），这是刻意的；
@@ -31,12 +31,15 @@ async function waitToastGone(page: Page, text: string): Promise<void> {
   await expect(page.getByText(text).first()).toBeHidden();
 }
 
-/// toast 是否位于最上层：取 toast 本体中心点，elementFromPoint 命中它自己即未被任何层遮挡
-/// （toast 容器 class 含 z-[130]，见 ToastHost.vue）
+/// toast 是否位于最上层：取 toast 本体中心点，elementFromPoint 命中它自己即未被任何层遮挡。
+/// 定位靠本体 class `pointer-events-auto`（src 里只有 toast 本体带它；容器的 z 由 `ModalZ.toast` 给，
+/// 见 ToastHost.vue），不再依赖 z 类名——层级已收进 src/utils/modalZ.ts。
 async function isToastOnTop(page: Page, text: string): Promise<boolean> {
   return page.evaluate((t) => {
-    const el = [...document.querySelectorAll("div.fixed.z-\\[130\\] > div")].find((d) =>
-      (d.textContent ?? "").includes(t),
+    const el = [...document.querySelectorAll("div")].find(
+      (d) =>
+        (d.className ?? "").toString().includes("pointer-events-auto") &&
+        (d.textContent ?? "").includes(t),
     );
     if (!el) return false;
     const r = el.getBoundingClientRect();
@@ -126,8 +129,8 @@ test("toast 层级最高，弹窗打开时也不被遮挡", async ({ page }) => 
   const text = `已添加标签「${TAG_TOP}」`;
   await expectToast(page, text);
 
-  // 详情弹窗（z-50）打开状态下，toast 中心点命中的仍是 toast 本体
-  expect(await isToastOnTop(page, text), "toast 应位于最上层（z-[130]）").toBe(true);
+  // 详情弹窗打开状态下，toast 中心点命中的仍是 toast 本体
+  expect(await isToastOnTop(page, text), "toast 应位于最上层（ModalZ.toast = 130）").toBe(true);
   e2eLog.info("[step] 详情弹窗打开时 toast 仍在最上层");
 });
 

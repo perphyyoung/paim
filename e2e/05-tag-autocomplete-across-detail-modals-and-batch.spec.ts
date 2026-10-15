@@ -12,7 +12,7 @@
  * 提交方式需覆盖两种（两种都走同一条提交链路，区别只在触发源）：
  * - 回车：Enter 命中高亮项 → select；未命中 → submit（见 TagAutocompleteInput.onKeydown）；
  * - 点击：点候选项 → select（批量走 BatchActionBar.pickTag，详情另有「添加」按钮）。
- * 候选下拉是 Teleport + fixed z-[125]，会盖住批量弹窗的「确定」按钮（预期行为，不改布局），
+ * 候选下拉是 Teleport + fixed（z 取 ModalZ.tagAutocomplete = 125），会盖住批量弹窗的「确定」按钮（预期行为，不改布局），
  * 因此**批量用例一律用回车或点击候选项提交**，不点「确定」。
  *
  * 用例间共享同一实例的数据库（fixture 只 reload UI，不清库），TAG 常量全程复用（首次添加时创建）；

@@ -726,7 +726,7 @@ export function cardById(page: Page, id: string): Locator {
 
 /// Ctrl 点击卡片进入批量模式并打开「添加标签」弹窗，返回标签名输入框。
 /// 进批量模式必须带 Ctrl（普通点击卡片是打开详情）。
-/// 注：候选下拉是 Teleport + fixed z-[125]，会盖住弹窗的「确定」按钮（预期行为），
+/// 注：候选下拉是 Teleport + fixed（z 取 ModalZ.tagAutocomplete = 125），会盖住弹窗的「确定」按钮（预期行为），
 /// 因此批量打标签一律用「回车」或「点击候选项」提交，不点「确定」。
 export async function openBatchAddTagDialog(page: Page, cardText: string): Promise<Locator> {
   await page

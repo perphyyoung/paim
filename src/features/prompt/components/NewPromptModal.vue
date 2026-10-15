@@ -4,6 +4,7 @@ import { nextTick, ref, watch } from "vue";
 import { absolutePathToAssetUrl } from "@/utils/assetUrl";
 import { commands } from "@/bindings";
 import { useToast } from "@/components/useToast";
+import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: []; uploaded: [] }>();
@@ -86,7 +87,11 @@ async function doCreate() {
 
 <template>
   <Teleport to="body">
-    <div v-if="props.open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div
+      v-if="props.open"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.baseModal }"
+    >
       <div
         class="flex max-h-[85vh] w-[560px] max-w-[90vw] flex-col rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >

@@ -7,6 +7,7 @@ import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import { useGridScrollSync } from "@/components/useGridScrollSync";
 import { FIXED_CARD_SIZE } from "@/utils/gridColumns";
+import { ModalZ } from "@/utils/modalZ";
 
 // 卡片尺寸固定为缩略图尺寸，不随容器缩放、不与主页列数联动
 const props = defineProps<{
@@ -35,7 +36,8 @@ const canOperate = computed(() => props.items.length > 0);
     <!-- 与详情页同规格：居中面板，四周留出边距（不遮挡窗口控制按钮） -->
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.baseModal }"
       @click.self="emit('close')"
     >
       <div

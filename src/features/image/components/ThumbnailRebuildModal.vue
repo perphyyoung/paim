@@ -8,6 +8,7 @@ import {
   type ThumbnailRebuildProgress,
   type ThumbnailRebuildSummary,
 } from "../api/thumbnails";
+import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: []; rebuilt: [] }>();
@@ -65,11 +66,12 @@ function close() {
 </script>
 
 <template>
-  <!-- z-[129]：从通用设置面板打开的子窗口，须高于面板（z-[128]）、低于 Toast（z-[130]） -->
+  <!-- ModalZ.panelShellChild：从通用设置面板打开的子窗口，须高于面板（ModalZ.panelShell）、低于 ModalZ.toast -->
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[129] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.panelShellChild }"
       @click.self="close"
     >
       <div class="w-96 max-w-[90vw] rounded-lg border p-5 shadow-sm border-gray-700 bg-gray-800">

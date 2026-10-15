@@ -5,6 +5,7 @@ import { relativePathToAssetUrl } from "@/utils/assetUrl";
 import { commands, type ImageCard } from "@/bindings";
 import { toTimestamp } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
+import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{
   open: boolean;
@@ -150,7 +151,8 @@ function close() {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.baseModal }"
       @click.self="close()"
     >
       <div

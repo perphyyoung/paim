@@ -11,6 +11,7 @@ import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { relativePathToAssetUrl } from "@/utils/assetUrl";
 import HoverImagePreview from "@/components/HoverImagePreview.vue";
+import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{
   open: boolean;
@@ -173,7 +174,8 @@ async function doMerge() {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[120] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.mergePromptsModal }"
       role="dialog"
       aria-modal="true"
       aria-label="合并提示词"

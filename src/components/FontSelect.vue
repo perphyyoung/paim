@@ -13,6 +13,7 @@ import { computed, nextTick, onMounted, ref } from "vue";
 import { commands } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { log } from "@/utils/logger";
+import { ModalZ } from "@/utils/modalZ";
 import {
   displayFontFamily,
   fontFamilySearchText,
@@ -170,14 +171,24 @@ function pick(value: string) {
       <span class="ml-2 text-xs text-gray-400">▾</span>
     </button>
 
-    <!-- z-[129]：面板内子窗口层（高于设置面板 z-[128]、低于 Toast z-[130]）；
+    <!-- ModalZ.panelShellChild：面板内子窗口层（高于设置面板 ModalZ.panelShell、低于 ModalZ.toast）；
          遮罩与菜单同层，靠 DOM 顺序（遮罩在前）保证菜单在上 -->
     <Teleport to="body">
-      <div v-if="open" class="fixed inset-0 z-[129]" @click="open = false" />
+      <div
+        v-if="open"
+        class="fixed inset-0"
+        :style="{ zIndex: ModalZ.panelShellChild }"
+        @click="open = false"
+      />
       <div
         v-if="open && anchor"
-        class="fixed z-[129] rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
-        :style="{ right: `${anchor.right}px`, top: `${anchor.top}px`, width: `${PANEL_WIDTH}px` }"
+        class="fixed rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+        :style="{
+          right: `${anchor.right}px`,
+          top: `${anchor.top}px`,
+          width: `${PANEL_WIDTH}px`,
+          zIndex: ModalZ.panelShellChild,
+        }"
       >
         <div class="border-b border-gray-700 p-2">
           <input

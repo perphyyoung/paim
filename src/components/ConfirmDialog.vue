@@ -3,6 +3,8 @@
  * ConfirmDialog - 通用确认弹窗（替代 window.confirm）。
  * 标题居中，底部「取消/确定」按钮水平均分，遵循项目对话框风格。
  */
+import { ModalZ } from "@/utils/modalZ";
+
 withDefaults(
   defineProps<{
     open: boolean;
@@ -26,11 +28,12 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <!-- z-[129]：面板内子窗口层 —— 须高于设置面板（z-[128]）与全部业务弹窗，低于 Toast（z-[130]） -->
+  <!-- ModalZ.panelShellChild：面板内子窗口层 —— 须高于设置面板（ModalZ.panelShell）与全部业务弹窗，低于 ModalZ.toast -->
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[129] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.panelShellChild }"
       @click.self="emit('cancel')"
     >
       <div

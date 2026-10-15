@@ -6,6 +6,7 @@
  */
 import { nextTick, ref, watch } from "vue";
 import TagAutocompleteInput from "@/features/tag/components/TagAutocompleteInput.vue";
+import { ModalZ } from "@/utils/modalZ";
 
 export type BatchAction = "selectAll" | "invert" | "addTag" | "favorite" | "delete" | "cancel";
 
@@ -85,7 +86,8 @@ defineExpose({ closeTagDialog });
     <!-- 底部工具栏 -->
     <div
       v-if="open"
-      class="fixed bottom-5 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-4 rounded-xl bg-[rgba(30,30,40,0.95)] px-4 py-2.5 shadow-2xl backdrop-blur-md"
+      class="fixed bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-4 rounded-xl bg-[rgba(30,30,40,0.95)] px-4 py-2.5 shadow-2xl backdrop-blur-md"
+      :style="{ zIndex: ModalZ.batchActionBar }"
     >
       <span class="whitespace-nowrap text-[13px] text-white/80"> 已选择 {{ count }} 项 </span>
       <div class="flex items-center gap-1.5">
@@ -143,7 +145,8 @@ defineExpose({ closeTagDialog });
     <!-- 添加标签弹窗 -->
     <div
       v-if="tagDlgOpen"
-      class="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.batchBarDialog }"
     >
       <div class="w-80 max-w-[90vw] rounded-lg border p-4 shadow-sm border-gray-700 bg-gray-800">
         <h3 class="text-center text-base font-semibold text-gray-100">批量添加标签</h3>

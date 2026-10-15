@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
  * InlineDialog - 弹窗内嵌子对话框（标签管理的输入/确认、图像详情的新建提示词等共用）。
- * 层级 z-[60]：盖过 z-50 业务弹窗，低于右键菜单本体 z-[70]。
+ * 层级 ModalZ.inlineDialog：盖过 ModalZ.baseModal 业务弹窗，低于右键菜单本体 ModalZ.contextMenu。
  * 内容由 slot 提供，底部固定「取消 / 确定」。
  *
  * 宽度只有两档（`size`）：`sm`（默认，w-80）给标签名这类单行输入；
  * `lg`（w-[560px]）给长文本输入——与独立的新建提示词弹窗 NewPromptModal 同宽，
  * 两处的宽度是刻意保持一致的，改宽时请一并修改（NewPromptModal 的 w-[560px]）。
  */
+import { ModalZ } from "@/utils/modalZ";
+
 const props = withDefaults(
   defineProps<{
     open: boolean;
@@ -27,7 +29,8 @@ const emit = defineEmits<{ (e: "close"): void; (e: "confirm"): void }>();
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.inlineDialog }"
       @click.self="closeOnOverlay && emit('close')"
     >
       <div

@@ -14,6 +14,7 @@
 import { computed, inject, provide, ref, type ComputedRef, type InjectionKey, type Ref } from "vue";
 import { commands, type Image, type ImageCard, type PromptCard, type TagItem } from "@/bindings";
 import type { ToastType } from "@/components/useToast";
+import { overlayStackZ } from "@/utils/modalZ";
 
 export type NestedKind = "image" | "prompt";
 
@@ -99,13 +100,13 @@ export function createNestedDetails(
   const safeSynced = ref<{ at: number; isSafe: boolean } | null>(null);
   const anyOpen = computed(() => image.value !== null || prompt.value !== null);
 
-  /// 覆盖层 z 栈：第 0 层详情固定 50（基准，不入栈），其余覆盖层（嵌套详情槽、相似结果页）
-  /// 按**打开顺序**入栈编号，z = 50 + 栈内位置 + 1。这样「结果页 → 点结果开的详情」天然在上
+  /// 覆盖层 z 栈：第 0 层详情固定 ModalZ.baseModal（基准，不入栈），其余覆盖层（嵌套详情槽、相似结果页）
+  /// 按**打开顺序**入栈编号，z = overlayStackZ(栈内位置)。这样「结果页 → 点结果开的详情」天然在上
   /// （后者入栈更晚），且某层关闭后其余重新紧凑编号 —— 层数有界，不会把 z 顶到
-  /// InlineDialog(60) / 右键菜单(70) 之上。栈本身只在内部用，对外只暴露各层的 z。
+  /// InlineDialog(inlineDialog) / 右键菜单(contextMenu) 之上。栈本身只在内部用，对外只暴露各层的 z。
   const zStack = ref<string[]>([]);
-  const imageZ = computed(() => 50 + zStack.value.indexOf(Z_NESTED_IMAGE) + 1);
-  const promptZ = computed(() => 50 + zStack.value.indexOf(Z_NESTED_PROMPT) + 1);
+  const imageZ = computed(() => overlayStackZ(zStack.value.indexOf(Z_NESTED_IMAGE)));
+  const promptZ = computed(() => overlayStackZ(zStack.value.indexOf(Z_NESTED_PROMPT)));
 
   /** 入栈（按打开顺序编号）；token 已在栈里则「抬到最上」 */
   function pushZ(token: string): void {
@@ -119,7 +120,7 @@ export function createNestedDetails(
   /// 相似结果页：全局单例（只保留最新打开的一个）。页面级渲染，不挂在任何详情弹窗内部 ——
   /// 否则从嵌套详情点「同类结果」会替换该详情所在的槽 → 宿主重建 → 结果页被连带销毁。
   const similar = ref<SimilarQuery | null>(null);
-  const similarZ = computed(() => 50 + zStack.value.indexOf(Z_SIMILAR) + 1);
+  const similarZ = computed(() => overlayStackZ(zStack.value.indexOf(Z_SIMILAR)));
   const similarIsTop = computed(() => zStack.value[zStack.value.length - 1] === Z_SIMILAR);
   function openSimilar(query: SimilarQuery): void {
     similar.value = query;

@@ -9,6 +9,8 @@
  * 的块，请让面板自身定高（内容区自滚），否则会表现为「打开后底部跳一下」
  * （反例与修法见 SimilaritySettingsView 的定高说明）。
  */
+import { ModalZ } from "@/utils/modalZ";
+
 defineProps<{
   /** 是否打开 */
   open: boolean;
@@ -22,12 +24,13 @@ defineEmits<{ close: [] }>();
 </script>
 
 <template>
-  <!-- z-[128]：高于全部业务界面（含 51+ 覆盖层栈、110/120 模态、125 标签补全），低于 Toast z-[130]，
-       使系统级热键在应用失焦时打开的面板不会被别处盖住；面板内子窗口取 z-[129]（层级表见 docs/design.md 第五节） -->
+  <!-- ModalZ.panelShell：高于全部业务界面（含覆盖层栈、batchBarDialog/statsModal/mergePromptsModal 模态、标签补全），低于 ModalZ.toast，
+       使系统级热键在应用失焦时打开的面板不会被别处盖住；面板内子窗口取 ModalZ.panelShellChild（层级表见 docs/design.md 第五节） -->
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[128] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 flex items-center justify-center bg-black/40"
+      :style="{ zIndex: ModalZ.panelShell }"
       @click.self="$emit('close')"
     >
       <div
