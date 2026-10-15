@@ -46,13 +46,12 @@ fn rank_images(
     exclude_id: &str,
     limit: usize,
     min_score: f32,
-    safe_only: bool,
 ) -> Vec<(String, f32)> {
-    let cand = image_rank_candidates(conn, target.len(), exclude_id, safe_only).unwrap();
+    let cand = image_rank_candidates(conn, target.len(), exclude_id).unwrap();
     score_ranked(&cand.rows, target, limit, min_score)
 }
 
-/// 提示词侧的同一口径（无安全模式）。
+/// 提示词侧的同一口径。
 fn rank_prompt_hits(
     conn: &Connection,
     target: &[f32],
@@ -329,15 +328,11 @@ fn candidates_report_dim_mismatch_and_pending_counts() {
     )
     .unwrap();
 
-    // 目标 2 维：4 维的行进不了候选，但条数要数出来（safe_only=false 含 is_safe=0 的行）
-    let cand = image_rank_candidates(&conn, 2, "", false).unwrap();
+    // 目标 2 维：4 维的行进不了候选，但条数要数出来；恒为全量比较，is_safe=0 的行照常计入
+    let cand = image_rank_candidates(&conn, 2, "").unwrap();
     assert_eq!(cand.rows.len(), 1);
-    assert_eq!(cand.dim_mismatch, 2);
+    assert_eq!(cand.dim_mismatch, 2, "img_other + img_other_unsafe");
     assert_eq!(cand.pending, 2, "vec IS NULL 的 img_none + img_none_unsafe");
-    // safe_only=true：两项计数同样跟着安全过滤
-    let cand_safe = image_rank_candidates(&conn, 2, "", true).unwrap();
-    assert_eq!(cand_safe.dim_mismatch, 1, "只剩 is_safe=1 的 img_other");
-    assert_eq!(cand_safe.pending, 1, "只剩 is_safe=1 的 img_none");
 
     // 提示词侧对称
     seed_prompt(
@@ -428,26 +423,21 @@ fn rank_orders_filters_and_skips_dim_mismatch() {
         1,
     );
 
-    let ids = |safe_only: bool| -> Vec<String> {
-        rank_images(&conn, &target, "img_self", 10, 0.5, safe_only)
+    let ids = || -> Vec<String> {
+        rank_images(&conn, &target, "img_self", 10, 0.5)
             .into_iter()
             .map(|(id, _)| id)
             .collect()
     };
-    // 自身排除、维度不同跳过、低于阈值剔除、按余弦降序
-    assert_eq!(ids(false), vec!["img_near", "img_unsafe", "img_mid"]);
-    // 安全模式过滤 is_safe = 0
-    assert_eq!(ids(true), vec!["img_near", "img_mid"]);
+    // 自身排除、维度不同跳过、低于阈值剔除、按余弦降序；恒为全量比较，is_safe=0 的 img_unsafe 照常命中
+    assert_eq!(ids(), vec!["img_near", "img_unsafe", "img_mid"]);
     // limit 生效
-    assert_eq!(
-        rank_images(&conn, &target, "img_self", 1, 0.5, false).len(),
-        1
-    );
+    assert_eq!(rank_images(&conn, &target, "img_self", 1, 0.5).len(), 1);
 
     // 软删的图不出现在结果里
     conn.execute("UPDATE images SET is_deleted = 1 WHERE id = 'img_near'", [])
         .unwrap();
-    assert_eq!(ids(false), vec!["img_unsafe", "img_mid"]);
+    assert_eq!(ids(), vec!["img_unsafe", "img_mid"]);
 }
 
 #[test]
@@ -639,7 +629,7 @@ fn rank_prompts_orders_filters_and_skips_dim_mismatch() {
         "2026-01-01T00:00:00Z",
         Some(vec![1.0, 0.0]),
     );
-    // 提示词没有「安全模式」口径：is_safe = 0 照常参与检索
+    // is_safe = 0 照常参与检索（恒为全量比较）
     seed_prompt(
         &conn,
         "pr_unsafe",
@@ -657,7 +647,7 @@ fn rank_prompts_orders_filters_and_skips_dim_mismatch() {
             .map(|(id, _)| id)
             .collect()
     };
-    // 自身排除、维度不同跳过、低于阈值剔除、按余弦降序（is_safe = 0 不过滤）
+    // 自身排除、维度不同跳过、低于阈值剔除、按余弦降序
     assert_eq!(ids(10), vec!["pr_near", "pr_unsafe", "pr_mid"]);
     assert_eq!(ids(1), vec!["pr_near"], "limit 生效");
 
@@ -688,7 +678,7 @@ fn ranks_are_scoped_to_their_own_table() {
         Some(target.clone()),
     );
 
-    let images = rank_images(&conn, &target, "", 10, 0.5, false);
+    let images = rank_images(&conn, &target, "", 10, 0.5);
     assert_eq!(images.len(), 1);
     assert_eq!(images[0].0, "img_a");
 

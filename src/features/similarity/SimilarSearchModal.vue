@@ -189,7 +189,6 @@ async function loadImages(over?: { limit: number; minScore: number }) {
       props.sourceId,
       limit,
       minScore,
-      false,
     );
     if (mine !== imageSeq) return;
     // 维度 / 未向量化信息在拿到命中的同时落地：即使一条都没命中，也要能提示原因而非误报「没达到阈值」

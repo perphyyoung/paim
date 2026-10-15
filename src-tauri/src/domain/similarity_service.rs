@@ -423,23 +423,23 @@ pub struct RankCandidates {
 
 /// **短锁阶段**：取图像表里参与打分的候选（维度过滤下推 SQL，避免把无用的 BLOB 拉进内存），
 /// 同时数出**本表维度不一致的条数**与**未建立向量的条数**（这些行在打分阶段都看不见，只能在这里数）。
-/// `safe_only` 与主页「安全模式」一致地过滤 `is_safe = 0`；`exclude_id` 传空串表示不排除任何行。
+/// 恒为全量比较：不按 `is_safe` 过滤（「安全 / 敏感」只是特殊标签口径，不是检索开关）；
+/// `exclude_id` 传空串表示不排除任何行。
 pub fn image_rank_candidates(
     conn: &Connection,
     dim_len: usize,
     exclude_id: &str,
-    safe_only: bool,
 ) -> Result<RankCandidates, AppError> {
-    load_candidates(conn, IMAGES, dim_len, exclude_id, safe_only)
+    load_candidates(conn, IMAGES, dim_len, exclude_id)
 }
 
-/// **短锁阶段**：取提示词表里参与打分的候选（提示词没有「安全模式」口径）。
+/// **短锁阶段**：取提示词表里参与打分的候选（与图像侧同口径，恒为全量比较）。
 pub fn prompt_rank_candidates(
     conn: &Connection,
     dim_len: usize,
     exclude_id: &str,
 ) -> Result<RankCandidates, AppError> {
-    load_candidates(conn, PROMPTS, dim_len, exclude_id, false)
+    load_candidates(conn, PROMPTS, dim_len, exclude_id)
 }
 
 fn load_candidates(
@@ -447,12 +447,10 @@ fn load_candidates(
     table: &str,
     dim_len: usize,
     exclude_id: &str,
-    safe_only: bool,
 ) -> Result<RankCandidates, AppError> {
-    let safe = if safe_only { " AND is_safe = 1" } else { "" };
     let sql = format!(
         "SELECT id, vec FROM {table}
-         WHERE is_deleted = 0 AND vec IS NOT NULL AND id <> ?1 AND length(vec) = ?2{safe}"
+         WHERE is_deleted = 0 AND vec IS NOT NULL AND id <> ?1 AND length(vec) = ?2"
     );
     let mut stmt = conn.prepare(&sql)?;
     let dim_bytes = (dim_len * 4) as i64;
@@ -464,14 +462,14 @@ fn load_candidates(
     let dim_mismatch: i64 = conn.query_row(
         &format!(
             "SELECT COUNT(*) FROM {table}
-             WHERE is_deleted = 0 AND vec IS NOT NULL AND length(vec) <> ?1{safe}"
+             WHERE is_deleted = 0 AND vec IS NOT NULL AND length(vec) <> ?1"
         ),
         params![dim_bytes],
         |r| r.get(0),
     )?;
     // 未建立向量（vec IS NULL）：这类条目根本不参与打分，用户在结果里看不到它们，也需提醒
     let pending: i64 = conn.query_row(
-        &format!("SELECT COUNT(*) FROM {table} WHERE is_deleted = 0 AND vec IS NULL{safe}"),
+        &format!("SELECT COUNT(*) FROM {table} WHERE is_deleted = 0 AND vec IS NULL"),
         [],
         |r| r.get(0),
     )?;

@@ -593,7 +593,7 @@ fn run_index<Item: Sync>(
 }
 
 /// 以任意源检索**图像表**（相似图像）：源可以是图像（同模态）或提示词（跨模态）。
-/// 结果页左栏每次只查这一侧，条数 / 阈值由调用方各自传入；`safe_only` 与主页「安全模式」口径一致。
+/// 结果页左栏每次只查这一侧，条数 / 阈值由调用方各自传入；恒为全量比较（不过滤 `is_safe`）。
 /// 返回 `dim`（本次检索维度）、`dim_mismatch`（本表维度不一致、已被排除的条数）与
 /// `pending`（本表未建立向量、不会出现在结果里的条数），供结果页提醒。
 #[tauri::command]
@@ -605,7 +605,6 @@ pub async fn similar_images(
     source_id: String,
     limit: usize,
     min_score: f32,
-    safe_only: bool,
 ) -> Result<SimilarImageHits, AppError> {
     let target = resolve_target(&app, &base_url, source, &source_id).await?;
     let db = app.state::<BkDb>();
@@ -619,7 +618,7 @@ pub async fn similar_images(
     // 短锁取候选（顺带数出维度不一致 / 未建立向量的条数）→ 锁外打分：万级向量时打分才是大头，不该占着单连接锁
     let dim_len = target.len();
     let cand = db::blocking(&db, move |conn| {
-        similarity_service::image_rank_candidates(conn, dim_len, &exclude, safe_only)
+        similarity_service::image_rank_candidates(conn, dim_len, &exclude)
     })
     .await?;
     Ok(SimilarImageHits {
@@ -636,7 +635,7 @@ pub async fn similar_images(
 // —————————————————————— 提示词向量索引（文本侧） ——————————————————————
 // 与图像侧完全对称：同一套「短锁取清单 → 无锁请求服务 → 短锁写回」节奏，各自独立的
 // 重入保护与进度事件（两条索引可分别查看进度）。差别只在：入参是提示词内容原文，
-// 无需图像预处理，且没有「安全模式」口径。
+// 无需图像预处理。
 
 /// 提示词索引进度：字段与图像侧同形（`file_name` 语义为「当前项标签」，此处取提示词标题），
 /// 便于前端复用同一个索引面板组件。
