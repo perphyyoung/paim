@@ -35,6 +35,8 @@ pnpm dev
 pnpm release
 ```
 
+侧栏左下角的问号按钮 打开帮助页面，内含快捷键与功能速览表格。
+
 ## 开发环境
 
 当前**只在 Windows 上开发与验证**（Tauri 2 + WebView2）。macOS / Linux **未测试**——不是「不支持」，而是没有验证过：Tauri 本身跨平台，但代码里有若干 Windows 专有实现（见下），移植时需要替换。

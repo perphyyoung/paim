@@ -6,6 +6,7 @@ import { initFontFamily, initFontScale } from "@/utils/font";
 import { SETTINGS_CLOSED_EVENT } from "@/utils/crossPageCache";
 import SettingsView from "@/views/SettingsView.vue";
 import SimilaritySettingsView from "@/views/SimilaritySettingsView.vue";
+import HelpView from "@/views/HelpView.vue";
 import PanelShell from "@/components/PanelShell.vue";
 import StatsModal from "@/components/StatsModal.vue";
 import ToastHost from "@/components/ToastHost.vue";
@@ -66,6 +67,9 @@ watch(similaritySettingsOpen, onSettingsToggle);
 // 统计弹窗开关
 const statsOpen = ref(false);
 
+// 帮助面板开关（侧栏「?」入口）。内容为静态表格、不改业务数据，故关闭时不广播脏标记事件
+const helpOpen = ref(false);
+
 // 刷新所有缓存：整页重载，KeepAlive 页面实例、跨页脏标记、滚动状态全部重建
 function reloadAll() {
   window.location.reload();
@@ -99,11 +103,22 @@ function reloadAll() {
         </svg>
       </RouterLink>
 
-      <!-- 底部固定：刷新缓存 / 信息(卡片内容开关) / 统计 / 设置（mt-auto 把首个按钮及之后全部压到底部） -->
+      <!-- 底部固定：帮助 / 刷新缓存 / 信息(卡片内容开关) / 统计 / 相似度设置 / 设置
+           （mt-auto 把首个按钮及之后全部压到底部） -->
+      <button
+        type="button"
+        title="帮助"
+        aria-label="帮助"
+        class="mt-auto flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
+        @click="helpOpen = true"
+      >
+        <!-- 半角问号：无快捷键，故 title 只写动作名（约束见 docs/添加键盘快捷键.md 第六节） -->
+        <span class="text-lg leading-none">?</span>
+      </button>
       <button
         type="button"
         title="刷新缓存 (F5)"
-        class="mt-auto flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
+        class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
         @click="reloadAll"
       >
         <svg
@@ -245,6 +260,9 @@ function reloadAll() {
       @close="similaritySettingsOpen = false"
     >
       <SimilaritySettingsView />
+    </PanelShell>
+    <PanelShell :open="helpOpen" label="帮助" @close="helpOpen = false">
+      <HelpView />
     </PanelShell>
   </div>
 </template>
