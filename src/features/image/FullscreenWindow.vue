@@ -16,7 +16,7 @@ import ImageFullscreenViewer from "./components/ImageFullscreenViewer.vue";
 import { log } from "@/utils/logger";
 
 const items = ref<ImageFullscreenPayload["items"]>([]);
-const index = ref(0);
+const start0basedIndex = ref(0);
 // 每次载荷换新 key：强制重建查看器，跨次打开不残留上一次的 src/标签缓存与缩放
 const seq = ref(0);
 
@@ -24,7 +24,7 @@ let unlisten: (() => void) | null = null;
 
 async function apply(payload: ImageFullscreenPayload) {
   items.value = payload.items;
-  index.value = payload.index;
+  start0basedIndex.value = payload.index;
   seq.value += 1;
   await nextTick(); // 等新列表渲染完再露面
   await commands.showImageFullscreen();
@@ -58,11 +58,12 @@ async function resolveMeta(id: string) {
 </script>
 
 <template>
+  <!-- 开场 0-based 数组下标（来自跨窗口载荷） -->
   <ImageFullscreenViewer
     v-if="items.length"
     :key="seq"
     :items="items"
-    :current-index="index"
+    :start0based-index="start0basedIndex"
     :resolve-src="resolveImageSrc"
     :resolve-meta="resolveMeta"
     @close="close"

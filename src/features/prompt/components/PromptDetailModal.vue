@@ -73,10 +73,17 @@ const nested = useNestedDetails();
 const { openImageLocation } = useOpenImageLocation();
 
 // 以「顺序快照」定位当前提示词，避免列表重载/重排后数据或位置漂移
-const { current, currentIndex, nav, goFirst, goLast, jump, init } = useDetailSnapshot<PromptCard>(
-  () => props.prompts,
-  toRef(props, "order"),
-);
+const {
+  current,
+  current1basedIndex,
+  current0basedIndex,
+  totalCount,
+  nav,
+  goFirst,
+  goLast,
+  jumpTo1basedIndex,
+  initBy0basedIndex,
+} = useDetailSnapshot<PromptCard>(() => props.prompts, toRef(props, "order"));
 
 // 编辑状态
 const edit = ref(false);
@@ -124,7 +131,7 @@ async function loadRelatedImages() {
 
 /** 预取相邻提示词的关联图像（只补未缓存的），连续翻页时几乎全部命中 */
 function prefetchNeighbors() {
-  const i = currentIndex.value;
+  const i = current0basedIndex.value;
   if (i < 0) return;
   for (const idx of [i - 1, i + 1]) {
     const id = props.order[idx];
@@ -228,7 +235,7 @@ watch(
   ([open, initIdx]) => {
     if (open) {
       // 以快照中的 id 定位初始提示词（initialIndex 对应进入时的顺序）
-      init(initIdx, props.prompts[initIdx]?.id);
+      initBy0basedIndex(initIdx, props.prompts[initIdx]?.id);
       edit.value = false;
       syncFields();
       loadTags();
@@ -240,12 +247,9 @@ watch(
   { immediate: true }, // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
 );
 // 顺序快照是全量 id，可能指向尚未加载的块：每次定位后通知父级补齐该项
-watch(
-  () => currentIndex.value,
-  (i) => {
-    if (i >= 0) emit("ensure-index", i);
-  },
-);
+watch(current0basedIndex, (i) => {
+  if (i >= 0) emit("ensure-index", i);
+});
 watch(
   () => current.value?.id,
   () => {
@@ -1032,14 +1036,14 @@ async function onPickerImported() {
         <!-- 导航 + 索引：页面底部居中，与图像详情共用组件 -->
         <div class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
           <NavAndIndex
-            :current-index="currentIndex"
-            :order-length="order.length"
+            :current1based-index="current1basedIndex"
+            :total-count="totalCount"
             :disabled="overlayOpen"
             @first="goFirst"
             @prev="nav(-1)"
             @next="nav(1)"
             @last="goLast"
-            @jump="jump"
+            @jump="jumpTo1basedIndex"
           />
         </div>
       </div>

@@ -19,7 +19,8 @@ import TagChip from "@/components/TagChip.vue";
 
 const props = defineProps<{
   items: ImageFullscreenItem[];
-  currentIndex: number;
+  /** 开场 **0-based 数组下标**（来自跨窗口载荷） */
+  start0basedIndex: number;
   /** 按 id 惰性解析大图 asset URL（查看器窗口传 resolveImageSrc） */
   resolveSrc?: (id: string) => Promise<string>;
   /** 按 id 惰性补全名称/标签（如 get_item_tags） */
@@ -30,7 +31,7 @@ const emit = defineEmits<{
   (e: "close"): void;
 }>();
 
-const index = ref(0);
+const current0basedIndex = ref(0);
 const srcs = ref<Record<string, string>>({});
 const metas = ref<Record<string, { name?: string; tags?: string[] }>>({});
 const zoom = ref(1);
@@ -74,17 +75,17 @@ onUnmounted(() => {
   document.removeEventListener("mouseup", onMouseUp);
 });
 
-// 起始索引由载荷决定（每次打开都以新载荷重新挂载本组件）
+// 开场下标（0-based）由载荷决定（每次打开都以新载荷重新挂载本组件）
 watch(
-  () => props.currentIndex,
+  () => props.start0basedIndex,
   (i) => {
-    index.value = Math.min(Math.max(i, 0), Math.max(props.items.length - 1, 0));
+    current0basedIndex.value = Math.min(Math.max(i, 0), Math.max(props.items.length - 1, 0));
   },
   { immediate: true },
 );
 
 const total = computed(() => props.items.length);
-const current = computed(() => props.items[index.value]);
+const current = computed(() => props.items[current0basedIndex.value]);
 const currentSrc = computed(() => srcs.value[current.value?.id] ?? current.value?.src ?? "");
 const currentName = computed(
   () =>
@@ -98,14 +99,14 @@ const currentTags = computed(() => {
 
 // 切换/打开时惰性解析当前与下一张（预取），并重置缩放
 watch(
-  () => (current.value ? `${current.value.id}:${index.value}` : ""),
+  () => (current.value ? `${current.value.id}:${current0basedIndex.value}` : ""),
   () => {
     zoom.value = 1;
     translate.value = { x: 0, y: 0 };
     if (!current.value) return;
     ensureSrc(current.value.id);
     ensureMeta(current.value.id);
-    const next = props.items[index.value + 1];
+    const next = props.items[current0basedIndex.value + 1];
     if (next) ensureSrc(next.id);
   },
   { immediate: true },
@@ -132,17 +133,20 @@ async function ensureMeta(id: string) {
 }
 
 function nav(delta: number) {
-  index.value = Math.min(total.value - 1, Math.max(0, index.value + delta));
+  current0basedIndex.value = Math.min(
+    total.value - 1,
+    Math.max(0, current0basedIndex.value + delta),
+  );
 }
 function goFirst() {
-  index.value = 0;
+  current0basedIndex.value = 0;
 }
 function goLast() {
-  index.value = total.value - 1;
+  current0basedIndex.value = total.value - 1;
 }
-/// 跳到指定项（0-based）；越界夹到边界（NavAndIndex 已先夹过一遍）
-function jump(i: number) {
-  index.value = Math.min(total.value - 1, Math.max(0, i));
+/// 跳到指定项：入参是 **1-based 序号**，在此减 1 落成数组下标 —— **本文件唯一一处**（越界夹到边界，NavAndIndex 已先夹过一遍）
+function jumpTo1basedIndex(index1based: number) {
+  current0basedIndex.value = Math.min(total.value - 1, Math.max(0, index1based - 1));
 }
 
 // 滚轮缩放（1x - 5x）
@@ -203,13 +207,13 @@ function onWheel(e: WheelEvent) {
     <!-- paim 风格导航 + 索引（单条时也显示，箭头由组件禁用） -->
     <div class="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
       <NavAndIndex
-        :current-index="index"
-        :order-length="total"
+        :current1based-index="current0basedIndex + 1"
+        :total-count="total"
         @first="goFirst"
         @prev="nav(-1)"
         @next="nav(1)"
         @last="goLast"
-        @jump="jump"
+        @jump="jumpTo1basedIndex"
       />
     </div>
   </div>

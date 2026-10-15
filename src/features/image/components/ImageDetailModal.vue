@@ -63,8 +63,18 @@ const { showToast } = useToast();
 const nested = useNestedDetails();
 const { openImageLocation } = useOpenImageLocation();
 
-const { current, currentId, currentIndex, nav, goFirst, goLast, jump, init } =
-  useDetailSnapshot<ImageCard>(() => props.images, toRef(props, "order"));
+const {
+  current,
+  currentId,
+  current1basedIndex,
+  current0basedIndex,
+  totalCount,
+  nav,
+  goFirst,
+  goLast,
+  jumpTo1basedIndex,
+  initBy0basedIndex,
+} = useDetailSnapshot<ImageCard>(() => props.images, toRef(props, "order"));
 
 // 右键图像区：弹出「打开本地保存位置」「替换图像」「搜索相似的图像和提示词」菜单
 const ctxMenu = ref<{ x: number; y: number } | null>(null);
@@ -244,7 +254,7 @@ async function openFullscreen() {
         name: imagesById.value.get(id)?.file_name ?? null,
         tags: null,
       })),
-      index: currentIndex.value,
+      index: current0basedIndex.value,
     });
   } catch (e) {
     showToast(`打开全屏查看失败：${e}`, "error");
@@ -434,7 +444,7 @@ watch(
   ([open, initIdx]) => {
     if (open) {
       // 以快照中的 id 定位初始图像（initialIndex 对应进入时的顺序）
-      init(initIdx, props.images[initIdx]?.id);
+      initBy0basedIndex(initIdx, props.images[initIdx]?.id);
       edit.value = false;
       syncFields();
       loadOrig();
@@ -447,12 +457,9 @@ watch(
   { immediate: true }, // 组件挂载即初次加载（父级 v-if 强制卸载后依赖此初始化）
 );
 // 顺序快照是全量 id，可能指向尚未加载的块：每次定位后通知父级补齐该项
-watch(
-  () => currentIndex.value,
-  (i) => {
-    if (i >= 0) emit("ensure-index", i);
-  },
-);
+watch(current0basedIndex, (i) => {
+  if (i >= 0) emit("ensure-index", i);
+});
 // 导航切换时加载对应原图与标签、关联提示词；并复位编辑态
 watch(
   () => current.value?.id,
@@ -766,14 +773,14 @@ const fmtSize = (bytes: number) => {
           <!-- 导航 + 索引：图像区底部居中，与提示词详情共用组件 -->
           <div class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
             <NavAndIndex
-              :current-index="currentIndex"
-              :order-length="order.length"
+              :current1based-index="current1basedIndex"
+              :total-count="totalCount"
               :disabled="overlayOpen"
               @first="goFirst"
               @prev="nav(-1)"
               @next="nav(1)"
               @last="goLast"
-              @jump="jump"
+              @jump="jumpTo1basedIndex"
             />
           </div>
         </div>
