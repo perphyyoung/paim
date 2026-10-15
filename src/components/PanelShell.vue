@@ -22,10 +22,12 @@ defineEmits<{ close: [] }>();
 </script>
 
 <template>
+  <!-- z-[128]：高于全部业务界面（含 51+ 覆盖层栈、110/120 模态、125 标签补全），低于 Toast z-[130]，
+       使系统级热键在应用失焦时打开的面板不会被别处盖住；面板内子窗口取 z-[129]（层级表见 docs/design.md 第五节） -->
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 z-[128] flex items-center justify-center bg-black/40"
       @click.self="$emit('close')"
     >
       <div

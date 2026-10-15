@@ -26,10 +26,11 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- z-[129]：面板内子窗口层 —— 须高于设置面板（z-[128]）与全部业务弹窗，低于 Toast（z-[130]） -->
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[110] flex items-center justify-center bg-black/40"
+      class="fixed inset-0 z-[129] flex items-center justify-center bg-black/40"
       @click.self="emit('cancel')"
     >
       <div

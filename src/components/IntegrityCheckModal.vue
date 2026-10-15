@@ -78,10 +78,11 @@ async function doExport() {
 </script>
 
 <template>
+  <!-- z-[129]：从通用设置面板打开的子窗口，须高于面板（z-[128]）、低于 Toast（z-[130]） -->
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      class="fixed inset-0 z-[129] flex items-center justify-center bg-black/70 backdrop-blur-sm"
       @click.self="emit('close')"
     >
       <div

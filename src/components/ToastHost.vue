@@ -18,7 +18,7 @@ const TYPE_CLASSES: Record<ToastType, string> = {
 <template>
   <Teleport to="body">
     <!-- toast 全部居中显示：底部易被忽略，居中确保被注意到（错误/警告停留 4s） -->
-    <!-- z-[130]：永驻最高层，不被确认弹窗（110）/顶层模态（120）遮挡；容器不拦截点击，toast 本体可点 -->
+    <!-- z-[130]：永驻最高层，不被任何界面遮挡（设置面板 128 / 面板内子窗口与确认弹窗 129 / 顶层模态 120 …）；容器不拦截点击，toast 本体可点 -->
     <div
       class="pointer-events-none fixed inset-0 z-[130] flex flex-col items-center justify-center gap-2"
     >

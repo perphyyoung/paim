@@ -167,6 +167,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 
 > 目的：统一全屏弹层的堆叠关系，避免「高 z 弹窗盖住低 z 遮罩」导致点不中、关不掉（如右键菜单）。
 > 约定：**遮罩与本体成对出现，遮罩略低于本体；新弹层只能占用「空档」或比当前最高层更高，不得插队同层。**
+> 例外（成组占用同一档）：设置类面板与其**在面板内打开的子窗口**——面板 z-128、子窗口 z-129，成对出现、相对关系固定，见下表。
 
 ### 全局弹层（fixed / Teleport to body，从低到高）
 
@@ -175,14 +176,15 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | 50  | 业务弹窗本体          | ImageDetailModal / PromptDetailModal / TrashOverlay / TagManagerModal / ImagePickerModal / NewPromptModal / ImageUploadModal | 第 0 层详情 / 普通弹窗，最低一层全屏层；嵌套详情槽与相似结果页从 51 起（按打开顺序，见「关联关系与注意」）                            |
 | 51–54 | 覆盖层：嵌套详情槽 / 相似结果页 | NestedDetailSlots、ImagePage / PromptPage（`useNestedDetails` 的覆盖层 z 栈） | 按**打开顺序**编号（`z = 50 + 栈内位置 + 1`），至多 4 层；关闭后其余紧凑重排 |
 | 60  | 右键菜单遮罩          | ContextMenu                                                                                                                  | 须盖过全部 z-50 弹窗，点击即关                               |
-| 60  | 设置弹窗              | App.vue                                                                                                                      | 与右键遮罩同层（场景互斥）                                   |
 | 60  | 内嵌子对话框          | InlineDialog（TagManagerModal 内嵌 dlg / ImageDetailModal 新建提示词）                                                       | 弹窗内的子对话框，低于右键菜单本体                           |
 | 70  | 右键菜单本体          | ContextMenu                                                                                                                  | 高于自身遮罩 1 挡                                            |
 | 90  | 标签拖拽跟随浮层      | TagManagerModal                                                                                                              | 纯展示，pointer-events-none                                  |
 | 100 | 批量操作工具条        | BatchActionBar                                                                                                               | 悬浮工具条，不挡操作                                         |
-| 110 | 确认弹窗              | ConfirmDialog / BatchActionBar 内确认                                                                                        | 最高确认层                                                   |
-| 120 | 备份导入 / 缩略图重建 / 合并提示词 | PmBackupImportModal / ThumbnailRebuildModal / MergePromptsModal                                                                                  | 顶层模态                                                     |
+| 110 | 确认弹窗 / 统计弹窗   | BatchActionBar 内确认 / StatsModal                                                                                           | 最高业务确认层                                               |
+| 120 | 合并提示词弹窗        | MergePromptsModal                                                                                                            | 顶层模态（从相似结果页打开）                                 |
 | 125 | 标签自动完成下拉      | TagAutocompleteInput（图像/提示词详情、BatchActionBar）                                                                      | Teleport + fixed 定位，须高于 z-120 顶层模态，低于 Toast     |
+| 128 | 设置类面板（遮罩 + 面板） | PanelShell（通用设置 / 相似度设置 / 帮助）                                                                                   | 系统级热键可在应用失焦时打开，故须高于全部业务界面（51+ 覆盖层栈、110/120 模态、125 下拉），低于 Toast |
+| 129 | 面板内子窗口          | ConfirmDialog / FontSelect（遮罩 + 菜单）/ BackupImportModal / BackupExportModal / ThumbnailRebuildModal / IntegrityCheckModal | 均 `Teleport to body`，故必须高于面板 z-128，否则会被面板自己盖住；同档内靠 DOM 顺序定先后（遮罩在前、本体在后） |
 | 130 | Toast                 | ToastHost                                                                                                                    | 永驻最高层；画面正中心；容器不拦截点击，toast 本体可点击关闭 |
 
 ### 组件内局部层级（非全屏，仅作用于自身 stacking context）
@@ -199,7 +201,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 
 ### 关联关系与注意
 
-- **同一层内场景互斥**时可共用 z 值（如 z-60 设置弹窗与右键遮罩、z-50 各业务弹窗），互不叠加出现，DOM 顺序即决定谁在上。
+- **同一层内场景互斥**时可共用 z 值（如 z-60 右键遮罩与内嵌子对话框、z-50 各业务弹窗、z-129 面板内子窗口），互不叠加出现，DOM 顺序即决定谁在上；设置类面板（z-128）与其它界面同屏时仍在它们之上，不依赖 DOM 顺序。
 - **详情内查找条**（PromptDetailModal / ImageDetailModal）：位于弹窗 z-50 遮罩层内部的 `absolute top-2 z-10`（视口顶部居中、弹窗上方空隙），不 Teleport。嵌套打开更高层弹窗（如详情内再开图像/提示词详情）时，被上层遮罩整体盖住属预期；Ctrl+F 归属由 useDetailSearch 的 guard 决定（只作用于最上层弹窗）。
 - **覆盖层（嵌套详情槽 / 相似结果页）的 z 由「打开顺序」决定，不写固定档位**：`useNestedDetails` 里一个覆盖层 z 栈，覆盖层打开即按顺序编号（`z = 50 + 栈内位置 + 1`；第 0 层详情固定 50、不入栈），命中「已在栈里」则抬到最上；关闭出栈、其余紧凑重排。这才能表达「相似结果页压在发起它的详情之上、点结果开的详情又压在结果页之上」。层数有界（≤ 4），不会顶到 InlineDialog(60) / 右键菜单(70)。
 - **弹窗内的浮层（如下拉候选）必须 Teleport 到 body 并用 fixed**：详情弹窗本体是滚动容器，绝对定位会被 `overflow` 裁剪；z 取 120 与 130 之间的空档，保证盖住顶层模态、又不遮 Toast。
@@ -215,17 +217,17 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | ----------------------- | ---- | -------------------------------------------------------- |
 | 相似结果页（SimilarSearchModal） | 51–54 | 点遮罩即关（等同 ✕ / Esc）；仅在自己位于覆盖层最上层时响应 Esc（上面还叠着它点开的详情时不抢） |
 | 合并提示词弹窗（MergePromptsModal） | 120 | 点遮罩即关（保存中不关） |
-| 设置弹窗（App.vue）     | 60   | 点遮罩即关                                               |
+| 设置类面板（PanelShell：通用 / 相似度 / 帮助） | 128 | 点遮罩即关                                        |
 | ContextMenu 遮罩        | 60   | 点击任意处即关（非 .self，菜单本体 z-70 `@click.stop`）  |
 | InlineDialog            | 60   | 默认支持；`closeOnOverlay=false` 时禁用（吞掉点击不关闭） |
 | TrashOverlay            | 50   | 点遮罩即关                                               |
 | ImagePickerModal        | 50   | 点遮罩即关                                               |
 | TagManagerModal         | 50   | 外层遮罩点遮罩即关；内嵌输入对话框例外，见下             |
-| ConfirmDialog           | 110  | 点遮罩即关（等同取消）                                   |
+| ConfirmDialog           | 129  | 点遮罩即关（等同取消）                                   |
 | StatsModal              | 110  | 点遮罩即关                                               |
-| BackupImportModal / BackupExportModal | 120 | 点遮罩即关                                |
-| ThumbnailRebuildModal   | 120  | 点遮罩即关                                               |
-| IntegrityCheckModal     | 130  | 点遮罩即关                                               |
+| BackupImportModal / BackupExportModal | 129 | 点遮罩即关                                |
+| ThumbnailRebuildModal   | 129  | 点遮罩即关                                               |
+| IntegrityCheckModal     | 129  | 点遮罩即关                                               |
 
 ### 不支持点击遮罩关闭（须用按钮/Esc 关闭）
 
