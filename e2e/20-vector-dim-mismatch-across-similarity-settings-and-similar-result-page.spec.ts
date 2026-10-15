@@ -1,6 +1,6 @@
 /**
  * 向量维度不一致（疑似换过 embedding 模型）的三道防线：
- *   ① 设置页摆出各维度的条数分布 + 按维度清空；② 增量索引时新维度与本表已存（唯一）维度
+ *   ① 相似度设置摆出各维度的条数分布 + 按维度清空；② 增量索引时新维度与本表已存（唯一）维度
  * 不一致即终止；③ 检索时把「本表被排除的条数」（维度不一致 + 尚未建立向量）随命中一起回传，
  * 结果页对应栏位**并列提醒**。
  *
@@ -24,7 +24,7 @@ import {
   gotoPromptsPage,
   invokeCommand,
   openPromptDetail,
-  openSettingsTab,
+  openSimilaritySettings,
   openSimilarSearchFromPromptDetail,
   similarResultPane,
   test,
@@ -62,12 +62,14 @@ function clearPromptVectors(page: Page): Promise<number> {
   return invokeCommand<number>(page, "clear_prompt_embeddings");
 }
 
-/// 设置页「提示词向量索引」分组里的某一枚按钮（aria-label 带分组名，可避开同名的图像分组）
-function promptPanelButton(tabpanel: Locator, name: string): Locator {
-  return tabpanel.getByRole("button", { name: `提示词向量索引：${name}`, exact: true });
+/// 相似度设置「提示词向量索引」分组里的某一枚按钮（aria-label 带分组名，可避开同名的图像分组）
+function promptPanelButton(panel: Locator, name: string): Locator {
+  return panel.getByRole("button", { name: `提示词向量索引：${name}`, exact: true });
 }
 
-test("维度分布（单维度）：设置页报出已建立的维度与条数，不出现按维度清空入口", async ({ page }) => {
+test("维度分布（单维度）：相似度设置报出已建立的维度与条数，不出现按维度清空入口", async ({
+  page,
+}) => {
   await gotoPromptsPage(page);
   await clearPromptVectors(page);
   const content = `e2e 维度单维 ${Date.now()}`;
@@ -76,15 +78,15 @@ test("维度分布（单维度）：设置页报出已建立的维度与条数�
   await storeVector(page, "Prompt", id, OLD_DIM);
   e2eLog.info(`[step] 已给该提示词注入 ${OLD_DIM} 维向量`);
 
-  const tabpanel = await openSettingsTab(page, "相似度");
+  const panel = await openSimilaritySettings(page);
   // 单维度：状态行照旧只报维度；因为"不是混维"，不渲染按维度清空区
-  await expect(tabpanel.getByText(new RegExp(`维度 ${OLD_DIM}`))).toBeVisible();
-  await expect(tabpanel.getByText(/多种维度的向量/)).toBeHidden();
-  await expect(tabpanel.getByRole("button", { name: /清空维度/ })).toHaveCount(0);
+  await expect(panel.getByText(new RegExp(`维度 ${OLD_DIM}`))).toBeVisible();
+  await expect(panel.getByText(/多种维度的向量/)).toBeHidden();
+  await expect(panel.getByRole("button", { name: /清空维度/ })).toHaveCount(0);
   e2eLog.info("[step] 单维度状态行与「无按维度清空」均已确认");
 });
 
-test("维度分布（混维）：设置页列出各维度条数，可按维度只清掉旧维度", async ({ page }) => {
+test("维度分布（混维）：相似度设置列出各维度条数，可按维度只清掉旧维度", async ({ page }) => {
   await gotoPromptsPage(page);
   const content = `e2e 维度混维 ${Date.now()}`;
   await createPromptViaDialog(page, content);
@@ -93,12 +95,12 @@ test("维度分布（混维）：设置页列出各维度条数，可按维度�
   await storeVector(page, "Prompt", id, 4);
   e2eLog.info("[step] 已制造混维：8 维 + 4 维");
 
-  const tabpanel = await openSettingsTab(page, "相似度");
+  const panel = await openSimilaritySettings(page);
   // 分布按「条数降序、同数按维度升序」→ 同 1 条时 4 在前、8 在后
-  await expect(tabpanel.getByText(/维度 4：1 条，8：1 条/)).toBeVisible();
-  await expect(tabpanel.getByText(/多种维度的向量/)).toBeVisible();
-  const clearOld = promptPanelButton(tabpanel, "清空维度 8 的向量");
-  const clearNew = promptPanelButton(tabpanel, "清空维度 4 的向量");
+  await expect(panel.getByText(/维度 4：1 条，8：1 条/)).toBeVisible();
+  await expect(panel.getByText(/多种维度的向量/)).toBeVisible();
+  const clearOld = promptPanelButton(panel, "清空维度 8 的向量");
+  const clearNew = promptPanelButton(panel, "清空维度 4 的向量");
   await expect(clearOld).toBeVisible();
   await expect(clearNew).toBeVisible();
 
@@ -112,7 +114,7 @@ test("维度分布（混维）：设置页列出各维度条数，可按维度�
   e2eLog.info("[step] 已清空 4 维");
 
   // 只剩 8 维 → 分布块消失，8 维那枚按钮也不该再渲染
-  await expect(tabpanel.getByText(/多种维度的向量/)).toBeHidden();
+  await expect(panel.getByText(/多种维度的向量/)).toBeHidden();
   await expect(clearOld).toBeHidden();
   const st = await promptStatus(page);
   expect(st.dims).toEqual([{ dim: OLD_DIM, count: 1 }]);
@@ -129,8 +131,8 @@ test("增量索引遇维度不一致：直接终止、不入库，并把原因�
   // 表内唯一维度 = 8（旧模型）；另一条 vec IS NULL 是本次增量的待处理项
   await storeVector(page, "Prompt", await findPromptIdByContent(page, seed), OLD_DIM);
 
-  const tabpanel = await openSettingsTab(page, "相似度");
-  await promptPanelButton(tabpanel, "增量索引").click();
+  const panel = await openSimilaritySettings(page);
+  await promptPanelButton(panel, "增量索引").click();
   await page.getByRole("button", { name: "开始", exact: true }).click();
 
   // 新向量（假 embedding 的 2048 维）与本表已存 8 维冲突 → 开跑前的真探测就中止，一条都不算
@@ -141,13 +143,13 @@ test("增量索引遇维度不一致：直接终止、不入库，并把原因�
     .click()
     .catch(() => {});
   // 原因要留在页面上（服务相关问题不能只出现在一次性 toast 里）
-  await expect(tabpanel.getByText(/与本表已存维度 8 不一致/)).toBeVisible({ timeout: 5_000 });
+  await expect(panel.getByText(/与本表已存维度 8 不一致/)).toBeVisible({ timeout: 5_000 });
   // 计数三态：待处理的一条都没跑 → 已建 0；未处理 = 本次任务的全部待处理条数
   // （条数按现场查得，别写死：上一条用例被 clearPromptVectors 清过的提示词也会落进待处理）
   const before = await promptStatus(page);
   const pendingBefore = before.total - before.indexed;
-  await expect(tabpanel.getByText(/已建 0 条/)).toBeVisible();
-  await expect(tabpanel.getByText(new RegExp(`未处理 ${pendingBefore} 条`))).toBeVisible();
+  await expect(panel.getByText(/已建 0 条/)).toBeVisible();
+  await expect(panel.getByText(new RegExp(`未处理 ${pendingBefore} 条`))).toBeVisible();
   // 冲突那条不入库、不计失败：分布仍是单一 8 维，待建那条仍无向量
   const st = await promptStatus(page);
   expect(st.dims).toEqual([{ dim: OLD_DIM, count: 1 }]);

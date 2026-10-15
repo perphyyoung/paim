@@ -509,14 +509,15 @@ export async function openSettings(page: Page): Promise<Locator> {
   return panel;
 }
 
-/// 打开设置并切到指定页签，返回该页签的内容区（`role=tabpanel`）。
-/// 相似度相关控件都在「相似度」页签里，作用域收在 tabpanel 内可避开同名的其它控件。
-export async function openSettingsTab(page: Page, name: "通用" | "相似度"): Promise<Locator> {
-  const panel = await openSettings(page);
-  await panel.getByRole("tab", { name }).click();
-  const tabpanel = panel.getByRole("tabpanel", { name });
-  await expect(tabpanel).toBeVisible({ timeout: 5_000 });
-  return tabpanel;
+/// 打开「相似度设置」悬浮面板（侧栏底部「设置」上方那枚向量图标按钮；
+/// 面板根节点 `role=dialog aria-label="相似度设置"`）。
+/// 幂等：面板已打开时直接复用——连着跑两类索引时，按钮会被面板遮罩拦下。
+export async function openSimilaritySettings(page: Page): Promise<Locator> {
+  const panel = page.getByRole("dialog", { name: "相似度设置" });
+  if (await panel.isVisible()) return panel;
+  await page.getByTitle("相似度设置").click();
+  await expect(panel).toBeVisible({ timeout: 5_000 });
+  return panel;
 }
 
 /// 关闭设置面板（点右上 ✕）。设置是悬浮面板，不关会一直盖在主页之上。
@@ -526,14 +527,21 @@ export async function closeSettings(page: Page): Promise<void> {
   await expect(panel).toBeHidden({ timeout: 5_000 });
 }
 
-/// 跑一次相似度索引：设置 → 相似度 → 对应分组点「增量索引」→ 确认「开始」→ 等完成 toast。
+/// 关闭「相似度设置」面板（点面板内的 ✕）。关掉后主页才消费脏标记（与通用设置同一事件）。
+export async function closeSimilaritySettings(page: Page): Promise<void> {
+  const panel = page.getByRole("dialog", { name: "相似度设置" });
+  await panel.getByTitle("关闭").click();
+  await expect(panel).toBeHidden({ timeout: 5_000 });
+}
+
+/// 跑一次相似度索引：相似度设置面板 → 对应分组点「增量索引」→ 确认「开始」→ 等完成 toast。
 /// 依赖 `PAIM_EMBEDDING_MOCK=1`（fixture 已注入）：假实现按输入派生确定性伪向量，无需真实服务。
 /// 前置：该类别存在未建向量的条目（增量只补 `vec IS NULL`），否则只弹「没有待建立向量」的提示。
 /// 副作用：写库（`images.vec` / `prompts.vec`）。
 export async function runSimilarityIndex(page: Page, kind: "image" | "prompt"): Promise<void> {
-  const tabpanel = await openSettingsTab(page, "相似度");
+  const panel = await openSimilaritySettings(page);
   const group = kind === "image" ? "图像向量索引" : "提示词向量索引";
-  await tabpanel.getByRole("button", { name: `${group}：增量索引` }).click();
+  await panel.getByRole("button", { name: `${group}：增量索引` }).click();
   await page.getByRole("button", { name: "开始" }).click();
   await expectToastAndDismiss(page, "索引完成");
   e2eLog.info(`[step] ${group}：增量索引完成`);
@@ -619,12 +627,12 @@ export function clearSimilarityThresholds(page: Page): Promise<void> {
   });
 }
 
-/// 两类向量索引各跑一次增量（结果页两栏都需要），跑完关掉设置面板。
+/// 两类向量索引各跑一次增量（结果页两栏都需要），跑完关掉「相似度设置」面板。
 /// 增量只补 `vec IS NULL`，故调用前需保证对应类别有未建向量的条目。
 export async function indexBothSimilarityKinds(page: Page): Promise<void> {
   await runSimilarityIndex(page, "image");
   await runSimilarityIndex(page, "prompt");
-  await closeSettings(page);
+  await closeSimilaritySettings(page);
 }
 
 /// ---- 全屏查看（独立窗口）----

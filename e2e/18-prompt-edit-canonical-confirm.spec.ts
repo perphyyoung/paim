@@ -17,7 +17,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import {
   closeDetail,
-  closeSettings,
+  closeSimilaritySettings,
   expectToastAndDismiss,
   gotoPromptsPage,
   invokeCommand,
@@ -87,7 +87,7 @@ test("已索引提示词实质修改：弹确认框，取消留编辑态不写�
   await seedPrompts(page, [original]);
   await page.getByTitle(/刷新缓存/).click();
   await runSimilarityIndex(page, "prompt");
-  await closeSettings(page);
+  await closeSimilaritySettings(page);
   // 同文件共用数据目录：用相对计数（before → after -1），不写死绝对值
   const before = (await promptStatus(page)).indexed;
   e2eLog.info(`[step] 向量已建立（indexed=${before}）`);
@@ -135,7 +135,7 @@ test("仅排版调整（首尾空白/标点旁空白/连续空白）：无确认
   await seedPrompts(page, [original]);
   await page.getByTitle(/刷新缓存/).click();
   await runSimilarityIndex(page, "prompt");
-  await closeSettings(page);
+  await closeSimilaritySettings(page);
   // 上一用例的数据仍在同目录：只断言本次保存前后计数不变
   const before = (await promptStatus(page)).indexed;
 
@@ -188,7 +188,7 @@ test("图像详情索引标志：索引前灰色，图像增量索引后变蓝",
 
   await closeDetail(detail);
   await runSimilarityIndex(page, "image");
-  await closeSettings(page);
+  await closeSimilaritySettings(page);
 
   // 重新打开详情拿最新卡片投影：标志变蓝（关闭设置广播活动页重载，轮询重开等待数据新鲜）
   detail = await openDetailExpectIcon(page, openImageDetail, promptContent, "已建立相似度向量");
@@ -207,7 +207,7 @@ test("编辑态「规范化」按钮：仅编辑态可见、只填回输入框�
   await seedPrompts(page, [original]);
   await page.getByTitle(/刷新缓存/).click();
   await runSimilarityIndex(page, "prompt");
-  await closeSettings(page);
+  await closeSimilaritySettings(page);
   const before = (await promptStatus(page)).indexed;
 
   const detail = await openDetailExpectIcon(page, openPromptDetail, original, "已建立相似度向量");

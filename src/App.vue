@@ -5,6 +5,8 @@ import { events } from "@/bindings";
 import { initFontFamily, initFontScale } from "@/utils/font";
 import { SETTINGS_CLOSED_EVENT } from "@/utils/crossPageCache";
 import SettingsView from "@/views/SettingsView.vue";
+import SimilaritySettingsView from "@/views/SimilaritySettingsView.vue";
+import PanelShell from "@/components/PanelShell.vue";
 import StatsModal from "@/components/StatsModal.vue";
 import ToastHost from "@/components/ToastHost.vue";
 import { homeCardInfoVisible, toggleHomeCardInfo } from "@/utils/homeCardInfo";
@@ -51,12 +53,15 @@ const tabs = [
 const route = useRoute();
 const isActive = (path: string) => computed(() => route.path === path);
 
-// 设置悬浮面板开关
+// 两个设置悬浮面板的开关：通用设置（外观 + 数据）与相似度设置，各自独立
 const settingsOpen = ref(false);
-// 关闭设置时广播：当前活动主页据此即时消费脏标记（向量索引/清空、缩略图重建等在设置内完成）
-watch(settingsOpen, (open) => {
+const similaritySettingsOpen = ref(false);
+// 关闭任一设置面板时广播：当前活动主页据此即时消费脏标记（向量索引/清空、缩略图重建等在设置内完成）
+function onSettingsToggle(open: boolean) {
   if (!open) window.dispatchEvent(new CustomEvent(SETTINGS_CLOSED_EVENT));
-});
+}
+watch(settingsOpen, onSettingsToggle);
+watch(similaritySettingsOpen, onSettingsToggle);
 
 // 统计弹窗开关
 const statsOpen = ref(false);
@@ -167,6 +172,28 @@ function reloadAll() {
       </button>
       <button
         type="button"
+        title="相似度设置"
+        class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
+        @click="similaritySettingsOpen = true"
+      >
+        <!-- 两条向量（坐标轴 + 两条带箭头的线段）：与详情页「已建立向量」图标（VecStatusIcon）同族 -->
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 3 V20 H20" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.2 18.8 L15.5 8.6" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.2 18.8 L18.6 14.8" />
+          <path d="M17.1 7 L15.3 11 L13.1 8.7 Z" fill="currentColor" stroke="none" />
+          <path d="M20.7 14.2 L17.3 16.8 L16.4 13.8 Z" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+      <button
+        type="button"
         title="设置 (Ctrl+Shift+,)"
         class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-gray-400 hover:bg-gray-700"
         @click="settingsOpen = true"
@@ -208,30 +235,16 @@ function reloadAll() {
 
     <StatsModal :open="statsOpen" @close="statsOpen = false" />
 
-    <!-- 设置悬浮面板 -->
-    <Teleport to="body">
-      <div
-        v-if="settingsOpen"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
-        @click.self="settingsOpen = false"
-      >
-        <div
-          class="relative w-[50vw] max-w-[50vw]"
-          role="dialog"
-          aria-modal="true"
-          aria-label="设置"
-        >
-          <SettingsView />
-          <button
-            type="button"
-            class="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-gray-600 text-white hover:bg-gray-500"
-            title="关闭"
-            @click="settingsOpen = false"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    </Teleport>
+    <!-- 两个设置悬浮面板共用 PanelShell（遮罩 + dialog + ✕）：通用设置与相似度设置 -->
+    <PanelShell :open="settingsOpen" label="设置" @close="settingsOpen = false">
+      <SettingsView />
+    </PanelShell>
+    <PanelShell
+      :open="similaritySettingsOpen"
+      label="相似度设置"
+      @close="similaritySettingsOpen = false"
+    >
+      <SimilaritySettingsView />
+    </PanelShell>
   </div>
 </template>

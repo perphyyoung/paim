@@ -11,18 +11,21 @@
  *
  * 五条用例按「改了会影响特殊计数的数据」的入口分：① 提示词主页批量添加标签 ② 图像主页拖拽添加标签
  * （断言「无标」chip 消失）③④ 两个主页卡片上的**单张收藏**（断言「收藏」chip 出现 / 消失）
- * ⑤ 设置页增量索引（断言「无向」chip 消失）。
+ * ⑤ 相似度设置增量索引（断言「无向」chip 消失）。
  * 用例 2 的拖拽源标签先用批量入口创建（顺带让筛选区出现该标签）；若批量刷新坏了，用例 1 会先红。
+ * 另有首条前置冒烟（不属计数主题）：钉住通用设置面板已还原为单页独占布局仍可打开。
  */
 import { expect, type Page } from "@playwright/test";
 import {
   cardById,
   closeSettings,
+  closeSimilaritySettings,
   createPromptViaDialog,
   expectToastAndDismiss,
   findPromptIdByContent,
   gotoPromptsPage,
   openBatchAddTagDialog,
+  openSettings,
   runSimilarityIndex,
   specialTagChip,
   test,
@@ -48,6 +51,16 @@ async function dragTagToCard(page: Page, tagName: string, cardText: string): Pro
   await page.mouse.up();
   e2eLog.info(`[step] 已把标签「${tagName}」拖到卡片「${cardText}」`);
 }
+
+// 通用设置面板已还原成单页独占布局：本文件后续用例都只开「相似度设置」面板，
+// 故在此钉住通用面板仍可打开、且已无页签。
+test("通用设置面板：独占布局仍可打开并含外观与数据两组", async ({ page }) => {
+  const panel = await openSettings(page);
+  await expect(panel.getByText("外观")).toBeVisible();
+  await expect(panel.getByText("数据目录", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("tab")).toHaveCount(0);
+  await closeSettings(page);
+});
 
 test("提示词主页批量添加标签后：无标计数随之刷新（chip 消失）", async ({ page }) => {
   // 文件首个用例：实例刚起、库里只有这一条提示词 → 无标计数恒为 1
@@ -141,7 +154,7 @@ test("提示词主页增量索引后：无向计数随之刷新（chip 消失）
   e2eLog.info("[step] 基线：无向 chip 可见（存在未建向量的提示词）");
 
   await runSimilarityIndex(page, "prompt");
-  await closeSettings(page);
+  await closeSimilaritySettings(page);
 
   // 增量索引把全部待处理提示词建好向量 → 计数归零、chip 消失（刷新坏了则 chip 仍在）
   await expect(specialTagChip(page, NO_VEC)).toBeHidden();
