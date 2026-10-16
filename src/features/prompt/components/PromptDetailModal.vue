@@ -293,13 +293,16 @@ async function toggleSafe() {
 
 // —— 嵌套槽的信号订阅 ——
 // 槽由页面持有（<NestedDetailSlots>），回调链表达不了「谁打开的」，故改为订阅栈的信号：
-// 内容变化（编辑 / 换图 / 安全联动）→ 重拉关联图像条并通知主页；安全联动 → 同步本条 UI
+// 内容变化（编辑 / 换图 / 安全联动）→ **只重拉自己的关联图像条**。
+// 这里的 watcher 订阅的是槽位的 revision 广播，而 revision 只在「内容真的变了」时由槽位播报一次：
+// 若在订阅回调里再 notifyUpdated()（→ emit("updated") → 槽位 reportChanged() → revision++），
+// 一次保存就会进入自持循环 —— dev 报 Maximum recursive updates、release 直接卡死
+// （递归守卫是 dev-only，见 docs/lessons.md 第 31 节）。自身内容真变的播报点在各操作处，不在这里。
 watch(
   () => nested.revision.value,
   () => {
     if (!props.open) return;
     void reloadRelatedImages();
-    notifyUpdated();
   },
 );
 watch(

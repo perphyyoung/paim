@@ -185,3 +185,42 @@ test("三级链路（提示词→图像→提示词）：第三跳目标已在�
   await closeDetail(promptSlot);
   await closeDetail(bottom);
 });
+
+// —— 嵌套详情里的内容变化：宿主 / 主页的同步**不得自激** ——
+// 一次内容变化（保存 / 换图 / 安全联动…）会走 `reportChanged()` → `revision++`，而**宿主详情与嵌套详情都订阅
+// 这个信号**做各自的同步。约束是：订阅者只能重拉自己的数据，**不得反向播报同一信号**——
+// 嵌套提示词详情曾在 revision 变化时也 `notifyUpdated()`（→ `emit("updated")` → 槽位再 `reportChanged()`）
+// 于是「一次保存」进入自持循环：dev 报 `Maximum recursive updates exceeded in component <ImageDetailModal>`，
+// release 因**递归守卫只在 dev 构建编译进去**而表现为界面直接卡死（见 docs/lessons.md 第 31 节）。
+test("嵌套提示词详情内保存：宿主同步不得自激（保存能完成、界面仍可操作）", async ({
+  page,
+  app,
+}) => {
+  const promptContent = `e2e 嵌套保存不自激 ${Date.now()}`;
+  await uploadImageWithPrompt(page, promptContent, app.mockImagePath);
+  const bottom = await openImageDetail(page, promptContent);
+
+  // 第 1 层：底部图像详情「编辑提示词」→ 嵌套提示词槽
+  await bottom.getByTitle("编辑提示词").click();
+  const promptSlot = page.getByRole("dialog", { name: "提示词详情" });
+  await expect(promptSlot).toHaveCount(1);
+  if ((await promptSlot.getByRole("button", { name: "保存" }).count()) === 0) {
+    await promptSlot.getByTitle("编辑", { exact: true }).click();
+  }
+  await expect(promptSlot.getByRole("button", { name: "保存" })).toBeVisible();
+
+  // 改一个字符再保存：只有「内容确实变化」才触发 revision 广播（未建立向量 → 不弹失效确认）
+  const box = promptSlot.getByRole("textbox").first();
+  await box.click();
+  await box.press("End");
+  await box.type("x");
+  await promptSlot.getByRole("button", { name: "保存" }).click();
+  // 自激时主线程被 render job 占满 → toast 永不出现，这里必然超时（生产/调试构建都没有递归守卫）
+  await expectToastAndDismiss(page, "已保存");
+  e2eLog.info("[step] 保存完成且界面仍响应");
+
+  // 保存后宿主仍能操作：嵌套槽可关、底部详情可关（自激时连关闭钮都点不动）
+  await closeDetail(promptSlot);
+  await closeDetail(bottom);
+  e2eLog.info("[step] 逐层关闭正常，宿主未被自激拖死");
+});

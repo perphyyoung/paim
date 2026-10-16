@@ -34,6 +34,7 @@
 | 28 | 提示词保存卡住 + release 没日志 | 保存路径不碰 embedding：卡住来自「单连接锁被长持锁任务占死 + 同步命令占主线程」，长持锁任务（缩略图自愈最典型）把保存一起冻住；`log::*` 在 release 无 sink + 保存路径零埋点 = 现场无日志。修法：锁等待/持锁 >500ms 记 WARN（带调用点与当前持锁者）+ 保存成对埋点 + 日志通道统一 `crate::log_*!`；架构层同轮收口：所有 DB/IO 命令下阻塞池、长任务改「短锁取数据 → 无锁做重活 → 短锁回写」（`#[tauri::command(async)]` 是陷阱，占的是 async 工作线程）。 |
 | 29 | 设置页报的向量维度与实际不符 | embedding 服务自报的 `meta.n_embd` 是模型文件的**声明值**、不是真实输出长度（本机声明 512 / 实测 768）→ 维度构成数值契约时必须**真跑一次数长度**，不能读元数据。 |
 | 30 | 全屏查看跳到末尾，文件名变成 `—` | 跨窗口载荷里的字段取自「当前**已加载**的块」，而顺序快照是全量 id —— 未加载项没人按 id 回填名称 → 载荷里凡来自"已加载集合"的字段，都要配一条**按 id 惰性补全**的通路。 |
+| 31 | 保存后界面卡死（dev 只报 `Maximum recursive updates`） | 信号型状态（`revision`）的**订阅者反向播报同一信号**（`notifyUpdated → reportChanged → revision++`）→ 一次内容变化即永久自持循环；Vue 的递归守卫只在 dev 构建生效，release 直接冻结（连日志都停写）。 |
 
 ---
 
@@ -943,3 +944,33 @@ Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` �
 
 - **跨窗口 / 跨页载荷里凡取自「当前已加载集合」的字段，都必须配一条按 id 惰性回填的通路**；载荷只带「渲染这一屏所需的最低限度」数据，其余按 id 补。
 - 分块加载与懒补全的整体设计见 [缓存及加载优化设计.md](../缓存及加载优化设计.md)。
+
+---
+
+## 31. 「保存后界面卡死」：信号订阅者反向播报同一信号 → 自持循环（dev 报 `Maximum recursive updates`、release 直接冻结）
+
+从图像详情进「编辑提示词」（嵌套提示词详情）改一个字符后保存：dev 下界面**正常**，但日志出现 `Maximum recursive updates exceeded in component <ImageDetailModal>`；release 下同一操作**直接卡死**，之后日志也不再产生（`%LOCALAPPDATA%\paim\paim.log` 里只剩卡死前那几行）。
+
+根因是一个**自持循环**，触发一次就永久自转，不需要任何后续操作：
+
+- `revision` 是「槽里内容变了」的广播，由 `NestedDetailSlots` 在内容真变时播报（`reportChanged()` → `revision++`）；
+- **宿主详情与嵌套详情都订阅** `revision` 做各自的同步；
+- 嵌套提示词详情的订阅回调里除了重拉自己的数据，还调了 `notifyUpdated()` → `emit("updated")` → 槽位再次 `reportChanged()` → `revision++` → 自己的 watcher 再触发……
+- 实测（临时埋点，计数未设上限时约 **2 秒 3 万次**迭代）：`revision-watch → onDetailUpdate → replaceItem` 严格 1:1:1 陪跑，`prompt.notifyUpdated → reportChanged` 每轮把环闭合一次；每轮还捎带一次 `reloadRelatedPrompts()`（IPC）并标主页过期。
+
+为什么难发现 / 两个环境的差异：
+
+- Vue 的递归更新守卫（`Maximum recursive updates exceeded`）**只在 dev 构建编译进去**：dev 把循环中止掉、只留一条错误；release 没有守卫 → 循环无限跑 → 主线程被 render job 占满 → 界面冻结、日志停写。**同一份代码，dev 看起来正常只是被守卫挡了**；
+- 埋点成对日志（`[PromptDetail] 保存开始` / `保存完成`）显示写库只用 **12 ms** —— 卡的不是数据库、也不是锁；只看「保存慢 / 锁等待」会一路查错方向。
+
+修法与验证：
+
+- 订阅回调里**只重拉自己的数据**：删掉 `PromptDetailModal` revision watcher 里的 `notifyUpdated()`；自身内容真变时的播报点（保存 / 标签 / 换图 / 收藏安全）保持不变；
+- 宿主侧（`ImageDetailModal`）的 `emit("update")` 保留并在注释里写明理由：接收方是页面（`replaceItem`），不回投 revision，不构成环；
+- `e2e/14` 新增用例：图像详情 →「编辑提示词」→ 改一个字符 → 保存 → 断言 `已保存` toast 可见 + 详情可逐层关闭（修复前在生产/调试构建下必超时）。
+
+后续参考 / 通用约束：
+
+- **信号型状态（`revision` 这类广播）的订阅者不得反向播报同一信号**：要上报变化就只在变化发生处上报，订阅回调里只做本地同步。与第 22 节（document 级监听不区分层级）同属「隐式双向耦合必须显式约束」。
+- **dev 的告警不可当作"没问题"**：`Maximum recursive updates` 这类递归守卫告警是 dev-only 能力；凡是「dev 正常、release 卡死」的问题，先怀疑自激循环，再怀疑锁与 I/O。
+- 配套做法（订阅式同步的设计取舍）见 [开发经验.md](./开发经验.md) 第 5 节的槽位模型。

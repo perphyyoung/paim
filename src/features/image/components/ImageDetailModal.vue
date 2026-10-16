@@ -173,6 +173,8 @@ watch(
     if (!props.open) return;
     void reloadRelatedPrompts();
     markPageStale("prompts");
+    // 接收方是页面（replaceItem，不回投 revision）—— 这里不构成回环；
+    // 会自激的是「订阅者反向播报同一信号」，见 docs/lessons.md 第 31 节
     if (current.value) emit("update", current.value);
   },
 );
