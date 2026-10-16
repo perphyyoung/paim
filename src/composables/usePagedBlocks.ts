@@ -48,6 +48,8 @@ export interface UsePagedBlocks<T> {
   reload: (options?: { keepContent?: boolean }) => Promise<void>;
   /** 详情编辑后回写单条（仅在已加载块中生效） */
   replaceItem: (id: string, next: T) => void;
+  /** 详情「数据已变」信号：列表浅响应，就地改字段不触发依赖，靠此处通知依赖者重渲染 */
+  touch: () => void;
 }
 
 export function usePagedBlocks<T extends { id: string }>(options: {
@@ -221,5 +223,12 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     commit(copy);
   }
 
-  return { items, total, loading, blockSize, ensureRange, reload, replaceItem };
+  /// 列表是浅响应（`shallowRef`）：详情弹窗就地改了某条对象自己的字段时不会触发依赖，
+  /// 由调用方在收到详情「数据已变」信号后碰一下这里，通知依赖者重渲染
+  /// （与 `replaceItem` 同一手法，只是不换内容、不换对象）。
+  function touch() {
+    items.value = items.value.slice();
+  }
+
+  return { items, total, loading, blockSize, ensureRange, reload, replaceItem, touch };
 }

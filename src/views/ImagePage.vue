@@ -128,6 +128,7 @@ const {
   ensureRange,
   reload: reloadBlocks,
   replaceItem,
+  touch,
 } = usePagedBlocks<ImageCard>({
   label: "image",
   load: (offset, limit) => commands.listImagesPage({ ...currentQuery(), offset, limit }),
@@ -544,7 +545,7 @@ function closeDetail() {
   if (!detailDirty.value) return;
   detailDirty.value = false;
   // 关闭详情后才重新同步排序与标签筛选（更新的 updated_at/文件名排序此时生效）。
-  // keepContent：数据已由 replaceItem 即时同步，这里只补顺序/结果集，旧内容留到新块覆盖，避免白闪
+  // keepContent：这里只补顺序/结果集，旧内容留到新块覆盖，避免白闪（详情改动已由本次重拉覆盖）
   loadImages({ keepContent: true });
   loadTagFilter();
 }
@@ -554,10 +555,11 @@ function onSimilarMerged() {
   showToast("已合并为 1 条提示词", "success");
   closeDetail();
 }
-function onDetailUpdate(updated: ImageCard) {
+/** 详情内容已变：置脏，关闭详情时重拉（无载荷，不再原地换实体）；
+ *  详情就地改了某条对象自己的字段，浅响应列表不会因此重渲染，需用 touch() 通知依赖者 */
+function onDetailChanged() {
   detailDirty.value = true;
-  // 同步回当前已加载块（占位项不参与）
-  replaceItem(updated.id, updated);
+  touch();
 }
 function onDetailReplaced({ oldId, image }: { oldId: string; image: Image }) {
   // 替换后排序位置会变，交给重载处理；详情顺序快照先原位替换，保持导航位置
@@ -961,7 +963,7 @@ function onUploadDone() {
       :thumbs="thumbs"
       :initial-keyword="keyword"
       @close="closeDetail"
-      @update="onDetailUpdate"
+      @update="onDetailChanged"
       @replaced="onDetailReplaced"
       @ensure-index="ensureDetailIndex"
     />

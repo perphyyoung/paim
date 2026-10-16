@@ -58,8 +58,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
-  /** 数据变化：带上当前项，父级可原地替换（避免整列重拉造成的闪烁）；无可换项时传 null */
-  (e: "updated", item: PromptCard | null): void;
+  /** 数据变化（无载荷）：父级只标记数据已变，关闭详情 / 页面重新激活时重拉 */
+  (e: "updated"): void;
   /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
   (e: "safe-synced", isSafe: boolean): void;
   /** 导航到尚未加载的项：通知父级补齐其所在块（主页按块懒加载） */
@@ -265,9 +265,9 @@ function close() {
   emit("close");
 }
 
-/** 通知主页数据已变：带上当前项，父级 replaceItem 原地换一条即可（与图像详情的 update 对称） */
+/** 通知主页数据已变（无载荷）：父级只标记数据已变，关闭详情 / 页面重新激活时重拉（与图像详情的 update 对称） */
 function notifyUpdated() {
-  emit("updated", current.value);
+  emit("updated");
 }
 
 // 切换收藏/安全（与图像详情共用逻辑，原地更新 current 并通知父级）
@@ -293,7 +293,7 @@ async function toggleSafe() {
 
 // —— 嵌套槽的信号订阅 ——
 // 槽由页面持有（<NestedDetailSlots>），回调链表达不了「谁打开的」，故改为订阅栈的信号：
-// 内容变化（编辑 / 换图 / 安全联动）→ **只重拉自己的关联图像条**。
+// 内容变化（编辑 / 换图 / 安全联动）→ **只做本地重拉**（重拉自己的关联图像条），不向上播报。
 // 这里的 watcher 订阅的是槽位的 revision 广播，而 revision 只在「内容真的变了」时由槽位播报一次：
 // 若在订阅回调里再 notifyUpdated()（→ emit("updated") → 槽位 reportChanged() → revision++），
 // 一次保存就会进入自持循环 —— dev 报 Maximum recursive updates、release 直接卡死

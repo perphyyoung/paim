@@ -214,13 +214,12 @@ function handleGridScroll(p: GridScrollPayload) {
   scheduleThumbCheck();
 }
 
-// 详情弹窗内的编辑就地改原始对象（shallowRef 下需整表重拉触发更新）；
-// 同时内容/关联变化会影响图像主页
-function onModalUpdated(updated: PromptCard | null) {
-  // 详情开着时不重拉：列表被遮挡，且重载会把整列清成占位（关闭时统一按需重拉一次）
+/** 详情内容已变（无载荷，不再原地换实体）：详情开着时不重拉（列表被遮挡，且重载会把整列清成占位），
+ *  只置脏、关闭详情时统一按需重拉一次；内容/关联变化同时影响图像主页，故一并跨页标脏。
+ *  详情就地改了对象字段，浅响应列表不会因此重渲染，需用 touch() 通知依赖者 */
+function onDetailChanged() {
   detailDirty.value = true;
-  // 原地换一条（数组引用换新即触发重渲染），收藏/安全等即时反馈无需重拉
-  if (updated) replaceItem(updated.id, updated);
+  touch();
   markPageStale("images");
 }
 
@@ -268,6 +267,7 @@ const {
   ensureRange,
   reload: reloadBlocks,
   replaceItem,
+  touch,
 } = usePagedBlocks<PromptCard>({
   label: "prompt",
   load: (offset, limit) => commands.listPromptsPage({ ...currentQuery(), offset, limit }),
@@ -486,7 +486,7 @@ function closeDetail() {
   if (!detailDirty.value) return;
   detailDirty.value = false;
   // 关闭详情后才重新同步，让更新的 updated_at 等排序生效。
-  // keepContent：数据已由 replaceItem 即时同步，这里只补顺序/结果集，旧内容留到新块覆盖，避免白闪
+  // keepContent：这里只补顺序/结果集，旧内容留到新块覆盖，避免白闪（详情改动已由本次重拉覆盖）
   loadPrompts({ keepContent: true });
   loadTagFilter();
 }
@@ -856,7 +856,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       :all-tags="allTags"
       :initial-keyword="keyword"
       @close="closeDetail"
-      @updated="onModalUpdated"
+      @updated="onDetailChanged"
       @ensure-index="ensureDetailIndex"
     />
 

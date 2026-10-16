@@ -224,3 +224,43 @@ test("嵌套提示词详情内保存：宿主同步不得自激（保存能完�
   await closeDetail(bottom);
   e2eLog.info("[step] 逐层关闭正常，宿主未被自激拖死");
 });
+
+// —— 反向（嵌套图像实例）：同一条 `emit("update")` 在嵌套态会回投 revision ——
+// 图像详情的 revision 订阅回调里有 `emit("update")`：宿主的接收方是页面（不回投 revision，安全），
+// 但**嵌套图像实例**的接收方是槽位（`@update="reportChanged()"` → revision++）→ 与提示词侧同构的自激。
+// 触发只需一次内容变化：在嵌套图像详情里点一次收藏（收藏/安全/改文件名走的都是 `emit("update")` 这条通路）。
+test("嵌套图像详情内切换收藏：宿主同步不得自激（操作能完成、界面仍可操作）", async ({
+  page,
+  app,
+}) => {
+  const promptContent = `e2e 嵌套图像不自激 ${Date.now()}`;
+  await gotoPromptsPage(page); // 上一条用例把应用留在了图像主页，本用例的入口在提示词主页
+  await createPromptViaDialog(page, promptContent);
+  const bottom = await openPromptDetail(page, promptContent);
+  // 关联 1 张图：用来打开嵌套图像详情（叠加层入口）
+  writePng(app.mockImagePath);
+  await bottom.getByRole("button", { name: "从外界导入图像" }).click();
+  await expectToastAndDismiss(page, "已导入并关联 1 张图像");
+
+  // 第 1 层：底部提示词详情「查看图像详情」→ 嵌套图像槽（入口按钮 group-hover 才可见，先 hover）
+  await bottom.locator("img").first().hover();
+  await bottom.getByTitle("查看图像详情").first().click();
+  const imageSlot = page.getByRole("dialog", { name: "图像详情" });
+  await expect(imageSlot).toHaveCount(1);
+  e2eLog.info("[step] 嵌套图像槽已打开");
+
+  // 收藏：自激时主线程被 render job 占满 → title 翻转都不会发生 → 必超时
+  await imageSlot.getByTitle("收藏").click();
+  await expect(imageSlot.getByTitle("取消收藏")).toBeVisible({ timeout: 5_000 });
+  await expectToastAndDismiss(page, "已收藏");
+  e2eLog.info("[step] 嵌套图像槽：收藏完成且界面仍响应");
+
+  // 收藏回切，避免影响同文件后续用例的主页计数断言
+  await imageSlot.getByTitle("取消收藏").click();
+  await expect(imageSlot.getByTitle("收藏")).toBeVisible({ timeout: 5_000 });
+  await expectToastAndDismiss(page, "已取消收藏");
+
+  await closeDetail(imageSlot);
+  await closeDetail(bottom);
+  e2eLog.info("[step] 逐层关闭正常");
+});

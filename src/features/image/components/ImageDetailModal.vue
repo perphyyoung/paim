@@ -48,7 +48,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "update", img: ImageCard): void;
+  /** 内容变化（无载荷）：父级只标记数据已变，关闭详情 / 页面重新激活时重拉 */
+  (e: "update"): void;
   /** 替换图像成功：主列表移除旧图、插入新图 */
   (e: "replaced", payload: { oldId: string; image: Image }): void;
   /** 安全评级联动一层成功后广播新值，供嵌套的底层弹窗同步 UI */
@@ -165,17 +166,16 @@ function openEditPrompt() {
 
 // —— 嵌套槽的信号订阅 ——
 // 槽由页面持有（<NestedDetailSlots>），回调链表达不了「谁打开的」，故改为订阅栈的信号：
-// 内容变化（编辑 / 设为首图 / 换图 / 安全联动）→ 重拉关联提示词缓存 + 标记提示词页过期
-// （否则 KeepAlive 的提示词主页不重拉、卡片缩略图不更新），并回写卡片供主页原位更新
+// 内容变化（编辑 / 设为首图 / 换图 / 安全联动）→ **本地重拉自己的关联提示词**并标提示词页过期
+// （否则 KeepAlive 的提示词主页不重拉、卡片缩略图不更新）。
+// 这里只做本地同步、不向上播报 —— 一向上播报就会被槽位受理成 revision++，自持成环
+// （见 docs/lessons.md 第 31 节）。
 watch(
   () => nested.revision.value,
   () => {
     if (!props.open) return;
     void reloadRelatedPrompts();
     markPageStale("prompts");
-    // 接收方是页面（replaceItem，不回投 revision）—— 这里不构成回环；
-    // 会自激的是「订阅者反向播报同一信号」，见 docs/lessons.md 第 31 节
-    if (current.value) emit("update", current.value);
   },
 );
 watch(
@@ -212,7 +212,7 @@ async function doCreatePrompt() {
     markPageStale("prompts");
     showToast("提示词已创建并关联", "success");
     createPromptOpen.value = false;
-    emit("update", img);
+    emit("update");
     await reloadRelatedPrompts();
   } catch (e) {
     showToast(`新建失败：${e}`, "error");
@@ -292,7 +292,7 @@ const { tagInput, addTag } = useTagAdd({
     if (!img) return;
     imageTagsCache.invalidate(img.id);
     // 通知主页：卡片标签与标签筛选计数已变化（删除标签走 removeTag，同样 emit）
-    emit("update", img);
+    emit("update");
   },
 });
 // 复制提示词字段内容（图像详情为纯展示，无编辑态）
@@ -319,7 +319,7 @@ async function removeTag(tagId: number) {
   await commands.removeTag("image", img.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
   imageTagsCache.invalidate(img.id);
-  emit("update", img);
+  emit("update");
 }
 
 // 标签删除需确认
@@ -348,7 +348,7 @@ async function unlinkPrompt(p: LinkedPrompt) {
     // 关联关系变化影响提示词主页的关联图像计数
     markPageStale("prompts");
     showToast("已解除与提示词的关联", "success");
-    emit("update", img);
+    emit("update");
     await reloadRelatedPrompts();
   } catch (e) {
     showToast(`解除关联失败：${e}`, "error");
@@ -501,13 +501,13 @@ const { toggleCurrent } = useItemToggle<ImageCard>({ domain: "image", showToast 
 function toggleFavorite() {
   const img = current.value;
   if (!img) return;
-  toggleCurrent(current, "is_favorite", () => emit("update", img));
+  toggleCurrent(current, "is_favorite", () => emit("update"));
 }
 async function toggleSafe() {
   const img = current.value;
   if (!img) return;
   const v = !img.is_safe;
-  await toggleCurrent(current, "is_safe", () => emit("update", img));
+  await toggleCurrent(current, "is_safe", () => emit("update"));
   // 安全评级联动一层：同步到该图像关联的提示词
   try {
     await commands.syncImageSafeToPrompts(img.id, v);
@@ -539,7 +539,7 @@ async function saveFields() {
     const upd = await commands.updateImageDetail(img.id, nextFileName, nextNote, null, null);
     img.file_name = upd.file_name;
     img.note = upd.note;
-    emit("update", img);
+    emit("update");
     edit.value = false;
     showToast("已保存", "success");
   } catch (e) {
