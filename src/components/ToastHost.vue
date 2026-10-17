@@ -37,6 +37,7 @@ const TYPE_CLASSES: Record<ToastType, string> = {
         <div
           v-for="t in toasts"
           :key="t.id"
+          role="status"
           class="pointer-events-auto cursor-pointer rounded-lg border-2 bg-[#0a0a0a] px-5 py-3 text-sm"
           :class="TYPE_CLASSES[t.type]"
           @click="dismissToast(t.id)"

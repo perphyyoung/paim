@@ -21,12 +21,14 @@ import {
 } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
-/// 打开图像详情后，对最后一张图右键出「替换图像」菜单
+/// 打开图像详情后，在详情内的大图上右键出「替换图像」菜单
 /// 注意：卡片缩略图 img 上方盖着文字覆盖层（absolute inset-0），点击 img 会被
-/// 命中目标检查拦下——要点文字层（点击冒泡到卡片根，同样触发打开详情，见 openImageDetail）。
+/// 命中目标检查拦下——打开详情要点文字层（点击冒泡到卡片根，见 openImageDetail）；
+/// 菜单则绑在详情内唯一的内容图上，按 img 角色取即可唯一定位
+/// （索引状态图标是 `role="note"`，不与内容图撞角色）。
 async function openReplaceMenu(page: Page, cardText: string): Promise<void> {
-  await openImageDetail(page, cardText);
-  await page.locator("img").last().click({ button: "right" });
+  const detail = await openImageDetail(page, cardText);
+  await detail.getByRole("img").click({ button: "right" });
   const replaceItem = page.getByRole("button", { name: "替换图像" });
   await expect(replaceItem).toBeVisible();
   await replaceItem.click();

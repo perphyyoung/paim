@@ -17,6 +17,7 @@
 import path from "node:path";
 import { expect } from "@playwright/test";
 import {
+  allCards,
   closeDetail,
   expectToastAndDismiss,
   getImagePromptsMap,
@@ -128,10 +129,10 @@ test("不附提示词上传：图像详情内「新建提示词」创建并关�
 
   // 用筛选区「未引」（未关联提示词）chip 把列表过滤到这一张：
   // 未关联的卡片**正文是空的**（正文显示的是关联提示词内容），不能像其它用例那样按卡片文字定位；
-  // 过滤后卡片根元素唯一，直接点它打开详情（卡片根带 `data-card-drop-id`，见 helpers 的 cardById 注释）。
+  // 过滤后只剩一张卡，取其唯一根元素打开详情（卡片根无语义，经 helpers 的 allCards 取）。
   await specialTagChip(page, "未引").click();
-  await expect(page.locator("[data-card-drop-id]")).toHaveCount(1);
-  await page.locator("[data-card-drop-id]").first().click();
+  await expect(allCards(page)).toHaveCount(1);
+  await allCards(page).click();
   const detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible({ timeout: 5_000 });
   const createBtn = detail.getByTitle("新建提示词");

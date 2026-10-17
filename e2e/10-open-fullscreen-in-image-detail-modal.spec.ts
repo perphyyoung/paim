@@ -33,7 +33,7 @@ test("双击图像详情大图：查看窗口元素齐全，关闭后详情弹�
   const viewer = await openFullscreenViewer(app, detail);
 
   // 1. 图像本体：查看器窗口里唯一的大图，src 由 get_image_src + convertFileSrc 得到（asset 协议）
-  const image = viewer.locator("img").first();
+  const image = viewer.getByRole("img");
   await expect(image).toBeVisible();
   await expect(image).toHaveAttribute("src", /asset\.localhost/);
   // 2. 文件名：左上信息条，取载荷携带的上传文件名
@@ -52,5 +52,5 @@ test("双击图像详情大图：查看窗口元素齐全，关闭后详情弹�
 
   // 关闭后主窗口的详情弹窗原样：仍在、仍是同一张图（主窗口全程不参与全屏状态，无需重挂载）
   await expect(detail).toBeVisible();
-  await expect(detail.locator("img").first()).toBeVisible();
+  await expect(detail.getByRole("img")).toBeVisible();
 });

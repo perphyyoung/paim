@@ -8,6 +8,10 @@
  *
  * 放开前这两个入口在嵌套态是 `:disabled` + `title="禁止二级跳转"`，故两条用例都会红在 `toBeEnabled()`。
  * 两条用例分别走两个方向：① 提示词主页（图像槽 → 编辑提示词 → 再看另一张图）；② 图像主页（提示词槽 → 查看图像详情）。
+ *
+ * 定位口径（AGENTS.md 的 e2e 语义化规则）：`.first()` / `.nth(n)` 只用在**顺序本身有含义**处 ——
+ * 层叠详情的 DOM 顺序（底部原始详情在最前）与多张关联图的格序（第 n 张）；其余一律语义定位。
+ * 内容图一律 `getByRole("img")`：详情里的索引状态图标是 `role="note"`（VecStatusIcon），不会混进来。
  */
 import { expect } from "@playwright/test";
 import {
@@ -39,11 +43,11 @@ test("二级跳转（提示词主页）：嵌套图像详情可「编辑提示�
     await expectToastAndDismiss(page, "已导入并关联 1 张图像");
   }
   await expect(bottom.getByText("关联图像（2）")).toBeVisible();
-  await expect(bottom.locator("img")).toHaveCount(2);
+  await expect(bottom.getByRole("img")).toHaveCount(2);
   e2eLog.info("[step] 底部提示词详情已关联 2 张图像");
 
   // 第 1 层：底部详情的缩略图 →「查看图像详情」（既有入口；按钮 group-hover 才可见，先 hover）
-  await bottom.locator("img").first().hover();
+  await bottom.getByRole("img").first().hover();
   await bottom.getByTitle("查看图像详情").first().click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" });
   await expect(imageSlot).toHaveCount(1);
@@ -60,12 +64,12 @@ test("二级跳转（提示词主页）：嵌套图像详情可「编辑提示�
 
   // 二级跳转 ②：在嵌套提示词槽里对**另一张**关联图点「查看图像详情」→ 换掉图像槽，不新增层
   const nestedPrompt = promptDetails.nth(1);
-  const srcBefore = await imageSlot.locator("img").first().getAttribute("src");
-  await nestedPrompt.locator("img").nth(1).hover();
+  const srcBefore = await imageSlot.getByRole("img").first().getAttribute("src");
+  await nestedPrompt.getByRole("img").nth(1).hover();
   await nestedPrompt.getByTitle("查看图像详情").nth(1).click();
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(1); // 仍是 1 个图像槽
   await expect(imageSlot.getByText("无图像")).toBeHidden();
-  await expect(imageSlot.locator("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
+  await expect(imageSlot.getByRole("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
   await expect(promptDetails).toHaveCount(2); // 层数上限：底部 1 + 图像槽 1 + 提示词槽 1
   e2eLog.info("[step] 二级跳转②：图像槽已替换为新图（未新增层，内容已换新）");
 
@@ -100,14 +104,14 @@ test("二级跳转（图像主页）：嵌套提示词详情可「查看图像�
   e2eLog.info("[step] 二级跳转①：嵌套提示词槽已打开");
 
   // 二级跳转 ②：嵌套提示词槽里的「查看图像详情」——放开前是 disabled + title「禁止二级跳转」
-  await promptSlot.locator("img").first().hover(); // 入口按钮 group-hover 才可见
+  await promptSlot.getByRole("img").first().hover(); // 入口按钮 group-hover 才可见
   const viewImageBtn = promptSlot.getByTitle("查看图像详情");
   await expect(viewImageBtn).toBeEnabled();
   await viewImageBtn.click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" }).nth(1);
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 图像槽
   await expect(imageSlot.getByText("无图像")).toBeHidden();
-  await expect(imageSlot.locator("img").first()).toHaveAttribute("src", /asset\.localhost/);
+  await expect(imageSlot.getByRole("img").first()).toHaveAttribute("src", /asset\.localhost/);
   await expect(bottom.getByText(promptContent, { exact: true }).first()).toBeVisible(); // 底部未被替换
   e2eLog.info("[step] 二级跳转②：图像槽已打开且渲染出图（底部详情未动）");
 
@@ -138,7 +142,7 @@ test("三级链路（图像→提示词→图像）：第三跳目标已在槽�
   await expect(promptSlot).toHaveCount(1);
 
   // 第 2 层：嵌套提示词槽「查看图像详情」→ 图像槽（同一张图，但槽是独立实例）
-  await promptSlot.locator("img").first().hover(); // 入口按钮 group-hover 才可见
+  await promptSlot.getByRole("img").first().hover(); // 入口按钮 group-hover 才可见
   await promptSlot.getByTitle("查看图像详情").first().click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" }).nth(1);
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 图像槽
@@ -167,7 +171,7 @@ test("三级链路（提示词→图像→提示词）：第三跳目标已在�
   await expectToastAndDismiss(page, "已导入并关联 1 张图像");
 
   // 第 1 层：底部提示词详情「查看图像详情」→ 图像槽
-  await bottom.locator("img").first().hover();
+  await bottom.getByRole("img").first().hover();
   await bottom.getByTitle("查看图像详情").first().click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" });
   await expect(imageSlot).toHaveCount(1);
@@ -178,7 +182,7 @@ test("三级链路（提示词→图像→提示词）：第三跳目标已在�
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(2); // 底部 + 提示词槽
 
   // 第三跳：提示词槽「查看图像详情」→ 目标那张图已在图像槽里 → 应把图像槽抬到最上
-  await promptSlot.locator("img").first().hover();
+  await promptSlot.getByRole("img").first().hover();
   await promptSlot.getByTitle("查看图像详情").first().click();
   await expect(imageSlot).toBeVisible();
   await closeDetail(imageSlot); // 修复前：图像槽被提示词槽的遮罩压住 → 关闭钮点不到（timeout）
@@ -243,7 +247,7 @@ test("嵌套图像详情内切换收藏：宿主同步不得自激（操作能�
   await expectToastAndDismiss(page, "已导入并关联 1 张图像");
 
   // 第 1 层：底部提示词详情「查看图像详情」→ 嵌套图像槽（入口按钮 group-hover 才可见，先 hover）
-  await bottom.locator("img").first().hover();
+  await bottom.getByRole("img").first().hover();
   await bottom.getByTitle("查看图像详情").first().click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" });
   await expect(imageSlot).toHaveCount(1);

@@ -50,7 +50,7 @@ async function setupPromptWithImages(page: Page, app: AppHandle, count: number):
   }
   await expect(detail.getByText(`关联图像（${count}）`)).toBeVisible();
   // 缩略图序号即数据顺序：后面的「双击第 N 张」依赖这个对应关系
-  await expect(detail.locator("img")).toHaveCount(count);
+  await expect(detail.getByRole("img")).toHaveCount(count);
   e2eLog.info(`[step] 提示词已关联并可双击的缩略图共 ${count} 张`);
   return detail;
 }
@@ -168,8 +168,9 @@ test("叠加层不穿透：嵌套图像详情开着时，→ / ← 不切换底�
   const before = await idx.inputValue();
   e2eLog.info(`[step] 底层提示词详情当前索引：${before}`);
 
-  // 入口按钮是 group-hover 才可见（`hidden` → `group-hover:flex`），先 hover 缩略图再点
-  await detail.locator("img").first().hover();
+  // 入口按钮是 group-hover 才可见（`hidden` → `group-hover:flex`），先 hover 缩略图再点。
+  // 多条关联图时两个定位器按格序一一对应，`.first()` 即「第 1 张」这个含义（顺序有含义，非兜底）
+  await detail.getByRole("img").first().hover();
   await detail.getByTitle("查看图像详情").first().click();
   await expect(page.getByRole("dialog", { name: "图像详情" })).toBeVisible();
   e2eLog.info("[step] 嵌套图像详情已打开（叠加层）");

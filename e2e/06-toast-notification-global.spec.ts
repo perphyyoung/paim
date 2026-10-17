@@ -32,14 +32,12 @@ async function waitToastGone(page: Page, text: string): Promise<void> {
 }
 
 /// toast 是否位于最上层：取 toast 本体中心点，elementFromPoint 命中它自己即未被任何层遮挡。
-/// 定位靠本体 class `pointer-events-auto`（src 里只有 toast 本体带它；容器的 z 由 `ModalZ.toast` 给，
-/// 见 ToastHost.vue），不再依赖 z 类名——层级已收进 src/utils/modalZ.ts。
+/// 定位靠 ToastHost 给 toast 本体加的 `role="status"`（层级由 `ModalZ.toast` 给，见 ToastHost.vue），
+/// 不再依赖 class 名 / z 类名——层级已收进 src/utils/modalZ.ts。
 async function isToastOnTop(page: Page, text: string): Promise<boolean> {
   return page.evaluate((t) => {
-    const el = [...document.querySelectorAll("div")].find(
-      (d) =>
-        (d.className ?? "").toString().includes("pointer-events-auto") &&
-        (d.textContent ?? "").includes(t),
+    const el = [...document.querySelectorAll('[role="status"]')].find((d) =>
+      (d.textContent ?? "").includes(t),
     );
     if (!el) return false;
     const r = el.getBoundingClientRect();

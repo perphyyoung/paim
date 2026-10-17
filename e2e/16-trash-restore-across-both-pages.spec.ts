@@ -15,6 +15,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import {
   cardById,
+  cardImage,
   createPromptViaDialog,
   expectToastAndDismiss,
   findPromptIdByContent,
@@ -52,7 +53,7 @@ test("提示词回收站：无关联图的纯文本卡无背景，单项恢复�
   const card = cardById(page, id);
   await expect(card.getByText(content, { exact: true })).toBeVisible();
   await expect(page.getByText("删除于")).toBeVisible();
-  await expect(card.locator("img")).toHaveCount(0);
+  await expect(cardImage(card)).toHaveCount(0);
   e2eLog.info("[step] 纯文本回收站卡展示正文与删除时间，且无背景图");
 
   // exact：避开头部「全部恢复」按钮
@@ -86,7 +87,7 @@ test("提示词回收站：提示词与关联图像两边都删除时，仍显�
 
   await openTrash(page, "提示词回收站");
   const card = cardById(page, promptId);
-  const img = card.locator("img");
+  const img = cardImage(card);
   await expect(img).toBeVisible();
   // asset URL 经编码，先 decode 再按普通路径匹配（AGENTS.md 路径约定）
   const rawSrc = await img.getAttribute("src");

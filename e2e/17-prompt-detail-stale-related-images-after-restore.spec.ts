@@ -86,7 +86,7 @@ test("图像删除后恢复：提示词详情重新加载出恢复的关联图�
   // 重开详情：必须重新读库，不能命中空缓存
   detail = await openPromptDetail(page, createdContent);
   await expect(detail.getByText("关联图像（1）")).toBeVisible({ timeout: 5_000 });
-  await expect(detail.locator(`img[alt='${MOCK_FILE_NAME}']`)).toBeVisible();
+  await expect(detail.getByRole("img", { name: MOCK_FILE_NAME })).toBeVisible();
   await expect(detail.getByText("暂无关联图像")).toBeHidden();
 });
 
@@ -114,7 +114,7 @@ test("删除前打开过详情：UI 删除图像后重开提示词详情不再�
   detail = await openPromptDetail(page, createdContent);
   await expect(detail.getByText("关联图像（0）")).toBeVisible({ timeout: 5_000 });
   await expect(detail.getByText("暂无关联图像")).toBeVisible();
-  await expect(detail.locator(`img[alt='${MOCK_FILE_NAME}']`)).toHaveCount(0);
+  await expect(detail.getByRole("img", { name: MOCK_FILE_NAME })).toHaveCount(0);
   e2eLog.info("[step] UI 删除后重开详情无幽灵图");
   await closeDetail(detail);
 

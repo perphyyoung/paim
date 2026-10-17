@@ -16,6 +16,10 @@
  *
  * 数据：每个 spec 文件一个应用实例与独立数据目录（`launchApp`），文件内用例串行共用实例；
  * 两条用例各自上传一对「图像 ↔ 提示词」，断言只用「目标卡片可见」这类与总数无关的写法。
+ *
+ * 定位口径（AGENTS.md 的 e2e 语义化规则）：`.first()` / `.nth(n)` 只用在**顺序本身有含义**处 ——
+ * 层叠详情的 DOM 顺序（底部原始详情在最前，后开的嵌套层在其后）与多于一条的同名结果卡。
+ * 内容图一律 `getByRole("img")`：详情里的索引状态图标是 `role="note"`（VecStatusIcon），不会混进来。
  */
 import { expect } from "@playwright/test";
 import {
@@ -189,7 +193,7 @@ test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底�
 
   // ③ 第 2 层里再搜同类（图像）→ 替换本层，不叠加第 3 个图像详情
   const nestedImage = page.getByRole("dialog", { name: "图像详情" }).nth(1);
-  const srcBefore = await nestedImage.locator("img").first().getAttribute("src");
+  const srcBefore = await nestedImage.getByRole("img").first().getAttribute("src");
   await openSimilarSearchFromImageDetail(page, nestedImage);
   await lowerThresholdToZeroAndRequery(similarResultPane(modal, "image"));
   await similarResultPane(modal, "image").getByText("e2e-upload.png").first().click();
@@ -198,8 +202,8 @@ test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底�
   // 换槽必须**真的换上新内容**：详情快照按 id 固定（`useDetailSnapshot`），复用同一实例时会停在旧 id →
   // 大图分支无 src、落到「无图像」（修复前的表现）
   await expect(nestedImage.getByText("无图像")).toBeHidden();
-  await expect(nestedImage.locator("img").first()).toHaveAttribute("src", /asset\.localhost/);
-  await expect(nestedImage.locator("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
+  await expect(nestedImage.getByRole("img").first()).toHaveAttribute("src", /asset\.localhost/);
+  await expect(nestedImage.getByRole("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
   e2eLog.info("[step] 同类结果只替换本层槽位（层数不变，且新图已渲染）");
 
   // ④ 嵌套图像里点**提示词**结果 → 替换「嵌套提示词槽」（槽是独立的：图像槽不被牵连，层数不变）
@@ -237,7 +241,7 @@ test("图像原始详情点同类结果：相似图落槽（计数 2、底部不
   // 第 0 层：源图像详情（本用例全程不得被替换）
   await openImageDetail(page, source);
   const bottom = page.getByRole("dialog", { name: "图像详情" }).first();
-  const srcBefore = await bottom.locator("img").first().getAttribute("src");
+  const srcBefore = await bottom.getByRole("img").first().getAttribute("src");
   await expect(bottom).toBeVisible();
 
   // 同类结果（左栏；同模态已排除源自身，只剩对照图）→ 落嵌套图像槽，而不是换底部
@@ -247,11 +251,11 @@ test("图像原始详情点同类结果：相似图落槽（计数 2、底部不
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2, { timeout: 5_000 });
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(0);
   // 底部仍是源图像：src 与跳转前完全一致
-  await expect(bottom.locator("img").first()).toHaveAttribute("src", srcBefore ?? "");
+  await expect(bottom.getByRole("img").first()).toHaveAttribute("src", srcBefore ?? "");
   // 槽里是另一张（真的换上了内容，不是同实例空转）
   const nested = page.getByRole("dialog", { name: "图像详情" }).nth(1);
-  await expect(nested.locator("img").first()).toHaveAttribute("src", /asset\.localhost/);
-  await expect(nested.locator("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
+  await expect(nested.getByRole("img").first()).toHaveAttribute("src", /asset\.localhost/);
+  await expect(nested.getByRole("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
   e2eLog.info("[step] 第 0 层同类结果落槽：底部源图像未被替换");
   await expect(modal).toBeVisible(); // 结果页保留（点结果不再自动收起）
 
@@ -259,7 +263,7 @@ test("图像原始详情点同类结果：相似图落槽（计数 2、底部不
   await closeDetail(nested);
   await expect(modal).toBeVisible();
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(1);
-  await expect(bottom.locator("img").first()).toHaveAttribute("src", srcBefore ?? "");
+  await expect(bottom.getByRole("img").first()).toHaveAttribute("src", srcBefore ?? "");
   await closeSimilarResult(page);
   await closeDetail(bottom);
   e2eLog.info("[step] 关详情与结果页后回到原始图像详情");

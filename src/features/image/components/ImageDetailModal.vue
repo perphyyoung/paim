@@ -749,14 +749,14 @@ const fmtSize = (bytes: number) => {
           <img
             v-if="origSrc"
             :src="origSrc"
-            alt=""
+            :alt="current?.file_name ?? ''"
             class="max-h-full max-w-full object-contain"
             @dblclick.stop="openFullscreen"
           />
           <img
             v-else-if="current && thumbs[current.id]"
             :src="thumbs[current.id]"
-            alt=""
+            :alt="current?.file_name ?? ''"
             class="max-h-full max-w-full object-contain"
             @dblclick.stop="openFullscreen"
           />

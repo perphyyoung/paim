@@ -23,6 +23,8 @@
 - 测试写在独立的 `*.test.rs` 文件（与源文件平铺，如 `db.test.rs`），源文件末尾用 `#[cfg(test)] #[path = "..."] mod tests;` 声明；不内联测试块，也不用同名目录下的 `tests.rs`（同名文件在 grep/编辑器中无法区分）
 - 前端测试同样与源文件平铺，命名为 `*.test.ts`（如 `usePagedBlocks.test.ts`），用 vitest 跑（`pnpm test:ui`，node 环境，配置见 `vitest.config.ts`）；**需要注入失败/延迟的场景一律放前端单测**，不要试图在 e2e 里包装 IPC——真实 Tauri 的 `window.__TAURI_INTERNALS__` 及其成员由注入脚本 `defineProperty` 创建（不可写不可配置），页面侧改不动（依据见 docs/e2e测试.md）
 - 修改或新增 e2e 用例前先对照 `docs/e2e测试.md`（文件索引与命名规则、序号分配与 `e2e/<序号>` 引用口径、约定速查、helper 副作用说明、超时口径），改完同步该文件的序号说明
+- **e2e 一律用语义化定位器**：`getByRole` / `getByLabel` / `getByPlaceholder` / `getByText` / `getByTitle` / `getByAltText`；不得用 CSS 选择器定位本可语义化的元素（`locator("textarea")`、`locator("img[alt=…]")`、`locator("label[title=…]")` 这类），结构性元素也优先走角色（`getByRole("row")` / `getByRole("cell")`）；**图像统一 `getByRole("img")`**（要限定某一张时加 `{ name: 文件名 }`）——索引状态图标是 `role="note"`（VecStatusIcon），不与内容图撞 img 角色；确无语义可用的（卡片根、拖拽命中域）收进 `e2e-helpers.ts` 并写明理由，用例里不写裸选择器
+- `.first()` / `.nth()` 只允许用在「同一语义匹配必然多条、且顺序本身有含义」处（层叠详情的 DOM 顺序、同文案堆叠的 toast），并在用例内注明依据；为 e2e 定位而给元素补语义时用**业务语义命名**（如 `aria-label="提示词内容"`），不加 `data-testid`
 - 按照暗色主题设计，无需考虑亮色主题和主题切换需求
 - 临时脚本以 tmp-* 方式命名，会被 git 忽略
 - 使用 jj (git 的包装) 检查工作区状态: jj st

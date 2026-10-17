@@ -33,35 +33,39 @@ const IMAGE_ONLY = ["未引", "多引"];
 
 test("统计弹窗：三列表格，名称列按三段排序，本域无此项的格子为 -", async ({ page }) => {
   await page.getByTitle("统计").click();
-  const table = page.getByRole("table");
+  const stats = page.getByRole("dialog", { name: "数据统计" });
+  await expect(stats).toBeVisible();
+  const table = stats.getByRole("table");
   await expect(table).toBeVisible();
   e2eLog.info("[step] 统计弹窗已打开");
 
   await expect(table.getByRole("columnheader")).toHaveText(["统计项", "提示词", "图像"]);
 
-  const rows = table.locator("tbody tr");
-  await expect(rows).toHaveCount(EXPECTED_ORDER.length);
+  // 表头行也是 role=row（thead 的 tr），故 role=row 数 = 数据行数 + 1
+  const rows = table.getByRole("row");
+  await expect(rows).toHaveCount(EXPECTED_ORDER.length + 1);
   for (const [i, name] of EXPECTED_ORDER.entries()) {
-    await expect(rows.nth(i).locator("td").first()).toHaveText(name);
+    // 行序即被测点（三段划分），故按序号取数据行；行内首格是「统计项」列
+    await expect(
+      rows
+        .nth(i + 1)
+        .getByRole("cell")
+        .first(),
+    ).toHaveText(name);
   }
   e2eLog.info(`[step] ${EXPECTED_ORDER.length} 行顺序与三段划分一致`);
 
-  // 本域无此项 ⇒ `-`；两域都有 ⇒ 两侧都是计数
+  // 本域无此项 ⇒ 该列格为 `-`；两域都有 ⇒ 两侧都是计数。整行一次断言（列序＝统计项 / 提示词 / 图像，即语义）
+  const rowCells = (name: string) => rows.filter({ hasText: name }).getByRole("cell");
   for (const name of PROMPT_ONLY) {
-    const cells = table.locator("tbody tr", { hasText: name }).locator("td");
-    await expect(cells.nth(1)).toHaveText(/^\d+$/);
-    await expect(cells.nth(2)).toHaveText("-");
+    await expect(rowCells(name)).toHaveText([name, /^\d+$/, "-"]);
   }
   for (const name of IMAGE_ONLY) {
-    const cells = table.locator("tbody tr", { hasText: name }).locator("td");
-    await expect(cells.nth(1)).toHaveText("-");
-    await expect(cells.nth(2)).toHaveText(/^\d+$/);
+    await expect(rowCells(name)).toHaveText([name, "-", /^\d+$/]);
   }
-  const sharedCells = table.locator("tbody tr", { hasText: "无向" }).locator("td");
-  await expect(sharedCells.nth(1)).toHaveText(/^\d+$/);
-  await expect(sharedCells.nth(2)).toHaveText(/^\d+$/);
+  await expect(rowCells("无向")).toHaveText(["无向", /^\d+$/, /^\d+$/]);
   e2eLog.info("[step] 缺项格为 `-`，两域共有的项两侧均为计数");
 
-  await page.getByTitle("关闭").last().click();
+  await stats.getByTitle("关闭").click();
   await expect(table).toBeHidden();
 });

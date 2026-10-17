@@ -48,8 +48,8 @@ async function clickFavorite(
 /// 点 label 而不是 input：input 是 h-0 w-0 opacity-0，直接点会被可见性/命中检查拦下。
 async function clickSafe(page: Page, detail: Locator, from: "安全" | "敏感"): Promise<void> {
   const to = from === "安全" ? "敏感" : "安全";
-  await detail.locator(`label[title="${from}"]`).click();
-  await expect(detail.locator(`label[title="${to}"]`)).toBeVisible({ timeout: 5_000 });
+  await detail.getByTitle(from).click();
+  await expect(detail.getByTitle(to)).toBeVisible({ timeout: 5_000 });
   // 新值：from="安全" → 点完 = 敏感；from="敏感" → 点完 = 安全
   await expectToastAndDismiss(page, from === "安全" ? "已标记为敏感" : "已标记为安全");
 }

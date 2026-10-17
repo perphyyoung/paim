@@ -12,7 +12,7 @@ defineProps<{ indexed: boolean }>();
     class="flex h-7 w-7 items-center justify-center"
     :class="indexed ? 'text-blue-400' : 'text-gray-600'"
     :title="indexed ? '已建立相似度向量' : '未建立向量：可在设置页增量索引'"
-    role="img"
+    role="note"
     :aria-label="indexed ? '已建立相似度向量' : '未建立相似度向量'"
   >
     <!-- 向量箭头（坐标轴 + 指向线段）：直读「该条目有一条向量」 -->

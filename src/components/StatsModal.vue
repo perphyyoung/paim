@@ -84,6 +84,9 @@ const statRows = computed<StatRow[]>(() => {
     >
       <div
         class="flex max-h-[80vh] min-w-[21rem] max-w-[90vw] flex-col rounded-lg border p-6 shadow-sm border-gray-700 bg-gray-800"
+        role="dialog"
+        aria-modal="true"
+        aria-label="数据统计"
       >
         <div class="flex items-center justify-between">
           <h3 class="text-base font-semibold text-gray-100">数据统计</h3>

@@ -421,8 +421,9 @@ export async function expectToastAndDismiss(page: Page, text: string): Promise<v
 /// 失败诊断：把当前 toast 文本与页面可见文本快照写进 paim.log（只记录，不改变用例行为）。
 /// 卡片/弹窗等不到时的常见现场：toast 覆盖挡点击、列表未刷新出目标卡片、残留弹窗遮罩。
 async function dumpPageState(page: Page, reason: string): Promise<void> {
+  // toast 项带 role=status（ToastHost）→ 按角色取，不依赖 z-index / 容器结构
   const toasts = await page
-    .locator("div.fixed.z-\\[130\\] > div")
+    .getByRole("status")
     .allTextContents()
     .catch(() => []);
   const bodyText = await page.evaluate(() => document.body.innerText).catch(() => "<读取失败>");
@@ -573,8 +574,9 @@ export async function openSimilarSearchFromImageDetail(
   page: Page,
   detail: Locator,
 ): Promise<Locator> {
-  // 点大图而不是文字：图像详情的右键处理绑在大图区域（与 03 的「替换图像」同一入口）
-  await detail.locator("img").last().click({ button: "right" });
+  // 点大图而不是文字：图像详情的右键处理绑在大图区域（与 03 的「替换图像」同一入口）。
+  // 详情内只有一个内容图（两个 v-if 分支互斥），按 img 角色即可唯一定位
+  await detail.getByRole("img").click({ button: "right" });
   return expectSimilarResultModal(page);
 }
 
@@ -680,7 +682,8 @@ async function findPageByWindowLabel(
 }
 
 /// 双击详情弹窗里的图像进入全屏查看，返回**查看器窗口**的 Page（不是主窗口）。
-/// 弹窗内大图的两个 v-if 分支互斥（原图 / 缩略图），故用 img 直取；alt 为空不算语义元素。
+/// 图像统一按 img 角色取：详情内除内容图外只有索引状态图标，而它是 `role="note"`（VecStatusIcon），
+/// 不会与内容图撞角色；两个 v-if 分支互斥，故内容图只会是一个元素。
 /// `imageIndex` 指定双击第几张（详情图像列表内序号，prompt 详情的关联图像格与图像详情大图都用它；
 /// 断言「以所点那张开场、索引不错位」时必须传，否则只会点到第一张）。
 /// 副作用：创建并显示 `image-fullscreen` 窗口；关闭用 closeFullscreenViewer。
@@ -689,10 +692,10 @@ export async function openFullscreenViewer(
   detail: Locator,
   imageIndex = 0,
 ): Promise<Page> {
-  await detail.locator("img").nth(imageIndex).dblclick();
+  await detail.getByRole("img").nth(imageIndex).dblclick();
   e2eLog.info(`[step] 已双击第 ${imageIndex + 1} 张图像，等待查看器窗口就绪`);
   const viewer = await findPageByWindowLabel(app.browser, FULLSCREEN_WINDOW_LABEL, 15_000);
-  await expect(viewer.locator("img").first()).toBeVisible({ timeout: 10_000 });
+  await expect(viewer.getByRole("img")).toBeVisible({ timeout: 10_000 });
   e2eLog.info("[step] 查看器窗口已显示");
   return viewer;
 }
@@ -724,11 +727,26 @@ export function specialTagChip(page: Page, name: string): Locator {
   return page.getByText(name, { exact: true });
 }
 
-/// 卡片根元素（MediaCard 根带 `data-card-drop-id` = 条目 id；拖拽命中与卡片级按钮都把它当作用域）。
-/// id 来自 `findPromptIdByContent` / `uploadImageWithPrompt` 等查库 helper 的返回值。
+/// 卡片根元素的属性名：MediaCard 根带 `data-card-drop-id`（拖拽命中域与卡片级按钮的作用域）。
+/// 卡片根是可单击的 div（外加拖拽），没有可命名的 aria 语义，故**只能**用属性选择器 ——
+/// 这是 e2e 里允许保留的结构性选择器之一，统一收在本文件，用例侧不写裸选择器。
+const CARD_ROOT_ATTR = "data-card-drop-id";
+
+/// 当前页全部卡片根元素（不知道具体 id 时用：如按「未引」特殊标签 chip 过滤后只剩一张卡）
+export function allCards(page: Page): Locator {
+  return page.locator(`[${CARD_ROOT_ATTR}]`);
+}
+
+/// 指定 id 的卡片根元素。id 来自 `findPromptIdByContent` / `uploadImageWithPrompt` 等查库 helper。
 /// 为什么不用「文字 → 后代」定位：卡片上的按钮行是文字层的**兄弟节点**，不是它的子节点。
 export function cardById(page: Page, id: string): Locator {
-  return page.locator(`[data-card-drop-id="${id}"]`);
+  return page.locator(`[${CARD_ROOT_ATTR}="${id}"]`);
+}
+
+/// 卡片背景图（MediaCard 根的装饰性缩略图，`alt=""` → 无 aria 角色，只能按标签取）。
+/// 与卡片根同理：没有语义、也没有可命名的文本，属允许保留的结构性选择器。
+export function cardImage(card: Locator): Locator {
+  return card.locator("img");
 }
 
 /// Ctrl 点击卡片进入批量模式并打开「添加标签」弹窗，返回标签名输入框。
