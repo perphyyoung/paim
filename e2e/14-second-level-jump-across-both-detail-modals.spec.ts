@@ -90,6 +90,8 @@ test("二级跳转（图像主页）：嵌套提示词详情可「查看图像�
 
   // 二级跳转 ①：底部图像详情的「编辑提示词」→ 嵌套提示词槽（该入口在底层本来就可用）
   const editBtn = bottom.getByTitle("编辑提示词");
+  // 可见文案也钉住：左上这枚入口叫「编辑提示词」，与右侧图像自身的「编辑」区分（图标已去掉）
+  await expect(editBtn).toHaveText("编辑提示词");
   await expect(editBtn).toBeEnabled();
   await editBtn.click();
   const promptSlot = page.getByRole("dialog", { name: "提示词详情" });
