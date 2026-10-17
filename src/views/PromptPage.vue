@@ -39,7 +39,7 @@ import VirtualGrid from "@/components/VirtualGrid.vue";
 import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
-import { relatedPromptsCache } from "@/features/image/api/detailCache";
+import { invalidateImageSidePromptSnapshots } from "@/views/detailEntityInvalidation";
 import {
   ensurePromptThumbnails,
   type ThumbnailEnsureFixed,
@@ -221,6 +221,8 @@ function onDetailChanged() {
   detailDirty.value = true;
   touch();
   markPageStale("images");
+  // 本页详情里改的内容/标签也会显示在图像详情的关联提示词里 → 作废对侧持有的提示词快照
+  invalidateRelatedPromptsCache();
 }
 
 // 标签筛选区分组数据
@@ -604,11 +606,13 @@ function closeTrash() {
   trashThumbs.value = {};
 }
 
-// 提示词删除态变化（删除/恢复/彻底删除/清空）会改变任意图像详情的关联提示词结果
-// （get_image_related_prompts 按 is_deleted 过滤），受影响图像无法精确枚举，整池作废。
-// 只清关联提示词缓存；图像自己的原图/标签缓存与提示词删除态无关，不动。
+// 本页任何改动「提示词实体」或「提示词删除态」的入口都要作废「图像详情持有的提示词快照」：
+// ① 删除 / 恢复 / 彻底删除 / 清空回收站（后端按 is_deleted 过滤关联结果，结果会变）
+// ② 详情里的标题·内容·翻译·备注保存 / 标签增删（这些字段直接显示在图像详情的关联提示词里）
+// 受影响图像无法精确枚举 → 整池作废（收口实现见 views/detailEntityInvalidation）。
+// 只清关联提示词快照；图像自己的原图/标签快照与提示词侧的变化无关，不动。
 function invalidateRelatedPromptsCache() {
-  relatedPromptsCache.clear();
+  invalidateImageSidePromptSnapshots();
 }
 
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——

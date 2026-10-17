@@ -206,13 +206,11 @@ test("嵌套提示词详情内保存：宿主同步不得自激（保存能完�
   await bottom.getByTitle("编辑提示词").click();
   const promptSlot = page.getByRole("dialog", { name: "提示词详情" });
   await expect(promptSlot).toHaveCount(1);
-  if ((await promptSlot.getByRole("button", { name: "保存" }).count()) === 0) {
-    await promptSlot.getByTitle("编辑", { exact: true }).click();
-  }
+  await promptSlot.getByTitle("编辑", { exact: true }).click();
   await expect(promptSlot.getByRole("button", { name: "保存" })).toBeVisible();
 
   // 改一个字符再保存：只有「内容确实变化」才触发 revision 广播（未建立向量 → 不弹失效确认）
-  const box = promptSlot.getByRole("textbox").first();
+  const box = promptSlot.getByLabel("提示词内容"); // 编辑态「内容」多行框（带 aria-label，语义定位）
   await box.click();
   await box.press("End");
   await box.type("x");

@@ -42,7 +42,7 @@ import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import type { ThumbnailEnsureFixed } from "@/features/image/api/thumbnails";
-import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
+import { invalidatePromptSideImageSnapshots } from "@/views/detailEntityInvalidation";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { markPageStale } from "@/utils/crossPageCache";
 import {
@@ -360,11 +360,13 @@ function closeTrash() {
   trashFirstPrompts.value = {};
 }
 
-// 图像删除态变化（删除/恢复/彻底删除/清空）会改变任意提示词详情的关联图像结果
-// （get_prompt_related_images 按 is_deleted 过滤），受影响提示词无法精确枚举，整池作废。
-// 注意：对侧实体缓存，不是本页的 thumbs/imagePrompts（那两个随 loadImages 自行刷新）。
+// 本页任何改动「图像实体」或「图像删除态」的入口都要作废「提示词详情持有的图像快照」：
+// ① 删除 / 恢复 / 彻底删除 / 清空回收站（后端按 is_deleted 过滤关联结果，结果会变）
+// ② 详情里的标签增删 / 文件名·备注保存 / 替换图像（这些字段直接显示在提示词详情的关联图像里）
+// 受影响提示词无法精确枚举 → 整池作废（收口实现见 views/detailEntityInvalidation）。
+// 注意：作废的是**对侧实体缓存**，不是本页的 thumbs/imagePrompts（那两个随 loadImages 自行刷新）。
 function invalidateRelatedImagesCache() {
-  relatedImagesCache.clear();
+  invalidatePromptSideImageSnapshots();
 }
 
 // —— 回收站批量操作（参考 pm：全部恢复无确认，清空需确认）——
@@ -560,6 +562,8 @@ function onSimilarMerged() {
 function onDetailChanged() {
   detailDirty.value = true;
   touch();
+  // 本页详情里改的标签/文件名等也会显示在提示词详情的关联图像里 → 作废对侧持有的图像快照
+  invalidateRelatedImagesCache();
 }
 function onDetailReplaced({ oldId, image }: { oldId: string; image: Image }) {
   // 替换后排序位置会变，交给重载处理；详情顺序快照先原位替换，保持导航位置

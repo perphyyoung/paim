@@ -1,13 +1,15 @@
 /**
- * 对侧详情的实体缓存不感知本侧删除态：删除/恢复/彻底删除后详情陈旧。
+ * 对侧详情的实体缓存不感知本侧变化：删除/恢复/彻底删除后详情陈旧，改了内容/标签后详情同样陈旧。
  *
  * 两侧同构：
- * - relatedImagesCache（提示词详情的关联图像，后端按 images.is_deleted 过滤）
- * - relatedPromptsCache（图像详情的关联提示词，后端按 prompts.is_deleted 过滤）
- * 删除/恢复不碰关联表，缓存原本只在「关联关系变化」时失效，于是：
- * 删除期间打开详情写入的空列表，恢复后重开仍命中；删除前打开写入的列表，删除后重开显幽灵。
+ * - relatedImagesCache（提示词详情的关联图像，后端按 images.is_deleted 过滤；条目含 file_name 与 tags）
+ * - relatedPromptsCache（图像详情的关联提示词，后端按 prompts.is_deleted 过滤；条目含文案字段）
+ * 删除/恢复不碰关联表、改字段也不碰关联表，缓存原本只在「关联关系变化」时失效，于是：
+ * 删除期间打开详情写入的空列表，恢复后重开仍命中；删除前打开写入的列表，删除后重开显幽灵；
+ * 图像加了标签后提示词详情看不到、提示词改了内容后图像详情不更新。
  *
- * 修复：删除/恢复/彻底删除/清空回收站的 12 个生命周期入口整池 clear 对侧缓存。
+ * 修复：这两类变化都整池 clear 对侧缓存，统一收口在 `src/views/detailEntityInvalidation.ts`
+ * （删除态与「改实体」两类入口共用；键是对侧 id，受影响条目无法精确枚举，只能整池作废）。
  * 注意：缓存失效挂在 UI 入口上，所以本文件的删除/恢复必须走 UI（直连后端会绕过钩子，
  * 验证不到修复）；仅「造删除前置」与「数据复位」允许直连命令。
  */
@@ -160,4 +162,79 @@ test("对称侧：UI 删除/恢复提示词后，图像详情的关联提示词�
   await expect(detail).toBeVisible();
   await expect(detail.getByText(createdContent, { exact: true })).toBeVisible({ timeout: 5_000 });
   await expect(detail.getByText("— 暂无关联提示词 —")).toBeHidden();
+});
+
+// —— 同一类缓存的另一条路径：另一侧改的是**内容 / 标签**（不是删除态） ——
+// `relatedImagesCache` / `relatedPromptsCache` 只在「关联关系变化」时单条失效；对侧改了标签或内容后，
+// 本侧重开详情读到的是**旧快照**。下面两条用例分别钉两个方向（修复前必红）。
+
+test("图像加标签后：提示词详情的关联图像应显示新标签（不命中旧快照）", async ({ page, app }) => {
+  const promptContent = `e2e 标签同步 图像→提示词 ${Date.now()}`;
+  const { promptContent: created } = await uploadImageWithPrompt(
+    page,
+    promptContent,
+    app.mockImagePath,
+  );
+
+  // 先开一次提示词详情：此刻该图无标签，列表（含空标签）写进 relatedImagesCache
+  await gotoPromptsPage(page);
+  let detail = await openPromptDetail(page, created);
+  await expect(detail.getByText("关联图像（1）")).toBeVisible();
+  await closeDetail(detail);
+
+  // 在图像详情里加标签（真实 UI 路径）
+  await gotoImagesPage(page);
+  detail = await openImageDetail(page, created);
+  const tag = `e2e-tag-${Date.now()}`;
+  const tagInput = page.getByPlaceholder("回车添加单个标签");
+  await tagInput.fill(tag);
+  await tagInput.press("Enter");
+  await expectToastAndDismiss(page, `已添加标签「${tag}」`);
+  await closeDetail(detail);
+  e2eLog.info(`[step] 已给关联图像加上标签「${tag}」`);
+
+  // 再开提示词详情：关联图像应显示新标签（修复前命中旧快照 → 看不到）
+  await gotoPromptsPage(page);
+  detail = await openPromptDetail(page, created);
+  await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 提示词详情已同步到图像新标签");
+  await closeDetail(detail);
+});
+
+test("提示词改内容后：图像详情的关联提示词文案应同步（不命中旧快照）", async ({ page, app }) => {
+  const promptContent = `e2e 内容同步 提示词→图像 ${Date.now()}`;
+  const { imageId, promptContent: created } = await uploadImageWithPrompt(
+    page,
+    promptContent,
+    app.mockImagePath,
+  );
+
+  // 先开一次图像详情：旧文案写进 relatedPromptsCache
+  let detail = await openImageDetail(page, created);
+  await expect(detail.getByText(created)).toBeVisible();
+  await closeDetail(detail);
+
+  // 提示词详情里改**内容**并保存：编辑态「内容」框带 aria-label → 语义定位到它
+  // （不用 `getByRole("textbox").first()` 这类位置式定位：命中的是标题输入框）
+  await gotoPromptsPage(page);
+  const pd = await openPromptDetail(page, created);
+  await pd.getByTitle("编辑", { exact: true }).click();
+  const box = pd.getByLabel("提示词内容"); // 编辑态「内容」多行框（带 aria-label，语义定位）
+  await box.click();
+  await box.press("End");
+  const updated = `${created} 已改`;
+  await box.type(" 已改");
+  await pd.getByRole("button", { name: "保存" }).click();
+  await expectToastAndDismiss(page, "已保存");
+  await closeDetail(pd);
+  e2eLog.info("[step] 提示词内容已改为带后缀的新文案");
+
+  // 再开图像详情（卡片文案已变 → 按卡片根元素定位）：关联提示词应显示新文案
+  await gotoImagesPage(page);
+  await cardById(page, imageId).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(updated)).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 图像详情已同步到提示词新文案");
+  await closeDetail(detail);
 });

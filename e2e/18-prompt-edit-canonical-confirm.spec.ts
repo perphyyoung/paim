@@ -45,7 +45,7 @@ async function promptStatus(page: Page): Promise<EmbeddingStatus> {
 /** 进入编辑态 → 替换内容文本框 → 点编辑悬浮组的「保存」。 */
 async function editContentAndSave(detail: Locator, next: string): Promise<void> {
   await detail.getByTitle("编辑").click();
-  const textarea = detail.locator("textarea").first();
+  const textarea = detail.getByLabel("提示词内容");
   await expect(textarea).toBeVisible();
   await textarea.fill(next);
   await detail.getByRole("button", { name: "保存" }).click();
@@ -106,7 +106,7 @@ test("已索引提示词实质修改：弹确认框，取消留编辑态不写�
   // 取消：确认框关闭、留在编辑态、输入保留、未写库（向量计数不变、标志仍蓝）
   await confirm.getByRole("button", { name: "取消" }).click();
   await expect(confirm).toBeHidden();
-  const textarea = detail.locator("textarea").first();
+  const textarea = detail.getByLabel("提示词内容");
   await expect(textarea).toBeVisible();
   await expect(textarea).toHaveValue(modified);
   expect((await promptStatus(page)).indexed).toBe(before);
@@ -217,7 +217,7 @@ test("编辑态「规范化」按钮：仅编辑态可见、只填回输入框�
   e2eLog.info("[step] 非编辑态不提供「规范化」");
 
   await detail.getByTitle("编辑").click();
-  const textarea = detail.locator("textarea").first();
+  const textarea = detail.getByLabel("提示词内容");
   await expect(textarea).toHaveValue(original);
   const normalizeBtn = detail.getByRole("button", { name: "规范化" });
   await expect(normalizeBtn).toBeVisible();

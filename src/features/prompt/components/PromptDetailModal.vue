@@ -923,6 +923,7 @@ async function onPickerImported() {
                 v-if="edit"
                 ref="contentEditEl"
                 v-model="content"
+                aria-label="提示词内容"
                 rows="1"
                 class="textarea-autogrow max-h-[16lh] min-h-[calc(1lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
               ></textarea>

@@ -2,7 +2,10 @@
 // 外加原图 URL 的两个取值入口（peek 同步 / resolve 异步）。
 // 失效只在数据本身变化时做：提示词关联变化、替换图像、标签增删；
 // relatedPromptsCache 额外在提示词删除/恢复/彻底删除/清空回收站时整池 clear
-// （后端按提示词 is_deleted 过滤，入口在 PromptPage）。
+// （后端按提示词 is_deleted 过滤，入口在 PromptPage）；
+// 另一条整池 clear：**提示词内容/标签变化**（提示词详情的保存、标签增删）——这些字段直接显示在
+// 本缓存的「关联提示词」项里，键按 image id 无法精确枚举，由 PromptPage.onDetailChanged 经
+// views/detailEntityInvalidation 统一 clear（收口点）。
 
 import { commands, type LinkedPrompt, type TagLite } from "@/bindings";
 import { absolutePathToAssetUrl } from "@/utils/assetUrl";
