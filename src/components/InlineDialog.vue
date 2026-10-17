@@ -34,6 +34,9 @@ const emit = defineEmits<{ (e: "close"): void; (e: "confirm"): void }>();
       @click.self="closeOnOverlay && emit('close')"
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
         class="max-w-[90vw] rounded-lg border border-gray-700 bg-gray-800 p-4 shadow-lg"
         :class="size === 'lg' ? 'w-[560px]' : 'w-80'"
       >

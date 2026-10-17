@@ -17,10 +17,14 @@
 import path from "node:path";
 import { expect } from "@playwright/test";
 import {
+  closeDetail,
   expectToastAndDismiss,
   getImagePromptsMap,
+  gotoImagesPage,
+  gotoPromptsPage,
   invokeCommand,
   listPrompts,
+  specialTagChip,
   test,
   writePng,
 } from "./e2e-helpers";
@@ -98,4 +102,58 @@ test("两张图像附带同一提示词，应只创建一个提示词并关联�
     contents.includes(promptContent),
   );
   expect(linkedImages.length, "两张图像都应关联到该提示词").toBe(2);
+});
+
+// —— 不附提示词上传 → 图像详情内「新建提示词」 ——
+// 上传弹窗里提示词是**可选**字段：留空 → 该图不关联任何提示词 → 图像详情左上入口应显示「新建提示词」，
+// 点它即新建一条提示词并关联，同一枚入口随后切换为「编辑提示词」（已关联态；该态文案回归见 e2e/14）。
+// 注意：未关联提示词的卡片**正文是空的**（正文显示的是关联提示词内容，文件名不上卡片），
+// 所以打开详情不能按卡片文字定位，改用卡片根元素 cardById。
+test("不附提示词上传：图像详情内「新建提示词」创建并关联，入口文案随关联态切换", async ({
+  page,
+  app,
+}) => {
+  await gotoImagesPage(page);
+  writePng(app.mockImagePath);
+  await page.getByRole("button", { name: "上传图像" }).click();
+  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
+  await expect(promptInput).toBeVisible();
+  await page.getByRole("button", { name: "选择图像", exact: true }).click();
+  await expect(page.getByTitle(path.basename(app.mockImagePath))).toBeVisible({ timeout: 5_000 });
+  // 提示词留空直接确定：上传成功且不建立任何关联
+  await page.getByRole("button", { name: "确定" }).click();
+  await expect(promptInput).toBeHidden({ timeout: 5_000 });
+  await expectToastAndDismiss(page, "已上传 1 张图像");
+  e2eLog.info("[step] 已上传 1 张不附提示词的图像");
+
+  // 用筛选区「未引」（未关联提示词）chip 把列表过滤到这一张：
+  // 未关联的卡片**正文是空的**（正文显示的是关联提示词内容），不能像其它用例那样按卡片文字定位；
+  // 过滤后卡片根元素唯一，直接点它打开详情（卡片根带 `data-card-drop-id`，见 helpers 的 cardById 注释）。
+  await specialTagChip(page, "未引").click();
+  await expect(page.locator("[data-card-drop-id]")).toHaveCount(1);
+  await page.locator("[data-card-drop-id]").first().click();
+  const detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible({ timeout: 5_000 });
+  const createBtn = detail.getByTitle("新建提示词");
+  await expect(createBtn).toHaveText("新建提示词");
+  e2eLog.info("[step] 未关联提示词：左上入口为「新建提示词」");
+
+  // 点入口 → 新建提示词表单 → 提交（成功 toast）：验证「未关联时点它真的能建并关联」
+  await createBtn.click();
+  const composer = page.getByRole("dialog", { name: "新建提示词" });
+  await expect(composer).toBeVisible();
+  const content = `e2e 详情内新建提示词 ${Date.now()}`;
+  await composer.getByPlaceholder("输入提示词内容...").fill(content);
+  await composer.getByRole("button", { name: "确定" }).click();
+  await expectToastAndDismiss(page, "提示词已创建并关联");
+  e2eLog.info("[step] 提示词已创建并关联");
+
+  // 同一枚入口随关联态切换：现在应是「编辑提示词」
+  await expect(detail.getByTitle("编辑提示词")).toHaveText("编辑提示词");
+  await closeDetail(detail);
+
+  // 新建的提示词要出现在提示词主页（新建处已标 prompts 页过期 → 主页重拉）
+  await gotoPromptsPage(page);
+  await expect(page.getByText(content).first()).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 提示词主页已出现该提示词");
 });
