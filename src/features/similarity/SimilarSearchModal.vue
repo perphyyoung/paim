@@ -16,6 +16,8 @@ import { relativePathToAssetUrl } from "@/utils/assetUrl";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
 import VirtualGrid from "@/components/VirtualGrid.vue";
+import CustomScrollBar from "@/components/CustomScrollBar.vue";
+import { useGridScrollSync } from "@/components/useGridScrollSync";
 import MergePromptsModal from "@/features/prompt/components/MergePromptsModal.vue";
 import { useNestedDetails } from "@/composables/useNestedDetails";
 import ScoreStepper from "./ScoreStepper.vue";
@@ -91,6 +93,22 @@ interface ResultRow<T> {
 }
 const imageRows = ref<ResultRow<ImageCard>[]>([]);
 const promptRows = ref<ResultRow<PromptCard>[]>([]);
+/// 两栏各自的滚动同步（与主页 / 回收站同一套：VirtualGrid 内部隐藏原生条，由 CustomScrollBar 呈现）。
+/// 重查 / 换源会先清空 rows 并进入 loading，VirtualGrid 随之卸载，新结果挂载时天然回到顶部，无需显式回顶。
+const {
+  gridRef: imageGridRef,
+  scrollIndex: imageScrollIndex,
+  pageSize: imagePageSize,
+  onGridScroll: onImageGridScroll,
+  onScrollbarSeek: onImageScrollbarSeek,
+} = useGridScrollSync(() => imageRows.value.length);
+const {
+  gridRef: promptGridRef,
+  scrollIndex: promptScrollIndex,
+  pageSize: promptPageSize,
+  onGridScroll: onPromptGridScroll,
+  onScrollbarSeek: onPromptScrollbarSeek,
+} = useGridScrollSync(() => promptRows.value.length);
 const imageThumbs = ref<Record<string, string>>({});
 const promptThumbs = ref<Record<string, string>>({});
 const imageLoading = ref(false);
@@ -537,19 +555,34 @@ function pickPrompt(id: string) {
               <p v-else-if="imageRows.length === 0" class="p-2 text-sm text-gray-400">
                 没有达到阈值的相似图像（可调低左栏阈值后点左栏「重查」）
               </p>
-              <VirtualGrid v-else :items="imageRows" :columns="3">
-                <template #default="{ item, width }">
-                  <MediaCard
-                    variant="similar"
-                    :item="item.card"
-                    :thumb="imageThumbs[item.card.id] ?? ''"
-                    :score="item.score"
-                    :title="item.card.file_name"
-                    :card-size="width"
-                    @card-click="(_e, _i, id) => pickImage(id)"
-                  />
-                </template>
-              </VirtualGrid>
+              <div v-else class="flex h-full min-h-0 gap-1">
+                <VirtualGrid
+                  ref="imageGridRef"
+                  class="min-w-0 flex-1"
+                  :items="imageRows"
+                  :columns="3"
+                  @scroll="onImageGridScroll"
+                >
+                  <template #default="{ item, width }">
+                    <MediaCard
+                      variant="similar"
+                      :item="item.card"
+                      :thumb="imageThumbs[item.card.id] ?? ''"
+                      :score="item.score"
+                      :title="item.card.file_name"
+                      :card-size="width"
+                      @card-click="(_e, _i, id) => pickImage(id)"
+                    />
+                  </template>
+                </VirtualGrid>
+                <CustomScrollBar
+                  class="w-4 shrink-0"
+                  :total="imageRows.length"
+                  :page-size="imagePageSize"
+                  :model-value="imageScrollIndex"
+                  @update:model-value="onImageScrollbarSeek"
+                />
+              </div>
             </div>
           </section>
 
@@ -626,21 +659,36 @@ function pickPrompt(id: string) {
               <p v-else-if="promptRows.length === 0" class="p-2 text-sm text-gray-400">
                 没有达到阈值的相似提示词（可调低右栏阈值后点右栏「重查」）
               </p>
-              <VirtualGrid v-else :items="promptRows" :columns="3">
-                <template #default="{ item, width }">
-                  <MediaCard
-                    variant="similar"
-                    :item="item.card"
-                    :thumb="promptThumbs[item.card.id] ?? ''"
-                    :score="item.score"
-                    :content="item.card.content"
-                    :title="item.card.title"
-                    :card-size="width"
-                    @card-click="(_e, _i, id) => pickPrompt(id)"
-                    @contextmenu="openMenu($event, item.card.id)"
-                  />
-                </template>
-              </VirtualGrid>
+              <div v-else class="flex h-full min-h-0 gap-1">
+                <VirtualGrid
+                  ref="promptGridRef"
+                  class="min-w-0 flex-1"
+                  :items="promptRows"
+                  :columns="3"
+                  @scroll="onPromptGridScroll"
+                >
+                  <template #default="{ item, width }">
+                    <MediaCard
+                      variant="similar"
+                      :item="item.card"
+                      :thumb="promptThumbs[item.card.id] ?? ''"
+                      :score="item.score"
+                      :content="item.card.content"
+                      :title="item.card.title"
+                      :card-size="width"
+                      @card-click="(_e, _i, id) => pickPrompt(id)"
+                      @contextmenu="openMenu($event, item.card.id)"
+                    />
+                  </template>
+                </VirtualGrid>
+                <CustomScrollBar
+                  class="w-4 shrink-0"
+                  :total="promptRows.length"
+                  :page-size="promptPageSize"
+                  :model-value="promptScrollIndex"
+                  @update:model-value="onPromptScrollbarSeek"
+                />
+              </div>
             </div>
           </section>
         </div>
