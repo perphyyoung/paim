@@ -4,6 +4,7 @@ import { nextTick, ref, watch } from "vue";
 import { absolutePathToAssetUrl } from "@/utils/assetUrl";
 import { commands } from "@/bindings";
 import { useToast } from "@/components/useToast";
+import { usePromptNormalize } from "@/composables/usePromptNormalize";
 import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{ open: boolean }>();
@@ -16,6 +17,8 @@ interface PromptImage {
 
 const content = ref("");
 const contentInput = ref<HTMLTextAreaElement | null>(null);
+// 新建没有编辑态：规范化直接改草稿，点「确定」才落库
+const { normalize: normalizeContent } = usePromptNormalize(content);
 const files = ref<{ path: string; name: string; thumb: string }[]>([]);
 const saving = ref(false);
 const thumbLoading = ref(false);
@@ -108,9 +111,18 @@ async function doCreate() {
 
         <div class="flex-1 overflow-auto px-4 py-4">
           <div class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-gray-200">
-              提示词内容 <span class="text-red-500">*</span>
-            </label>
+            <div class="mb-2 flex items-center justify-between">
+              <label class="text-sm font-medium text-gray-200">
+                提示词内容 <span class="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
+                @click="normalizeContent"
+              >
+                规范化
+              </button>
+            </div>
             <textarea
               ref="contentInput"
               v-model="content"

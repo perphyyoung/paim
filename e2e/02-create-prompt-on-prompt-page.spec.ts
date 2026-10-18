@@ -60,3 +60,35 @@ test("新建提示词并选择图像，图像应关联到新提示词", async ({
   expect(related.length, "应关联 1 张图像").toBe(1);
   expect(related[0].file_name).toBe(path.basename(app.mockImagePath));
 });
+
+test("新建提示词时「规范化」只改草稿，确定后按规范化形态落库", async ({ page }) => {
+  await page.getByRole("button", { name: "新建提示词" }).click();
+  const contentInput = page.getByPlaceholder("输入提示词内容...");
+  await expect(contentInput).toBeVisible();
+
+  // 多行 + 标点旁空白 + 连续空白：规范化后换行折叠为空格、逗号旁空白删除、连续空格合一
+  const stamp = Date.now();
+  const raw = `e2e 新建规范化 ${stamp}\n第二行  词 , 第三段`;
+  const canonical = `e2e 新建规范化 ${stamp} 第二行 词,第三段`;
+  await contentInput.fill(raw);
+
+  const normalizeBtn = page.getByRole("button", { name: "规范化", exact: true });
+  await expect(normalizeBtn).toBeVisible();
+  await normalizeBtn.click();
+  await expectToastAndDismiss(page, "已按规范化格式填入");
+  await expect(contentInput).toHaveValue(canonical);
+  e2eLog.info("[step] 规范化只填回输入框，弹窗仍开");
+
+  // 再点：已是规范化格式 → 只提示、不改值
+  await normalizeBtn.click();
+  await expectToastAndDismiss(page, "已是规范化格式");
+  await expect(contentInput).toHaveValue(canonical);
+
+  // 确定后按规范化形态创建（库内可查）
+  await page.getByRole("button", { name: "确定", exact: true }).click();
+  await expect(contentInput).toBeHidden();
+  await expectToastAndDismiss(page, "提示词已创建");
+  const promptId = await findPromptIdByContent(page, canonical);
+  expect(promptId, "库内应为规范化形态").toBeTruthy();
+  e2eLog.info(`[step] 创建后库内即规范化形态 id=${promptId}`);
+});

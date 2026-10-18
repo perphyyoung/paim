@@ -108,6 +108,8 @@ test("两张图像附带同一提示词，应只创建一个提示词并关联�
 // —— 不附提示词上传 → 图像详情内「新建提示词」 ——
 // 上传弹窗里提示词是**可选**字段：留空 → 该图不关联任何提示词 → 图像详情左上入口应显示「新建提示词」，
 // 点它即新建一条提示词并关联，同一枚入口随后切换为「编辑提示词」（已关联态；该态文案回归见 e2e/14）。
+// 新建输入框右上带「规范化」（与详情编辑态同款，共用 usePromptNormalize）：新建无编辑态门槛，
+// 点它只改草稿，确定后才按规范化形态落库。
 // 注意：未关联提示词的卡片**正文是空的**（正文显示的是关联提示词内容，文件名不上卡片），
 // 所以打开详情不能按卡片文字定位，改用卡片根元素 cardById。
 test("不附提示词上传：图像详情内「新建提示词」创建并关联，入口文案随关联态切换", async ({
@@ -143,8 +145,16 @@ test("不附提示词上传：图像详情内「新建提示词」创建并关�
   await createBtn.click();
   const composer = page.getByRole("dialog", { name: "新建提示词" });
   await expect(composer).toBeVisible();
-  const content = `e2e 详情内新建提示词 ${Date.now()}`;
-  await composer.getByPlaceholder("输入提示词内容...").fill(content);
+  // 输入框右上「规范化」：只改草稿（此处新建尚未落库），确定后按规范化形态创建
+  const stamp = Date.now();
+  const raw = `e2e 详情内新建提示词 ${stamp}\n第二行  词 , 第三段`;
+  const content = `e2e 详情内新建提示词 ${stamp} 第二行 词,第三段`;
+  const contentInput = composer.getByPlaceholder("输入提示词内容...");
+  await contentInput.fill(raw);
+  await composer.getByRole("button", { name: "规范化", exact: true }).click();
+  await expectToastAndDismiss(page, "已按规范化格式填入");
+  await expect(contentInput).toHaveValue(content);
+  e2eLog.info("[step] 新建提示词输入框右上「规范化」已填回草稿");
   await composer.getByRole("button", { name: "确定" }).click();
   await expectToastAndDismiss(page, "提示词已创建并关联");
   e2eLog.info("[step] 提示词已创建并关联");

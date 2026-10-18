@@ -6,6 +6,7 @@ import { commands, type PromptCard } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { useItemToggle } from "@/composables/useItemToggle";
+import { usePromptNormalize } from "@/composables/usePromptNormalize";
 import { useTagAdd } from "@/features/tag/useTagAdd";
 import TagAutocompleteInput from "@/features/tag/components/TagAutocompleteInput.vue";
 import { ensureTagCandidates, tagCandidates } from "@/features/tag/useTagCandidates";
@@ -436,19 +437,12 @@ function copyContent() {
 /// 「规范化」：把内容替换成**向量形态**（空白规则见后端 canonical_text，故仅编辑态提供）。
 /// 只改编辑缓冲、不落库 → 天然可弃：点「取消」即回到库内原文，点「保存」才写入。
 /// 保存闸门不受影响：规范化前后 canonical 相同 → 静默保存、不弹「需重新索引」确认。
+const { normalize: normalizeDraft } = usePromptNormalize(content, {
+  appliedMessage: "已按规范化格式填入，保存后生效",
+});
 async function normalizeContent() {
   if (!edit.value) return;
-  const canon = await commands.canonicalizePromptText(content.value);
-  if (!canon) {
-    showToast("提示词内容为空", "warning");
-    return;
-  }
-  if (canon === content.value) {
-    showToast("已是规范化格式", "info");
-    return;
-  }
-  content.value = canon;
-  showToast("已按规范化格式填入，保存后生效", "info");
+  await normalizeDraft();
 }
 function copyTranslate() {
   copyField(edit.value ? contentTranslate.value : (current.value?.content_translate ?? ""), "翻译");

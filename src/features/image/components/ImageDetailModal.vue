@@ -13,6 +13,7 @@ import { useConfirm } from "@/components/useConfirm";
 import { useDetailSnapshot } from "@/components/useDetailSnapshot";
 import { useDetailSearch } from "@/composables/useDetailSearch";
 import { useNestedDetails } from "@/composables/useNestedDetails";
+import { usePromptNormalize } from "@/composables/usePromptNormalize";
 import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
@@ -192,6 +193,8 @@ const createPromptOpen = ref(false);
 const createContent = ref("");
 const createSaving = ref(false);
 const createInput = ref<HTMLTextAreaElement | null>(null);
+// 新建没有编辑态：规范化直接改草稿，点「确定」才落库
+const { normalize: normalizeCreateContent } = usePromptNormalize(createContent);
 function openCreatePrompt() {
   createContent.value = "";
   createSaving.value = false;
@@ -1031,11 +1034,20 @@ const fmtSize = (bytes: number) => {
     @close="createPromptOpen = false"
     @confirm="doCreatePrompt"
   >
+    <div class="mt-3 mb-1 flex items-center justify-end">
+      <button
+        type="button"
+        class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
+        @click="normalizeCreateContent"
+      >
+        规范化
+      </button>
+    </div>
     <textarea
       ref="createInput"
       v-model="createContent"
       rows="6"
-      class="textarea-autogrow mt-3 max-h-[16lh] min-h-[calc(6lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+      class="textarea-autogrow max-h-[16lh] min-h-[calc(6lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
       placeholder="输入提示词内容..."
       @keydown.enter.exact.prevent="doCreatePrompt"
     ></textarea>
