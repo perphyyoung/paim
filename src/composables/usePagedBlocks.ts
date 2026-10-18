@@ -33,6 +33,63 @@ export function isPlaceholder(x: unknown): x is Placeholder {
   return !!x && (x as Placeholder).__placeholder === true;
 }
 
+/** 占位对象工厂 */
+function placeholder(): Placeholder {
+  return { __placeholder: true };
+}
+
+/// 以下数组 / 淘汰操作都是纯函数，放模块级：组合函数里只保留状态与编排，
+/// 避免把分支堆进 `usePagedBlocks`（圈复杂度上限由 sentrux 约束）。
+
+/** 把数组长度调整为 n（不足补占位、超出截断）；长度相同返回原数组，调用方据此跳过提交 */
+function resizeArray<T>(arr: Array<T | Placeholder>, n: number): Array<T | Placeholder> {
+  if (arr.length === n) return arr;
+  const next = arr.length > n ? arr.slice(0, n) : arr.slice();
+  for (let i = next.length; i < n; i += 1) next.push(placeholder());
+  return next;
+}
+
+/** 把一块数据写入数组（整块替换，返回新数组） */
+function applyBlockItems<T>(
+  arr: Array<T | Placeholder>,
+  start: number,
+  list: T[],
+): Array<T | Placeholder> {
+  const next = arr.slice();
+  for (let i = 0; i < list.length; i += 1) next[start + i] = list[i];
+  return next;
+}
+
+/** 把 [start, end) 重置为占位；空区间返回原数组 */
+function clearSlotRange<T>(
+  arr: Array<T | Placeholder>,
+  start: number,
+  end: number,
+): Array<T | Placeholder> {
+  if (start >= end) return arr;
+  const next = arr.slice();
+  for (let i = start; i < end; i += 1) next[i] = placeholder();
+  return next;
+}
+
+/** LRU 淘汰：返回被淘汰的块号（当前可见区间 ±2 受保护） */
+function evictBlocks<T>(
+  blocks: Map<number, T[]>,
+  maxBlocks: number,
+  protectFrom: number,
+  protectTo: number,
+): number[] {
+  const dropped: number[] = [];
+  if (blocks.size <= maxBlocks) return dropped;
+  for (const key of Array.from(blocks.keys())) {
+    if (blocks.size <= maxBlocks) break;
+    if (key >= protectFrom - 2 && key <= protectTo + 2) continue;
+    blocks.delete(key);
+    dropped.push(key);
+  }
+  return dropped;
+}
+
 export interface UsePagedBlocks<T> {
   /** 定长列表（长度 = total），未加载位置为占位对象 */
   items: Ref<Array<T | Placeholder>>;
@@ -89,8 +146,6 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   let lastStart = 0;
   let lastEnd = blockSize - 1;
 
-  const placeholder = (): Placeholder => ({ __placeholder: true });
-
   // 注意：items 必须**整体换新数组**，不能原地改。
   // VirtualGrid 是通过 `props.items` 计算 rowCount / visibleItems 的，而 Vue 对子组件的
   // 更新判定是「prop 引用是否变化」——沿用同一个数组（哪怕 triggerRef 了）子组件不会重渲染，
@@ -100,36 +155,23 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   }
 
   function resize(n: number) {
-    const arr = items.value;
-    if (arr.length === n) return;
-    const next = arr.length > n ? arr.slice(0, n) : arr.slice();
-    for (let i = next.length; i < n; i += 1) next.push(placeholder());
-    commit(next);
+    const next = resizeArray(items.value, n);
+    if (next !== items.value) commit(next);
   }
 
   function applyBlock(index: number, list: T[]) {
-    const next = items.value.slice();
-    const start = index * blockSize;
-    for (let i = 0; i < list.length; i += 1) next[start + i] = list[i];
-    commit(next);
+    commit(applyBlockItems(items.value, index * blockSize, list));
   }
 
   function clearBlockSlots(index: number) {
-    const arr = items.value;
     const start = index * blockSize;
-    const end = Math.min(arr.length, start + blockSize);
-    if (start >= end) return;
-    const next = arr.slice();
-    for (let i = start; i < end; i += 1) next[i] = placeholder();
-    commit(next);
+    const end = Math.min(items.value.length, start + blockSize);
+    const next = clearSlotRange(items.value, start, end);
+    if (next !== items.value) commit(next);
   }
 
   function evict() {
-    if (blocks.size <= maxBlocks) return;
-    for (const key of Array.from(blocks.keys())) {
-      if (blocks.size <= maxBlocks) break;
-      if (key >= protectFrom - 2 && key <= protectTo + 2) continue;
-      blocks.delete(key);
+    for (const key of evictBlocks(blocks, maxBlocks, protectFrom, protectTo)) {
       clearBlockSlots(key);
     }
   }
