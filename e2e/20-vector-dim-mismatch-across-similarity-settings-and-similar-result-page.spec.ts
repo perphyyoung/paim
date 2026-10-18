@@ -191,12 +191,26 @@ test("检索结果页提醒：本表尚未建立向量的条目也在对应栏�
   expect(st.total - st.indexed).toBeGreaterThan(0);
   e2eLog.info(`[step] 提示词表尚有 ${st.total - st.indexed} 条未建立向量`);
 
+  // 再造一条旧维度向量：与上面的无向量条目一起，让两类提醒同时出现（验证各自成条，不是拼成一句）
+  const oldDim = `e2e 未建旧维 ${Date.now()}`;
+  await createPromptViaDialog(page, oldDim);
+  await storeVector(page, "Prompt", await findPromptIdByContent(page, oldDim), OLD_DIM);
+
   const detail = await openPromptDetail(page, src);
   const modal = await openSimilarSearchFromPromptDetail(page, detail, src);
-  // 右栏（相似提示词）：未建立向量的条数随命中一起回传，单独一行提醒（与命中是否为空无关）
+  // 右栏（相似提示词）：两类条数随命中一起回传，与命中是否为空无关
   const pane = similarResultPane(modal, "prompt");
-  await expect(pane.getByText(/尚未建立向量/)).toBeVisible({ timeout: 5_000 });
-  e2eLog.info("[step] 结果页右栏已提示存在未建立向量的提示词");
+  // 两类提醒各自成条（修复前用空格拼成一句，窄栏里从任意字符处折行，两条粘在一起）
+  const notice = pane.getByRole("status");
+  const items = notice.getByRole("listitem");
+  await expect(items).toHaveCount(2, { timeout: 5_000 });
+  await expect(items.nth(0)).toContainText(/向量维度不一致/);
+  await expect(items.nth(1)).toContainText(/尚未建立向量/);
+  const firstBox = await items.nth(0).boundingBox();
+  const secondBox = await items.nth(1).boundingBox();
+  expect(firstBox, "第一条提醒应可见").toBeTruthy();
+  expect(secondBox!.y, "第二条提醒应在第一条下方（分行而非拼成一句）").toBeGreaterThan(firstBox!.y);
+  e2eLog.info("[step] 结果页右栏两类提醒各占一行");
 
   await closeSimilarResult(page);
   await closeDetail(detail);

@@ -122,32 +122,44 @@ const promptsDirty = computed(
     draftMinPrompts.value !== promptSettings.minScore.value,
 );
 
-/// 结果页的两类提醒（空串 = 本栏无该情况）。只负责提醒，补建 / 重建在「设置 → 相似度」做：
+/// 结果页的两类提醒（空数组 = 本栏无该情况）。只负责提醒，补建 / 重建在「设置 → 相似度」做：
 /// 这两类行在打分阶段都看不见，只能由后端候选查询顺带数出来（见 docs/开发经验.md 第 4 节）。
 /// 两栏仅单位词不同（图像「张」/ 提示词「条」），故共用纯函数。
-function dimNotice(count: number, dim: number, unit: string): string {
+/// 每条拆成「结论 + 下一步」两段、各自成条：两类提醒若拼成一句，窄栏里会在任意字符处折行，
+/// 出现「重建 另有 4 条…」这种两条粘在一起、断句随机的排版。
+interface NoticeItem {
+  summary: string;
+  action: string;
+}
+function dimNotice(count: number, dim: number, unit: string): NoticeItem | null {
   return count > 0
-    ? `另有 ${count} ${unit}的向量维度不一致（本次检索维度 ${dim}），已排除；可在「设置 → 相似度」清空该维度后重建`
-    : "";
+    ? {
+        summary: `另有 ${count} ${unit}的向量维度不一致（本次检索 ${dim} 维），已排除`,
+        action: "可在「设置 → 相似度」清空旧维度后重建",
+      }
+    : null;
 }
 /// 未建立向量：这些条目根本不参与打分，用户在结果里看不到它们，也需告知从何处补建
-function pendingNotice(count: number, unit: string): string {
+function pendingNotice(count: number, unit: string): NoticeItem | null {
   return count > 0
-    ? `另有 ${count} ${unit}尚未建立向量，不会出现在本次结果里；可在「设置 → 相似度」点「增量索引」补建`
-    : "";
+    ? {
+        summary: `另有 ${count} ${unit}尚未建立向量，不会出现在本次结果里`,
+        action: "可在「设置 → 相似度」点「增量索引」补建",
+      }
+    : null;
 }
-/// 两类提醒拼成一行（都空则空串），供模板单行展示
-function joinedNotice(...parts: string[]): string {
-  return parts.filter(Boolean).join(" ");
+/// 两类提醒各自成条（顺序固定：维度不一致在前，未建向量在后）
+function noticeList(...items: Array<NoticeItem | null>): NoticeItem[] {
+  return items.filter((x): x is NoticeItem => x !== null);
 }
-const imageNotice = computed(() =>
-  joinedNotice(
+const imageNotices = computed(() =>
+  noticeList(
     dimNotice(imageDimMismatch.value, imageDim.value, "张"),
     pendingNotice(imagePending.value, "张"),
   ),
 );
-const promptNotice = computed(() =>
-  joinedNotice(
+const promptNotices = computed(() =>
+  noticeList(
     dimNotice(promptDimMismatch.value, promptDim.value, "条"),
     pendingNotice(promptPending.value, "条"),
   ),
@@ -538,12 +550,21 @@ function pickPrompt(id: string) {
               </div>
             </header>
             <!-- 两类「没进结果」提醒（维度不一致被排除 / 尚未建立向量）：打分阶段都不可见，只能由后端候选查询顺带数出来 -->
-            <p
-              v-if="imageNotice"
-              class="shrink-0 border-b px-3 py-1 text-xs text-amber-400 border-gray-700"
+            <div
+              v-if="imageNotices.length"
+              role="status"
+              class="shrink-0 border-b px-3 py-1.5 text-xs leading-5 text-amber-400 border-gray-700 bg-amber-400/5"
             >
-              {{ imageNotice }}
-            </p>
+              <ul class="space-y-1">
+                <li v-for="(n, i) in imageNotices" :key="i" class="flex gap-1.5">
+                  <span aria-hidden="true" class="select-none">•</span>
+                  <div class="min-w-0">
+                    <p class="break-words">{{ n.summary }}</p>
+                    <p class="text-amber-400/70">{{ n.action }}</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="imageLoading" class="p-2 text-sm text-gray-400">正在检索…</p>
               <div v-else-if="imageError" class="p-2">
@@ -633,12 +654,21 @@ function pickPrompt(id: string) {
               </div>
             </header>
             <!-- 两类「没进结果」提醒（口径同左栏：打分阶段看不到，必须由后端数出来） -->
-            <p
-              v-if="promptNotice"
-              class="shrink-0 border-b px-3 py-1 text-xs text-amber-400 border-gray-700"
+            <div
+              v-if="promptNotices.length"
+              role="status"
+              class="shrink-0 border-b px-3 py-1.5 text-xs leading-5 text-amber-400 border-gray-700 bg-amber-400/5"
             >
-              {{ promptNotice }}
-            </p>
+              <ul class="space-y-1">
+                <li v-for="(n, i) in promptNotices" :key="i" class="flex gap-1.5">
+                  <span aria-hidden="true" class="select-none">•</span>
+                  <div class="min-w-0">
+                    <p class="break-words">{{ n.summary }}</p>
+                    <p class="text-amber-400/70">{{ n.action }}</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
             <div class="min-h-0 flex-1 p-2">
               <p v-if="promptLoading" class="p-2 text-sm text-gray-400">正在检索…</p>
               <div v-else-if="promptError" class="p-2">
