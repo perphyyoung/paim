@@ -1049,7 +1049,6 @@ const fmtSize = (bytes: number) => {
       rows="6"
       class="textarea-autogrow max-h-[16lh] min-h-[calc(6lh_+_1rem)] w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
       placeholder="输入提示词内容..."
-      @keydown.enter.exact.prevent="doCreatePrompt"
     ></textarea>
   </InlineDialog>
 

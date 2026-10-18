@@ -150,6 +150,12 @@ test("不附提示词上传：图像详情内「新建提示词」创建并关�
   const raw = `e2e 详情内新建提示词 ${stamp}\n第二行  词 , 第三段`;
   const content = `e2e 详情内新建提示词 ${stamp} 第二行 词,第三段`;
   const contentInput = composer.getByPlaceholder("输入提示词内容...");
+  // 多行控件：裸回车只换行、不提交（修复前 Enter 直接创建，弹窗会消失）
+  await contentInput.fill("换行验证");
+  await contentInput.press("Enter");
+  await expect(contentInput).toHaveValue("换行验证\n");
+  await expect(composer).toBeVisible();
+  e2eLog.info("[step] 多行控件裸回车只换行，弹窗保持");
   await contentInput.fill(raw);
   await composer.getByRole("button", { name: "规范化", exact: true }).click();
   await expectToastAndDismiss(page, "已按规范化格式填入");
