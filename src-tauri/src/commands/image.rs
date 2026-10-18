@@ -238,7 +238,11 @@ pub async fn list_images(
             .map_err(|e| AppError::Message(e.to_string()))?;
         let total = image_service::count(conn, search.as_deref(), tag.as_deref())
             .map_err(|e| AppError::Message(e.to_string()))?;
-        Ok(PaginatedImages { items, total })
+        Ok(PaginatedImages {
+            items,
+            total,
+            invalid_regex: false,
+        })
     })
     .await
 }

@@ -1,4 +1,4 @@
-//! SQLite REGEXP 标量函数测试：注册、整词、缓存与用户可见的错误文案。
+//! SQLite REGEXP 标量函数测试：注册、整词、非法/超长按不匹配处理、负缓存。
 
 use super::{register, MAX_PATTERN_LEN};
 use rusqlite::Connection;
@@ -33,24 +33,19 @@ fn registers_and_matches_whole_word() {
 }
 
 #[test]
-fn invalid_pattern_reports_user_facing_error() {
+fn invalid_pattern_matches_nothing() {
     let conn = conn();
-    let err = conn
-        .query_row("SELECT 'x' REGEXP ?1", ["("], |r| r.get::<_, bool>(0))
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("正则表达式无效"), "实际错误：{err}");
+    // 语法错误不再抛错：按「不匹配」处理，查询整体得到空结果（见模块头注释）
+    assert!(!matches(&conn, "(", "x"));
+    // 负缓存：同一非法模式再次调用仍然是 false，且不重复解析
+    assert!(!matches(&conn, "(", "x"));
 }
 
 #[test]
-fn overlong_pattern_is_rejected() {
+fn overlong_pattern_matches_nothing() {
     let conn = conn();
     let long = "a".repeat(MAX_PATTERN_LEN + 1);
-    let err = conn
-        .query_row("SELECT 'x' REGEXP ?1", [long], |r| r.get::<_, bool>(0))
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("过长"), "实际错误：{err}");
+    assert!(!matches(&conn, &long, long.as_str()));
 }
 
 #[test]

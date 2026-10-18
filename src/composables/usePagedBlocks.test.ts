@@ -267,6 +267,44 @@ describe("单条回写", () => {
   });
 });
 
+describe("失败块不重复拉起", () => {
+  it("重试耗尽后 ensureRange 不再请求同一块（避免重试风暴）", async () => {
+    const { calls, load } = createLoader();
+    const p = usePagedBlocks<Row>({ load, blockSize: 2 });
+
+    // 先成功一次建立 total：现场是「已有列表，条件变化后请求失败」
+    const ok = p.reload();
+    calls[0].d.resolve({ items: rows(0, 2), total: 2 });
+    await ok;
+    expect(p.error.value).toBe("");
+
+    // 条件变化 → 块 0 连续失败两次（首次 + 自动重试），随后标记放弃
+    const bad = p.reload();
+    await flush();
+    calls[1].d.reject(new Error("boom"));
+    await flush();
+    calls[2].d.reject(new Error("boom"));
+    await flush();
+    await bad;
+    expect(p.error.value).toContain("boom");
+
+    const settled = calls.length;
+    // 可见区反复变化：已放弃的块不再发起请求（否则就是日志里 10ms 一次的风暴）
+    p.ensureRange(0, 1);
+    p.ensureRange(0, 1);
+    await flush();
+    expect(calls.length).toBe(settled);
+
+    // 条件再变（reload）后重新给一次机会
+    const retry = p.reload();
+    await flush();
+    expect(calls.length).toBe(settled + 1);
+    calls[calls.length - 1].d.resolve({ items: rows(0, 2), total: 2 });
+    await retry;
+    expect(p.error.value).toBe("");
+  });
+});
+
 describe("块大小测试缝", () => {
   it("localStorage.paim.blockSize 可覆盖块大小，非法值回落默认 200", () => {
     const load = (): Promise<BlockPage<Row>> => Promise.resolve({ items: [], total: 0 });

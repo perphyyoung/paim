@@ -549,6 +549,33 @@ fn list_page_sorts_by_whitelist_and_pages_with_total() {
 }
 
 #[test]
+fn invalid_regex_returns_empty_page_with_flag() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    insert_prompt(
+        &conn,
+        "p1",
+        "sole",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+        false,
+        "",
+    );
+    let page = list_page(
+        &conn,
+        &ListQuery {
+            search: "(".into(),
+            search_mode: SearchMode::Regex,
+            ..query("createdAt", false)
+        },
+    )
+    .unwrap();
+    assert!(page.items.is_empty(), "非法正则不应返回条目");
+    assert_eq!(page.total, 0);
+    assert!(page.invalid_regex, "必须标记非法正则，不能当成「无匹配」");
+}
+
+#[test]
 fn search_regex_whole_word_does_not_match_substrings() {
     let (_dir, db) = setup();
     let conn = db.0.lock().unwrap();

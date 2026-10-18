@@ -278,13 +278,18 @@ const {
   total,
   loading: listLoading,
   error: listError,
+  invalidRegex,
   ensureRange,
   reload: reloadBlocks,
   replaceItem,
   touch,
 } = usePagedBlocks<PromptCard>({
   label: "prompt",
-  load: (offset, limit) => commands.listPromptsPage({ ...currentQuery(), offset, limit }),
+  load: async (offset, limit) => {
+    const page = await commands.listPromptsPage({ ...currentQuery(), offset, limit });
+    // 后端字段是 snake_case：转成块层使用的 camelCase 标记（非法正则 → 空结果而非「无匹配」）
+    return { ...page, invalidRegex: page.invalid_regex };
+  },
 });
 
 // 筛选 / 排序 / 搜索（含模式切换）变化：数据在后端重排，前端无法增量调整——回到顶部并整体重拉
@@ -305,6 +310,10 @@ watch(pageItems, () => {
 
 // 空态与 pm 对齐：搜索无结果 / 标签筛选无结果 / 暂无数据（附上手引导）三态
 const emptyState = computed(() => {
+  // 非法正则在进入 SQL 前已被拦截：必须与「真的没有匹配」区分开
+  if (invalidRegex.value) {
+    return { main: "非法正则表达式", sub: "修改表达式或关闭正则后重试" };
+  }
   const kw = keyword.value.trim();
   if (kw) {
     const { search, mode } = parseSearch(kw, regexMode.value);
@@ -753,23 +762,23 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         >
           新建提示词
         </button>
-        <div class="relative min-w-0">
+        <div class="flex min-w-0 items-center gap-1">
           <input
             ref="searchInput"
             v-model="keyword"
             type="search"
             :placeholder="regexMode ? '正则搜索（如 \\bsole\\b）' : '搜索标题/内容/翻译/备注/标签'"
             title="聚焦搜索 (Ctrl+F)"
-            class="w-full rounded-lg border px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+            class="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
             :class="regexMode ? 'ring-1 ring-amber-500/60' : ''"
           />
           <button
             type="button"
-            class="absolute right-1 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 font-mono text-xs transition-colors"
+            class="shrink-0 rounded-lg border px-2 py-2 font-mono text-xs transition-colors"
             :class="
               regexMode
-                ? 'bg-amber-500/20 text-amber-300'
-                : 'text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+                ? 'border-amber-500/60 bg-amber-500/20 text-amber-300'
+                : 'border-gray-600 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
             "
             :aria-pressed="regexMode"
             title="正则搜索（整词写 \bsole\b；不支持 (?=) (?<=)）"

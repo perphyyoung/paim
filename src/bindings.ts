@@ -634,12 +634,16 @@ export type OrphanRecordItem = {
 export type PaginatedImages = {
 	items: ImageCard[],
 	total: number,
+	/**  搜索正则在进入 SQL 前就判定非法：本次返回空结果，前端据此提示「非法正则」而非「无匹配」 */
+	invalid_regex: boolean,
 };
 
 /**  分页提示词列表：items 为本页，total 为符合条件总数。 */
 export type PaginatedPrompts = {
 	items: PromptCard[],
 	total: number,
+	/**  搜索正则在进入 SQL 前就判定非法：本次返回空结果，前端据此提示「非法正则」而非「无匹配」 */
+	invalid_regex: boolean,
 };
 
 export type Prompt = {

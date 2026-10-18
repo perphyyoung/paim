@@ -82,6 +82,8 @@ pub struct ImageCard {
 pub struct PaginatedImages {
     pub items: Vec<ImageCard>,
     pub total: i64,
+    /// 搜索正则在进入 SQL 前就判定非法：本次返回空结果，前端据此提示「非法正则」而非「无匹配」
+    pub invalid_regex: bool,
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -513,9 +515,24 @@ fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
     (sql, params)
 }
 
+/// 正则模式下搜索词非法（空搜索不算过滤，直接放行）。
+fn regex_invalid(q: &ListQuery) -> bool {
+    q.search_mode == list_query::SearchMode::Regex
+        && !q.search.trim().is_empty()
+        && crate::infra::regexp::validate(q.search.trim()).is_err()
+}
+
 /// 主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）全部下推到 SQL，返回本页与总数。
 /// 与前端「块拉取」配套：一次只取 `limit` 条，`total` 用来撑起滚动条与占位数量。
 pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
+    // 正则模式先校验：非法直接返回空结果 + 标记（不做全表扫描；前端显示「非法正则」而非「无匹配」）
+    if regex_invalid(q) {
+        return Ok(PaginatedImages {
+            items: Vec::new(),
+            total: 0,
+            invalid_regex: true,
+        });
+    }
     let (filter, mut params) = page_filter(q);
     let total: i64 = conn.query_row(
         &format!("SELECT COUNT(*) FROM images WHERE is_deleted = 0{filter}"),
@@ -537,11 +554,16 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
     Ok(PaginatedImages {
         items: rows.collect::<Result<Vec<_>>>()?,
         total,
+        invalid_regex: false,
     })
 }
 
 /// 同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。
 pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
+    // 非法正则没有可匹配的条目：不跑 SQL（否则会全表扫一遍必然失败的正则）
+    if regex_invalid(q) {
+        return Ok(Vec::new());
+    }
     let (filter, params) = page_filter(q);
     let sql = format!(
         "SELECT id FROM images WHERE is_deleted = 0{filter}

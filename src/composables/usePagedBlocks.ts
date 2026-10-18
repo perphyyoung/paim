@@ -13,6 +13,8 @@ export interface Placeholder {
 export interface BlockPage<T> {
   items: T[];
   total: number;
+  /** 搜索正则在进入 SQL 前被判非法：本次为空结果，页面应提示「非法正则」而不是「无匹配」 */
+  invalidRegex?: boolean;
 }
 
 /** 单块条数上限（后端同样按 MAX_LIMIT 钳制） */
@@ -37,8 +39,10 @@ export interface UsePagedBlocks<T> {
   total: Ref<number>;
   /** 首屏 / 条件切换中 */
   loading: Ref<boolean>;
-  /** 最近的加载错误（如后端正则语法错误）；非空时页面应展示而不是静默留空 */
+  /** 最近的加载错误；非空时页面应展示而不是静默留空 */
   error: Ref<string>;
+  /** 本次结果因「搜索正则非法」而为空（不是真的没有匹配） */
+  invalidRegex: Ref<boolean>;
   blockSize: number;
   /** 由可见区间驱动：补齐所需块并预取相邻块 */
   ensureRange: (start: number, end: number) => void;
@@ -69,12 +73,15 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   const items = shallowRef<Array<T | Placeholder>>([]);
   const loading = ref(false);
   const error = ref("");
+  const invalidRegex = ref(false);
 
   // 条件版本：切换筛选/排序后自增，过期响应直接丢弃（防串台）
   let seq = 0;
   const blocks = new Map<number, T[]>();
   const inflight = new Map<number, Promise<void>>();
   const attempts = new Map<number, number>();
+  // 重试耗尽的块：在条件变化（reload）之前不再被 ensureRange 拉起，避免失败块的重试风暴
+  const abandoned = new Set<number>();
   // 受保护区间（当前可见块 ±1），淘汰时额外放宽到 ±2
   let protectFrom = 0;
   let protectTo = 0;
@@ -128,6 +135,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   }
 
   function loadBlock(index: number): Promise<void> {
+    if (abandoned.has(index)) return Promise.resolve();
     const pending = inflight.get(index);
     if (pending) return pending;
     const mySeq = seq;
@@ -148,6 +156,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
         applyBlock(index, page.items);
         attempts.delete(index);
         error.value = "";
+        invalidRegex.value = page.invalidRegex === true;
         log.debug(tag, "块完成", index, "items=", page.items.length);
         evict();
       } catch (e) {
@@ -159,7 +168,8 @@ export function usePagedBlocks<T extends { id: string }>(options: {
           queueMicrotask(() => void loadBlock(index));
         } else {
           log.error(tag, "块加载失败且已放弃重试", index, String(e));
-          // 透出给页面：正则语法错误这类问题不能表现为「静默空列表」
+          // 透出给页面，并标记该块不再重试（否则 ensureRange 每帧都会重新拉起）
+          abandoned.add(index);
           error.value = String(e);
         }
       } finally {
@@ -182,6 +192,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     protectFrom = Math.max(0, Math.floor(Math.max(0, start) / blockSize) - 1);
     protectTo = Math.min(lastBlock, Math.floor(Math.max(0, end) / blockSize) + 1);
     for (let b = protectFrom; b <= protectTo; b += 1) {
+      if (abandoned.has(b)) continue;
       const cached = blocks.get(b);
       if (cached) {
         // LRU 触碰：重新插入到末尾，淘汰时优先丢最久未进入可见区的块
@@ -196,10 +207,12 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   async function reload(options?: { keepContent?: boolean }) {
     seq += 1;
     error.value = "";
+    invalidRegex.value = false;
     log.debug(tag, "reload 开始", "seq=", seq, "keepContent=", !!options?.keepContent);
     blocks.clear();
     inflight.clear();
     attempts.clear();
+    abandoned.clear();
     // 不清零 total、不截断数组：保留占位撑起的旧高度，让 KeepAlive 恢复滚动位置时有高度可落，
     // 否则条件刷新（含跨页脏标记触发的重载）会把滚动位置丢回顶部。新 total 到达后由 loadBlock 校正。
     // keepContent：连内容一起保留（旧数据留在原地直到新块覆盖），避免整列变骨架的闪烁；
@@ -237,5 +250,16 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     items.value = items.value.slice();
   }
 
-  return { items, total, loading, error, blockSize, ensureRange, reload, replaceItem, touch };
+  return {
+    items,
+    total,
+    loading,
+    error,
+    invalidRegex,
+    blockSize,
+    ensureRange,
+    reload,
+    replaceItem,
+    touch,
+  };
 }
