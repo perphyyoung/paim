@@ -54,3 +54,88 @@ fn same_pattern_is_cache_hit() {
     assert!(matches(&conn, "so.e", "sole"));
     assert!(matches(&conn, "so.e", "some"));
 }
+
+/// 搜索说明浮层（`src/components/SearchHelpPopover.vue`）「已支持」表的可执行版本：
+/// 每个写法都配**正例 + 反例**（反例专门验证不会误命中），改文案必须同步本表。
+struct Example {
+    pattern: &'static str,
+    /// 应当命中
+    hit: &'static str,
+    /// 不应命中（只测正例的话，`contains` 与「整词」这类差异会被漏掉）
+    miss: &'static str,
+}
+
+const SUPPORTED_EXAMPLES: &[Example] = &[
+    Example {
+        pattern: r"\bsole\b",
+        hit: "a sole b",
+        miss: "camisole",
+    },
+    Example {
+        pattern: r"(裙|dress)",
+        hit: "红色裙",
+        miss: "蓝色上衣",
+    },
+    Example {
+        pattern: r"gr[ae]y",
+        hit: "grey",
+        miss: "groy",
+    },
+    Example {
+        pattern: r"colou?r",
+        hit: "color",
+        miss: "colouur",
+    },
+    Example {
+        pattern: r"^e2e",
+        hit: "e2e x",
+        miss: "x e2e",
+    },
+    Example {
+        pattern: r"(?i)sole",
+        hit: "SOLE",
+        miss: "solo",
+    },
+    Example {
+        pattern: r"\p{Han}+",
+        hit: "半身裙",
+        miss: "abc",
+    },
+    Example {
+        pattern: "半身裙",
+        hit: "红色半身裙",
+        miss: "连衣裙",
+    },
+];
+
+/// 搜索说明浮层「明确不支持」的写法：必须编译失败（UI 提示「非法正则表达式」）
+const UNSUPPORTED_EXAMPLES: &[&str] = &[r"sole(?!s)", r"(a)\1", r"(?(1)a|b)", r"(?#c)"];
+
+#[test]
+fn help_examples_match_documented_behavior() {
+    let conn = conn();
+    for ex in SUPPORTED_EXAMPLES {
+        assert!(
+            matches(&conn, ex.pattern, ex.hit),
+            "示例「{}」应命中「{}」",
+            ex.pattern,
+            ex.hit
+        );
+        assert!(
+            !matches(&conn, ex.pattern, ex.miss),
+            "示例「{}」不应命中「{}」",
+            ex.pattern,
+            ex.miss
+        );
+    }
+    for &pattern in UNSUPPORTED_EXAMPLES {
+        assert!(
+            super::validate(pattern).is_err(),
+            "说明标注不支持，但编译通过：{pattern}"
+        );
+        assert!(
+            !matches(&conn, pattern, "任意文本"),
+            "非法模式不应命中：{pattern}"
+        );
+    }
+}

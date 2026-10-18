@@ -30,6 +30,7 @@ import NestedDetailSlots from "@/components/NestedDetailSlots.vue";
 import { provideNestedDetails } from "@/composables/useNestedDetails";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
+import SearchHelpPopover from "@/components/SearchHelpPopover.vue";
 import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
@@ -793,6 +794,7 @@ function onUploadDone() {
           >
             .*
           </button>
+          <SearchHelpPopover scope="image" />
         </div>
         <button
           type="button"

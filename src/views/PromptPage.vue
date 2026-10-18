@@ -30,6 +30,7 @@ import NestedDetailSlots from "@/components/NestedDetailSlots.vue";
 import { provideNestedDetails } from "@/composables/useNestedDetails";
 import MediaCard from "@/components/MediaCard.vue";
 import CardSizeSlider from "@/components/CardSizeSlider.vue";
+import SearchHelpPopover from "@/components/SearchHelpPopover.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
@@ -786,6 +787,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
           >
             .*
           </button>
+          <SearchHelpPopover scope="prompt" />
         </div>
         <button
           type="button"
