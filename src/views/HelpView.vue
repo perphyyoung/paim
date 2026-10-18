@@ -84,7 +84,11 @@ const FEATURES: FeatureGroup[] = [
   {
     title: "主页与卡片",
     rows: [
-      { name: "搜索", detail: "Ctrl+F" },
+      {
+        name: "搜索",
+        detail:
+          "Ctrl+F 聚焦；输入框右侧 `.*` 开启正则（整词写 \\bsole\\b；不支持 (?=) (?<=)），也可用 /.../ 包裹",
+      },
       {
         name: "标签筛选",
         detail: "点击标签筛选；Ctrl+点击多选；「反选」按钮改为排除命中所选标签的条目",

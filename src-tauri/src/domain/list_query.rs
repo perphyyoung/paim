@@ -25,12 +25,23 @@ pub const SP_SINGLE_LANG: &str = "单语";
 pub const SP_SAFE: &str = "安全";
 pub const SP_UNSAFE: &str = "敏感";
 
+/// 搜索匹配模式：默认子串 LIKE；`Regex` 走 SQLite 自定义 REGEXP 函数（见 `infra::regexp`）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub enum SearchMode {
+    #[default]
+    Substring,
+    Regex,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ListQuery {
     pub offset: i64,
     pub limit: i64,
     /// 搜索关键词（空串表示不过滤）
     pub search: String,
+    /// 搜索模式（缺省按子串，兼容旧前端）
+    #[serde(default)]
+    pub search_mode: SearchMode,
     /// 所选标签（含特殊标签名），多标签为 AND
     pub tags: Vec<String>,
     /// 反选：排除同时命中全部所选标签的条目

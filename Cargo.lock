@@ -2615,6 +2615,7 @@ dependencies = [
  "jpeg-encoder",
  "log",
  "md-5",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

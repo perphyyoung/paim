@@ -560,6 +560,8 @@ export type ListQuery = {
 	limit: number,
 	/**  搜索关键词（空串表示不过滤） */
 	search: string,
+	/**  搜索模式（缺省按子串，兼容旧前端） */
+	search_mode?: SearchMode,
 	/**  所选标签（含特殊标签名），多标签为 AND */
 	tags: string[],
 	/**  反选：排除同时命中全部所选标签的条目 */
@@ -708,6 +710,9 @@ export type RelatedImage = {
 	src: string,
 	tags: string[],
 };
+
+/**  搜索匹配模式：默认子串 LIKE；`Regex` 走 SQLite 自定义 REGEXP 函数（见 `infra::regexp`）。 */
+export type SearchMode = "Substring" | "Regex";
 
 /**
  *  图像检索结果 + 本次检索的维度信息。

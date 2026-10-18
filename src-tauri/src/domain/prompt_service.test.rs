@@ -4,7 +4,7 @@ use super::{
     list_ids, list_page, list_related_images_with, set_prompt_first_image, special_tags_counts,
     thumb_apply, thumb_plan, thumbs_for, thumbs_for_trashed, update_detail,
 };
-use crate::domain::list_query::ListQuery;
+use crate::domain::list_query::{ListQuery, SearchMode};
 use crate::domain::similarity_service;
 use crate::domain::thumbnail_service;
 use crate::infra::db;
@@ -455,6 +455,7 @@ fn query(sort: &str, desc: bool) -> ListQuery {
         offset: 0,
         limit: 200,
         search: String::new(),
+        search_mode: crate::domain::list_query::SearchMode::Substring,
         tags: Vec::new(),
         inverted: false,
         sort: sort.to_string(),
@@ -545,6 +546,63 @@ fn list_page_sorts_by_whitelist_and_pages_with_total() {
         vec!["p3", "p2", "p1"],
         "未知键回落 updated_at"
     );
+}
+
+#[test]
+fn search_regex_whole_word_does_not_match_substrings() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    insert_prompt(
+        &conn,
+        "p1",
+        "sole",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+        false,
+        "",
+    );
+    insert_prompt(
+        &conn,
+        "p2",
+        "camisole",
+        "2026-01-02T00:00:00.000Z",
+        "2026-01-02T00:00:00.000Z",
+        false,
+        "",
+    );
+    insert_prompt(
+        &conn,
+        "p3",
+        "console",
+        "2026-01-03T00:00:00.000Z",
+        "2026-01-03T00:00:00.000Z",
+        false,
+        "",
+    );
+
+    // 子串模式：三条都包含 "sole"
+    let sub = list_page(
+        &conn,
+        &ListQuery {
+            search: "sole".into(),
+            ..query("createdAt", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(sub.total, 3, "子串模式应命中 camisole / console");
+
+    // 正则整词：只剩独立的 sole（camisole / console 不命中）
+    let re = list_page(
+        &conn,
+        &ListQuery {
+            search: r"\bsole\b".into(),
+            search_mode: SearchMode::Regex,
+            ..query("createdAt", false)
+        },
+    )
+    .unwrap();
+    assert_eq!(ids_of(&re), vec!["p1"], "\\bsole\\b 不应命中 camisole");
+    assert_eq!(re.total, 1, "total 与列表同口径");
 }
 
 #[test]

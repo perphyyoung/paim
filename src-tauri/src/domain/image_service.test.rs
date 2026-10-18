@@ -1,10 +1,11 @@
 //! 图像领域服务单元测试：搜索 WHERE 子句拼接（filter_sql）、导入、替换图像、详情更新。
 
 use super::{
-    filter_sql, first_prompts_for_trashed, import_with, list_ids, list_page, list_related_prompts,
-    replace_image_with, special_tags_counts, update_detail, ImageReplaceOutcome, PaginatedImages,
+    filter_sql, filter_sql_with_mode, first_prompts_for_trashed, import_with, list_ids, list_page,
+    list_related_prompts, replace_image_with, special_tags_counts, update_detail,
+    ImageReplaceOutcome, PaginatedImages,
 };
-use crate::domain::list_query::ListQuery;
+use crate::domain::list_query::{ListQuery, SearchMode};
 use crate::domain::similarity_service;
 use crate::infra::db;
 
@@ -56,6 +57,18 @@ fn tag_filter_is_separate_from_search() {
     let (clause, params) = filter_sql(None, Some("收藏"));
     assert!(!clause.contains("LIKE"), "纯标签筛选不应出现 LIKE");
     assert_eq!(params, vec!["收藏".to_string()]);
+}
+
+#[test]
+fn regex_mode_uses_regexp_conditions() {
+    let (clause, params) = filter_sql_with_mode(Some(r"\bsole\b"), None, SearchMode::Regex);
+    assert!(clause.contains("file_name REGEXP ?"), "实际：{clause}");
+    assert!(!clause.contains("LIKE"), "正则模式不应出现 LIKE");
+    assert_eq!(
+        params,
+        vec![r"\bsole\b".to_string(); 3],
+        "文件名 / 备注 / 标签各绑定一次同一模式"
+    );
 }
 
 /// png 后缀伪装成图像的坏内容（如 AVIF 数据）必须被拒绝，不得落库——
@@ -541,6 +554,7 @@ fn query(sort: &str, desc: bool) -> ListQuery {
         offset: 0,
         limit: 200,
         search: String::new(),
+        search_mode: crate::domain::list_query::SearchMode::Substring,
         tags: Vec::new(),
         inverted: false,
         sort: sort.to_string(),

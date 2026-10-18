@@ -160,14 +160,29 @@ fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
 
     let search = q.search.trim();
     if !search.is_empty() {
-        // ESCAPE '\' 配合 escape_like：否则用户输入单个 % 会匹配全部、_ 匹配任意单字符
-        sql.push_str(
-            " AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR content_translate LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\'
-                   OR EXISTS (SELECT 1 FROM prompt_tag_relations r2 JOIN prompt_tags t2 ON t2.id = r2.tag_id WHERE r2.prompt_id = prompts.id AND t2.name LIKE ? ESCAPE '\\'))",
-        );
-        let like = format!("%{}%", crate::infra::text_utils::escape_like(search));
-        for _ in 0..5 {
-            params.push(Value::Text(like.clone()));
+        match q.search_mode {
+            list_query::SearchMode::Substring => {
+                // ESCAPE '\' 配合 escape_like：否则用户输入单个 % 会匹配全部、_ 匹配任意单字符
+                sql.push_str(
+                    " AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR content_translate LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\'
+                           OR EXISTS (SELECT 1 FROM prompt_tag_relations r2 JOIN prompt_tags t2 ON t2.id = r2.tag_id WHERE r2.prompt_id = prompts.id AND t2.name LIKE ? ESCAPE '\\'))",
+                );
+                let like = format!("%{}%", crate::infra::text_utils::escape_like(search));
+                for _ in 0..5 {
+                    params.push(Value::Text(like.clone()));
+                }
+            }
+            list_query::SearchMode::Regex => {
+                // 正则模式：`X REGEXP ?` 走 `infra::regexp` 注册的标量函数。
+                // 语法受 Rust regex 限制（无 lookaround）：整词写 `\bsole\b`，不含 camisole。
+                sql.push_str(
+                    " AND (title REGEXP ? OR content REGEXP ? OR content_translate REGEXP ? OR note REGEXP ?
+                           OR EXISTS (SELECT 1 FROM prompt_tag_relations r2 JOIN prompt_tags t2 ON t2.id = r2.tag_id WHERE r2.prompt_id = prompts.id AND t2.name REGEXP ?))",
+                );
+                for _ in 0..5 {
+                    params.push(Value::Text(search.to_string()));
+                }
+            }
         }
     }
 

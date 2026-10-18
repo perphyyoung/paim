@@ -26,12 +26,14 @@ chrono = "0.4"
 log = "0.4"
 tauri = { version = "2.12.0", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-log = "2"
-rusqlite = { version = "0.34", features = ["bundled"] }
+rusqlite = { version = "0.34", features = ["bundled", "functions"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff"] }
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 md-5 = "0.10"
+# 搜索正则（SQLite REGEXP 标量函数）：线性时间引擎，无回溯风险
+regex = "1"
 # Unicode 标点类别判定（提示词向量输入规范化用）：纯数据表，无传递依赖
 unicode_categories = "0.1"
 # 本地 embedding 服务（llama.cpp llama-server）调用：只访问 127.0.0.1 明文 HTTP，故关闭 TLS 特性

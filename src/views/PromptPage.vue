@@ -15,6 +15,7 @@ import { useToast } from "@/components/useToast";
 import { log } from "@/utils/logger";
 import { formatLocalTime } from "@/utils/date";
 import { useGridColumns } from "@/utils/gridColumns";
+import { parseSearch } from "@/utils/searchQuery";
 import { isPlaceholder, usePagedBlocks, type Placeholder } from "@/composables/usePagedBlocks";
 import { usePageStaleReload } from "@/composables/usePageStaleReload";
 import { useBatchTagAdd } from "@/features/tag/useBatchTagAdd";
@@ -74,6 +75,13 @@ const SORT_OPTIONS = [
 const { columns, setColumns } = useGridColumns("prompt", 5);
 
 const keyword = ref("");
+// 正则搜索开关（持久化）：开启后关键词按正则匹配（后端 Rust regex，线性时间、无 lookaround）
+const REGEX_MODE_KEY = "paim.search.regex.prompt";
+const regexMode = ref(localStorage.getItem(REGEX_MODE_KEY) === "1");
+function toggleRegexMode() {
+  regexMode.value = !regexMode.value;
+  localStorage.setItem(REGEX_MODE_KEY, regexMode.value ? "1" : "0");
+}
 
 const sortBy = ref(localStorage.getItem(SORT_KEY) || "updatedAt");
 const sortDesc = ref(localStorage.getItem(SORT_DESC_KEY) !== "0");
@@ -249,10 +257,13 @@ watch(keyword, (v) => {
 
 /** 当前查询条件（分页与取 id 共用同一份，避免两处漂移） */
 function currentQuery() {
+  // `/.../` 包裹或开关打开 → 后端正则匹配；空输入始终不过滤（mode 回落 Substring）
+  const { search, mode } = parseSearch(debouncedKeyword.value, regexMode.value);
   return {
     offset: 0,
     limit: 0,
-    search: debouncedKeyword.value.trim(),
+    search,
+    search_mode: mode,
     tags: selectedTags.value,
     inverted: invertedTagFilter.value,
     sort: sortBy.value,
@@ -266,6 +277,7 @@ const {
   items: pageItems,
   total,
   loading: listLoading,
+  error: listError,
   ensureRange,
   reload: reloadBlocks,
   replaceItem,
@@ -275,12 +287,15 @@ const {
   load: (offset, limit) => commands.listPromptsPage({ ...currentQuery(), offset, limit }),
 });
 
-// 筛选 / 排序 / 搜索变化：数据在后端重排，前端无法增量调整——回到顶部并整体重拉
-watch([debouncedKeyword, sortBy, sortDesc, selectedTags, invertedTagFilter], async () => {
-  backToTop();
-  await reloadBlocks();
-  scheduleThumbCheck();
-});
+// 筛选 / 排序 / 搜索（含模式切换）变化：数据在后端重排，前端无法增量调整——回到顶部并整体重拉
+watch(
+  [debouncedKeyword, regexMode, sortBy, sortDesc, selectedTags, invertedTagFilter],
+  async () => {
+    backToTop();
+    await reloadBlocks();
+    scheduleThumbCheck();
+  },
+);
 
 // 块加载 / 淘汰后同步缩略图映射，并检查新出现的可见项
 watch(pageItems, () => {
@@ -292,6 +307,13 @@ watch(pageItems, () => {
 const emptyState = computed(() => {
   const kw = keyword.value.trim();
   if (kw) {
+    const { search, mode } = parseSearch(kw, regexMode.value);
+    if (mode === "Regex") {
+      return {
+        main: `未找到匹配 /${search}/ 的提示词（正则）`,
+        sub: "整词写 \\bsole\\b；不支持 (?=) (?<=)",
+      };
+    }
     return {
       main: `未找到匹配"${kw}"的提示词（已搜索：标题、内容、翻译、备注、标签）`,
       sub: "搜索无结果",
@@ -731,14 +753,31 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         >
           新建提示词
         </button>
-        <input
-          ref="searchInput"
-          v-model="keyword"
-          type="search"
-          placeholder="搜索标题/内容/翻译/备注/标签"
-          title="聚焦搜索 (Ctrl+F)"
-          class="min-w-0 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
-        />
+        <div class="relative min-w-0">
+          <input
+            ref="searchInput"
+            v-model="keyword"
+            type="search"
+            :placeholder="regexMode ? '正则搜索（如 \\bsole\\b）' : '搜索标题/内容/翻译/备注/标签'"
+            title="聚焦搜索 (Ctrl+F)"
+            class="w-full rounded-lg border px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+            :class="regexMode ? 'ring-1 ring-amber-500/60' : ''"
+          />
+          <button
+            type="button"
+            class="absolute right-1 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 font-mono text-xs transition-colors"
+            :class="
+              regexMode
+                ? 'bg-amber-500/20 text-amber-300'
+                : 'text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+            "
+            :aria-pressed="regexMode"
+            title="正则搜索（整词写 \bsole\b；不支持 (?=) (?<=)）"
+            @click="toggleRegexMode"
+          >
+            .*
+          </button>
+        </div>
         <button
           type="button"
           class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
@@ -789,6 +828,22 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
           </button>
         </template>
       </TagFilterPanel>
+    </div>
+
+    <!-- 加载错误（如后端正则语法错误）：透出给用户，不能表现为静默空列表 -->
+    <div
+      v-if="listError"
+      class="mb-2 flex shrink-0 items-start justify-between gap-3 rounded-lg border px-3 py-2 text-xs border-red-700/60 bg-red-900/30 text-red-300"
+    >
+      <span class="break-all">{{ listError }}</span>
+      <button
+        v-if="regexMode"
+        type="button"
+        class="shrink-0 rounded border px-1.5 py-0.5 transition-colors border-red-600/60 hover:bg-red-900/50"
+        @click="toggleRegexMode"
+      >
+        关闭正则
+      </button>
     </div>
 
     <!-- 卡片滚动区：虚拟网格 + 自定义滚动条 -->

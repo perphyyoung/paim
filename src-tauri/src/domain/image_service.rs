@@ -328,19 +328,37 @@ pub(crate) fn insert_prepared(
 }
 
 /// 拼接搜索/标签的 WHERE 条件子句与参数（search 匹配文件名/备注/标签名，tag 需存在同名标签关联）。
-fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) {
+/// `mode` 决定子串 LIKE 还是正则 REGEXP（后者见 `infra::regexp`）。
+fn filter_sql_with_mode(
+    search: Option<&str>,
+    tag: Option<&str>,
+    mode: list_query::SearchMode,
+) -> (String, Vec<String>) {
     let mut clauses = String::new();
     let mut params = Vec::new();
     let search = search.unwrap_or("").trim();
     if !search.is_empty() {
-        // ESCAPE '\' 配合 escape_like：否则用户输入单个 % 会匹配全部、_ 匹配任意单字符
-        clauses.push_str(
-            " AND (file_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM image_tag_relations r2 JOIN image_tags t2 ON t2.id = r2.tag_id WHERE r2.image_id = images.id AND t2.name LIKE ? ESCAPE '\\'))",
-        );
-        let like = format!("%{}%", crate::infra::text_utils::escape_like(search));
-        params.push(like.clone());
-        params.push(like.clone());
-        params.push(like);
+        match mode {
+            list_query::SearchMode::Substring => {
+                // ESCAPE '\' 配合 escape_like：否则用户输入单个 % 会匹配全部、_ 匹配任意单字符
+                clauses.push_str(
+                    " AND (file_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM image_tag_relations r2 JOIN image_tags t2 ON t2.id = r2.tag_id WHERE r2.image_id = images.id AND t2.name LIKE ? ESCAPE '\\'))",
+                );
+                let like = format!("%{}%", crate::infra::text_utils::escape_like(search));
+                params.push(like.clone());
+                params.push(like.clone());
+                params.push(like);
+            }
+            list_query::SearchMode::Regex => {
+                // 语法同提示词侧（Rust regex，无 lookaround）：整词写 `\bsole\b`
+                clauses.push_str(
+                    " AND (file_name REGEXP ? OR note REGEXP ? OR EXISTS (SELECT 1 FROM image_tag_relations r2 JOIN image_tags t2 ON t2.id = r2.tag_id WHERE r2.image_id = images.id AND t2.name REGEXP ?))",
+                );
+                for _ in 0..3 {
+                    params.push(search.to_string());
+                }
+            }
+        }
     }
     let tag = tag.unwrap_or("").trim();
     if !tag.is_empty() {
@@ -350,6 +368,11 @@ fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) 
         params.push(tag.to_string());
     }
     (clauses, params)
+}
+
+/// 子串模式（默认）：`list` / `count` 等旧调用方保持原签名
+fn filter_sql(search: Option<&str>, tag: Option<&str>) -> (String, Vec<String>) {
+    filter_sql_with_mode(search, tag, list_query::SearchMode::Substring)
 }
 
 /// 非软删除图像列表；search/tag 参与 SQL 过滤，limit 为 Some(n) 时只取前 n 张（按创建时间倒序）。
@@ -437,8 +460,8 @@ fn page_filter(q: &ListQuery) -> (String, Vec<Value>) {
     let mut sql = String::new();
     let mut params: Vec<Value> = Vec::new();
 
-    // search 复用 filter_sql（已带 ESCAPE '\'）；标签部分由下方 tags 统一处理，故传 None
-    let (search_sql, search_params) = filter_sql(Some(&q.search), None);
+    // search 复用 filter_sql_with_mode；标签部分由下方 tags 统一处理，故传 None
+    let (search_sql, search_params) = filter_sql_with_mode(Some(&q.search), None, q.search_mode);
     sql.push_str(&search_sql);
     params.extend(list_query::to_values(search_params));
 

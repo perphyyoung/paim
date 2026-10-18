@@ -275,6 +275,8 @@ pub fn init(path: PathBuf) -> rusqlite::Result<BkDb> {
 /// 供 init 包装与备份导入「换连接」场景（backup_common::open_app_db）。
 pub fn open_connection(path: PathBuf) -> rusqlite::Result<Connection> {
     let conn = Connection::open(&path)?;
+    // 自定义 SQL 函数必须在建连时注册（备份导入换连接也走这里）
+    super::regexp::register(&conn)?;
     conn.execute_batch(
         r#"
         PRAGMA journal_mode = WAL;

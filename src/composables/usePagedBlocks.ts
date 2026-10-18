@@ -37,6 +37,8 @@ export interface UsePagedBlocks<T> {
   total: Ref<number>;
   /** 首屏 / 条件切换中 */
   loading: Ref<boolean>;
+  /** 最近的加载错误（如后端正则语法错误）；非空时页面应展示而不是静默留空 */
+  error: Ref<string>;
   blockSize: number;
   /** 由可见区间驱动：补齐所需块并预取相邻块 */
   ensureRange: (start: number, end: number) => void;
@@ -66,6 +68,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
   const total = ref(0);
   const items = shallowRef<Array<T | Placeholder>>([]);
   const loading = ref(false);
+  const error = ref("");
 
   // 条件版本：切换筛选/排序后自增，过期响应直接丢弃（防串台）
   let seq = 0;
@@ -144,6 +147,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
         blocks.set(index, page.items);
         applyBlock(index, page.items);
         attempts.delete(index);
+        error.value = "";
         log.debug(tag, "块完成", index, "items=", page.items.length);
         evict();
       } catch (e) {
@@ -155,6 +159,8 @@ export function usePagedBlocks<T extends { id: string }>(options: {
           queueMicrotask(() => void loadBlock(index));
         } else {
           log.error(tag, "块加载失败且已放弃重试", index, String(e));
+          // 透出给页面：正则语法错误这类问题不能表现为「静默空列表」
+          error.value = String(e);
         }
       } finally {
         inflight.delete(index);
@@ -189,6 +195,7 @@ export function usePagedBlocks<T extends { id: string }>(options: {
 
   async function reload(options?: { keepContent?: boolean }) {
     seq += 1;
+    error.value = "";
     log.debug(tag, "reload 开始", "seq=", seq, "keepContent=", !!options?.keepContent);
     blocks.clear();
     inflight.clear();
@@ -230,5 +237,5 @@ export function usePagedBlocks<T extends { id: string }>(options: {
     items.value = items.value.slice();
   }
 
-  return { items, total, loading, blockSize, ensureRange, reload, replaceItem, touch };
+  return { items, total, loading, error, blockSize, ensureRange, reload, replaceItem, touch };
 }
