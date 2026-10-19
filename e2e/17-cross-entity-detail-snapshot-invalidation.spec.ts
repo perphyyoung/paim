@@ -29,7 +29,7 @@ import {
   PROMPT_SEARCH_PLACEHOLDER,
   test,
   uploadImageWithPrompt,
-  writePng,
+  uploadImagesWithPrompt,
 } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
@@ -444,25 +444,12 @@ test("图像改安全评级后：其他图像详情里该提示词的安全状�
   page,
   app,
 }) => {
-  // 一条提示词关联两张图：UI 的 select_images 测试缝只返回一张，故直连 import_images 造数据
-  const firstPath = path.join(app.dataDir, "e2e-safe-a.png");
-  const secondPath = path.join(app.dataDir, "e2e-safe-b.png");
-  writePng(firstPath);
-  // 两次写入不能落在同一毫秒：mock 图颜色取自时间戳，同内容会被 MD5 去重成一条记录
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  writePng(secondPath);
+  // 一次上传两张图并关联同一提示词：select_images 覆盖为多张（helper 结束后复位为单张）
   const content = `e2e 安全联动 ${Date.now()}`;
-  const batch = await invokeCommand<{ results: Array<{ image: { id: string } }> }>(
-    page,
-    "import_images",
-    { paths: [firstPath, secondPath], prompt: content },
-  );
-  const [imageA, imageB] = batch.results.map((r) => r.image.id);
-  expect(imageA && imageB && imageA !== imageB, "应导入两张不同图像").toBeTruthy();
+  const { imageIds } = await uploadImagesWithPrompt(page, content, app.mockImagePaths);
+  const [imageA, imageB] = imageIds;
+  expect(imageA && imageB && imageA !== imageB, "应上传两张不同图像").toBeTruthy();
 
-  // 直连导入不触发页面刷新：整页刷新一次，确保新卡片进入首屏块
-  await gotoImagesPage(page);
-  await page.getByTitle(/刷新缓存/).click();
   // 先开一次图像 B 详情：关联提示词写进 relatedPromptsCache
   await expect(cardById(page, imageB)).toBeVisible({ timeout: 5_000 });
   await cardById(page, imageB).click();

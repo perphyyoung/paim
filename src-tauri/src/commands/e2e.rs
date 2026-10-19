@@ -10,6 +10,28 @@ use serde::Serialize;
 use specta::Type;
 use tauri::{AppHandle, Manager, State};
 
+/// `select_images` 的路径覆盖：e2e 用例可临时切到「多张」。
+/// 仅当进程带 `PAIM_E2E_MOCK_IMAGE_PATHS`（e2e 实例）时可写，生产调用是 no-op。
+static MOCK_IMAGE_PATHS: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
+
+/// e2e 测试缝：覆盖 `select_images` 的返回值（支持多张）。
+/// 默认仍是 fixture 注入的单张；需要「一次选多张」的用例显式调用，结束后复位。
+#[tauri::command]
+#[specta::specta]
+pub fn e2e_set_mock_image_paths(paths: Vec<String>) {
+    if std::env::var_os("PAIM_E2E_MOCK_IMAGE_PATHS").is_none() {
+        return;
+    }
+    if let Ok(mut guard) = MOCK_IMAGE_PATHS.lock() {
+        *guard = Some(paths);
+    }
+}
+
+/// 供 `select_images` 读取：None 表示未覆盖（回退环境变量）。
+pub fn mock_image_paths_override() -> Option<Vec<String>> {
+    MOCK_IMAGE_PATHS.lock().ok().and_then(|guard| guard.clone())
+}
+
 /// e2e 测试缝：图像 DB 三列（thumbnail_path 空串表示 NULL）。
 #[derive(Debug, Serialize, Type)]
 pub struct E2EImageRecord {

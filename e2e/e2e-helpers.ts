@@ -34,6 +34,8 @@ export interface AppHandle {
   dataDir: string;
   previewDir: string;
   mockImagePath: string;
+  /** 实例专属的多张 mock 图（默认只把第一张注入 select_images；多张需用例显式覆盖） */
+  mockImagePaths: string[];
   cdpPort: number;
   env: NodeJS.ProcessEnv;
   /// 已被用例使用过：page fixture 据此决定是否 reload 复位
@@ -109,7 +111,10 @@ async function launchApp(workerIndex: number, seq: number): Promise<AppHandle> {
   // 应用侧 preview 目录 = temp_dir/preview-<PAIM_DATA_DIR 末段>（见 db.rs::preview_dir）
   const previewDir = path.join(root, "temp", `preview-${path.basename(dataDir)}`);
   const mockImagePath = path.join(dataDir, "e2e-upload.png");
+  const mockImagePath2 = path.join(dataDir, "e2e-upload-2.png");
   writePng(mockImagePath);
+  // 多选场景的第二张（writePng 的 seed 含序号 + 随机，连续调用内容必不同）
+  writePng(mockImagePath2);
 
   const cdpPort = await freePort();
   const env: NodeJS.ProcessEnv = {
@@ -137,7 +142,18 @@ async function launchApp(workerIndex: number, seq: number): Promise<AppHandle> {
     intervalMs: 1_000,
     logTag: "connect",
   });
-  return { child, browser, page, dataDir, previewDir, mockImagePath, cdpPort, env, used: false };
+  return {
+    child,
+    browser,
+    page,
+    dataDir,
+    previewDir,
+    mockImagePath,
+    mockImagePaths: [mockImagePath, mockImagePath2],
+    cdpPort,
+    env,
+    used: false,
+  };
 }
 
 /// 等待子进程**真正退出**（已退出含被强杀 → 立即 true；超时 false）。
@@ -808,6 +824,47 @@ export async function uploadImageWithPrompt(
   expect(imageId, "上传的图像应关联到提示词").toBeTruthy();
   e2eLog.info(`[step] 前置图像已上传 id=${imageId}`);
   return { imageId: imageId as string, promptContent };
+}
+
+/// 覆盖 `select_images` 的返回路径（支持多张）。fixture 默认只注入第一张；
+/// 用例需要「一次选多张」时显式传 `app.mockImagePaths`，结束后复位为 `[app.mockImagePath]`
+/// （覆盖状态在 Rust 进程内，同文件后续用例共享）。
+export async function setMockImagePaths(page: Page, paths: string[]): Promise<void> {
+  await invokeCommand(page, "e2e_set_mock_image_paths", { paths });
+}
+
+/// 一次上传多张 mock 图并关联同一提示词（`select_images` 覆盖为多张）。
+/// 结束后自动复位为单张，避免影响同文件后续用例。
+export async function uploadImagesWithPrompt(
+  page: Page,
+  promptContent: string,
+  mockImagePaths: string[],
+): Promise<{ imageIds: string[]; promptContent: string }> {
+  await setMockImagePaths(page, mockImagePaths);
+  await gotoImagesPage(page);
+  for (const p of mockImagePaths) writePng(p);
+
+  await page.getByRole("button", { name: "上传图像" }).click();
+  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
+  await expect(promptInput).toBeVisible();
+  await page.getByRole("button", { name: "选择图像", exact: true }).click();
+  for (const p of mockImagePaths) {
+    await expect(page.getByTitle(path.basename(p))).toBeVisible({ timeout: 5_000 });
+  }
+  await promptInput.fill(promptContent);
+  await page.getByRole("button", { name: "确定" }).click();
+  await expect(promptInput).toBeHidden({ timeout: 5_000 });
+  await expectToastAndDismiss(page, `已上传 ${mockImagePaths.length} 张图像`);
+  // 复位为默认单张，避免同实例后续用例一次选到多张
+  await setMockImagePaths(page, [mockImagePaths[0]]);
+
+  const promptMap = await getImagePromptsMap(page);
+  const imageIds = Object.entries(promptMap)
+    .filter(([, contents]) => contents.includes(promptContent))
+    .map(([id]) => id);
+  expect(imageIds, `应上传 ${mockImagePaths.length} 张图`).toHaveLength(mockImagePaths.length);
+  e2eLog.info(`[step] 已一次上传 ${mockImagePaths.length} 张并关联同一提示词`);
+  return { imageIds, promptContent };
 }
 
 /// 提示词主页搜索框（列表就绪的可见标志，也是分页专项切换条件的入口）

@@ -348,6 +348,11 @@ export const commands = {
 	 *  `kind` 复用检索侧的 [`MixedSource`]（Image / Prompt）表示写哪张表。
 	 */
 	e2eStoreVector: (kind: MixedSource, id: string, dim: number) => __TAURI_INVOKE<null>("e2e_store_vector", { kind, id, dim }),
+	/**
+	 *  e2e 测试缝：覆盖 `select_images` 的返回值（支持多张）。
+	 *  默认仍是 fixture 注入的单张；需要「一次选多张」的用例显式调用，结束后复位。
+	 */
+	e2eSetMockImagePaths: (paths: string[]) => __TAURI_INVOKE<void>("e2e_set_mock_image_paths", { paths }),
 };
 
 /** Events */

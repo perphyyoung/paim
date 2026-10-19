@@ -155,6 +155,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::e2e::e2e_get_image_paths,
             commands::e2e::e2e_is_window_visible,
             commands::e2e::e2e_store_vector,
+            commands::e2e::e2e_set_mock_image_paths,
         ])
 }
 

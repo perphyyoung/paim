@@ -28,6 +28,10 @@ use tauri_specta::Event;
 #[tauri::command]
 #[specta::specta]
 pub async fn select_images(app: tauri::AppHandle) -> Result<Vec<String>, AppError> {
+    // 用例级覆盖优先（e2e_set_mock_image_paths，可返回多张）；未覆盖时回退环境变量的单张
+    if let Some(paths) = crate::commands::e2e::mock_image_paths_override() {
+        return Ok(paths);
+    }
     #[cfg(debug_assertions)]
     if let Ok(mock) = std::env::var("PAIM_E2E_MOCK_IMAGE_PATHS") {
         if !mock.trim().is_empty() {
