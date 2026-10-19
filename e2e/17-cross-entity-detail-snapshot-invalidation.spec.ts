@@ -15,6 +15,7 @@
 import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import {
+  addItemTag,
   cardById,
   closeDetail,
   expectToastAndDismiss,
@@ -368,5 +369,72 @@ test("提示词详情移除关联图像后：图像详情不再显示该提示�
   await expect(detail).toBeVisible();
   await expect(detail.getByText("— 暂无关联提示词 —")).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像详情已同步到解除关联");
+  await closeDetail(detail);
+});
+
+test("标签管理改名后：提示词详情里关联图像的标签应同步为新名", async ({ page, app }) => {
+  const content = `e2e 标签改名同步 ${Date.now()}`;
+  const { imageId } = await uploadImageWithPrompt(page, content, app.mockImagePath);
+  const oldTag = `e2e-old-${Date.now()}`;
+  const newTag = `e2e-new-${Date.now()}`;
+  await addItemTag(page, "image", imageId, oldTag);
+
+  // 先开提示词详情：关联图像快照里已有 oldTag
+  await gotoPromptsPage(page);
+  let detail = await openPromptDetail(page, content);
+  await expect(detail.getByText(oldTag).first()).toBeVisible();
+  await closeDetail(detail);
+
+  // 图像主页标签管理里重命名（走 UI，才能命中 onTagManagerSaved 的失效钩子）
+  await gotoImagesPage(page);
+  await page.getByRole("button", { name: "管理", exact: true }).click();
+  await expect(page.getByText("图像标签管理")).toBeVisible();
+  // 本文件前面的用例可能已创建其他标签：先搜索过滤，确保「重命名」按钮只对应 oldTag
+  await page.getByPlaceholder("搜索标签…").fill(oldTag);
+  await page.getByTitle("重命名").first().click();
+  const dlg = page.getByRole("dialog", { name: "更新标签" });
+  await dlg.getByPlaceholder("请输入名称…").fill(newTag);
+  await dlg.getByRole("button", { name: "确定", exact: true }).click();
+  await expectToastAndDismiss(page, "标签已更新");
+  // 点遮罩关闭标签管理（头部关闭按钮无 title，遮罩 @click.self 更稳）
+  await page.mouse.click(4, 4);
+  e2eLog.info(`[step] 已把标签「${oldTag}」重命名为「${newTag}」`);
+
+  // 重开提示词详情：关联图像标签应为新名（修复前命中旧快照 → 仍是旧名）
+  await gotoPromptsPage(page);
+  detail = await openPromptDetail(page, content);
+  await expect(detail.getByText(newTag).first()).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(oldTag)).toHaveCount(0);
+  e2eLog.info("[step] 提示词详情已同步到标签改名");
+  await closeDetail(detail);
+});
+
+test("提示词详情加标签后：图像详情的「提示词标签」应同步", async ({ page, app }) => {
+  const content = `e2e 提示词标签同步 ${Date.now()}`;
+  const { imageId } = await uploadImageWithPrompt(page, content, app.mockImagePath);
+
+  // 先开图像详情：关联提示词快照里标签为空
+  let detail = await openImageDetail(page, content);
+  await expect(detail.getByText(content)).toBeVisible();
+  await closeDetail(detail);
+
+  // 提示词详情里加标签（详情内标签输入框）
+  await gotoPromptsPage(page);
+  const promptDetail = await openPromptDetail(page, content);
+  const tag = `e2e-prompt-tag-${Date.now()}`;
+  const tagInput = page.getByPlaceholder("回车添加单个标签");
+  await tagInput.fill(tag);
+  await tagInput.press("Enter");
+  await expectToastAndDismiss(page, `已添加标签「${tag}」`);
+  await closeDetail(promptDetail);
+  e2eLog.info(`[step] 已给提示词加上标签「${tag}」`);
+
+  // 重开图像详情：提示词标签应同步（修复前命中旧快照 → 看不到）
+  await gotoImagesPage(page);
+  await cardById(page, imageId).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 图像详情已同步到提示词新标签");
   await closeDetail(detail);
 });
