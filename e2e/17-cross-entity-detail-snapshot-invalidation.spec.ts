@@ -17,16 +17,21 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import {
   addItemTag,
   cardById,
+  clearSimilarityThresholds,
   closeDetail,
   expectToastAndDismiss,
   findPromptIdByContent,
   gotoImagesPage,
   gotoPromptsPage,
+  indexBothSimilarityKinds,
   invokeCommand,
+  lowerThresholdToZeroAndRequery,
   openBatchAddTagDialog,
   openImageDetail,
   openPromptDetail,
+  openSimilarSearchFromPromptDetail,
   PROMPT_SEARCH_PLACEHOLDER,
+  similarResultPane,
   test,
   uploadImageWithPrompt,
   uploadImagesWithPrompt,
@@ -596,4 +601,52 @@ test("替换图像后：提示词详情的关联图像缩略图应换成新图",
   });
   e2eLog.info("[step] 提示词详情已同步到替换后的新图");
   await closeDetail(detail);
+});
+
+test("合并提示词后：图像详情的关联提示词应换成合并后的新条", async ({ page, app }) => {
+  const stamp = Date.now();
+  const source = `e2e merge sync ${stamp} alpha solo dress`;
+  const other = `e2e merge sync ${stamp} beta solo dress`;
+  const up1 = await uploadImageWithPrompt(page, source, app.mockImagePath);
+  await uploadImageWithPrompt(page, other, app.mockImagePath);
+  await indexBothSimilarityKinds(page);
+
+  // 先开图像（source 关联的那张）详情：关联提示词快照写入 relatedPromptsCache
+  await gotoImagesPage(page);
+  await cardById(page, up1.imageId).click();
+  let detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(source)).toBeVisible();
+  await closeDetail(detail);
+
+  // 提示词详情 → 相似搜索 → 右键另一条结果 → 合并
+  await gotoPromptsPage(page);
+  const pd = await openPromptDetail(page, source);
+  const modal = await openSimilarSearchFromPromptDetail(page, pd, source);
+  const promptPane = similarResultPane(modal, "prompt");
+  await lowerThresholdToZeroAndRequery(promptPane);
+  await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });
+  await promptPane.getByText(other, { exact: true }).click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "提示词结果操作" });
+  await expect(menu).toBeVisible({ timeout: 3_000 });
+  await menu.getByRole("menuitem", { name: "合并提示词" }).click();
+
+  const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
+  await expect(mergeDialog).toBeVisible({ timeout: 3_000 });
+  const mergedContent = await mergeDialog.getByRole("textbox", { name: "目标提示词" }).inputValue();
+  await mergeDialog.getByRole("button", { name: "合并" }).click();
+  await expectToastAndDismiss(page, "已合并为 1 条提示词");
+  await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 5_000 });
+  e2eLog.info("[step] 提示词已合并并回到主页");
+
+  // 重开图像详情：旧提示词内容消失、应显示合并后的新内容（修复前命中旧快照 → 仍是旧条）
+  await gotoImagesPage(page);
+  await cardById(page, up1.imageId).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(mergedContent)).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(source, { exact: true })).toHaveCount(0);
+  e2eLog.info("[step] 图像详情已同步到合并后的新提示词");
+  await closeDetail(detail);
+  await clearSimilarityThresholds(page);
 });
