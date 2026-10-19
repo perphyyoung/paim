@@ -13,7 +13,7 @@
  * 注意：失效挂在 UI 入口上，本文件的删除 / 恢复 / 解绑必须走 UI（直连后端会绕过钩子，验证不到修复）。
  */
 import path from "node:path";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import {
   addItemTag,
   cardById,
@@ -30,10 +30,20 @@ import {
   test,
   uploadImageWithPrompt,
   uploadImagesWithPrompt,
+  writePng,
 } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
 const MOCK_FILE_NAME = "e2e-upload.png";
+
+/// 打开图像详情 → 右键内容图 → 「替换图像」（select_images 测试缝返回 mock 路径）。
+/// 返回详情定位器：替换成功后详情仍开着，调用方需自行关闭再切页。
+async function replaceImageViaDetail(page: Page, cardText: string): Promise<Locator> {
+  const detail = await openImageDetail(page, cardText);
+  await detail.getByRole("img").click({ button: "right" });
+  await page.getByRole("button", { name: "替换图像" }).click();
+  return detail;
+}
 
 /// 主页卡片点删除钮并在确认弹窗确认，等成功 toast 出现并点掉。
 async function deleteCardViaUi(page: Page, cardId: string, toastText: string): Promise<void> {
@@ -557,5 +567,33 @@ test("清空提示词回收站后：图像详情的关联提示词应同步消�
   await expect(detail).toBeVisible();
   await expect(detail.getByText("— 暂无关联提示词 —")).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像详情已同步到提示词回收站清空");
+  await closeDetail(detail);
+});
+
+test("替换图像后：提示词详情的关联图像缩略图应换成新图", async ({ page, app }) => {
+  const content = `e2e 替换同步 ${Date.now()}`;
+  await uploadImageWithPrompt(page, content, app.mockImagePath);
+
+  // 先开提示词详情，记录关联图像的缩略图 src
+  await gotoPromptsPage(page);
+  let detail = await openPromptDetail(page, content);
+  const oldSrc = await detail.getByRole("img").first().getAttribute("src");
+  expect(oldSrc, "关联图像应有缩略图").toBeTruthy();
+  await closeDetail(detail);
+
+  // 覆写 mock 图内容（不同颜色 → 不同 md5）后在图像详情替换
+  await gotoImagesPage(page);
+  writePng(app.mockImagePath);
+  const imageDetail = await replaceImageViaDetail(page, content);
+  await expectToastAndDismiss(page, "替换成功");
+  await closeDetail(imageDetail);
+
+  // 重开提示词详情：缩略图 src 应变化（修复前命中旧快照 → 仍是旧图）
+  await gotoPromptsPage(page);
+  detail = await openPromptDetail(page, content);
+  await expect(detail.getByRole("img").first()).not.toHaveAttribute("src", oldSrc!, {
+    timeout: 5_000,
+  });
+  e2eLog.info("[step] 提示词详情已同步到替换后的新图");
   await closeDetail(detail);
 });
