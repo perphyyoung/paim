@@ -29,6 +29,7 @@ import {
   PROMPT_SEARCH_PLACEHOLDER,
   test,
   uploadImageWithPrompt,
+  writePng,
 } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
@@ -436,5 +437,58 @@ test("提示词详情加标签后：图像详情的「提示词标签」应同�
   await expect(detail).toBeVisible();
   await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像详情已同步到提示词新标签");
+  await closeDetail(detail);
+});
+
+test("图像改安全评级后：其他图像详情里该提示词的安全状态应同步（缓存整池作废）", async ({
+  page,
+  app,
+}) => {
+  // 一条提示词关联两张图：UI 的 select_images 测试缝只返回一张，故直连 import_images 造数据
+  const firstPath = path.join(app.dataDir, "e2e-safe-a.png");
+  const secondPath = path.join(app.dataDir, "e2e-safe-b.png");
+  writePng(firstPath);
+  // 两次写入不能落在同一毫秒：mock 图颜色取自时间戳，同内容会被 MD5 去重成一条记录
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  writePng(secondPath);
+  const content = `e2e 安全联动 ${Date.now()}`;
+  const batch = await invokeCommand<{ results: Array<{ image: { id: string } }> }>(
+    page,
+    "import_images",
+    { paths: [firstPath, secondPath], prompt: content },
+  );
+  const [imageA, imageB] = batch.results.map((r) => r.image.id);
+  expect(imageA && imageB && imageA !== imageB, "应导入两张不同图像").toBeTruthy();
+
+  // 直连导入不触发页面刷新：整页刷新一次，确保新卡片进入首屏块
+  await gotoImagesPage(page);
+  await page.getByTitle(/刷新缓存/).click();
+  // 先开一次图像 B 详情：关联提示词写进 relatedPromptsCache
+  await expect(cardById(page, imageB)).toBeVisible({ timeout: 5_000 });
+  await cardById(page, imageB).click();
+  let detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(content)).toBeVisible();
+  await closeDetail(detail);
+
+  // 图像 A 详情里把安全评级切为「敏感」（导入默认是安全）：会同步到关联提示词（DB），并应作废其他图像的缓存
+  await cardById(page, imageA).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await detail.getByTitle("安全").click();
+  await expectToastAndDismiss(page, "已标记为敏感");
+  await closeDetail(detail);
+  e2eLog.info("[step] 已在图像 A 把安全评级切为敏感");
+
+  // 重开图像 B 详情 → 编辑提示词：提示词详情的安全开关应为「安全」（修复前命中旧缓存 → 仍是敏感）
+  await cardById(page, imageB).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await detail.getByTitle("编辑提示词").click();
+  const promptDetail = page.getByRole("dialog", { name: "提示词详情" });
+  await expect(promptDetail).toBeVisible();
+  await expect(promptDetail.getByTitle("敏感")).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 图像 B 的提示词编辑弹窗已同步到新安全评级");
+  await closeDetail(promptDetail);
   await closeDetail(detail);
 });
