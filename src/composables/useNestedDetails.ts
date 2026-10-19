@@ -12,7 +12,7 @@
  * `openNested(kind, id)`，并订阅 `revision` / `safeSynced` 做自己的数据同步。
  */
 import { computed, inject, provide, ref, type ComputedRef, type InjectionKey, type Ref } from "vue";
-import { commands, type Image, type ImageCard, type PromptCard, type TagItem } from "@/bindings";
+import { commands, type Image, type ImageCard, type PromptCard } from "@/bindings";
 import type { ToastType } from "@/components/useToast";
 import { overlayStackZ } from "@/utils/modalZ";
 
@@ -38,11 +38,9 @@ export interface NestedImageSlot {
   thumbs: Record<string, string>;
 }
 
-/** 嵌套提示词槽：单条提示词 + 它需要的标签数据 */
+/** 嵌套提示词槽：单条提示词（标签由详情自身缓存读取） */
 export interface NestedPromptSlot {
   cards: PromptCard[];
-  tagNames: Record<string, string[]>;
-  allTags: TagItem[];
 }
 
 export interface NestedDetails {
@@ -164,15 +162,7 @@ export function createNestedDetails(
         showToast("提示词不存在或已删除", "warning");
         return;
       }
-      const [tags, data] = await Promise.all([
-        commands.getItemTags("prompt", id),
-        commands.getTagData("prompt"),
-      ]);
-      prompt.value = {
-        cards: [card],
-        tagNames: { [id]: tags.map((t) => t.name) },
-        allTags: data.tags ?? [],
-      };
+      prompt.value = { cards: [card] };
       pushZ(Z_NESTED_PROMPT);
     } catch {
       showToast("打开提示词详情失败", "error");

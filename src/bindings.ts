@@ -256,6 +256,8 @@ export const commands = {
 	renameTag: (domain: TagDomain, id: number, name: string) => __TAURI_INVOKE<null>("rename_tag", { domain, id, name }),
 	/**  删除标签（关联关系由外键 CASCADE 一并清除）。 */
 	deleteTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("delete_tag", { domain, id }),
+	/**  合并两个标签（同域）：源标签的关联迁移到目标后删除源标签。 */
+	mergeTags: (domain: TagDomain, sourceId: number, targetId: number) => __TAURI_INVOKE<null>("merge_tags", { domain, sourceId, targetId }),
 	/**  将标签移动到指定组（group_id 为 null 表示未分组）。 */
 	moveTagToGroup: (domain: TagDomain, id: number, groupId: number | null) => __TAURI_INVOKE<null>("move_tag_to_group", { domain, id, groupId }),
 	/**  将标签组固定到首位（sort_order 设为当前最小值 - 1）。 */

@@ -458,6 +458,52 @@ pub fn delete_tag(conn: &Connection, domain: TagDomain, id: i64) -> rusqlite::Re
     Ok(())
 }
 
+/// 合并两个标签（同域）：源标签的关联迁移到目标后删除源标签。
+/// 复合主键 `(owner, tag_id)` 冲突的行由 `INSERT OR IGNORE` 跳过，再按源标签清理，天然去重；
+/// 目标标签的名称 / 组保持不变，源的组随标签删除（不迁移）。
+pub fn merge_tags(
+    conn: &Connection,
+    domain: TagDomain,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    if source_id == target_id {
+        return Err("不能合并到自身".into());
+    }
+    let tags = domain.tags_table();
+    let rel = domain.relations_table();
+    let owner = domain.owner_column();
+
+    let exists = |id: i64| -> Result<bool, String> {
+        conn.query_row(&format!("SELECT 1 FROM {tags} WHERE id = ?1"), [id], |_| {
+            Ok(())
+        })
+        .optional()
+        .map(|v| v.is_some())
+        .map_err(|e| e.to_string())
+    };
+    if !exists(source_id)? || !exists(target_id)? {
+        return Err("标签不存在".into());
+    }
+
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    // 目标已关联的实体发生主键冲突 → 跳过（不重复）；随后清掉源标签的残留关联
+    tx.execute(
+        &format!(
+            "INSERT OR IGNORE INTO {rel}({owner}, tag_id)
+             SELECT {owner}, ?2 FROM {rel} WHERE tag_id = ?1"
+        ),
+        rusqlite::params![source_id, target_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(&format!("DELETE FROM {rel} WHERE tag_id = ?1"), [source_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute(&format!("DELETE FROM {tags} WHERE id = ?1"), [source_id])
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// 移动标签到指定组（group_id 为 null 表示未分组）。
 pub fn move_tag(
     conn: &Connection,

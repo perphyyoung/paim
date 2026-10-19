@@ -48,14 +48,10 @@ import {
   invalidateImageSidePromptSnapshots,
   invalidatePromptSideImageSnapshots,
 } from "@/views/detailEntityInvalidation";
+import { invalidateAfterTagManager } from "@/views/tagInvalidation";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { markPageStale } from "@/utils/crossPageCache";
-import {
-  ensureTagCandidates,
-  invalidateTagCandidates,
-  mergeTagNames,
-  tagCandidates,
-} from "@/features/tag/useTagCandidates";
+import { ensureTagCandidates, mergeTagNames, tagCandidates } from "@/features/tag/useTagCandidates";
 
 const { showToast } = useToast();
 const { openImageLocation } = useOpenImageLocation();
@@ -296,10 +292,8 @@ function openTagManager() {
   tagManagerOpen.value = true;
 }
 function onTagManagerSaved() {
-  // 标签增删改名后候选整体失效，随 reloadTagViews 重建；删除标签会让条目变「无标」，计数也要刷
-  invalidateTagCandidates();
-  // 标签改名/删除会直接改变提示词详情里关联图像的 tags → 作废对侧快照
-  invalidateRelatedImagesCache();
+  // 统一收口：本侧详情标签缓存 + 对侧详情快照 + 候选失效（见 views/tagInvalidation）
+  invalidateAfterTagManager("image");
   reloadTagViews();
 }
 

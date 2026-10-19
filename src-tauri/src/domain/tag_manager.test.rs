@@ -1,5 +1,6 @@
 use super::*;
 use crate::infra::db;
+use rusqlite::OptionalExtension;
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
 fn setup() -> (std::path::PathBuf, db::BkDb) {
@@ -34,6 +35,99 @@ fn add_tags(conn: &Connection, group_id: i64, n: i64) -> i64 {
         last = conn.last_insert_rowid();
     }
     last
+}
+
+/// 往图像标签表插一个标签，返回 id。
+fn add_tag(conn: &Connection, name: &str) -> i64 {
+    conn.execute("INSERT INTO image_tags(name) VALUES (?1)", [name])
+        .unwrap();
+    conn.last_insert_rowid()
+}
+
+/// 给图像打标签（关联行直接插，测试只关心合并后的关联集合）。
+fn relate(conn: &Connection, image_id: &str, tag_id: i64) {
+    conn.execute(
+        "INSERT INTO image_tag_relations(image_id, tag_id) VALUES (?1, ?2)",
+        rusqlite::params![image_id, tag_id],
+    )
+    .unwrap();
+}
+
+/// 插一条图像行（关联表有外键，测试需要实体存在；只读库，不需要真实文件）。
+fn add_image(conn: &Connection, id: &str) {
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path, file_size, created_at, updated_at)
+         VALUES (?1, ?1, ?1, ?2, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        rusqlite::params![id, format!("images/202601/{id}.png")],
+    )
+    .unwrap();
+}
+
+/// 某标签关联的图像 id（升序）。
+fn owners_of(conn: &Connection, tag_id: i64) -> Vec<String> {
+    let mut stmt = conn
+        .prepare("SELECT image_id FROM image_tag_relations WHERE tag_id = ?1 ORDER BY image_id")
+        .unwrap();
+    stmt.query_map([tag_id], |r| r.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<String>>>()
+        .unwrap()
+}
+
+#[test]
+fn merge_moves_relations_dedupes_and_removes_source() {
+    let (_dir, bk) = setup();
+    let conn = bk.0.lock().unwrap();
+    let source = add_tag(&conn, "zit");
+    let target = add_tag(&conn, "zit-aio");
+    for id in ["img1", "img2", "img3"] {
+        add_image(&conn, id);
+    }
+
+    relate(&conn, "img1", source); // 只有源
+    relate(&conn, "img2", target); // 只有目标
+    relate(&conn, "img3", source); // 两个都有（合并后不能重复）
+    relate(&conn, "img3", target);
+
+    merge_tags(&conn, TagDomain::Image, source, target).unwrap();
+
+    // 源标签已删除，目标仍在
+    let source_exists: Option<i64> = conn
+        .query_row("SELECT id FROM image_tags WHERE id = ?1", [source], |r| {
+            r.get(0)
+        })
+        .optional()
+        .unwrap();
+    assert!(source_exists.is_none(), "源标签应被删除");
+    assert_eq!(
+        owners_of(&conn, target),
+        vec!["img1", "img2", "img3"],
+        "目标应承接去重后的并集"
+    );
+    // 计数口径（未删除实体）随之变为 3
+    let data = load_tag_data(&conn, TagDomain::Image).unwrap();
+    let merged = data.tags.iter().find(|t| t.id == target).unwrap();
+    assert_eq!(merged.count, 3);
+}
+
+#[test]
+fn merge_rejects_self_and_missing_tags() {
+    let (_dir, bk) = setup();
+    let conn = bk.0.lock().unwrap();
+    let tag = add_tag(&conn, "zit");
+
+    assert_eq!(
+        merge_tags(&conn, TagDomain::Image, tag, tag),
+        Err("不能合并到自身".to_string())
+    );
+    assert_eq!(
+        merge_tags(&conn, TagDomain::Image, tag, 9999),
+        Err("标签不存在".to_string())
+    );
+    assert_eq!(
+        merge_tags(&conn, TagDomain::Image, 9999, tag),
+        Err("标签不存在".to_string())
+    );
 }
 
 #[test]

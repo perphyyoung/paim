@@ -42,18 +42,14 @@ import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import { invalidateImageSidePromptSnapshots } from "@/views/detailEntityInvalidation";
+import { invalidateAfterTagManager } from "@/views/tagInvalidation";
 import {
   ensurePromptThumbnails,
   type ThumbnailEnsureFixed,
 } from "@/features/prompt/api/thumbnails";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { markPageStale } from "@/utils/crossPageCache";
-import {
-  ensureTagCandidates,
-  invalidateTagCandidates,
-  mergeTagNames,
-  tagCandidates,
-} from "@/features/tag/useTagCandidates";
+import { ensureTagCandidates, mergeTagNames, tagCandidates } from "@/features/tag/useTagCandidates";
 
 const { showToast } = useToast();
 // 嵌套详情栈：图像 / 提示词各至多一个槽（由 <NestedDetailSlots> 渲染），详情弹窗只调 openNested
@@ -601,10 +597,8 @@ function openTagManager() {
   tagManagerOpen.value = true;
 }
 function onTagManagerSaved() {
-  // 标签增删改名后候选整体失效，随 reloadTagViews 重建；删除标签会让条目变「无标」，计数也要刷
-  invalidateTagCandidates();
-  // 标签改名/删除会直接改变图像详情里关联提示词的 tags → 作废对侧快照
-  invalidateRelatedPromptsCache();
+  // 统一收口：本侧详情标签缓存 + 对侧详情快照 + 候选失效（见 views/tagInvalidation）
+  invalidateAfterTagManager("prompt");
   reloadTagViews();
 }
 
@@ -935,8 +929,6 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       :prompts="detailPrompts"
       :order="detailOrder"
       :initial-index="detailIndex"
-      :tag-names="tagNames"
-      :all-tags="allTags"
       :initial-keyword="keyword"
       @close="closeDetail"
       @updated="onDetailChanged"

@@ -228,6 +228,21 @@ pub async fn delete_tag(db: State<'_, BkDb>, domain: TagDomain, id: i64) -> Resu
     .await
 }
 
+/// 合并两个标签（同域）：源标签的关联迁移到目标后删除源标签。
+#[tauri::command]
+#[specta::specta]
+pub async fn merge_tags(
+    db: State<'_, BkDb>,
+    domain: TagDomain,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::merge_tags(conn, domain, source_id, target_id).map_err(AppError::Message)
+    })
+    .await
+}
+
 /// 将标签移动到指定组（group_id 为 null 表示未分组）。
 #[tauri::command]
 #[specta::specta]

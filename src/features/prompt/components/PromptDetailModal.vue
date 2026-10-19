@@ -25,14 +25,9 @@ import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue"
 import { markPageStale } from "@/utils/crossPageCache";
 import { log } from "@/utils/logger";
 import { relatedImagesCache } from "@/features/prompt/api/relatedImagesCache";
+import { promptTagsCache } from "@/features/prompt/api/tagCache";
 import { ModalZ } from "@/utils/modalZ";
 
-interface TagItem {
-  id: number;
-  name: string;
-  group_id: number | null;
-  count: number;
-}
 interface RelatedImage {
   id: string;
   file_name: string;
@@ -46,8 +41,6 @@ const props = defineProps<{
   /** 进入详情时的「顺序快照」：详情停留期间计数/导航/位置按此旧顺序走，不随新建排序变化 */
   order: string[];
   initialIndex: number;
-  tagNames: Record<string, string[]>;
-  allTags: TagItem[];
   /**
    * 遮罩层级（默认 50，与单开时一致）：槽位叠放时由栈给「最近打开 / 刚被点中的那一层」更高的值。
    * 只用到 51 —— 55 以下才不盖住弹窗自己的子对话框（InlineDialog ModalZ.inlineDialog、右键菜单 ModalZ.contextMenu）
@@ -97,12 +90,21 @@ const tags = ref<{ id: number; name: string }[]>([]);
 const relatedImages = ref<RelatedImage[]>([]);
 const imagesLoading = ref(false);
 
-// 由名称+allTags 还原当前提示词的标签 id
-function loadTags() {
-  const names = props.tagNames[current.value?.id ?? ""] ?? [];
-  tags.value = props.allTags
-    .filter((t) => names.includes(t.name))
-    .map((t) => ({ id: t.id, name: t.name }));
+// 标签走实体级缓存（与图像详情对称）：命中同步显示，未命中再拉一次
+async function loadTags() {
+  const p = current.value;
+  if (!p) {
+    tags.value = [];
+    return;
+  }
+  const cached = promptTagsCache.get(p.id);
+  tags.value = cached ?? [];
+  if (cached) return;
+  try {
+    tags.value = await promptTagsCache.fetch(p.id);
+  } catch {
+    tags.value = [];
+  }
 }
 
 async function loadRelatedImages() {
@@ -239,7 +241,7 @@ watch(
       initBy0basedIndex(initIdx, props.prompts[initIdx]?.id);
       edit.value = false;
       syncFields();
-      loadTags();
+      void loadTags();
       loadRelatedImages();
       // 主页搜索词联动：带入查找条并高亮命中
       syncFromKeyword(props.initialKeyword?.trim() ?? "");
@@ -255,7 +257,7 @@ watch(
   () => current.value?.id,
   () => {
     cancelEdit();
-    loadTags();
+    void loadTags();
     loadRelatedImages();
     // 切换提示词后重置到第一个命中并滚动定位
     resetToFirst();
@@ -416,7 +418,11 @@ const { tagInput, addTag } = useTagAdd({
   getItemId: () => current.value?.id,
   tags,
   showToast,
-  onAdded: notifyUpdated,
+  onAdded: () => {
+    const id = current.value?.id;
+    if (id) promptTagsCache.invalidate(id);
+    notifyUpdated();
+  },
 });
 
 // 复制字段内容（编辑态取输入框值，展示态取 current 值）
@@ -452,6 +458,7 @@ async function removeTag(tagId: number) {
   if (!p) return;
   await commands.removeTag("prompt", p.id, tagId);
   tags.value = tags.value.filter((t) => t.id !== tagId);
+  promptTagsCache.invalidate(p.id);
   notifyUpdated();
 }
 

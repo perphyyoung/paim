@@ -25,6 +25,8 @@ const cmds = computed(() => {
     createTag: (name: string, groupId: number | null) => commands.createTag(domain, name, groupId),
     renameTag: (id: number, name: string) => commands.renameTag(domain, id, name),
     deleteTag: (id: number) => commands.deleteTag(domain, id),
+    mergeTags: (sourceId: number, targetId: number) =>
+      commands.mergeTags(domain, sourceId, targetId),
     moveTag: (id: number, groupId: number | null) => commands.moveTagToGroup(domain, id, groupId),
     pinGroup: (id: number) => commands.pinTagGroupToTop(domain, id),
   };
@@ -216,7 +218,7 @@ const nameInput = ref<HTMLInputElement | null>(null);
 // 嵌入输入/确认对话框（无原生 prompt，风格统一）
 const dlg = ref<{
   visible: boolean;
-  mode: "input" | "confirm";
+  mode: "input" | "confirm" | "merge";
   title: string;
   placeholder: string;
   value: string;
@@ -227,6 +229,10 @@ const dlg = ref<{
   message: string;
   danger: boolean;
   onOk: (() => void) | null;
+  /// 合并模式：待合并的两个标签与用户在弹窗里选中的目标 id
+  mergeA?: TagItem | null;
+  mergeB?: TagItem | null;
+  targetId?: string;
 }>({
   visible: false,
   mode: "input",
@@ -241,6 +247,97 @@ const dlg = ref<{
   danger: false,
   onOk: null,
 });
+
+/// 合并模式：工具栏进入后，每个标签左侧显示复选框；勾选两个（先源后目标）即弹确认。
+/// 不在标签项上挂 hover 按钮（三个圆钮叠在标签上会拥挤），也不再从全量下拉里查找。
+const mergeMode = ref(false);
+const mergeSelected = ref<TagItem[]>([]);
+
+function exitMergeMode() {
+  mergeMode.value = false;
+  mergeSelected.value = [];
+}
+
+function toggleMergeMode() {
+  if (mergeMode.value) exitMergeMode();
+  else {
+    mergeMode.value = true;
+    mergeSelected.value = [];
+  }
+}
+
+function isMergeSelected(item: TagItem): boolean {
+  return mergeSelected.value.some((t) => t.id === item.id);
+}
+
+/// 已选满两个且自身未选中 → 锁定（只能先取消一个再选，避免出现第 3 个）
+function mergeLocked(item: TagItem): boolean {
+  return !isMergeSelected(item) && mergeSelected.value.length >= 2;
+}
+
+function toggleMergeTag(item: TagItem): void {
+  if (isSpecialTag(item.name)) return;
+  const index = mergeSelected.value.findIndex((t) => t.id === item.id);
+  if (index >= 0) {
+    mergeSelected.value.splice(index, 1);
+    return;
+  }
+  if (mergeSelected.value.length >= 2) {
+    showToast("一次只能合并两个标签", "warning");
+    return;
+  }
+  mergeSelected.value.push(item);
+  if (mergeSelected.value.length === 2) {
+    // 不按勾选顺序决定方向：弹出目标选择，由用户明确选「保留哪个」
+    openMergeChoice(mergeSelected.value[0], mergeSelected.value[1]);
+  }
+}
+
+/// 勾满两个后弹出目标选择（目标保留，另一个为源）
+function openMergeChoice(a: TagItem, b: TagItem) {
+  dlg.value = {
+    visible: true,
+    mode: "merge",
+    title: "合并标签",
+    placeholder: "",
+    value: "",
+    groupEnabled: false,
+    groupId: "",
+    showSort: false,
+    sortOrder: "",
+    message: "",
+    danger: false,
+    onOk: null,
+    mergeA: a,
+    mergeB: b,
+    targetId: "",
+  };
+}
+
+/// 弹窗里可选的标签（固定两个）
+const mergeCandidates = computed(() =>
+  [dlg.value.mergeA, dlg.value.mergeB].filter((t): t is TagItem => !!t),
+);
+
+async function submitMerge() {
+  const a = dlg.value.mergeA;
+  const b = dlg.value.mergeB;
+  const target = [a, b].find((t) => t && String(t.id) === dlg.value.targetId);
+  if (!a || !b || !target) {
+    showToast("请选择目标标签", "warning");
+    return;
+  }
+  const source = target.id === a.id ? b : a;
+  try {
+    await cmds.value.mergeTags(source.id, target.id);
+    showToast(`已合并到「${target.name}」`, "success");
+    closeDlg();
+    exitMergeMode();
+    refresh();
+  } catch (e) {
+    showToast(`合并失败：${e}`, "error");
+  }
+}
 
 function openInput(
   title: string,
@@ -431,6 +528,10 @@ function openDeleteGroup(g: TagGroup) {
 }
 
 async function submitInput() {
+  if (dlg.value.mode === "merge") {
+    await submitMerge();
+    return;
+  }
   if (dlg.value.onOk) {
     dlg.value.onOk();
   } else if (dlg.value.title === "新建标签") {
@@ -462,6 +563,7 @@ function refresh() {
           <h2 class="text-sm font-semibold text-gray-100">{{ domainLabel }}标签管理</h2>
           <button
             type="button"
+            title="关闭"
             class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 hover:bg-gray-700"
             @click="emit('close')"
           >
@@ -481,7 +583,7 @@ function refresh() {
 
         <!-- 工具栏 -->
         <div
-          class="grid shrink-0 grid-cols-5 items-center gap-2 border-b px-4 py-3 border-gray-700"
+          class="grid shrink-0 grid-cols-6 items-center gap-2 border-b px-4 py-3 border-gray-700"
         >
           <div class="flex justify-center">
             <input
@@ -530,6 +632,32 @@ function refresh() {
               {{ orderDesc ? "↓" : "↑" }}
             </button>
           </div>
+          <div class="flex justify-center">
+            <button
+              type="button"
+              class="w-full rounded border px-2.5 py-1.5 text-xs transition-colors"
+              :class="
+                mergeMode
+                  ? 'border-amber-500/60 bg-amber-500/15 text-amber-300'
+                  : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+              "
+              @click="toggleMergeMode"
+            >
+              {{ mergeMode ? "取消合并" : "合并标签" }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 合并模式提示条：先勾选源、再勾选目标 -->
+        <div
+          v-if="mergeMode"
+          class="shrink-0 border-b px-4 py-1.5 text-xs text-amber-300 border-gray-700 bg-amber-400/5"
+        >
+          请勾选两个标签；随后在弹窗中选择要保留的目标标签。
+          <span v-if="mergeSelected.length === 2" class="ml-1 text-amber-400/80">
+            已选 2/2，取消一个已选项后可重选
+          </span>
+          <span v-else class="ml-1 text-amber-400/80">已选 {{ mergeSelected.length }}/2</span>
         </div>
 
         <!-- 主体 -->
@@ -632,32 +760,58 @@ function refresh() {
                   <div
                     v-for="item in sec.items"
                     :key="item.id"
-                    class="group relative flex min-h-7 cursor-grab select-none items-center active:cursor-grabbing"
-                    @pointerdown="onTagPointerDown($event, item)"
+                    class="group relative flex min-h-7 select-none items-center"
+                    :class="
+                      mergeMode
+                        ? [
+                            'rounded px-1 -mx-1',
+                            isMergeSelected(item)
+                              ? 'cursor-pointer bg-blue-900/30 ring-1 ring-blue-500/50'
+                              : mergeLocked(item)
+                                ? 'cursor-not-allowed opacity-50'
+                                : 'cursor-pointer hover:bg-gray-700/50',
+                          ]
+                        : 'cursor-grab active:cursor-grabbing'
+                    "
+                    @pointerdown="mergeMode ? null : onTagPointerDown($event, item)"
+                    @click="mergeMode && !mergeLocked(item) && toggleMergeTag(item)"
                   >
+                    <!-- 合并模式：左侧复选框（特殊标签不可选，占位保持对齐） -->
+                    <input
+                      v-if="mergeMode && !isSpecialTag(item.name)"
+                      type="checkbox"
+                      class="mr-1.5 h-3.5 w-3.5 shrink-0 accent-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      :checked="isMergeSelected(item)"
+                      :disabled="mergeLocked(item)"
+                      @click.stop
+                      @change="toggleMergeTag(item)"
+                    />
+                    <span v-else-if="mergeMode" class="mr-1.5 h-3.5 w-3.5 shrink-0"></span>
                     <TagChip :count="item.count" dim-on-hover>{{ item.name }}</TagChip>
-                    <!-- 编辑：左上角悬浮，hover 显示（与右上角的删除左右镜像） -->
-                    <button
-                      type="button"
-                      title="重命名"
-                      class="absolute -left-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-blue-400 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800"
-                      @click="openRenameTag(item)"
-                    >
-                      <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
-                        <path
-                          d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.381-8.379-2.83-2.828z"
-                        />
-                      </svg>
-                    </button>
-                    <!-- 删除：右上角悬浮，hover 显示 -->
-                    <button
-                      type="button"
-                      title="删除"
-                      class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-red-500 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800"
-                      @click="openDeleteTag(item)"
-                    >
-                      ✕
-                    </button>
+                    <template v-if="!mergeMode">
+                      <!-- 编辑：左上角悬浮，hover 显示（与右上角的删除左右镜像） -->
+                      <button
+                        type="button"
+                        title="重命名"
+                        class="absolute -left-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-blue-400 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800"
+                        @click="openRenameTag(item)"
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3">
+                          <path
+                            d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.381-8.379-2.83-2.828z"
+                          />
+                        </svg>
+                      </button>
+                      <!-- 删除：右上角悬浮，hover 显示 -->
+                      <button
+                        type="button"
+                        title="删除"
+                        class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-red-500 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800"
+                        @click="openDeleteTag(item)"
+                      >
+                        ✕
+                      </button>
+                    </template>
                   </div>
                 </div>
               </section>
@@ -703,6 +857,25 @@ function refresh() {
             class="mb-3 w-full rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200"
             @keyup.enter="submitInput"
           />
+        </template>
+        <template v-else-if="dlg.mode === 'merge'">
+          <p class="mb-2 text-xs text-gray-400">
+            选择要保留的目标标签；另一个的关联会转移到它，随后被删除。
+          </p>
+          <label
+            v-for="t in mergeCandidates"
+            :key="t.id"
+            class="mb-1.5 flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-gray-200 hover:bg-gray-700"
+          >
+            <input
+              v-model="dlg.targetId"
+              type="radio"
+              :value="String(t.id)"
+              class="accent-blue-500"
+            />
+            {{ t.name }}
+          </label>
+          <p class="mt-2 text-xs text-gray-500">合并不可撤销。</p>
         </template>
         <p v-else class="mb-3 text-sm text-gray-300">{{ dlg.message }}</p>
       </InlineDialog>
