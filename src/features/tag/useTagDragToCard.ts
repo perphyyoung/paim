@@ -108,6 +108,11 @@ export interface UseCardTagAddOptions {
    * 页面注入 `reloadTagViews`——只刷筛选区会漏掉「无标」这类随打标签变化的计数（见 lessons.md 第 23 节）。
    */
   reloadTagViews: () => Promise<void> | void;
+  /**
+   * 写入成功后的副作用：拖拽加标签同样让「对侧详情」里的标签变旧，
+   * 页面注入缓存作废（与批量入口一致）。
+   */
+  afterChange?: () => void;
   showToast: (message: string, type?: ToastType) => void;
 }
 
@@ -120,7 +125,7 @@ export interface UseCardTagAddOptions {
  * 供页面在 onActivated/onDeactivated 中调用，保证 drop 回调始终属于当前页。
  */
 export function useCardTagAdd(options: UseCardTagAddOptions) {
-  const { domain, tagNames, reloadTagViews, showToast } = options;
+  const { domain, tagNames, reloadTagViews, afterChange, showToast } = options;
 
   const dropFn = async (cardId: string, tagName: string) => {
     const existing = tagNames.value[cardId];
@@ -132,6 +137,8 @@ export function useCardTagAdd(options: UseCardTagAddOptions) {
       await commands.addTag(domain, cardId, tagName);
       // 候选即时补名
       addTagName(tagName);
+      // 实体已变：作废对侧详情持有的快照
+      afterChange?.();
       tagNames.value = { ...tagNames.value, [cardId]: [...(existing ?? []), tagName] };
       showToast(`已添加标签「${tagName}」`, "success");
       await reloadTagViews();

@@ -1034,6 +1034,7 @@ Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` �
 - **缓存键是「对侧实体」的缓存，其失效点不止「关系变化」**：只要对侧实体自身的变化会出现在本侧展示里（删除态、标签、文案字段），变化点就必须作废它。
 - 跨切片的共享失效逻辑**不要各自写在页面里**，收口到视图层单模块，避免"改一处漏另一处"。
 - 写这类 e2e 时必须先「写旧快照」（先开一次详情）再制造变化，否则命不中缓存、修复前后都是绿的。
+- 打标签有三条独立入口：详情内编辑、批量工具栏、拖拽打标。后两者只刷筛选区、不碰详情缓存，新增入口时要走 `useBatchTagAdd` / `useCardTagAdd` 的 `afterChange` 注入（由页面注入 `invalidateRelatedImagesCache` / `invalidateRelatedPromptsCache`），而不是在页面里另外记得调一次。
 
 ## 34. e2e 按角色取图像，撞上同为 `role="img"` 的索引状态图标
 

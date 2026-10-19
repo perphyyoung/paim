@@ -425,6 +425,7 @@ const { batchAddTag } = useBatchTagAdd({
   tagNames,
   exitBatch,
   reloadTagViews,
+  afterChange: invalidateRelatedPromptsCache,
   showToast,
 });
 // 批量添加标签：成功才关闭批量添加弹窗，失败保持打开便于修改
@@ -576,7 +577,13 @@ async function loadTagFilter() {
 }
 
 // 拖拽筛选区标签到卡片：快捷添加标签（激活时注册，KeepAlive 下与另一主页共用单例回调）
-const cardTagAdd = useCardTagAdd({ domain: "prompt", tagNames, reloadTagViews, showToast });
+const cardTagAdd = useCardTagAdd({
+  domain: "prompt",
+  tagNames,
+  reloadTagViews,
+  afterChange: invalidateRelatedPromptsCache,
+  showToast,
+});
 function onModalUploaded() {
   // 新建提示词若选择了图像，图像主页卡片的关联提示词文案已变化
   markPageStale("images");

@@ -23,11 +23,18 @@ export interface UseBatchTagAddOptions {
    * 页面注入 `reloadTagViews`——只刷筛选区会漏掉「无标」这类随打标签变化的计数（见 lessons.md 第 23 节）。
    */
   reloadTagViews: () => Promise<void> | void;
+  /**
+   * 写入成功后的副作用：加标签会让「对侧详情」里该实体的标签变旧，
+   * 页面注入缓存作废（`invalidateRelatedImagesCache` / `invalidateRelatedPromptsCache`）。
+   * 只在真正写入成功后调用（已存在 / 失败 / 特殊标签都不调）。
+   */
+  afterChange?: () => void;
   showToast: (message: string, type?: ToastType) => void;
 }
 
 export function useBatchTagAdd(options: UseBatchTagAddOptions) {
-  const { domain, selectedIds, tagNames, exitBatch, reloadTagViews, showToast } = options;
+  const { domain, selectedIds, tagNames, exitBatch, reloadTagViews, afterChange, showToast } =
+    options;
   const noun = domain === "image" ? "张图像" : "个提示词";
 
   /**
@@ -58,6 +65,8 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
       await commands.batchAddTag(domain, missing, name);
       // 候选即时补名
       addTagName(name);
+      // 实体已变：作废对侧详情持有的快照（否则提示词/图像详情仍显示旧标签）
+      afterChange?.();
       if (present.length > 0) {
         showToast(`已为 ${missing.length} ${noun}添加标签，${present.length} 个已存在`, "warning");
       } else {

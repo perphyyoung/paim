@@ -5,7 +5,9 @@
 // 两类变化都必须整池 clear 的原因：这两份快照的键是**对侧实体 id**（relatedImagesCache 键为 prompt id、
 // relatedPromptsCache 键为 image id），受影响的对侧条目无法从本侧精确枚举 —— 只能整池作废：
 //   ① 删除态：删除 / 恢复 / 彻底删除 / 清空回收站（后端按 is_deleted 过滤关联结果）
-//   ② 内容·标签：标签增删 / 文件名·备注·标题·内容·翻译保存 / 替换图像（这些字段直接显示在对侧详情里）
+//   ② 内容·标签：标签增删 / 文件名·备注·标题·内容·翻译保存 / 替换图像（这些字段直接显示在对侧详情里）；
+//      标签的三类入口（详情内编辑、批量工具栏、拖拽打标）都要接，`useBatchTagAdd` / `useCardTagAdd`
+//      通过 `afterChange` 回调由页面注入本模块的整池 clear。
 // 关联关系本身的变化（关联 / 解除关联）粒度更细，仍用缓存的单条 `invalidate(id)`，不走这里。
 //
 // 为什么落在 views 层：分层规则要求 web-shared（components / composables / utils）不得依赖业务切片，

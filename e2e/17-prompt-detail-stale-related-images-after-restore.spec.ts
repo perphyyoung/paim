@@ -22,6 +22,7 @@ import {
   gotoImagesPage,
   gotoPromptsPage,
   invokeCommand,
+  openBatchAddTagDialog,
   openImageDetail,
   openPromptDetail,
   PROMPT_SEARCH_PLACEHOLDER,
@@ -236,5 +237,71 @@ test("提示词改内容后：图像详情的关联提示词文案应同步（�
   await expect(detail).toBeVisible();
   await expect(detail.getByText(updated)).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像详情已同步到提示词新文案");
+  await closeDetail(detail);
+});
+
+test("批量加标签后：提示词详情的关联图像应显示新标签（批量入口同样要作废快照）", async ({
+  page,
+  app,
+}) => {
+  const promptContent = `e2e 批量标签同步 ${Date.now()}`;
+  const { promptContent: created } = await uploadImageWithPrompt(
+    page,
+    promptContent,
+    app.mockImagePath,
+  );
+
+  // 先开一次提示词详情：此刻该图无标签，列表（含空标签）写进 relatedImagesCache
+  await gotoPromptsPage(page);
+  let detail = await openPromptDetail(page, created);
+  await expect(detail.getByText("关联图像（1）")).toBeVisible();
+  await closeDetail(detail);
+
+  // 图像主页：Ctrl 点击卡片进批量模式 → 批量工具栏「添加标签」
+  await gotoImagesPage(page);
+  const tag = `e2e-batch-tag-${Date.now()}`;
+  const input = await openBatchAddTagDialog(page, created);
+  await input.fill(tag);
+  await input.press("Enter");
+  await expectToastAndDismiss(page, "已为 1 张图像添加标签");
+  e2eLog.info(`[step] 已通过批量工具栏给关联图像加上标签「${tag}」`);
+
+  // 再开提示词详情：关联图像应显示新标签（修复前命中旧快照 → 看不到）
+  await gotoPromptsPage(page);
+  detail = await openPromptDetail(page, created);
+  await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 提示词详情已同步到批量添加的新标签");
+  await closeDetail(detail);
+});
+
+test("提示词批量加标签后：图像详情的关联提示词应显示新标签（对称入口）", async ({ page, app }) => {
+  const promptContent = `e2e 批量标签对称 ${Date.now()}`;
+  const { imageId, promptContent: created } = await uploadImageWithPrompt(
+    page,
+    promptContent,
+    app.mockImagePath,
+  );
+
+  // 先开一次图像详情：此刻提示词无标签，关联提示词列表（含空标签）写进 relatedPromptsCache
+  let detail = await openImageDetail(page, created);
+  await expect(detail.getByText(created)).toBeVisible();
+  await closeDetail(detail);
+
+  // 提示词主页：Ctrl 点击卡片进批量模式 → 批量工具栏「添加标签」
+  await gotoPromptsPage(page);
+  const tag = `e2e-batch-prompt-tag-${Date.now()}`;
+  const input = await openBatchAddTagDialog(page, created);
+  await input.fill(tag);
+  await input.press("Enter");
+  await expectToastAndDismiss(page, "已为 1 个提示词添加标签");
+  e2eLog.info(`[step] 已通过批量工具栏给提示词加上标签「${tag}」`);
+
+  // 再开图像详情：关联提示词的标签应同步（修复前命中旧快照）
+  await gotoImagesPage(page);
+  await cardById(page, imageId).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 图像详情已同步到提示词批量添加的新标签");
   await closeDetail(detail);
 });
