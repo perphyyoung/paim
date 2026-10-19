@@ -514,6 +514,8 @@ async function toggleSafe() {
   // 安全评级联动一层：同步到该图像关联的提示词
   try {
     await commands.syncImageSafeToPrompts(img.id, v);
+    // 其他图像详情里该提示词的 is_safe 也变了（编辑弹窗会读缓存）→ 整池作废
+    relatedPromptsCache.clear();
     // 刷新关联提示词缓存，保证「编辑」弹窗立即读到同步后的安全评级
     await reloadRelatedPrompts();
     emit("safe-synced", v);

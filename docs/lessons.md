@@ -1035,6 +1035,8 @@ Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` �
 - 跨切片的共享失效逻辑**不要各自写在页面里**，收口到视图层单模块，避免"改一处漏另一处"。
 - 写这类 e2e 时必须先「写旧快照」（先开一次详情）再制造变化，否则命不中缓存、修复前后都是绿的。
 - 打标签有三条独立入口：详情内编辑、批量工具栏、拖拽打标。后两者只刷筛选区、不碰详情缓存，新增入口时要走 `useBatchTagAdd` / `useCardTagAdd` 的 `afterChange` 注入（由页面注入 `invalidateRelatedImagesCache` / `invalidateRelatedPromptsCache`），而不是在页面里另外记得调一次。
+- 入口清单不止详情与标签：替换图像、标签管理改名 / 删除、上传、新建提示词选图、合并提示词、安全联动都会改变对侧显示，各自接在页面级入口（`onDetailReplaced` / `onTagManagerSaved` / `onUploadDone` / `onModalUploaded` / `onPromptsMerged` / `toggleSafe`）。
+- 两层同步要分开想：**详情快照**（`related*Cache`，`e2e/17`）与**主页卡片投影**（`markPageStale` + KeepAlive 激活重载，`e2e/24`）。新增写入口时两层都要检查，别只修详情。
 
 ## 34. e2e 按角色取图像，撞上同为 `role="img"` 的索引状态图标
 

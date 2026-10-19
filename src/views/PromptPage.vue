@@ -528,6 +528,8 @@ function closeDetail() {
 /** 相似结果页里合并提示词：原两条进回收站、新条已建，收起结果页与全部详情并回主页刷新 */
 function onPromptsMerged() {
   detailDirty.value = true;
+  // 两条旧提示词软删、新条已建：图像详情的关联提示词列表需整池作废
+  invalidateRelatedPromptsCache();
   showToast("已合并为 1 条提示词", "success");
   closeDetail();
 }
@@ -587,6 +589,8 @@ const cardTagAdd = useCardTagAdd({
 function onModalUploaded() {
   // 新建提示词若选择了图像，图像主页卡片的关联提示词文案已变化
   markPageStale("images");
+  // 新提示词可能已关联图像：图像详情的关联提示词快照需整池作废
+  invalidateRelatedPromptsCache();
   loadPrompts();
   loadTagFilter();
 }
@@ -599,6 +603,8 @@ function openTagManager() {
 function onTagManagerSaved() {
   // 标签增删改名后候选整体失效，随 reloadTagViews 重建；删除标签会让条目变「无标」，计数也要刷
   invalidateTagCandidates();
+  // 标签改名/删除会直接改变图像详情里关联提示词的 tags → 作废对侧快照
+  invalidateRelatedPromptsCache();
   reloadTagViews();
 }
 

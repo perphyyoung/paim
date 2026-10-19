@@ -44,7 +44,10 @@ import TrashOverlay from "@/components/TrashOverlay.vue";
 import { useGridScrollSync, type GridScrollPayload } from "@/components/useGridScrollSync";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import type { ThumbnailEnsureFixed } from "@/features/image/api/thumbnails";
-import { invalidatePromptSideImageSnapshots } from "@/views/detailEntityInvalidation";
+import {
+  invalidateImageSidePromptSnapshots,
+  invalidatePromptSideImageSnapshots,
+} from "@/views/detailEntityInvalidation";
 import { applyThumbFix } from "@/utils/thumbFix";
 import { markPageStale } from "@/utils/crossPageCache";
 import {
@@ -295,6 +298,8 @@ function openTagManager() {
 function onTagManagerSaved() {
   // 标签增删改名后候选整体失效，随 reloadTagViews 重建；删除标签会让条目变「无标」，计数也要刷
   invalidateTagCandidates();
+  // 标签改名/删除会直接改变提示词详情里关联图像的 tags → 作废对侧快照
+  invalidateRelatedImagesCache();
   reloadTagViews();
 }
 
@@ -592,6 +597,8 @@ function closeDetail() {
 /** 相似结果页里合并提示词：源提示词与目标都进回收站、新条已建，收起结果页与全部详情并回主页刷新 */
 function onSimilarMerged() {
   detailDirty.value = true;
+  // 两条旧提示词软删、新条已建：图像详情的关联提示词列表需整池作废
+  invalidateImageSidePromptSnapshots();
   showToast("已合并为 1 条提示词", "success");
   closeDetail();
 }
@@ -606,6 +613,8 @@ function onDetailChanged() {
 function onDetailReplaced({ oldId, image }: { oldId: string; image: Image }) {
   // 替换后排序位置会变，交给重载处理；详情顺序快照先原位替换，保持导航位置
   detailOrder.value = detailOrder.value.map((id) => (id === oldId ? image.id : id));
+  // 旧图软删、新图承接关联：提示词详情里的关联图像应换成新图 → 整池作废
+  invalidateRelatedImagesCache();
   void loadImages();
 }
 
@@ -760,6 +769,8 @@ const uploadOpen = ref(false);
 function onUploadDone() {
   // 上传可能携带提示词（自动创建提示词卡片），提示词主页需重载
   markPageStale("prompts");
+  // 上传会新建提示词并关联新图：图像详情的关联提示词快照需整池作废（新图虽无旧快照，防御未来复用路径）
+  invalidateImageSidePromptSnapshots();
   loadImages();
   loadTagFilter();
 }

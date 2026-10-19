@@ -124,28 +124,37 @@ export interface UseCardTagAddOptions {
  * 两主页被 KeepAlive 缓存且共用单例回调注册：返回 activate/deactivate
  * 供页面在 onActivated/onDeactivated 中调用，保证 drop 回调始终属于当前页。
  */
-export function useCardTagAdd(options: UseCardTagAddOptions) {
+/**
+ * 给单张卡片添加标签（模块级便于单测）：拖拽 drop 与测试共用同一条路径，
+ * 避免为了测 `afterChange` 去模拟 pointer 拖拽。
+ */
+export async function addTagToCard(
+  options: UseCardTagAddOptions,
+  cardId: string,
+  tagName: string,
+): Promise<void> {
   const { domain, tagNames, reloadTagViews, afterChange, showToast } = options;
+  const existing = tagNames.value[cardId];
+  if (existing?.includes(tagName)) {
+    showToast(`标签「${tagName}」已存在`, "warning");
+    return;
+  }
+  try {
+    await commands.addTag(domain, cardId, tagName);
+    // 候选即时补名
+    addTagName(tagName);
+    // 实体已变：作废对侧详情持有的快照
+    afterChange?.();
+    tagNames.value = { ...tagNames.value, [cardId]: [...(existing ?? []), tagName] };
+    showToast(`已添加标签「${tagName}」`, "success");
+    await reloadTagViews();
+  } catch (e) {
+    showToast(`添加标签失败：${e}`, "error");
+  }
+}
 
-  const dropFn = async (cardId: string, tagName: string) => {
-    const existing = tagNames.value[cardId];
-    if (existing?.includes(tagName)) {
-      showToast(`标签「${tagName}」已存在`, "warning");
-      return;
-    }
-    try {
-      await commands.addTag(domain, cardId, tagName);
-      // 候选即时补名
-      addTagName(tagName);
-      // 实体已变：作废对侧详情持有的快照
-      afterChange?.();
-      tagNames.value = { ...tagNames.value, [cardId]: [...(existing ?? []), tagName] };
-      showToast(`已添加标签「${tagName}」`, "success");
-      await reloadTagViews();
-    } catch (e) {
-      showToast(`添加标签失败：${e}`, "error");
-    }
-  };
+export function useCardTagAdd(options: UseCardTagAddOptions) {
+  const dropFn = (cardId: string, tagName: string) => addTagToCard(options, cardId, tagName);
 
   let unregister: (() => void) | null = null;
   return {

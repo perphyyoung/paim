@@ -1,18 +1,18 @@
 /**
- * 对侧详情的实体缓存不感知本侧变化：删除/恢复/彻底删除后详情陈旧，改了内容/标签后详情同样陈旧。
+ * 跨实体详情快照失效（本文件是这类问题的**总表**）：任何一侧的写操作，都必须让「对侧详情」重开时拿到新数据。
  *
  * 两侧同构：
- * - relatedImagesCache（提示词详情的关联图像，后端按 images.is_deleted 过滤；条目含 file_name 与 tags）
- * - relatedPromptsCache（图像详情的关联提示词，后端按 prompts.is_deleted 过滤；条目含文案字段）
- * 删除/恢复不碰关联表、改字段也不碰关联表，缓存原本只在「关联关系变化」时失效，于是：
- * 删除期间打开详情写入的空列表，恢复后重开仍命中；删除前打开写入的列表，删除后重开显幽灵；
- * 图像加了标签后提示词详情看不到、提示词改了内容后图像详情不更新。
+ * - relatedImagesCache（提示词详情的关联图像，条目含 file_name 与 tags）
+ * - relatedPromptsCache（图像详情的关联提示词，条目含文案字段）
+ * 缓存原本只在「关联关系变化」时按 id 单条失效，于是以下路径都会命中旧快照：
+ * 删除 / 恢复（后端按 is_deleted 过滤）、字段与标签变化（详情编辑、批量工具栏、拖拽、标签管理）、
+ * 新建提示词选图、解除关联、替换图像、合并提示词、安全联动。
  *
- * 修复：这两类变化都整池 clear 对侧缓存，统一收口在 `src/views/detailEntityInvalidation.ts`
- * （删除态与「改实体」两类入口共用；键是对侧 id，受影响条目无法精确枚举，只能整池作废）。
- * 注意：缓存失效挂在 UI 入口上，所以本文件的删除/恢复必须走 UI（直连后端会绕过钩子，
- * 验证不到修复）；仅「造删除前置」与「数据复位」允许直连命令。
+ * 修复收口：`src/views/detailEntityInvalidation.ts` 的整池 clear；页面级入口逐个接入
+ * （详情 onDetailChanged、上传 / 替换 / 标签管理 / 新建 / 合并，以及 useBatchTagAdd / useCardTagAdd 的 afterChange）。
+ * 注意：失效挂在 UI 入口上，本文件的删除 / 恢复 / 解绑必须走 UI（直连后端会绕过钩子，验证不到修复）。
  */
+import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import {
   cardById,
@@ -303,5 +303,70 @@ test("提示词批量加标签后：图像详情的关联提示词应显示新�
   await expect(detail).toBeVisible();
   await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像详情已同步到提示词批量添加的新标签");
+  await closeDetail(detail);
+});
+
+// —— 非详情编辑入口（页面级按钮）：同样要作废对侧快照 ——
+
+test("新建提示词并选择已有图像后：图像详情的关联提示词应多出新条", async ({ page, app }) => {
+  const first = await uploadImageWithPrompt(
+    page,
+    `e2e 新建关联 A ${Date.now()}`,
+    app.mockImagePath,
+  );
+
+  // 先开一次图像详情：此刻只有 1 条关联提示词，快照写进 relatedPromptsCache
+  let detail = await openImageDetail(page, first.promptContent);
+  await expect(detail.getByText(first.promptContent)).toBeVisible();
+  await closeDetail(detail);
+
+  // 提示词主页新建提示词，并选择同一张已导入图像（selectImages 测试缝返回 mock 图路径）
+  await gotoPromptsPage(page);
+  await page.getByRole("button", { name: "新建提示词" }).click();
+  const content = `e2e 新建关联 B ${Date.now()}`;
+  await page.getByPlaceholder("输入提示词内容...").fill(content);
+  await page.getByRole("button", { name: "选择图像", exact: true }).click();
+  await expect(page.getByText(path.basename(app.mockImagePath))).toBeVisible();
+  await page.getByRole("button", { name: "确定", exact: true }).click();
+  await expectToastAndDismiss(page, "提示词已创建");
+  e2eLog.info("[step] 已新建提示词并关联已有图像");
+
+  // 重开图像详情：关联提示词应为 2 条（修复前命中旧快照 → 看不到新条）
+  await gotoImagesPage(page);
+  await cardById(page, first.imageId).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  // 多引时左上入口文案变为「编辑提示词 (1)」（单引时是「编辑提示词」）——
+  // 关联列表多引只显示标题、不显示内容，故用入口文案判断条数
+  await expect(detail.getByTitle("编辑提示词")).toHaveText("编辑提示词 (1)", { timeout: 5_000 });
+  e2eLog.info("[step] 图像详情已同步到新建提示词入口新增的关联");
+  await closeDetail(detail);
+});
+
+test("提示词详情移除关联图像后：图像详情不再显示该提示词", async ({ page, app }) => {
+  const content = `e2e 解除关联提示词 ${Date.now()}`;
+  const { imageId } = await uploadImageWithPrompt(page, content, app.mockImagePath);
+
+  // 先开一次图像详情：关联提示词写进 relatedPromptsCache
+  let detail = await openImageDetail(page, content);
+  await expect(detail.getByText(content)).toBeVisible();
+  await closeDetail(detail);
+
+  // 提示词详情里移除该关联图像（hover 卡片的「移除关联」→ 确认「移除」）
+  await gotoPromptsPage(page);
+  const promptDetail = await openPromptDetail(page, content);
+  await promptDetail.getByTitle("移除关联").first().click();
+  await page.getByRole("button", { name: "移除", exact: true }).click();
+  await expectToastAndDismiss(page, "已移除关联图像");
+  await closeDetail(promptDetail);
+  e2eLog.info("[step] 已在提示词详情移除关联图像");
+
+  // 重开图像详情：关联提示词应为空（关系变化也要作废对侧快照）
+  await gotoImagesPage(page);
+  await cardById(page, imageId).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText("— 暂无关联提示词 —")).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 图像详情已同步到解除关联");
   await closeDetail(detail);
 });
