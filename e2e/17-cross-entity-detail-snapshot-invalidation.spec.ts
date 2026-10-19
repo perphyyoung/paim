@@ -479,3 +479,83 @@ test("图像改安全评级后：其他图像详情里该提示词的安全状�
   await closeDetail(promptDetail);
   await closeDetail(detail);
 });
+
+test("清空图像回收站后：提示词详情的关联图像应同步消失", async ({ page, app }) => {
+  const content = `e2e 清空回收站同步 ${Date.now()}`;
+  const { imageId } = await uploadImageWithPrompt(page, content, app.mockImagePath);
+
+  // 先开提示词详情：关联图像 1 张写进快照
+  await gotoPromptsPage(page);
+  let detail = await openPromptDetail(page, content);
+  await expect(detail.getByText("关联图像（1）")).toBeVisible();
+  await closeDetail(detail);
+
+  // 图像主页删除该图
+  await gotoImagesPage(page);
+  await cardById(page, imageId).getByRole("button", { name: "删除", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "确认删除" })
+    .getByRole("button", { name: "删除", exact: true })
+    .click();
+  await expectToastAndDismiss(page, "已删除");
+
+  // 回收站清空（覆盖 empty trash 入口的整池作废）
+  await page.getByRole("button", { name: /回收站/ }).click();
+  await expect(page.getByText("图像回收站")).toBeVisible();
+  await page.getByRole("button", { name: "清空回收站" }).click();
+  await page
+    .getByRole("dialog", { name: "清空回收站" })
+    .getByRole("button", { name: "清空", exact: true })
+    .click();
+  await expectToastAndDismiss(page, "回收站已清空");
+  await page.getByTitle("关闭").first().click();
+  e2eLog.info("[step] 已清空图像回收站");
+
+  // 重开提示词详情：关联图像应为 0（修复前命中旧快照 → 仍显示 1 张）
+  await gotoPromptsPage(page);
+  detail = await openPromptDetail(page, content);
+  await expect(detail.getByText("关联图像（0）")).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 提示词详情已同步到回收站清空");
+  await closeDetail(detail);
+});
+
+test("清空提示词回收站后：图像详情的关联提示词应同步消失", async ({ page, app }) => {
+  const content = `e2e 清空提示词回收站 ${Date.now()}`;
+  const { imageId } = await uploadImageWithPrompt(page, content, app.mockImagePath);
+
+  // 先开图像详情：关联提示词写进快照
+  let detail = await openImageDetail(page, content);
+  await expect(detail.getByText(content)).toBeVisible();
+  await closeDetail(detail);
+
+  // 提示词主页删除该提示词
+  await gotoPromptsPage(page);
+  const promptId = await findPromptIdByContent(page, content);
+  await cardById(page, promptId).getByRole("button", { name: "删除", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "确认删除" })
+    .getByRole("button", { name: "删除", exact: true })
+    .click();
+  await expectToastAndDismiss(page, "已删除");
+
+  // 回收站清空（覆盖提示词侧 empty trash 入口的整池作废）
+  await page.getByRole("button", { name: /回收站/ }).click();
+  await expect(page.getByRole("heading", { name: /提示词回收站/ })).toBeVisible();
+  await page.getByRole("button", { name: "清空回收站" }).click();
+  await page
+    .getByRole("dialog", { name: "清空回收站" })
+    .getByRole("button", { name: "清空", exact: true })
+    .click();
+  await expectToastAndDismiss(page, "回收站已清空");
+  await page.getByTitle("关闭").first().click();
+  e2eLog.info("[step] 已清空提示词回收站");
+
+  // 重开图像详情：关联提示词应为空
+  await gotoImagesPage(page);
+  await cardById(page, imageId).click();
+  detail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText("— 暂无关联提示词 —")).toBeVisible({ timeout: 5_000 });
+  e2eLog.info("[step] 图像详情已同步到提示词回收站清空");
+  await closeDetail(detail);
+});
