@@ -186,7 +186,7 @@ pub async fn merge_prompts(
     .await
 }
 
-/// 列出回收站中的提示词（已软删除）。
+/// 列出回收站中的提示词（已移入回收站）。
 #[tauri::command]
 #[specta::specta]
 pub async fn list_trashed_prompts(

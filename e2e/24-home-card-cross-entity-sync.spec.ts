@@ -33,12 +33,12 @@ test("提示词主页删除卡片后：图像主页卡片的关联提示词正�
   // 提示词主页删除该卡片（卡片删除钮 → 确认弹窗）
   await gotoPromptsPage(page);
   const promptId = await findPromptIdByContent(page, content);
-  await cardById(page, promptId).getByRole("button", { name: "删除", exact: true }).click();
+  await cardById(page, promptId).getByRole("button", { name: "删除到回收站", exact: true }).click();
   await page
-    .getByRole("dialog", { name: "确认删除" })
-    .getByRole("button", { name: "删除", exact: true })
+    .getByRole("dialog", { name: "删除到回收站" })
+    .getByRole("button", { name: "移入回收站", exact: true })
     .click();
-  await expectToastAndDismiss(page, "已删除");
+  await expectToastAndDismiss(page, "已移入回收站");
   e2eLog.info("[step] 已在提示词主页删除卡片");
 
   // 切回图像主页（KeepAlive 激活时消费脏标记）：卡片正文应清空
@@ -57,12 +57,12 @@ test("图像主页删除卡片后：提示词主页卡片的关联首图背景�
 
   // 图像主页删除该卡片
   await gotoImagesPage(page);
-  await cardById(page, imageId).getByRole("button", { name: "删除", exact: true }).click();
+  await cardById(page, imageId).getByRole("button", { name: "删除到回收站", exact: true }).click();
   await page
-    .getByRole("dialog", { name: "确认删除" })
-    .getByRole("button", { name: "删除", exact: true })
+    .getByRole("dialog", { name: "删除到回收站" })
+    .getByRole("button", { name: "移入回收站", exact: true })
     .click();
-  await expectToastAndDismiss(page, "已删除");
+  await expectToastAndDismiss(page, "已移入回收站");
   e2eLog.info("[step] 已在图像主页删除卡片");
 
   // 切回提示词主页：关联首图背景应消失（thumbs 随脏标记重载）

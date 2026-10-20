@@ -53,12 +53,12 @@ async function replaceImageViaDetail(page: Page, cardText: string): Promise<Loca
 /// 主页卡片点删除钮并在确认弹窗确认，等成功 toast 出现并点掉。
 async function deleteCardViaUi(page: Page, cardId: string, toastText: string): Promise<void> {
   // 卡面按钮走 role+exact：正文 <p title=内容> 含同名字样时 getByTitle 会双命中
-  await cardById(page, cardId).getByRole("button", { name: "删除", exact: true }).click();
+  await cardById(page, cardId).getByRole("button", { name: "删除到回收站", exact: true }).click();
   // 删除确认统一走 ConfirmDialog：role=dialog + aria-label=title；
-  // 卡面删除钮的 accessible name 同样是「删除」，确认钮必须限定在弹窗作用域内
-  const confirmDialog = page.getByRole("dialog", { name: "确认删除" });
+  // 卡面删除钮的 accessible name 同样是「删除到回收站」，确认钮必须限定在弹窗作用域内
+  const confirmDialog = page.getByRole("dialog", { name: "删除到回收站" });
   await expect(confirmDialog).toBeVisible();
-  await confirmDialog.getByRole("button", { name: "删除", exact: true }).click();
+  await confirmDialog.getByRole("button", { name: "移入回收站", exact: true }).click();
   await expectToastAndDismiss(page, toastText);
 }
 
@@ -69,7 +69,7 @@ async function restoreCardViaTrashUi(
   cardId: string,
   toastText: string,
 ): Promise<void> {
-  await page.getByTitle("回收站").click();
+  await page.getByRole("button", { name: headingName }).click();
   await expect(page.getByRole("heading", { name: headingName })).toBeVisible();
   await cardById(page, cardId).getByRole("button", { name: "恢复", exact: true }).click();
   await expectToastAndDismiss(page, toastText);
@@ -124,7 +124,7 @@ test("删除前打开过详情：UI 删除图像后重开提示词详情不再�
 
   // 走 UI 删除（触发 ImagePage 对侧缓存 clear）
   await gotoImagesPage(page);
-  await deleteCardViaUi(page, imageId, `已删除「${MOCK_FILE_NAME}」到回收站`);
+  await deleteCardViaUi(page, imageId, `已移入回收站「${MOCK_FILE_NAME}」`);
 
   // 不 reload，直接切回提示词页重开详情：旧缓存必须已作废
   await gotoPromptsPage(page);
@@ -157,7 +157,7 @@ test("对称侧：UI 删除/恢复提示词后，图像详情的关联提示词�
   // 走 UI 删除提示词（触发 PromptPage 对侧缓存 clear）；
   // 上传时未填标题，后端 title 兜底为 prompt id（prompt_service::create）
   await gotoPromptsPage(page);
-  await deleteCardViaUi(page, promptId, `已删除「${promptId}」`);
+  await deleteCardViaUi(page, promptId, `已移入回收站「${promptId}」`);
 
   // 不 reload，切到图像主页重开详情：旧缓存作废，显示无关联
   await gotoImagesPage(page);
@@ -507,16 +507,16 @@ test("清空图像回收站后：提示词详情的关联图像应同步消失",
 
   // 图像主页删除该图
   await gotoImagesPage(page);
-  await cardById(page, imageId).getByRole("button", { name: "删除", exact: true }).click();
+  await cardById(page, imageId).getByRole("button", { name: "删除到回收站", exact: true }).click();
   await page
-    .getByRole("dialog", { name: "确认删除" })
-    .getByRole("button", { name: "删除", exact: true })
+    .getByRole("dialog", { name: "删除到回收站" })
+    .getByRole("button", { name: "移入回收站", exact: true })
     .click();
-  await expectToastAndDismiss(page, "已删除");
+  await expectToastAndDismiss(page, "已移入回收站");
 
   // 回收站清空（覆盖 empty trash 入口的整池作废）
-  await page.getByRole("button", { name: /回收站/ }).click();
-  await expect(page.getByText("图像回收站")).toBeVisible();
+  await page.getByRole("button", { name: "图像回收站" }).click();
+  await expect(page.getByRole("heading", { name: "图像回收站" })).toBeVisible();
   await page.getByRole("button", { name: "清空回收站" }).click();
   await page
     .getByRole("dialog", { name: "清空回收站" })
@@ -546,16 +546,16 @@ test("清空提示词回收站后：图像详情的关联提示词应同步消�
   // 提示词主页删除该提示词
   await gotoPromptsPage(page);
   const promptId = await findPromptIdByContent(page, content);
-  await cardById(page, promptId).getByRole("button", { name: "删除", exact: true }).click();
+  await cardById(page, promptId).getByRole("button", { name: "删除到回收站", exact: true }).click();
   await page
-    .getByRole("dialog", { name: "确认删除" })
-    .getByRole("button", { name: "删除", exact: true })
+    .getByRole("dialog", { name: "删除到回收站" })
+    .getByRole("button", { name: "移入回收站", exact: true })
     .click();
-  await expectToastAndDismiss(page, "已删除");
+  await expectToastAndDismiss(page, "已移入回收站");
 
   // 回收站清空（覆盖提示词侧 empty trash 入口的整池作废）
-  await page.getByRole("button", { name: /回收站/ }).click();
-  await expect(page.getByRole("heading", { name: /提示词回收站/ })).toBeVisible();
+  await page.getByRole("button", { name: "提示词回收站" }).click();
+  await expect(page.getByRole("heading", { name: "提示词回收站" })).toBeVisible();
   await page.getByRole("button", { name: "清空回收站" }).click();
   await page
     .getByRole("dialog", { name: "清空回收站" })

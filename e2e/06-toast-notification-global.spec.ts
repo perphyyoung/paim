@@ -162,7 +162,7 @@ test("warning toast 停留更久（约 4s）后自动消失", async ({ page, app
     app.mockImagePath,
   );
   await invokeCommand(page, "delete_image", { id: imageId });
-  await page.getByTitle("回收站").click();
+  await page.getByRole("button", { name: "图像回收站" }).click();
   await page.getByRole("button", { name: "清空回收站" }).click();
   await page.getByRole("button", { name: "清空", exact: true }).click();
 

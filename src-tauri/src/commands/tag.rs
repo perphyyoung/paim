@@ -218,7 +218,7 @@ pub async fn rename_tag(
     .await
 }
 
-/// 删除标签（关联关系由外键 CASCADE 一并清除）。
+/// 删除标签到回收站（关联关系随标签级联清除，恢复时按快照重建）。
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_tag(db: State<'_, BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
@@ -283,7 +283,7 @@ pub async fn empty_tag_trash(db: State<'_, BkDb>, domain: TagDomain) -> Result<u
     .await
 }
 
-/// 合并两个标签（同域）：源标签的关联迁移到目标后删除源标签。
+/// 合并两个标签（同域）：源标签的关联迁移到目标，源标签删除到回收站（可恢复）。
 #[tauri::command]
 #[specta::specta]
 pub async fn merge_tags(

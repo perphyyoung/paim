@@ -40,7 +40,7 @@ export const commands = {
 	 *  图片走「无锁预处理 + 短锁入库 / 关联」，与 `import_images` 同一条管线。
 	 */
 	addImagesToPrompt: (promptId: string, imagePaths: string[]) => __TAURI_INVOKE<ImageImportBatchResult>("add_images_to_prompt", { promptId, imagePaths }),
-	/**  列出回收站中的提示词（已软删除）。 */
+	/**  列出回收站中的提示词（已移入回收站）。 */
 	listTrashedPrompts: () => __TAURI_INVOKE<PromptCard[]>("list_trashed_prompts"),
 	/**  恢复回收站中的提示词。 */
 	restorePrompt: (id: string) => __TAURI_INVOKE<Prompt>("restore_prompt", { id }),
@@ -116,7 +116,7 @@ export const commands = {
 	createPromptForImage: (content: string, imageId: string) => __TAURI_INVOKE<null>("create_prompt_for_image", { content, imageId }),
 	/**  将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。 */
 	relateImagesToPrompt: (promptId: string, imageIds: string[]) => __TAURI_INVOKE<number>("relate_images_to_prompt", { promptId, imageIds }),
-	/**  返回回收站中的图像（已软删除），与 list_trashed_prompts 对称。 */
+	/**  返回回收站中的图像（已移入回收站），与 list_trashed_prompts 对称。 */
 	listTrashedImages: () => __TAURI_INVOKE<ImageCard[]>("list_trashed_images"),
 	deleteImage: (id: string) => __TAURI_INVOKE<Image>("delete_image", { id }),
 	restoreImage: (id: string) => __TAURI_INVOKE<Image>("restore_image", { id }),
@@ -254,9 +254,9 @@ export const commands = {
 	createTag: (domain: TagDomain, name: string, groupId: number | null) => __TAURI_INVOKE<TagItem>("create_tag", { domain, name, groupId }),
 	/**  重命名标签。 */
 	renameTag: (domain: TagDomain, id: number, name: string) => __TAURI_INVOKE<null>("rename_tag", { domain, id, name }),
-	/**  删除标签（关联关系由外键 CASCADE 一并清除）。 */
+	/**  删除标签到回收站（关联关系随标签级联清除，恢复时按快照重建）。 */
 	deleteTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("delete_tag", { domain, id }),
-	/**  合并两个标签（同域）：源标签的关联迁移到目标后删除源标签。 */
+	/**  合并两个标签（同域）：源标签的关联迁移到目标，源标签删除到回收站（可恢复）。 */
 	mergeTags: (domain: TagDomain, sourceId: number, targetId: number) => __TAURI_INVOKE<null>("merge_tags", { domain, sourceId, targetId }),
 	/**  列出回收站标签（名称 / 关联数 / 删除时间）。 */
 	listTrashedTags: (domain: TagDomain) => __TAURI_INVOKE<TrashedTag[]>("list_trashed_tags", { domain }),

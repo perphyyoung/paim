@@ -685,9 +685,9 @@ async function doSingleDelete() {
     await loadImages();
     markPageStale("prompts");
     invalidateRelatedImagesCache();
-    showToast(`已删除「${img.file_name}」到回收站`, "success");
+    showToast(`已移入回收站「${img.file_name}」`, "success");
   } catch (e) {
-    showToast(`删除失败：${e}`, "error");
+    showToast(`移入回收站失败：${e}`, "error");
   }
 }
 
@@ -712,7 +712,7 @@ async function doBatchDelete() {
     exitBatch();
     await loadImages();
   } catch (e) {
-    showToast(`批量删除失败：${e}`, "error");
+    showToast(`批量移入回收站失败：${e}`, "error");
   }
 }
 
@@ -811,10 +811,10 @@ function onUploadDone() {
         <button
           type="button"
           class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-          title="回收站"
+          title="图像回收站"
           @click="openTrash"
         >
-          🗑回收站
+          图像回收站
         </button>
         <select
           v-model="sortBy"
@@ -954,9 +954,9 @@ function onUploadDone() {
     <!-- 批量删除确认弹窗（自定义样式） -->
     <ConfirmDialog
       :open="deleteConfirmOpen"
-      title="确认删除"
+      title="删除到回收站"
       message="确定将选中的图像移入回收站？"
-      confirm-text="删除"
+      confirm-text="移入回收站"
       danger
       @confirm="doBatchDelete"
       @cancel="deleteConfirmOpen = false"
@@ -965,9 +965,9 @@ function onUploadDone() {
     <!-- 单张删除确认弹窗 -->
     <ConfirmDialog
       :open="singleDeleteOpen"
-      title="确认删除"
+      title="删除到回收站"
       :message="`确定将图像「${singleDeleteTarget?.file_name ?? ''}」移入回收站？`"
-      confirm-text="删除"
+      confirm-text="移入回收站"
       danger
       @confirm="doSingleDelete"
       @cancel="
@@ -1018,7 +1018,7 @@ function onUploadDone() {
       :open="purgeConfirmOpen"
       title="彻底删除"
       :message="`确定彻底删除「${purgeTarget?.file_name ?? ''}」？此操作不可恢复。`"
-      confirm-text="删除"
+      confirm-text="彻底删除"
       danger
       @confirm="doPurgeImage"
       @cancel="purgeConfirmOpen = false"

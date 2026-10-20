@@ -32,7 +32,7 @@ import { e2eLog } from "./e2e-logger";
 /// 打开当前主页的回收站并等标题出现。
 /// TrashOverlay 根节点无 dialog role，用标题 heading 作为整页层的可见标志。
 async function openTrash(page: Page, headingName: string): Promise<Locator> {
-  await page.getByTitle("回收站").click();
+  await page.getByRole("button", { name: headingName }).click();
   const heading = page.getByRole("heading", { name: headingName });
   await expect(heading).toBeVisible();
   return heading;
@@ -65,7 +65,7 @@ test("提示词回收站：无关联图的纯文本卡无背景，单项恢复�
   await page.getByTitle("关闭").click();
   await expect(page.getByRole("heading", { name: "提示词回收站" })).toBeHidden();
 
-  // 回到主页：卡片重新出现；后端正常列表（不含已删除项）也能查到
+  // 回到主页：卡片重新出现；后端正常列表（不含回收站项）也能查到
   await expect(page.getByText(content, { exact: true })).toBeVisible();
   const restored = (await listPrompts(page)).find((p) => p.id === id);
   expect(restored, "恢复后提示词应回到正常列表").toBeTruthy();

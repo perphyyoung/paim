@@ -43,7 +43,7 @@ type NumberStatKey = {
 
 const baseRows: Array<[string, NumberStatKey, NumberStatKey]> = [
   ["总数", "total_prompts", "total_images"],
-  ["已删除", "deleted_prompts", "deleted_images"],
+  ["回收站", "deleted_prompts", "deleted_images"],
   ["标签组数", "prompt_tag_groups", "image_tag_groups"],
   ["标签总数", "total_prompt_tags", "total_image_tags"],
 ];

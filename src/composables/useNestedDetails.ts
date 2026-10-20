@@ -159,7 +159,7 @@ export function createNestedDetails(
     try {
       const [card] = await commands.promptCardsByIds([id]);
       if (!card) {
-        showToast("提示词不存在或已删除", "warning");
+        showToast("提示词不存在或已在回收站", "warning");
         return;
       }
       prompt.value = { cards: [card] };

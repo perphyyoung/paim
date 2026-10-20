@@ -337,7 +337,7 @@ const {
   confirmAction,
 } = useConfirm();
 function requestRemoveTag(t: { id: number; name: string }) {
-  ask(`确定删除图像标签「${t.name}」？`, { danger: true, confirmText: "删除" }, () =>
+  ask(`确定从当前图像移除标签「${t.name}」？`, { danger: true, confirmText: "移除" }, () =>
     removeTag(t.id),
   );
 }

@@ -631,7 +631,7 @@ pub fn list_trashed(conn: &Connection) -> rusqlite::Result<Vec<ImageCard>> {
     rows.collect()
 }
 
-/// 软删除：标记为已删除，保留文件以便恢复。
+/// 删除到回收站（软删除）：标记为已删除，保留文件以便恢复。
 /// 软删除是明显的更新操作，同步刷新 updated_at；关联提示词的「关联图像」列表会因
 /// is_deleted 过滤少一条（隐式解绑，与 purge 语义一致），同步刷对方 updated_at。
 pub fn soft_delete(conn: &Connection, id: &str) -> rusqlite::Result<Option<Image>> {

@@ -650,9 +650,9 @@ pub fn empty_trash(conn: &Connection, domain: TagDomain) -> rusqlite::Result<usi
     conn.execute(&format!("DELETE FROM {}", domain.trash_table()), [])
 }
 
-/// 合并两个标签（同域）：源标签的关联迁移到目标后删除源标签。
-/// 复合主键 `(owner, tag_id)` 冲突的行由 `INSERT OR IGNORE` 跳过，再按源标签清理，天然去重；
-/// 目标标签的名称 / 组保持不变，源的组随标签删除（不迁移）。
+/// 合并两个标签（同域）：源标签的关联迁移到目标，源标签删除到回收站
+/// （快照记录合并前的关联，可恢复）；复合主键 `(owner, tag_id)` 冲突的行由
+/// `INSERT OR IGNORE` 跳过，天然去重；目标标签的名称 / 组保持不变，源的组随标签进回收站（不迁移）。
 pub fn merge_tags(
     conn: &Connection,
     domain: TagDomain,

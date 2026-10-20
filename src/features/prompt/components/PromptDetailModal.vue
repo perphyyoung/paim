@@ -560,7 +560,9 @@ const {
   confirmAction,
 } = useConfirm();
 function requestRemoveTag(t: { id: number; name: string }) {
-  ask(`确定删除标签「${t.name}」？`, { danger: true, confirmText: "删除" }, () => removeTag(t.id));
+  ask(`确定从当前提示词移除标签「${t.name}」？`, { danger: true, confirmText: "移除" }, () =>
+    removeTag(t.id),
+  );
 }
 function requestRemoveImage(img: RelatedImage) {
   ask(

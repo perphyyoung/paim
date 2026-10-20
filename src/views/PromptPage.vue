@@ -388,12 +388,12 @@ async function doSingleDelete() {
   try {
     await commands.deletePrompt(p.id);
     await loadPrompts();
-    // 图像主页卡片的关联提示词文案过滤已删除提示词，需重载
+    // 图像主页卡片的关联提示词文案过滤回收站中的提示词，需重载
     markPageStale("images");
     invalidateRelatedPromptsCache();
-    showToast(`已删除「${p.title}」`, "success");
+    showToast(`已移入回收站「${p.title}」`, "success");
   } catch (e) {
-    showToast(`删除失败：${e}`, "error");
+    showToast(`移入回收站失败：${e}`, "error");
   }
 }
 
@@ -447,11 +447,11 @@ async function doBatchDelete() {
     }
     markPageStale("images");
     invalidateRelatedPromptsCache();
-    showToast(`已删除 ${ids.length} 个提示词`, "success");
+    showToast(`已将 ${ids.length} 个提示词移入回收站`, "success");
     exitBatch();
     await loadPrompts();
   } catch (e) {
-    showToast(`批量删除失败：${e}`, "error");
+    showToast(`批量移入回收站失败：${e}`, "error");
   }
 }
 
@@ -727,7 +727,7 @@ async function purgePrompt(p: PromptCard) {
     delete trashThumbs.value[p.id];
     showToast(`已彻底删除「${p.title}」`, "success");
   } catch (e) {
-    showToast(`删除失败：${e}`, "error");
+    showToast(`彻底删除失败：${e}`, "error");
   }
 }
 
@@ -799,10 +799,10 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         <button
           type="button"
           class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-          title="回收站"
+          title="提示词回收站"
           @click="openTrash"
         >
-          🗑回收站
+          提示词回收站
         </button>
         <select
           v-model="sortBy"
@@ -957,9 +957,9 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
     <!-- 删除确认 -->
     <ConfirmDialog
       :open="singleDeleteOpen"
-      title="确认删除"
-      :message="`确定删除提示词「${singleDeleteTarget?.title || '（无标题）'}」？`"
-      confirm-text="删除"
+      title="删除到回收站"
+      :message="`确定将提示词「${singleDeleteTarget?.title || '（无标题）'}」移入回收站？`"
+      confirm-text="移入回收站"
       danger
       @confirm="doSingleDelete"
       @cancel="
@@ -993,9 +993,9 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
     <!-- 批量删除确认弹窗 -->
     <ConfirmDialog
       :open="batchDeleteOpen"
-      title="确认删除"
-      message="确定将选中的提示词删除？"
-      confirm-text="删除"
+      title="删除到回收站"
+      message="确定将选中的提示词移入回收站？"
+      confirm-text="移入回收站"
       danger
       @confirm="doBatchDelete"
       @cancel="batchDeleteOpen = false"
@@ -1032,7 +1032,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
       :open="purgeConfirmOpen"
       title="彻底删除"
       :message="`确定彻底删除提示词「${purgeTarget?.title || ''}」？此操作不可恢复。`"
-      confirm-text="删除"
+      confirm-text="彻底删除"
       danger
       @confirm="doPurgePrompt"
       @cancel="purgeConfirmOpen = false"

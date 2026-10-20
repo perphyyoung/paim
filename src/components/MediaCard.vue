@@ -273,7 +273,7 @@ const scoreText = (s: number) => s.toFixed(3);
         <button
           type="button"
           class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
-          :title="variant === 'trash' ? '彻底删除' : '删除'"
+          :title="variant === 'trash' ? '彻底删除' : '删除到回收站'"
           @click.stop="variant === 'trash' ? emit('purge') : emit('delete')"
         >
           <svg

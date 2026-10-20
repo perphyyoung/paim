@@ -99,7 +99,7 @@ test("图像域：合并 zit 到 zit-aio，关联去重且详情标签同步", a
   expect(trash.some((t) => t.name === source && t.owner_count === 1)).toBe(true);
   e2eLog.info(`[step] 已把「${source}」合并到「${target}」（源标签进回收站）`);
 
-  // 数据层：源标签已删除，图 A 只剩目标；图 B 还有用于禁用断言的第三个标签
+  // 数据层：源标签已进回收站，图 A 只剩目标；图 B 还有用于禁用断言的第三个标签
   expect(await getItemTagNames(page, "image", a.imageId)).toEqual([target]);
   expect(await getItemTagNames(page, "image", b.imageId)).toEqual([target, extra]);
 

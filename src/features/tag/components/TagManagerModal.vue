@@ -483,11 +483,11 @@ function openRenameTag(item: TagItem) {
 }
 function openDeleteTag(item: TagItem) {
   openConfirm(
-    "删除标签",
-    `确定删除标签「${item.name}」？其与${domainLabel.value}的关联将一并清除。`,
+    "删除标签到回收站",
+    `确定将标签「${item.name}」移入回收站？恢复时会一并还原它与${domainLabel.value}的关联。`,
     async () => {
       await cmds.value.deleteTag(item.id);
-      showToast("标签已删除", "success");
+      showToast("标签已移入回收站", "success");
       refresh();
       closeDlg();
     },
@@ -701,9 +701,10 @@ function refresh() {
             <button
               type="button"
               class="w-full rounded border px-2.5 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
+              :title="`${domainLabel}标签回收站`"
               @click="openTagTrash"
             >
-              回收站
+              标签回收站
             </button>
           </div>
           <div class="flex justify-center">
@@ -909,7 +910,7 @@ function refresh() {
                       <!-- 删除：右上角悬浮，hover 显示 -->
                       <button
                         type="button"
-                        title="删除"
+                        title="删除到回收站"
                         class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-red-500 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800"
                         @click="openDeleteTag(item)"
                       >
@@ -964,7 +965,7 @@ function refresh() {
         </template>
         <template v-else-if="dlg.mode === 'merge'">
           <p class="mb-2 text-xs text-gray-400">
-            选择要保留的目标标签；另一个的关联会转移到它，随后被删除。
+            选择要保留的目标标签；另一个会删除到回收站（可恢复），其关联转移到目标标签。
           </p>
           <label
             v-for="t in mergeCandidates"
@@ -1046,7 +1047,7 @@ function refresh() {
       :open="purgeOpen"
       title="彻底删除标签"
       :message="`确定彻底删除标签「${purgeTarget?.name ?? ''}」？此操作不可恢复。`"
-      confirm-text="删除"
+      confirm-text="彻底删除"
       danger
       @confirm="doPurgeTrash"
       @cancel="purgeOpen = false"

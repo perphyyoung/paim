@@ -22,11 +22,11 @@ async function deleteTagViaManager(page: import("@playwright/test").Page, tag: s
   const manager = page.getByRole("dialog", { name: "图像标签管理" });
   await expect(manager).toBeVisible();
   await manager.getByPlaceholder("搜索标签…").fill(tag);
-  await manager.getByTitle("删除").first().click();
-  const dlg = page.getByRole("dialog", { name: "删除标签" });
+  await manager.getByTitle("删除到回收站").first().click();
+  const dlg = page.getByRole("dialog", { name: "删除标签到回收站" });
   await expect(dlg).toBeVisible();
   await dlg.getByRole("button", { name: "确定", exact: true }).click();
-  await expectToastAndDismiss(page, "标签已删除");
+  await expectToastAndDismiss(page, "标签已移入回收站");
 }
 
 /// 当前打开的全屏标签回收站面板（语义化 dialog，scope 到回收站内）。
@@ -40,7 +40,7 @@ test("图像域：删除的标签进回收站，恢复后关联回来", async ({
   await addItemTag(page, "image", imageId, tag);
 
   await deleteTagViaManager(page, tag);
-  await page.getByRole("button", { name: "回收站", exact: true }).click();
+  await page.getByRole("button", { name: "标签回收站", exact: true }).click();
   const trash = trashPanel(page);
   await expect(trash.getByRole("heading", { name: /图像标签回收站/ })).toBeVisible();
   await expect(trash.getByText(tag, { exact: true }).first()).toBeVisible();
@@ -65,13 +65,13 @@ test("图像域：彻底删除后不可恢复", async ({ page, app }) => {
   await addItemTag(page, "image", imageId, tag);
 
   await deleteTagViaManager(page, tag);
-  await page.getByRole("button", { name: "回收站", exact: true }).click();
+  await page.getByRole("button", { name: "标签回收站", exact: true }).click();
   const trash = trashPanel(page);
   await expect(trash.getByRole("heading", { name: /图像标签回收站/ })).toBeVisible();
   await trash.getByTitle("彻底删除").first().click();
   const dlg = page.getByRole("dialog", { name: "彻底删除标签" });
   await expect(dlg).toBeVisible();
-  await dlg.getByRole("button", { name: "删除", exact: true }).click();
+  await dlg.getByRole("button", { name: "彻底删除", exact: true }).click();
   await expectToastAndDismiss(page, `已彻底删除标签「${tag}」`);
   await expect(trash.getByText("回收站为空")).toBeVisible();
   await page.getByTitle("关闭").first().click();

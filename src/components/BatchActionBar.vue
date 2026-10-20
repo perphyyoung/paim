@@ -129,7 +129,7 @@ defineExpose({ closeTagDialog });
           class="rounded bg-red-500/25 px-3 py-1.5 text-[13px] text-red-300 transition-colors hover:bg-red-500/35"
           @click="emit('delete')"
         >
-          删除
+          删除到回收站
         </button>
         <button
           v-if="has('cancel')"

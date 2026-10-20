@@ -308,7 +308,7 @@ pub async fn relate_images_to_prompt(
     .await
 }
 
-/// 返回回收站中的图像（已软删除），与 list_trashed_prompts 对称。
+/// 返回回收站中的图像（已移入回收站），与 list_trashed_prompts 对称。
 #[tauri::command]
 #[specta::specta]
 pub async fn list_trashed_images(db: State<'_, BkDb>) -> Result<Vec<ImageCard>, AppError> {
