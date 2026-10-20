@@ -32,7 +32,7 @@ async function mergeTagViaManager(
   extra?: string,
 ): Promise<void> {
   await page.getByRole("button", { name: "管理", exact: true }).click();
-  const manager = page.locator("div.fixed.inset-0").filter({ hasText: "标签管理" }).first();
+  const manager = page.getByRole("dialog", { name: /标签管理/ });
   await expect(manager).toBeVisible();
   await page.getByRole("button", { name: "合并标签", exact: true }).click();
   const sourceText = manager.getByText(source, { exact: true }).first();

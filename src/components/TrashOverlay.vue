@@ -36,6 +36,9 @@ const canOperate = computed(() => props.items.length > 0);
     <!-- 与详情页同规格：居中面板，四周留出边距（不遮挡窗口控制按钮） -->
     <div
       v-if="open"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="title"
       class="fixed inset-0 flex items-center justify-center bg-black/40"
       :style="{ zIndex: ModalZ.baseModal }"
       @click.self="emit('close')"

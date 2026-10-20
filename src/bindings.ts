@@ -258,6 +258,16 @@ export const commands = {
 	deleteTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("delete_tag", { domain, id }),
 	/**  合并两个标签（同域）：源标签的关联迁移到目标后删除源标签。 */
 	mergeTags: (domain: TagDomain, sourceId: number, targetId: number) => __TAURI_INVOKE<null>("merge_tags", { domain, sourceId, targetId }),
+	/**  列出回收站标签（名称 / 关联数 / 删除时间）。 */
+	listTrashedTags: (domain: TagDomain) => __TAURI_INVOKE<TrashedTag[]>("list_trashed_tags", { domain }),
+	/**  恢复一条回收站标签（同名活动标签存在时合并关联）。 */
+	restoreTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("restore_tag", { domain, id }),
+	/**  彻底删除一条回收站标签。 */
+	purgeTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<number>("purge_tag", { domain, id }),
+	/**  恢复全部回收站标签，返回恢复数量。 */
+	restoreAllTags: (domain: TagDomain) => __TAURI_INVOKE<number>("restore_all_tags", { domain }),
+	/**  清空标签回收站，返回清理数量。 */
+	emptyTagTrash: (domain: TagDomain) => __TAURI_INVOKE<number>("empty_tag_trash", { domain }),
 	/**  将标签移动到指定组（group_id 为 null 表示未分组）。 */
 	moveTagToGroup: (domain: TagDomain, id: number, groupId: number | null) => __TAURI_INVOKE<null>("move_tag_to_group", { domain, id, groupId }),
 	/**  将标签组固定到首位（sort_order 设为当前最小值 - 1）。 */
@@ -887,6 +897,14 @@ export type ThumbnailRebuildSummary = {
 export type TrashBatchResult = {
 	count: number,
 	failures: number,
+};
+
+/**  回收站标签（列表展示：名称 / 关联数 / 删除时间）。 */
+export type TrashedTag = {
+	id: number,
+	name: string,
+	owner_count: number,
+	deleted_at: string,
 };
 
 /* Tauri Specta runtime */

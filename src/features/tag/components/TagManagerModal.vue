@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { commands, type TagData, type TagGroup, type TagItem } from "@/bindings";
+import { commands, type TagData, type TagGroup, type TagItem, type TrashedTag } from "@/bindings";
 import { useToast } from "@/components/useToast";
 import ContextMenu from "@/components/ContextMenu.vue";
 import InlineDialog from "@/components/InlineDialog.vue";
 import TagChip from "@/components/TagChip.vue";
+import TrashOverlay from "@/components/TrashOverlay.vue";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import { formatLocalTime } from "@/utils/date";
 import { isSpecialTag } from "../specialTags";
 import { ModalZ } from "@/utils/modalZ";
 
@@ -29,6 +32,11 @@ const cmds = computed(() => {
       commands.mergeTags(domain, sourceId, targetId),
     moveTag: (id: number, groupId: number | null) => commands.moveTagToGroup(domain, id, groupId),
     pinGroup: (id: number) => commands.pinTagGroupToTop(domain, id),
+    listTrashed: () => commands.listTrashedTags(domain),
+    restoreTag: (id: number) => commands.restoreTag(domain, id),
+    purgeTag: (id: number) => commands.purgeTag(domain, id),
+    restoreAllTags: () => commands.restoreAllTags(domain),
+    emptyTagTrash: () => commands.emptyTagTrash(domain),
   };
 });
 
@@ -541,6 +549,90 @@ async function submitInput() {
   }
 }
 
+// —— 标签回收站（布局与主页回收站一致：全屏 overlay + 卡片网格） ——
+
+const tagTrashOpen = ref(false);
+const trashedTags = ref<TrashedTag[]>([]);
+const purgeTarget = ref<TrashedTag | null>(null);
+const purgeOpen = ref(false);
+const emptyOpen = ref(false);
+
+async function loadTagTrash() {
+  try {
+    trashedTags.value = await cmds.value.listTrashed();
+  } catch (e) {
+    showToast(`读取标签回收站失败：${e}`, "error");
+  }
+}
+
+function openTagTrash() {
+  // 回收站是全屏视图：先收起管理弹窗，避免两层同 z 叠放
+  emit("close");
+  tagTrashOpen.value = true;
+  void loadTagTrash();
+}
+
+function closeTagTrash() {
+  tagTrashOpen.value = false;
+  trashedTags.value = [];
+}
+
+async function restoreTrashTag(item: TrashedTag) {
+  try {
+    await cmds.value.restoreTag(item.id);
+    showToast(`已恢复标签「${item.name}」`, "success");
+    await loadTagTrash();
+    refresh(); // 刷新管理列表并通知主页（标签区 / 详情缓存失效）
+  } catch (e) {
+    showToast(`恢复失败：${e}`, "error");
+  }
+}
+
+function requestPurgeTrash(item: TrashedTag) {
+  purgeTarget.value = item;
+  purgeOpen.value = true;
+}
+
+async function doPurgeTrash() {
+  const item = purgeTarget.value;
+  purgeOpen.value = false;
+  purgeTarget.value = null;
+  if (!item) return;
+  try {
+    await cmds.value.purgeTag(item.id);
+    showToast(`已彻底删除标签「${item.name}」`, "success");
+    await loadTagTrash();
+  } catch (e) {
+    showToast(`彻底删除失败：${e}`, "error");
+  }
+}
+
+async function restoreAllTrash() {
+  try {
+    const n = await cmds.value.restoreAllTags();
+    showToast(`已恢复 ${n} 个标签`, "success");
+    await loadTagTrash();
+    refresh();
+  } catch (e) {
+    showToast(`全部恢复失败：${e}`, "error");
+  }
+}
+
+function requestEmptyTrash() {
+  emptyOpen.value = true;
+}
+
+async function doEmptyTrash() {
+  emptyOpen.value = false;
+  try {
+    const n = await cmds.value.emptyTagTrash();
+    showToast(`已清空 ${n} 个标签`, "success");
+    await loadTagTrash();
+  } catch (e) {
+    showToast(`清空失败：${e}`, "error");
+  }
+}
+
 function refresh() {
   load();
   emit("saved");
@@ -551,6 +643,9 @@ function refresh() {
   <Teleport to="body">
     <div
       v-if="open"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="`${domainLabel}标签管理`"
       class="fixed inset-0 flex items-center justify-center bg-black/40"
       :style="{ zIndex: ModalZ.baseModal }"
       @click.self="emit('close')"
@@ -583,7 +678,7 @@ function refresh() {
 
         <!-- 工具栏 -->
         <div
-          class="grid shrink-0 grid-cols-6 items-center gap-2 border-b px-4 py-3 border-gray-700"
+          class="grid shrink-0 grid-cols-7 items-center gap-2 border-b px-4 py-3 border-gray-700"
         >
           <div class="flex justify-center">
             <input
@@ -600,6 +695,15 @@ function refresh() {
               @click="openNewTag"
             >
               + 新建标签
+            </button>
+          </div>
+          <div class="flex justify-center">
+            <button
+              type="button"
+              class="w-full rounded border px-2.5 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
+              @click="openTagTrash"
+            >
+              回收站
             </button>
           </div>
           <div class="flex justify-center">
@@ -898,5 +1002,63 @@ function refresh() {
         </button>
       </ContextMenu>
     </div>
+
+    <!-- 标签回收站（全屏，布局与主页回收站一致） -->
+    <TrashOverlay
+      :open="tagTrashOpen"
+      :title="`${domainLabel}标签回收站`"
+      :items="trashedTags"
+      @close="closeTagTrash"
+      @restore-all="restoreAllTrash"
+      @empty="requestEmptyTrash"
+      @restore="restoreTrashTag"
+      @purge="requestPurgeTrash"
+    >
+      <template #default="{ item }">
+        <div class="flex h-full flex-col rounded-lg border p-3 border-gray-700 bg-gray-800">
+          <p class="truncate text-sm text-gray-100" :title="item.name">{{ item.name }}</p>
+          <p class="mt-1 text-xs text-gray-400">关联 {{ item.owner_count }} 个</p>
+          <p class="text-xs text-gray-500">删除于 {{ formatLocalTime(item.deleted_at) }}</p>
+          <div class="mt-auto flex gap-2 pt-2">
+            <button
+              type="button"
+              title="恢复"
+              class="rounded border px-2 py-0.5 text-xs text-gray-200 transition-colors border-gray-600 hover:bg-gray-700"
+              @click="restoreTrashTag(item)"
+            >
+              恢复
+            </button>
+            <button
+              type="button"
+              title="彻底删除"
+              class="rounded border px-2 py-0.5 text-xs text-red-400 transition-colors border-red-700/60 hover:bg-red-900/30"
+              @click="requestPurgeTrash(item)"
+            >
+              彻底删除
+            </button>
+          </div>
+        </div>
+      </template>
+    </TrashOverlay>
+
+    <!-- 彻底删除 / 清空确认 -->
+    <ConfirmDialog
+      :open="purgeOpen"
+      title="彻底删除标签"
+      :message="`确定彻底删除标签「${purgeTarget?.name ?? ''}」？此操作不可恢复。`"
+      confirm-text="删除"
+      danger
+      @confirm="doPurgeTrash"
+      @cancel="purgeOpen = false"
+    />
+    <ConfirmDialog
+      :open="emptyOpen"
+      title="清空标签回收站"
+      :message="`确定彻底删除回收站中的全部 ${trashedTags.length} 个标签？此操作不可恢复。`"
+      confirm-text="清空"
+      danger
+      @confirm="doEmptyTrash"
+      @cancel="emptyOpen = false"
+    />
   </Teleport>
 </template>

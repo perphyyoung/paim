@@ -122,6 +122,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::tag::rename_tag,
             commands::tag::delete_tag,
             commands::tag::merge_tags,
+            commands::tag::list_trashed_tags,
+            commands::tag::restore_tag,
+            commands::tag::purge_tag,
+            commands::tag::restore_all_tags,
+            commands::tag::empty_tag_trash,
             commands::tag::move_tag_to_group,
             commands::tag::pin_tag_group_to_top,
             // —— 图像标签管理 ——

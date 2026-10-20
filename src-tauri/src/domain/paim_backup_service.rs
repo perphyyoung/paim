@@ -23,9 +23,10 @@ use crate::infra::db::{self, BkDb};
 use crate::{log_error, log_info};
 
 /// 当前支持的数据格式版本；导入接受 ≤ 该版本（旧备份重开库时由迁移升级）。
-/// v2（2026-10）：图像/提示词表带 `vec` 相似度向量列（列在库内，整库快照天然随行；
-/// v1 包没有该列，重开库时由 db::init 幂等补 NULL，恢复后需重新索引相似度）。
-const CURRENT_DATA_VERSION: i64 = 2;
+/// v2（2026-10）：图像/提示词表带 `vec` 相似度向量列（列在库内，整库快照天然随行；v1 包没有该列，重开库时由 db::init 幂等补 NULL，恢复后需重新索引相似度）。
+/// v3（2026-10）：新增 `prompt_tag_trash` / `image_tag_trash` 标签回收站表（同样在库内，
+/// 整库快照天然随行；v1/v2 包导入后由 db::init 的 CREATE TABLE IF NOT EXISTS 补空表）。
+const CURRENT_DATA_VERSION: i64 = 3;
 
 /// paim 备份包内的固定布局。
 const DB_ENTRY: &str = "database/paim.db";

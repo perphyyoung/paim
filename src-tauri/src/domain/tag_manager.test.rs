@@ -215,3 +215,89 @@ fn resort_to_top_checked_only_when_becoming_top() {
     assert!(ensure_group_resort_capacity(&conn, TagDomain::Image, big, -1).is_ok());
     let _ = top;
 }
+
+#[test]
+fn delete_moves_tag_to_trash_with_relation_snapshot() {
+    let (_dir, bk) = setup();
+    let conn = bk.0.lock().unwrap();
+    let tag = add_tag(&conn, "zit");
+    add_image(&conn, "img1");
+    relate(&conn, "img1", tag);
+
+    delete_tag(&conn, TagDomain::Image, tag).unwrap();
+
+    // 活动标签已删、关联级联清空
+    let exists: Option<i64> = conn
+        .query_row("SELECT id FROM image_tags WHERE id = ?1", [tag], |r| {
+            r.get(0)
+        })
+        .optional()
+        .unwrap();
+    assert!(exists.is_none());
+    assert!(owners_of(&conn, tag).is_empty());
+
+    // 回收站保留名称与关联数快照
+    let trash = list_trashed(&conn, TagDomain::Image).unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].name, "zit");
+    assert_eq!(trash[0].owner_count, 1);
+}
+
+#[test]
+fn restore_rebuilds_relations_and_skips_deleted_owner() {
+    let (_dir, bk) = setup();
+    let conn = bk.0.lock().unwrap();
+    let tag = add_tag(&conn, "zit");
+    add_image(&conn, "img1");
+    add_image(&conn, "img2");
+    relate(&conn, "img1", tag);
+    relate(&conn, "img2", tag);
+    delete_tag(&conn, TagDomain::Image, tag).unwrap();
+    let trash_id = list_trashed(&conn, TagDomain::Image).unwrap()[0].id;
+
+    // img2 已软删：恢复时只还原 img1 的关联
+    conn.execute("UPDATE images SET is_deleted = 1 WHERE id = 'img2'", [])
+        .unwrap();
+    restore_trashed(&conn, TagDomain::Image, trash_id).unwrap();
+
+    let restored: i64 = conn
+        .query_row("SELECT id FROM image_tags WHERE name = 'zit'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(owners_of(&conn, restored), vec!["img1"]);
+    assert!(list_trashed(&conn, TagDomain::Image).unwrap().is_empty());
+}
+
+#[test]
+fn restore_merges_into_existing_same_name_then_purge_and_empty() {
+    let (_dir, bk) = setup();
+    let conn = bk.0.lock().unwrap();
+    let tag = add_tag(&conn, "zit");
+    add_image(&conn, "img1");
+    relate(&conn, "img1", tag);
+    delete_tag(&conn, TagDomain::Image, tag).unwrap();
+    let trash_id = list_trashed(&conn, TagDomain::Image).unwrap()[0].id;
+
+    // 同名标签已重建：恢复应合并到现有标签，而不是撞 UNIQUE
+    let again = add_tag(&conn, "zit");
+    restore_trashed(&conn, TagDomain::Image, trash_id).unwrap();
+    let same: i64 = conn
+        .query_row("SELECT id FROM image_tags WHERE name = 'zit'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(same, again);
+    assert_eq!(owners_of(&conn, again), vec!["img1"]);
+
+    // 彻底删除 / 清空
+    delete_tag(&conn, TagDomain::Image, again).unwrap();
+    let t = list_trashed(&conn, TagDomain::Image).unwrap()[0].id;
+    purge_trashed(&conn, TagDomain::Image, t).unwrap();
+    assert!(list_trashed(&conn, TagDomain::Image).unwrap().is_empty());
+
+    let t2 = add_tag(&conn, "other");
+    delete_tag(&conn, TagDomain::Image, t2).unwrap();
+    assert_eq!(empty_trash(&conn, TagDomain::Image).unwrap(), 1);
+    assert!(list_trashed(&conn, TagDomain::Image).unwrap().is_empty());
+}

@@ -216,6 +216,13 @@ impl TagDomain {
             TagDomain::Prompt => "prompt_tag_relations",
         }
     }
+    /// 标签回收站表（删除时写快照，恢复时重建）。
+    pub fn trash_table(self) -> &'static str {
+        match self {
+            TagDomain::Image => "image_tag_trash",
+            TagDomain::Prompt => "prompt_tag_trash",
+        }
+    }
     /// 关联表中指向实体 id 的列名（image_id / prompt_id）。
     pub fn owner_column(self) -> &'static str {
         match self {
@@ -451,11 +458,189 @@ pub fn rename_tag(
     Ok(())
 }
 
-/// 删除标签（关联关系由外键 CASCADE 一并清除）。
-pub fn delete_tag(conn: &Connection, domain: TagDomain, id: i64) -> rusqlite::Result<()> {
-    let sql = format!("DELETE FROM {} WHERE id = ?1", domain.tags_table());
-    conn.execute(&sql, rusqlite::params![id])?;
+/// 删除标签（进回收站）：先把标签名 / 组 / 关联实体 id 快照写入 trash，再物理删除标签
+/// （关联关系由外键 CASCADE 一并清除），恢复时按快照重建。
+pub fn delete_tag(conn: &Connection, domain: TagDomain, id: i64) -> Result<(), String> {
+    let tags = domain.tags_table();
+    let rel = domain.relations_table();
+    let owner = domain.owner_column();
+    let trash = domain.trash_table();
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let (name, group_id): (String, Option<i64>) = tx
+        .query_row(
+            &format!("SELECT name, group_id FROM {tags} WHERE id = ?1"),
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => "标签不存在".to_string(),
+            _ => e.to_string(),
+        })?;
+    let owners: Vec<String> = {
+        let mut stmt = tx
+            .prepare(&format!("SELECT {owner} FROM {rel} WHERE tag_id = ?1"))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([id], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())?
+    };
+    let owner_json = serde_json::to_string(&owners).map_err(|e| e.to_string())?;
+    tx.execute(
+        &format!(
+            "INSERT INTO {trash}(tag_name, group_id, owner_ids, owner_count) VALUES (?1, ?2, ?3, ?4)"
+        ),
+        rusqlite::params![name, group_id, owner_json, owners.len() as i64],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(&format!("DELETE FROM {tags} WHERE id = ?1"), [id])
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// 回收站标签（列表展示：名称 / 关联数 / 删除时间）。
+#[derive(Debug, Serialize, Clone, specta::Type)]
+pub struct TrashedTag {
+    pub id: i64,
+    pub name: String,
+    pub owner_count: i64,
+    pub deleted_at: String,
+}
+
+/// 列出回收站标签（最近删除在前）。
+pub fn list_trashed(conn: &Connection, domain: TagDomain) -> rusqlite::Result<Vec<TrashedTag>> {
+    let sql = format!(
+        "SELECT id, tag_name, owner_count, deleted_at FROM {} ORDER BY deleted_at DESC, id DESC",
+        domain.trash_table()
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |r| {
+        Ok(TrashedTag {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            owner_count: r.get(2)?,
+            deleted_at: r.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// 恢复回收站标签：同名活动标签存在则复用并合并关联，否则新建（组不存在时落未分组）；
+/// 仅还原仍存在且未删除的实体关联，最后删除回收站记录。
+pub fn restore_trashed(conn: &Connection, domain: TagDomain, trash_id: i64) -> Result<(), String> {
+    let tags = domain.tags_table();
+    let rel = domain.relations_table();
+    let owner = domain.owner_column();
+    let items = domain.items_table();
+    let trash = domain.trash_table();
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let (name, group_id, owner_json): (String, Option<i64>, String) = tx
+        .query_row(
+            &format!("SELECT tag_name, group_id, owner_ids FROM {trash} WHERE id = ?1"),
+            [trash_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => "回收站标签不存在".to_string(),
+            _ => e.to_string(),
+        })?;
+    let owner_ids: Vec<String> = serde_json::from_str(&owner_json).map_err(|e| e.to_string())?;
+    // 组已删则恢复为未分组
+    let group_id = match group_id {
+        Some(gid) => {
+            let exists = tx
+                .query_row(
+                    &format!("SELECT 1 FROM {} WHERE id = ?1", domain.groups_table()),
+                    [gid],
+                    |_| Ok(()),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?
+                .is_some();
+            if exists {
+                Some(gid)
+            } else {
+                None
+            }
+        }
+        None => None,
+    };
+    let existing: Option<i64> = tx
+        .query_row(
+            &format!("SELECT id FROM {tags} WHERE name = ?1"),
+            [&name],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let tag_id = match existing {
+        Some(id) => id,
+        None => {
+            ensure_tag_capacity(&tx, domain)?;
+            tx.execute(
+                &format!("INSERT INTO {tags}(name, group_id) VALUES (?1, ?2)"),
+                rusqlite::params![name, group_id],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.last_insert_rowid()
+        }
+    };
+    for owner_id in &owner_ids {
+        tx.execute(
+            &format!(
+                "INSERT OR IGNORE INTO {rel}({owner}, tag_id)
+                 SELECT id, ?2 FROM {items} WHERE id = ?1 AND is_deleted = 0"
+            ),
+            rusqlite::params![owner_id, tag_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.execute(&format!("DELETE FROM {trash} WHERE id = ?1"), [trash_id])
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 彻底删除一条回收站标签。
+pub fn purge_trashed(
+    conn: &Connection,
+    domain: TagDomain,
+    trash_id: i64,
+) -> rusqlite::Result<usize> {
+    conn.execute(
+        &format!("DELETE FROM {} WHERE id = ?1", domain.trash_table()),
+        [trash_id],
+    )
+}
+
+/// 恢复全部回收站标签，返回恢复数量。
+pub fn restore_all_trashed(conn: &Connection, domain: TagDomain) -> Result<usize, String> {
+    let ids: Vec<i64> = {
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT id FROM {} ORDER BY id",
+                domain.trash_table()
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())?
+    };
+    let mut restored = 0;
+    for id in ids {
+        restore_trashed(conn, domain, id)?;
+        restored += 1;
+    }
+    Ok(restored)
+}
+
+/// 清空回收站，返回清理数量。
+pub fn empty_trash(conn: &Connection, domain: TagDomain) -> rusqlite::Result<usize> {
+    conn.execute(&format!("DELETE FROM {}", domain.trash_table()), [])
 }
 
 /// 合并两个标签（同域）：源标签的关联迁移到目标后删除源标签。

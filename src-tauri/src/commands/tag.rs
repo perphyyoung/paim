@@ -5,7 +5,7 @@
 //! 取代原先分散在 image.rs / prompt.rs / image_tag.rs / prompt_tag.rs 的四套命令。
 
 use crate::domain::tag_manager::{
-    self, TagData, TagDomain, TagGroup, TagItem, TagLite, TagNameKind,
+    self, TagData, TagDomain, TagGroup, TagItem, TagLite, TagNameKind, TrashedTag,
 };
 use crate::domain::tag_service;
 use crate::infra::db::{self, BkDb};
@@ -223,7 +223,62 @@ pub async fn rename_tag(
 #[specta::specta]
 pub async fn delete_tag(db: State<'_, BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
     db::blocking(&db, move |conn| {
-        tag_manager::delete_tag(conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
+        tag_manager::delete_tag(conn, domain, id).map_err(AppError::Message)
+    })
+    .await
+}
+
+// ============ 标签回收站 ============
+
+/// 列出回收站标签（名称 / 关联数 / 删除时间）。
+#[tauri::command]
+#[specta::specta]
+pub async fn list_trashed_tags(
+    db: State<'_, BkDb>,
+    domain: TagDomain,
+) -> Result<Vec<TrashedTag>, AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::list_trashed(conn, domain).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
+}
+
+/// 恢复一条回收站标签（同名活动标签存在时合并关联）。
+#[tauri::command]
+#[specta::specta]
+pub async fn restore_tag(db: State<'_, BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::restore_trashed(conn, domain, id).map_err(AppError::Message)
+    })
+    .await
+}
+
+/// 彻底删除一条回收站标签。
+#[tauri::command]
+#[specta::specta]
+pub async fn purge_tag(db: State<'_, BkDb>, domain: TagDomain, id: i64) -> Result<usize, AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::purge_trashed(conn, domain, id).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
+}
+
+/// 恢复全部回收站标签，返回恢复数量。
+#[tauri::command]
+#[specta::specta]
+pub async fn restore_all_tags(db: State<'_, BkDb>, domain: TagDomain) -> Result<usize, AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::restore_all_trashed(conn, domain).map_err(AppError::Message)
+    })
+    .await
+}
+
+/// 清空标签回收站，返回清理数量。
+#[tauri::command]
+#[specta::specta]
+pub async fn empty_tag_trash(db: State<'_, BkDb>, domain: TagDomain) -> Result<usize, AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::empty_trash(conn, domain).map_err(|e| AppError::Message(e.to_string()))
     })
     .await
 }

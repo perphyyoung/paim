@@ -388,6 +388,24 @@ pub fn open_connection(path: PathBuf) -> rusqlite::Result<Connection> {
             FOREIGN KEY (tag_id) REFERENCES image_tags(id) ON DELETE CASCADE
         );
 
+        -- 标签回收站：删除标签时写入标签名 / 组 / 关联实体 id 快照，恢复时重建标签与关联
+        CREATE TABLE IF NOT EXISTS prompt_tag_trash (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tag_name TEXT NOT NULL,
+            group_id INTEGER,
+            owner_ids TEXT NOT NULL,
+            owner_count INTEGER NOT NULL,
+            deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        );
+        CREATE TABLE IF NOT EXISTS image_tag_trash (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tag_name TEXT NOT NULL,
+            group_id INTEGER,
+            owner_ids TEXT NOT NULL,
+            owner_count INTEGER NOT NULL,
+            deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        );
+
         -- 数据库版本表
         CREATE TABLE IF NOT EXISTS db_version (
             version INTEGER PRIMARY KEY,
