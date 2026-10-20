@@ -534,9 +534,76 @@ pub fn list_trashed(conn: &Connection, domain: TagDomain) -> rusqlite::Result<Ve
     rows.collect()
 }
 
+/// 恢复结果：同名活动标签存在时走合并分支（前端据此提示“已合并”）。
+#[derive(Debug, Serialize, Clone, specta::Type)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum RestoreTagOutcome {
+    Restored,
+    Merged { existing_name: String },
+}
+
+/// 恢复前检查同名活动标签（返回完整标签供“先重命名现有”复用重命名弹窗）。
+pub fn check_restore_conflict(
+    conn: &Connection,
+    domain: TagDomain,
+    trash_id: i64,
+) -> Result<Option<TagItem>, String> {
+    let tag_name: String = conn
+        .query_row(
+            &format!(
+                "SELECT tag_name FROM {} WHERE id = ?1",
+                domain.trash_table()
+            ),
+            [trash_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => "回收站标签不存在".to_string(),
+            _ => e.to_string(),
+        })?;
+    let existing: Option<(i64, String, Option<i64>)> = conn
+        .query_row(
+            &format!(
+                "SELECT id, name, group_id FROM {} WHERE name = ?1",
+                domain.tags_table()
+            ),
+            [&tag_name],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((id, name, group_id)) = existing else {
+        return Ok(None);
+    };
+    let count: i64 = conn
+        .query_row(
+            &format!(
+                "SELECT COUNT(*) FROM {rel} r
+                 JOIN {items} i ON i.id = r.{owner} AND i.is_deleted = 0
+                 WHERE r.tag_id = ?1",
+                rel = domain.relations_table(),
+                items = domain.items_table(),
+                owner = domain.owner_column(),
+            ),
+            [id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(Some(TagItem {
+        id,
+        name,
+        group_id,
+        count,
+    }))
+}
+
 /// 恢复回收站标签：同名活动标签存在则复用并合并关联，否则新建（组不存在时落未分组）；
 /// 仅还原仍存在且未删除的实体关联，最后删除回收站记录。
-pub fn restore_trashed(conn: &Connection, domain: TagDomain, trash_id: i64) -> Result<(), String> {
+pub fn restore_trashed(
+    conn: &Connection,
+    domain: TagDomain,
+    trash_id: i64,
+) -> Result<RestoreTagOutcome, String> {
     let tags = domain.tags_table();
     let rel = domain.relations_table();
     let owner = domain.owner_column();
@@ -574,16 +641,16 @@ pub fn restore_trashed(conn: &Connection, domain: TagDomain, trash_id: i64) -> R
         }
         None => None,
     };
-    let existing: Option<i64> = tx
+    let existing: Option<(i64, String)> = tx
         .query_row(
-            &format!("SELECT id FROM {tags} WHERE name = ?1"),
+            &format!("SELECT id, name FROM {tags} WHERE name = ?1"),
             [&name],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    let tag_id = match existing {
-        Some(id) => id,
+    let (tag_id, outcome) = match existing {
+        Some((id, existing_name)) => (id, RestoreTagOutcome::Merged { existing_name }),
         None => {
             ensure_tag_capacity(&tx, domain)?;
             tx.execute(
@@ -591,7 +658,7 @@ pub fn restore_trashed(conn: &Connection, domain: TagDomain, trash_id: i64) -> R
                 rusqlite::params![name, group_id],
             )
             .map_err(|e| e.to_string())?;
-            tx.last_insert_rowid()
+            (tx.last_insert_rowid(), RestoreTagOutcome::Restored)
         }
     };
     for owner_id in &owner_ids {
@@ -607,7 +674,7 @@ pub fn restore_trashed(conn: &Connection, domain: TagDomain, trash_id: i64) -> R
     tx.execute(&format!("DELETE FROM {trash} WHERE id = ?1"), [trash_id])
         .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+    Ok(outcome)
 }
 
 /// 彻底删除一条回收站标签。

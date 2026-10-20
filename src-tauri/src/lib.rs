@@ -124,6 +124,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::tag::merge_tags,
             commands::tag::list_trashed_tags,
             commands::tag::restore_tag,
+            commands::tag::check_tag_restore_conflict,
             commands::tag::purge_tag,
             commands::tag::restore_all_tags,
             commands::tag::empty_tag_trash,

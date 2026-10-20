@@ -42,26 +42,30 @@ const emit = defineEmits<{ (e: "close"): void; (e: "confirm"): void }>();
       >
         <h3 class="mb-3 text-center text-base font-semibold text-gray-100">{{ title }}</h3>
         <slot />
-        <div class="mt-3 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            class="rounded-lg border border-gray-600 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-700"
-            @click="emit('close')"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            :class="
-              danger
-                ? 'rounded-lg bg-red-600 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500'
-                : 'rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50'
-            "
-            :disabled="confirmDisabled"
-            @click="emit('confirm')"
-          >
-            {{ confirmText ?? "确定" }}
-          </button>
+        <div class="mt-3">
+          <slot name="actions">
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                class="rounded-lg border border-gray-600 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-700"
+                @click="emit('close')"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                :class="
+                  danger
+                    ? 'rounded-lg bg-red-600 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500'
+                    : 'rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50'
+                "
+                :disabled="confirmDisabled"
+                @click="emit('confirm')"
+              >
+                {{ confirmText ?? "确定" }}
+              </button>
+            </div>
+          </slot>
         </div>
       </div>
     </div>

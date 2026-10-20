@@ -84,3 +84,61 @@ test("图像域：彻底删除后不可恢复", async ({ page, app }) => {
 
   expect(await getItemTagNames(page, "image", imageId)).not.toContain(tag);
 });
+
+/// 造恢复冲突：标签删除进回收站后，另一张图重建同名活动标签，打开回收站点恢复。
+async function setupRestoreConflict(
+  page: import("@playwright/test").Page,
+  mockImagePath: string,
+  tag: string,
+): Promise<{ a: string; b: string; trash: ReturnType<typeof trashPanel> }> {
+  const stamp = Date.now();
+  const a = await uploadImageWithPrompt(page, `e2e 恢复冲突 A ${stamp}`, mockImagePath);
+  await addItemTag(page, "image", a.imageId, tag);
+  await deleteTagViaManager(page, tag);
+  await page.getByRole("dialog", { name: "图像标签管理" }).getByTitle("关闭").click();
+
+  const b = await uploadImageWithPrompt(page, `e2e 恢复冲突 B ${stamp}`, mockImagePath);
+  await addItemTag(page, "image", b.imageId, tag);
+
+  await page.getByRole("button", { name: "管理", exact: true }).click();
+  await page.getByRole("button", { name: "标签回收站", exact: true }).click();
+  const trash = trashPanel(page);
+  await expect(trash).toBeVisible();
+  await trash.getByTitle("恢复").first().click();
+  return { a: a.imageId, b: b.imageId, trash };
+}
+
+test("恢复同名标签：选择合并到现有标签", async ({ page, app }) => {
+  const tag = `rc-merge-${Date.now()}`;
+  const { a, b, trash } = await setupRestoreConflict(page, app.mockImagePath, tag);
+  const conflict = page.getByRole("dialog", { name: "标签已存在" });
+  await expect(conflict).toBeVisible();
+  await conflict.getByRole("button", { name: "合并到现有标签" }).click();
+  await expectToastAndDismiss(page, `已合并到现有标签「${tag}」`);
+
+  // 关联合并：两张图都带上现有标签，回收站清空
+  expect(await getItemTagNames(page, "image", a)).toContain(tag);
+  expect(await getItemTagNames(page, "image", b)).toContain(tag);
+  await expect(trash.getByText("回收站为空")).toBeVisible();
+});
+
+test("恢复同名标签：先重命名现有再自动恢复", async ({ page, app }) => {
+  const tag = `rc-rename-${Date.now()}`;
+  const renamed = `${tag}-renamed`;
+  const { a, b, trash } = await setupRestoreConflict(page, app.mockImagePath, tag);
+  const conflict = page.getByRole("dialog", { name: "标签已存在" });
+  await expect(conflict).toBeVisible();
+  await conflict.getByRole("button", { name: "重命名现有标签" }).click();
+
+  const renameDlg = page.getByRole("dialog", { name: "更新标签" });
+  await expect(renameDlg).toBeVisible();
+  await renameDlg.getByPlaceholder("请输入名称…").fill(renamed);
+  await renameDlg.getByRole("button", { name: "确定", exact: true }).click();
+  await expectToastAndDismiss(page, "标签已更新");
+  await expectToastAndDismiss(page, `已恢复标签「${tag}」`);
+
+  // 现有标签改名、回收站标签恢复：两张图各带自己的标签
+  expect(await getItemTagNames(page, "image", b)).toContain(renamed);
+  expect(await getItemTagNames(page, "image", a)).toContain(tag);
+  await expect(trash.getByText("回收站为空")).toBeVisible();
+});

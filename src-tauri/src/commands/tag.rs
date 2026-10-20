@@ -5,7 +5,8 @@
 //! 取代原先分散在 image.rs / prompt.rs / image_tag.rs / prompt_tag.rs 的四套命令。
 
 use crate::domain::tag_manager::{
-    self, TagData, TagDomain, TagGroup, TagItem, TagLite, TagNameKind, TrashedTag,
+    self, RestoreTagOutcome, TagData, TagDomain, TagGroup, TagItem, TagLite, TagNameKind,
+    TrashedTag,
 };
 use crate::domain::tag_service;
 use crate::infra::db::{self, BkDb};
@@ -243,12 +244,30 @@ pub async fn list_trashed_tags(
     .await
 }
 
-/// 恢复一条回收站标签（同名活动标签存在时合并关联）。
+/// 恢复一条回收站标签（同名活动标签存在时合并关联，返回合并/新建结果）。
 #[tauri::command]
 #[specta::specta]
-pub async fn restore_tag(db: State<'_, BkDb>, domain: TagDomain, id: i64) -> Result<(), AppError> {
+pub async fn restore_tag(
+    db: State<'_, BkDb>,
+    domain: TagDomain,
+    id: i64,
+) -> Result<RestoreTagOutcome, AppError> {
     db::blocking(&db, move |conn| {
         tag_manager::restore_trashed(conn, domain, id).map_err(AppError::Message)
+    })
+    .await
+}
+
+/// 恢复前检查同名活动标签（有则返回现有标签，供用户选择合并或先重命名）。
+#[tauri::command]
+#[specta::specta]
+pub async fn check_tag_restore_conflict(
+    db: State<'_, BkDb>,
+    domain: TagDomain,
+    id: i64,
+) -> Result<Option<TagItem>, AppError> {
+    db::blocking(&db, move |conn| {
+        tag_manager::check_restore_conflict(conn, domain, id).map_err(AppError::Message)
     })
     .await
 }

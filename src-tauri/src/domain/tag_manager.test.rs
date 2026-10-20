@@ -334,3 +334,39 @@ fn merge_puts_source_into_trash_with_pre_merge_snapshot() {
     assert!(owners_of(&conn, target).iter().any(|id| id == "img2"));
     assert!(list_trashed(&conn, TagDomain::Image).unwrap().is_empty());
 }
+
+#[test]
+fn restore_merged_returns_existing_name() {
+    let (_dir, bk) = setup();
+    let conn = bk.0.lock().unwrap();
+    let tag = add_tag(&conn, "zit");
+    add_image(&conn, "img1");
+    relate(&conn, "img1", tag);
+    delete_tag(&conn, TagDomain::Image, tag).unwrap();
+    let trash_id = list_trashed(&conn, TagDomain::Image).unwrap()[0].id;
+
+    add_tag(&conn, "zit");
+    let outcome = restore_trashed(&conn, TagDomain::Image, trash_id).unwrap();
+    match outcome {
+        RestoreTagOutcome::Merged { existing_name } => assert_eq!(existing_name, "zit"),
+        RestoreTagOutcome::Restored => panic!("同名标签应返回 Merged"),
+    }
+}
+
+#[test]
+fn check_restore_conflict_returns_existing_or_none() {
+    let (_dir, bk) = setup();
+    let conn = bk.0.lock().unwrap();
+    let tag = add_tag(&conn, "zit");
+    delete_tag(&conn, TagDomain::Image, tag).unwrap();
+    let trash_id = list_trashed(&conn, TagDomain::Image).unwrap()[0].id;
+
+    assert!(check_restore_conflict(&conn, TagDomain::Image, trash_id)
+        .unwrap()
+        .is_none());
+    add_tag(&conn, "zit");
+    let existing = check_restore_conflict(&conn, TagDomain::Image, trash_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(existing.name, "zit");
+}

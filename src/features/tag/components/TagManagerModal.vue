@@ -34,6 +34,7 @@ const cmds = computed(() => {
     pinGroup: (id: number) => commands.pinTagGroupToTop(domain, id),
     listTrashed: () => commands.listTrashedTags(domain),
     restoreTag: (id: number) => commands.restoreTag(domain, id),
+    checkRestoreConflict: (id: number) => commands.checkTagRestoreConflict(domain, id),
     purgeTag: (id: number) => commands.purgeTag(domain, id),
     restoreAllTags: () => commands.restoreAllTags(domain),
     emptyTagTrash: () => commands.emptyTagTrash(domain),
@@ -460,7 +461,7 @@ async function submitNewTag(): Promise<boolean> {
     successMsg: `已新建标签「${name.trim()}」`,
   });
 }
-function openRenameTag(item: TagItem) {
+function openRenameTag(item: TagItem, onRenamed?: () => void) {
   openInput("更新标签", {
     initial: item.name,
     groupEnabled: true,
@@ -478,7 +479,10 @@ function openRenameTag(item: TagItem) {
       failMsg: "重命名标签失败",
       successMsg: "标签已更新",
     });
-    if (ok) closeDlg();
+    if (ok) {
+      closeDlg();
+      onRenamed?.();
+    }
   };
 }
 function openDeleteTag(item: TagItem) {
@@ -576,15 +580,55 @@ function closeTagTrash() {
   trashedTags.value = [];
 }
 
+/// 恢复同名冲突：由用户选择“合并到现有”或“先重命名现有”
+const restoreConflict = ref<{ trash: TrashedTag; existing: TagItem } | null>(null);
+const pendingRestore = ref<TrashedTag | null>(null);
+
 async function restoreTrashTag(item: TrashedTag) {
   try {
-    await cmds.value.restoreTag(item.id);
-    showToast(`已恢复标签「${item.name}」`, "success");
+    const existing = await cmds.value.checkRestoreConflict(item.id);
+    if (existing) {
+      restoreConflict.value = { trash: item, existing };
+      return;
+    }
+    await doRestoreTag(item);
+  } catch (e) {
+    showToast(`恢复失败：${e}`, "error");
+  }
+}
+
+async function doRestoreTag(item: TrashedTag) {
+  try {
+    const outcome = await cmds.value.restoreTag(item.id);
+    showToast(
+      outcome.kind === "merged"
+        ? `已合并到现有标签「${outcome.existing_name}」`
+        : `已恢复标签「${item.name}」`,
+      "success",
+    );
     await loadTagTrash();
     refresh(); // 刷新管理列表并通知主页（标签区 / 详情缓存失效）
   } catch (e) {
     showToast(`恢复失败：${e}`, "error");
   }
+}
+
+async function mergeIntoExisting() {
+  const conflict = restoreConflict.value;
+  restoreConflict.value = null;
+  if (conflict) await doRestoreTag(conflict.trash);
+}
+
+function renameExistingThenRestore() {
+  const conflict = restoreConflict.value;
+  if (!conflict) return;
+  restoreConflict.value = null;
+  pendingRestore.value = conflict.trash;
+  openRenameTag(conflict.existing, () => {
+    const pending = pendingRestore.value;
+    pendingRestore.value = null;
+    if (pending) void doRestoreTag(pending);
+  });
 }
 
 function requestPurgeTrash(item: TrashedTag) {
@@ -1041,6 +1085,38 @@ function refresh() {
         </div>
       </template>
     </TrashOverlay>
+
+    <!-- 恢复同名标签：合并到现有 / 重命名现有 -->
+    <InlineDialog :open="!!restoreConflict" title="标签已存在" @close="restoreConflict = null">
+      <p class="text-sm text-gray-300">
+        同名标签中已存在「{{ restoreConflict?.existing.name }}」。请选择：
+      </p>
+      <template #actions>
+        <div class="mt-3 flex flex-col gap-2">
+          <button
+            type="button"
+            class="rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+            @click="mergeIntoExisting"
+          >
+            合并到现有标签
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border py-2 text-sm text-gray-200 transition-colors border-gray-600 hover:bg-gray-700"
+            @click="renameExistingThenRestore"
+          >
+            重命名现有标签
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border py-2 text-sm text-gray-200 transition-colors border-gray-600 hover:bg-gray-700"
+            @click="restoreConflict = null"
+          >
+            取消
+          </button>
+        </div>
+      </template>
+    </InlineDialog>
 
     <!-- 彻底删除 / 清空确认 -->
     <ConfirmDialog

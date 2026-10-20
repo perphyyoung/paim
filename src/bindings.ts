@@ -260,8 +260,15 @@ export const commands = {
 	mergeTags: (domain: TagDomain, sourceId: number, targetId: number) => __TAURI_INVOKE<null>("merge_tags", { domain, sourceId, targetId }),
 	/**  列出回收站标签（名称 / 关联数 / 删除时间）。 */
 	listTrashedTags: (domain: TagDomain) => __TAURI_INVOKE<TrashedTag[]>("list_trashed_tags", { domain }),
-	/**  恢复一条回收站标签（同名活动标签存在时合并关联）。 */
-	restoreTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<null>("restore_tag", { domain, id }),
+	/**  恢复一条回收站标签（同名活动标签存在时合并关联，返回合并/新建结果）。 */
+	restoreTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<RestoreTagOutcome>("restore_tag", { domain, id }),
+	/**  恢复前检查同名活动标签（有则返回现有标签，供用户选择合并或先重命名）。 */
+	checkTagRestoreConflict: (domain: TagDomain, id: number) => __TAURI_INVOKE<{
+	id: number,
+	name: string,
+	group_id: number | null,
+	count: number,
+} | null>("check_tag_restore_conflict", { domain, id }),
 	/**  彻底删除一条回收站标签。 */
 	purgeTag: (domain: TagDomain, id: number) => __TAURI_INVOKE<number>("purge_tag", { domain, id }),
 	/**  恢复全部回收站标签，返回恢复数量。 */
@@ -731,6 +738,9 @@ export type RelatedImage = {
 	src: string,
 	tags: string[],
 };
+
+/**  恢复结果：同名活动标签存在时走合并分支（前端据此提示“已合并”）。 */
+export type RestoreTagOutcome = { kind: "restored" } | { kind: "merged"; existing_name: string };
 
 /**  搜索匹配模式：默认子串 LIKE；`Regex` 走 SQLite 自定义 REGEXP 函数（见 `infra::regexp`）。 */
 export type SearchMode = "Substring" | "Regex";
