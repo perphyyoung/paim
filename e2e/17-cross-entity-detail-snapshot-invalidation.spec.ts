@@ -412,8 +412,8 @@ test("标签管理改名后：提示词详情里关联图像的标签应同步�
   await dlg.getByPlaceholder("请输入名称…").fill(newTag);
   await dlg.getByRole("button", { name: "确定", exact: true }).click();
   await expectToastAndDismiss(page, "标签已更新");
-  // 点遮罩关闭标签管理（头部关闭按钮无 title，遮罩 @click.self 更稳）
-  await page.mouse.click(4, 4);
+  // 关闭标签管理：用弹窗内的关闭按钮（语义化，不再点遮罩坐标）
+  await page.getByRole("dialog", { name: "图像标签管理" }).getByTitle("关闭").click();
   e2eLog.info(`[step] 已把标签「${oldTag}」重命名为「${newTag}」`);
 
   // 重开提示词详情：关联图像标签应为新名（修复前命中旧快照 → 仍是旧名）
