@@ -21,6 +21,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import {
   clearListBlockSize,
+  closeDetail,
   closeFullscreenViewer,
   createPromptViaDialog,
   expectToastAndDismiss,
@@ -40,6 +41,9 @@ import { e2eLog } from "./e2e-logger";
 /// 建一条无图像的提示词，再「从外界导入」`count` 张，返回其详情弹窗定位器。
 /// 每次导入前覆写 mock 图内容：同 md5 会被判重复导入（只关联同一张，列表撑不到 count 张）。
 async function setupPromptWithImages(page: Page, app: AppHandle, count: number): Promise<Locator> {
+  // 每条用例自带入口：前一条可能停在图像页/图像详情（如「在详情页打开」用例）
+  // 用主页快捷键 Ctrl+P 切回提示词页，避免依赖侧边栏点击
+  await page.keyboard.press("Control+P");
   const promptContent = `e2e 全屏多图导航 ${Date.now()}`;
   await createPromptViaDialog(page, promptContent);
   const detail = await openPromptDetail(page, promptContent);
@@ -79,6 +83,10 @@ test("多图全屏导航后：在图像详情页打开应跳到当前这张（�
   await expect(imageDetail).toBeVisible({ timeout: 5_000 });
   await expect(imageDetail.getByRole("img")).toHaveAttribute("src", viewerSrc!);
   e2eLog.info("[step] 已从全屏第 3 张跳到同一张图的图像详情");
+
+  // 复位：关闭图像详情，用快捷键 Ctrl+P 回到提示词页，避免污染后续用例
+  await closeDetail(imageDetail);
+  await page.keyboard.press("Control+P");
 });
 
 test("双击第 N 张缩略图：查看器以第 N 张开场，索引不与所点错位", async ({ page, app }) => {
