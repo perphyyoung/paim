@@ -5,6 +5,7 @@ import { useToast } from "@/components/useToast";
 import ContextMenu from "@/components/ContextMenu.vue";
 import InlineDialog from "@/components/InlineDialog.vue";
 import TagChip from "@/components/TagChip.vue";
+import MediaCard from "@/components/MediaCard.vue";
 import TrashOverlay from "@/components/TrashOverlay.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { formatLocalTime } from "@/utils/date";
@@ -1060,29 +1061,17 @@ function refresh() {
       @purge="requestPurgeTrash"
     >
       <template #default="{ item }">
-        <div class="flex h-full flex-col rounded-lg border p-3 border-gray-700 bg-gray-800">
-          <p class="truncate text-sm text-gray-100" :title="item.name">{{ item.name }}</p>
-          <p class="mt-1 text-xs text-gray-400">关联 {{ item.owner_count }} 个</p>
-          <p class="text-xs text-gray-500">删除于 {{ formatLocalTime(item.deleted_at) }}</p>
-          <div class="mt-auto flex gap-2 pt-2">
-            <button
-              type="button"
-              title="恢复"
-              class="rounded border px-2 py-0.5 text-xs text-gray-200 transition-colors border-gray-600 hover:bg-gray-700"
-              @click="restoreTrashTag(item)"
-            >
-              恢复
-            </button>
-            <button
-              type="button"
-              title="彻底删除"
-              class="rounded border px-2 py-0.5 text-xs text-red-400 transition-colors border-red-700/60 hover:bg-red-900/30"
-              @click="requestPurgeTrash(item)"
-            >
-              彻底删除
-            </button>
-          </div>
-        </div>
+        <MediaCard
+          variant="trash"
+          :item="{ id: String(item.id), is_favorite: false }"
+          :content="`关联 ${item.owner_count} 个`"
+          :title="item.name"
+          :title-tip="item.name"
+          :sub-title="`删除于 ${formatLocalTime(item.deleted_at)}`"
+          :card-size="200"
+          @restore="restoreTrashTag(item)"
+          @purge="requestPurgeTrash(item)"
+        />
       </template>
     </TrashOverlay>
 

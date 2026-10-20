@@ -44,6 +44,9 @@ test("图像域：删除的标签进回收站，恢复后关联回来", async ({
   const trash = trashPanel(page);
   await expect(trash.getByRole("heading", { name: /图像标签回收站/ })).toBeVisible();
   await expect(trash.getByText(tag, { exact: true }).first()).toBeVisible();
+  // 卡片复用 MediaCard trash 变体：正文显示关联数、副标题显示删除时间
+  await expect(trash.getByText("关联 1 个")).toBeVisible();
+  await expect(trash.getByText(/删除于/)).toBeVisible();
   e2eLog.info("[step] 标签已进入回收站");
 
   await trash.getByTitle("恢复").first().click();
