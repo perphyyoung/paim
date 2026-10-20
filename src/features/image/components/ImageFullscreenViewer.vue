@@ -16,6 +16,16 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { ImageFullscreenItem } from "@/bindings";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
+import { formatSize } from "@/utils/formatSize";
+
+interface FullscreenMeta {
+  name?: string;
+  tags?: string[];
+  note?: string;
+  width?: number;
+  height?: number;
+  fileSize?: number;
+}
 
 const props = defineProps<{
   items: ImageFullscreenItem[];
@@ -23,8 +33,8 @@ const props = defineProps<{
   start0basedIndex: number;
   /** 按 id 惰性解析大图 asset URL（查看器窗口传 resolveImageSrc） */
   resolveSrc?: (id: string) => Promise<string>;
-  /** 按 id 惰性补全名称/标签（如 get_item_tags） */
-  resolveMeta?: (id: string) => Promise<{ name?: string; tags?: string[] }>;
+  /** 按 id 惰性补全名称/标签/备注/尺寸/大小（查看器窗口传 resolveMeta） */
+  resolveMeta?: (id: string) => Promise<FullscreenMeta>;
 }>();
 
 const emit = defineEmits<{
@@ -33,7 +43,7 @@ const emit = defineEmits<{
 
 const current0basedIndex = ref(0);
 const srcs = ref<Record<string, string>>({});
-const metas = ref<Record<string, { name?: string; tags?: string[] }>>({});
+const metas = ref<Record<string, FullscreenMeta>>({});
 const zoom = ref(1);
 const translate = ref({ x: 0, y: 0 });
 
@@ -96,6 +106,18 @@ const currentTags = computed(() => {
   if (direct && direct.length) return direct;
   return current.value ? (metas.value[current.value.id]?.tags ?? []) : [];
 });
+const currentMeta = computed(() => (current.value ? metas.value[current.value.id] : undefined));
+const currentNote = computed(() => currentMeta.value?.note ?? "");
+/// 与详情页同格式：宽 × 高；缺失显示「—」
+const sizeText = computed(() => {
+  const w = currentMeta.value?.width ?? 0;
+  const h = currentMeta.value?.height ?? 0;
+  return w && h ? `${w} × ${h}` : "—";
+});
+const sizeBytesText = computed(() => {
+  const bytes = currentMeta.value?.fileSize ?? 0;
+  return bytes ? formatSize(bytes) : "—";
+});
 
 // 切换/打开时惰性解析当前与下一张（预取），并重置缩放
 watch(
@@ -107,7 +129,10 @@ watch(
     ensureSrc(current.value.id);
     ensureMeta(current.value.id);
     const next = props.items[current0basedIndex.value + 1];
-    if (next) ensureSrc(next.id);
+    if (next) {
+      ensureSrc(next.id);
+      ensureMeta(next.id);
+    }
   },
   { immediate: true },
 );
@@ -187,11 +212,20 @@ function onWheel(e: WheelEvent) {
       <div v-else class="text-sm text-white/60">加载中…</div>
     </div>
 
-    <!-- 文件名（左上角） -->
+    <!-- 信息条（左上角）：文件名 / 尺寸 / 大小 / 备注；除备注最多两行外，其余各一行 -->
     <div
-      class="absolute top-3 left-3 z-10 flex items-center rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm"
+      class="absolute top-3 left-3 z-10 flex max-w-[30vw] flex-col gap-1 rounded-lg bg-black/60 px-3 py-1.5 backdrop-blur-sm"
     >
-      <span class="max-w-[40vw] truncate text-sm text-white">{{ currentName || "—" }}</span>
+      <span class="truncate text-sm text-white">{{ currentName || "—" }}</span>
+      <span class="truncate text-xs text-white/50">{{ sizeText }}</span>
+      <span class="truncate text-xs text-white/50">{{ sizeBytesText }}</span>
+      <span
+        v-if="currentNote"
+        class="line-clamp-2 whitespace-pre-wrap text-xs text-white/70"
+        :title="currentNote"
+      >
+        {{ currentNote }}
+      </span>
     </div>
 
     <!-- 标签（左下角） -->

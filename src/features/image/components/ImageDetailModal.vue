@@ -21,6 +21,7 @@ import VecStatusIcon from "@/components/VecStatusIcon.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { formatLocalTime } from "@/utils/date";
+import { formatSize } from "@/utils/formatSize";
 import { markPageStale } from "@/utils/crossPageCache";
 import { ModalZ } from "@/utils/modalZ";
 import {
@@ -553,11 +554,6 @@ async function saveFields() {
 }
 
 const fmtLocal = formatLocalTime;
-const fmtSize = (bytes: number) => {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
-};
 </script>
 
 <template>
@@ -954,7 +950,9 @@ const fmtSize = (bytes: number) => {
               </li>
               <li class="flex justify-between">
                 <span class="text-gray-500">大小</span>
-                <span class="text-gray-200">{{ current ? fmtSize(current.file_size) : "—" }}</span>
+                <span class="text-gray-200">{{
+                  current ? formatSize(current.file_size) : "—"
+                }}</span>
               </li>
             </ul>
           </div>

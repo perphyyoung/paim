@@ -13,6 +13,7 @@ import { expect } from "@playwright/test";
 import {
   addItemTag,
   closeFullscreenViewer,
+  invokeCommand,
   navIndexInput,
   openFullscreenViewer,
   openImageDetail,
@@ -28,6 +29,15 @@ test("双击图像详情大图：查看窗口元素齐全，关闭后详情弹�
   const { imageId } = await uploadImageWithPrompt(page, promptContent, app.mockImagePath);
   // 前置：给图挂一个标签（只需「已有标签」这一状态，不验证打标签流程——那由 05 覆盖）
   await addItemTag(page, "image", imageId, TAG_NAME);
+  // 前置：写一条备注，验证全屏信息条与详情页同源
+  const NOTE = "e2e 全屏备注";
+  await invokeCommand(page, "update_image_detail", {
+    id: imageId,
+    fileName: null,
+    note: NOTE,
+    width: null,
+    height: null,
+  });
 
   const detail = await openImageDetail(page, promptContent);
   const viewer = await openFullscreenViewer(app, detail);
@@ -38,6 +48,10 @@ test("双击图像详情大图：查看窗口元素齐全，关闭后详情弹�
   await expect(image).toHaveAttribute("src", /asset\.localhost/);
   // 2. 文件名：左上信息条，取载荷携带的上传文件名
   await expect(viewer.getByText("e2e-upload.png")).toBeVisible();
+  // 2.1 尺寸 / 大小 / 备注：无前缀，各占一行（备注最多两行）
+  await expect(viewer.getByText(/^\d+ × \d+$/)).toBeVisible();
+  await expect(viewer.getByText(/^\d+(\.\d+)? (B|KB|MB)$/)).toBeVisible();
+  await expect(viewer.getByText(NOTE)).toBeVisible();
   // 3. 标签：左下信息条，按 id 惰性补全（载荷只带 id）
   await expect(viewer.getByText(TAG_NAME)).toBeVisible();
   // 4. 导航 + 索引：单张时序号为 1（输入框禁用），前后箭头禁用

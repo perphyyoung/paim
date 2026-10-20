@@ -15,6 +15,7 @@ import { log } from "@/utils/logger";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
 import { formatLocalTime } from "@/utils/date";
+import { formatSize } from "@/utils/formatSize";
 import { parseSearch } from "@/utils/searchQuery";
 import { useGridColumns } from "@/utils/gridColumns";
 import { isPlaceholder, usePagedBlocks, type Placeholder } from "@/composables/usePagedBlocks";
@@ -501,12 +502,6 @@ async function loadImages(options?: { keepContent?: boolean }) {
   scheduleThumbCheck();
 }
 
-function fmtSize(bytes: number) {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
-}
-
 // 将 SQLite 的 UTC 时间串转为本地时间
 const fmtLocal = formatLocalTime;
 
@@ -514,7 +509,7 @@ const fmtLocal = formatLocalTime;
 function rowInfo(img: ImageCard): { label: string; value: string } {
   switch (sortBy.value) {
     case "fileSize":
-      return { label: "大小", value: fmtSize(img.file_size) };
+      return { label: "大小", value: formatSize(img.file_size) };
     case "fileName":
       return { label: "文件名", value: img.file_name };
     case "width":

@@ -57,7 +57,15 @@ async function resolveMeta(id: string) {
     commands.imageCardsByIds([id]).then((cards) => cards[0]),
     commands.getItemTags("image", id),
   ]);
-  return { name: card?.file_name, tags: tags.map((t) => t.name) };
+  return {
+    name: card?.file_name,
+    tags: tags.map((t) => t.name),
+    // ImageCard 已带这些字段（详情页同源），信息条直接复用，无需额外请求
+    note: card?.note ?? "",
+    width: card?.width ?? 0,
+    height: card?.height ?? 0,
+    fileSize: card?.file_size ?? 0,
+  };
 }
 </script>
 
