@@ -12,7 +12,7 @@
 import { expect } from "@playwright/test";
 import {
   addItemTag,
-  closeFullscreenViewer,
+  closeDetail,
   invokeCommand,
   navIndexInput,
   openFullscreenViewer,
@@ -62,9 +62,10 @@ test("双击图像详情大图：查看窗口元素齐全，关闭后详情弹�
   // 5. 右上关闭钮
   await expect(viewer.getByTitle("关闭")).toBeVisible();
 
-  await closeFullscreenViewer(app, viewer);
-
-  // 关闭后主窗口的详情弹窗原样：仍在、仍是同一张图（主窗口全程不参与全屏状态，无需重挂载）
-  await expect(detail).toBeVisible();
-  await expect(detail.getByRole("img")).toBeVisible();
+  // 6. 右上角「在详情页打开」：先关主窗口详情，点图标后应重新打开该图详情
+  await closeDetail(detail);
+  await viewer.getByTitle("在详情页打开").click();
+  const reopened = page.getByRole("dialog", { name: "图像详情" });
+  await expect(reopened).toBeVisible({ timeout: 5_000 });
+  await expect(reopened.getByText("e2e-upload.png")).toBeVisible();
 });

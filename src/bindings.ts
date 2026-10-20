@@ -155,6 +155,8 @@ export const commands = {
 	showImageFullscreen: () => __TAURI_INVOKE<null>("show_image_fullscreen"),
 	/**  关闭全屏查看：隐藏窗口（复用，不销毁）并聚焦主窗口 —— 主窗口原样露出。 */
 	closeImageFullscreen: () => __TAURI_INVOKE<null>("close_image_fullscreen"),
+	/**  从全屏跳回主窗口打开详情：通知主窗口后隐藏查看器并聚焦主窗口。 */
+	openImageDetailFromFullscreen: (id: string) => __TAURI_INVOKE<null>("open_image_detail_from_fullscreen", { id }),
 	/**
 	 *  按 id 列表取卡片投影（顺序与入参一致，缺失 / 已删除的跳过）。
 	 *  供「按 id 渲染卡片」的场景使用，如相似度检索结果。
@@ -380,6 +382,7 @@ export const events = {
 	globalShortcut: makeEvent<GlobalShortcutEvent>("global-shortcut"),
 	imageFullscreenOpened: makeEvent<ImageFullscreenOpened>("image-fullscreen-opened"),
 	logLevelChanged: makeEvent<LogLevelChanged>("log-level-changed"),
+	openImageDetail: makeEvent<ImageDetailRequested>("open-image-detail"),
 	promptIndexProgress: makeEvent<PromptIndexProgress>("prompt-index-progress"),
 	similarityIndexProgress: makeEvent<SimilarityIndexProgress>("similarity-index-progress"),
 	thumbnailRebuildProgress: makeEvent<ThumbnailRebuildProgress>("thumbnail-rebuild-progress"),
@@ -513,6 +516,9 @@ export type ImageCard = {
 	/**  相似度向量是否已建立（`vec IS NOT NULL`）：卡片/详情数据自带索引状态，无额外查询 */
 	has_vec: boolean,
 };
+
+/**  全屏窗口请求主窗口打开某张图的详情（载荷为图像 id）。 */
+export type ImageDetailRequested = string;
 
 /**  查看器列表项。`src` 允许空串：由查看器窗口按 id 惰性解析（`get_image_src` → `convertFileSrc`）。 */
 export type ImageFullscreenItem = {

@@ -5,12 +5,20 @@ import {
   onActivated,
   onDeactivated,
   onMounted,
+  onUnmounted,
   ref,
   shallowRef,
   watch,
 } from "vue";
 import { relativePathToAssetUrl } from "@/utils/assetUrl";
-import { commands, type Image, type ImageCard, type TagGroup, type TagItem } from "@/bindings";
+import {
+  commands,
+  events,
+  type Image,
+  type ImageCard,
+  type TagGroup,
+  type TagItem,
+} from "@/bindings";
 import { log } from "@/utils/logger";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -554,6 +562,31 @@ function openDetail(img: ImageCard) {
   detailIndex.value = Math.max(0, order.indexOf(img.id));
   detailOpen.value = true;
   void loadDetailOrder();
+}
+
+// 全屏查看器点「在详情页打开」：切回图像页，并按 id 直接打开该图详情
+let unlistenOpenDetail: (() => void) | null = null;
+onMounted(async () => {
+  unlistenOpenDetail = await events.openImageDetail.listen((e) => {
+    void openDetailById(e.payload);
+  });
+});
+onUnmounted(() => unlistenOpenDetail?.());
+
+async function openDetailById(id: string) {
+  if (window.location.hash !== "#/images") window.location.hash = "#/images";
+  try {
+    const [card] = await commands.imageCardsByIds([id]);
+    if (!card) return;
+    nested.closeAll();
+    detailExtra.value = [card];
+    detailOrder.value = [id];
+    detailDirty.value = false;
+    detailIndex.value = 0;
+    detailOpen.value = true;
+  } catch (e) {
+    log.warn("[ImagePage] 全屏跳详情失败", String(e));
+  }
 }
 
 /** 详情顺序补全为全量 id：主页按块懒加载，索引分母与导航范围不应只等于已加载块条数 */

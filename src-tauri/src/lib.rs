@@ -30,6 +30,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             domain::backup_common::BackupProgress,
             infra::logging::LogLevelChanged,
             commands::image_fullscreen::ImageFullscreenOpened,
+            commands::image_fullscreen::ImageDetailRequested,
             commands::similarity::SimilarityIndexProgress,
             commands::similarity::PromptIndexProgress,
         ])
@@ -89,6 +90,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::image_fullscreen::mount_image_fullscreen,
             commands::image_fullscreen::show_image_fullscreen,
             commands::image_fullscreen::close_image_fullscreen,
+            commands::image_fullscreen::open_image_detail_from_fullscreen,
             // —— 图像相似度（以图搜图，向量来自外部 embedding 服务）——
             commands::image::image_cards_by_ids,
             commands::similarity::similarity_status,

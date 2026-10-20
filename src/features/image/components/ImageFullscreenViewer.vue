@@ -39,6 +39,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
+  (e: "openDetail", id: string): void;
 }>();
 
 const current0basedIndex = ref(0);
@@ -186,7 +187,30 @@ function onWheel(e: WheelEvent) {
     v-if="current"
     class="fixed inset-0 flex items-center justify-center overflow-hidden bg-black"
   >
-    <!-- 仅关闭按钮：无遮罩点击 / Esc / 双击退出 -->
+    <!-- 右上角：在详情页打开 + 关闭（无遮罩点击 / Esc / 双击退出） -->
+    <button
+      type="button"
+      class="absolute top-3 right-14 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+      title="在详情页打开"
+      aria-label="在详情页打开"
+      @click="current && emit('openDetail', current.id)"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        class="h-4 w-4"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+        />
+      </svg>
+    </button>
     <button
       type="button"
       class="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-lg text-white hover:bg-white/20"

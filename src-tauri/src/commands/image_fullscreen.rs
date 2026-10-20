@@ -49,6 +49,32 @@ pub struct ImageFullscreenState(Mutex<Option<ImageFullscreenPayload>>);
 #[tauri_specta(event_name = "image-fullscreen-opened")]
 pub struct ImageFullscreenOpened(pub ImageFullscreenPayload);
 
+/// 全屏窗口请求主窗口打开某张图的详情（载荷为图像 id）。
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "open-image-detail")]
+pub struct ImageDetailRequested(pub String);
+
+/// 从全屏跳回主窗口打开详情：通知主窗口后隐藏查看器并聚焦主窗口。
+#[tauri::command]
+#[specta::specta]
+pub fn open_image_detail_from_fullscreen(app: AppHandle, id: String) -> Result<(), AppError> {
+    ImageDetailRequested(id)
+        .emit_to(
+            &app,
+            EventTarget::WebviewWindow {
+                label: "main".to_string(),
+            },
+        )
+        .map_err(win_error)?;
+    if let Some(win) = app.get_webview_window(WINDOW_LABEL) {
+        win.hide().map_err(win_error)?;
+    }
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.set_focus();
+    }
+    Ok(())
+}
+
 /// 窗口 API 错误统一转成可读的 AppError。
 fn win_error(e: tauri::Error) -> AppError {
     AppError::Message(format!("窗口操作失败: {e}"))

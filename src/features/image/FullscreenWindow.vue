@@ -79,5 +79,6 @@ async function resolveMeta(id: string) {
     :resolve-src="resolveImageSrc"
     :resolve-meta="resolveMeta"
     @close="close"
+    @open-detail="(id) => commands.openImageDetailFromFullscreen(id)"
   />
 </template>
