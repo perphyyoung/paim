@@ -566,8 +566,7 @@ async function loadTagTrash() {
 }
 
 function openTagTrash() {
-  // 回收站是全屏视图：先收起管理弹窗，避免两层同 z 叠放
-  emit("close");
+  // 回收站叠在管理弹窗之上（z = baseModal + 1）：关闭后回到管理，搜索/滚动状态不丢
   tagTrashOpen.value = true;
   void loadTagTrash();
 }
@@ -1009,6 +1008,7 @@ function refresh() {
       :open="tagTrashOpen"
       :title="`${domainLabel}标签回收站`"
       :items="trashedTags"
+      :z="ModalZ.baseModal + 1"
       @close="closeTagTrash"
       @restore-all="restoreAllTrash"
       @empty="requestEmptyTrash"

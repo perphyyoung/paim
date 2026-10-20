@@ -14,6 +14,8 @@ const props = defineProps<{
   open: boolean;
   title: string;
   items: T[];
+  /** 遮罩层级：默认 baseModal；叠在其他全屏面板之上时传更高值（仍应低于 inlineDialog） */
+  z?: number;
 }>();
 
 const emit = defineEmits<{
@@ -40,7 +42,7 @@ const canOperate = computed(() => props.items.length > 0);
       aria-modal="true"
       :aria-label="title"
       class="fixed inset-0 flex items-center justify-center bg-black/40"
-      :style="{ zIndex: ModalZ.baseModal }"
+      :style="{ zIndex: z ?? ModalZ.baseModal }"
       @click.self="emit('close')"
     >
       <div

@@ -49,7 +49,11 @@ test("图像域：删除的标签进回收站，恢复后关联回来", async ({
   await trash.getByTitle("恢复").first().click();
   await expectToastAndDismiss(page, `已恢复标签「${tag}」`);
   await expect(trash.getByText("回收站为空")).toBeVisible();
-  await page.getByTitle("关闭").first().click();
+  // 回收站叠在管理之上：关闭后应回到管理，而不是主页
+  await trash.getByTitle("关闭").click();
+  const manager = page.getByRole("dialog", { name: "图像标签管理" });
+  await expect(manager).toBeVisible();
+  await manager.getByTitle("关闭").click();
 
   // 数据层：标签与关联都回来了
   expect(await getItemTagNames(page, "image", imageId)).toContain(tag);
@@ -74,7 +78,9 @@ test("图像域：彻底删除后不可恢复", async ({ page, app }) => {
   await dlg.getByRole("button", { name: "彻底删除", exact: true }).click();
   await expectToastAndDismiss(page, `已彻底删除标签「${tag}」`);
   await expect(trash.getByText("回收站为空")).toBeVisible();
-  await page.getByTitle("关闭").first().click();
+  // 关闭回收站后管理仍在（层级叠放，不再先关管理）
+  await trash.getByTitle("关闭").click();
+  await expect(page.getByRole("dialog", { name: "图像标签管理" })).toBeVisible();
 
   expect(await getItemTagNames(page, "image", imageId)).not.toContain(tag);
 });
