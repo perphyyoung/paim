@@ -187,12 +187,12 @@ function onWheel(e: WheelEvent) {
     v-if="current"
     class="fixed inset-0 flex items-center justify-center overflow-hidden bg-black"
   >
-    <!-- 右上角：在详情页打开 + 关闭（无遮罩点击 / Esc / 双击退出） -->
+    <!-- 右上角：在图像详情页打开 + 关闭（无遮罩点击 / Esc / 双击退出） -->
     <button
       type="button"
       class="absolute top-3 right-14 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
-      title="在详情页打开"
-      aria-label="在详情页打开"
+      title="在图像详情页打开"
+      aria-label="在图像详情页打开"
       @click="current && emit('openDetail', current.id)"
     >
       <svg

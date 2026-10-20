@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { events } from "@/bindings";
 import { initFontFamily, initFontScale } from "@/utils/font";
 import { SETTINGS_CLOSED_EVENT } from "@/utils/crossPageCache";
+import { pendingImageDetailId } from "@/utils/pendingImageDetail";
 import SettingsView from "@/views/SettingsView.vue";
 import SimilaritySettingsView from "@/views/SimilaritySettingsView.vue";
 import HelpView from "@/views/HelpView.vue";
@@ -19,6 +20,8 @@ initFontFamily();
 // 全局快捷键（系统级，Rust 侧 tauri-plugin-global-shortcut 注册 Ctrl+,）：
 // 收到事件即切换设置面板开关
 let unlistenGlobalShortcut: (() => void) | undefined;
+// 全屏查看器「在图像详情页打开」：统一由 App 切到图像页并交接 id
+let unlistenOpenImageDetail: (() => void) | undefined;
 function onHomeCardInfoKeydown(e: KeyboardEvent) {
   if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyI") {
     e.preventDefault();
@@ -30,10 +33,16 @@ onMounted(async () => {
   unlistenGlobalShortcut = await events.globalShortcut.listen(() => {
     settingsOpen.value = !settingsOpen.value;
   });
+  unlistenOpenImageDetail = await events.openImageDetail.listen((e) => {
+    // 无论从提示词详情还是图像详情进全屏，都统一切到图像页；打开动作交给 ImagePage
+    pendingImageDetailId.value = e.payload;
+    if (window.location.hash !== "#/images") window.location.hash = "#/images";
+  });
 });
 onUnmounted(() => {
   document.removeEventListener("keydown", onHomeCardInfoKeydown);
   unlistenGlobalShortcut?.();
+  unlistenOpenImageDetail?.();
 });
 
 const tabs = [

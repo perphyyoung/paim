@@ -62,9 +62,9 @@ test("双击图像详情大图：查看窗口元素齐全，关闭后详情弹�
   // 5. 右上关闭钮
   await expect(viewer.getByTitle("关闭")).toBeVisible();
 
-  // 6. 右上角「在详情页打开」：先关主窗口详情，点图标后应重新打开该图详情
+  // 6. 右上角「在图像详情页打开」：先关主窗口详情，点图标后应重新打开该图详情
   await closeDetail(detail);
-  await viewer.getByTitle("在详情页打开").click();
+  await viewer.getByTitle("在图像详情页打开").click();
   const reopened = page.getByRole("dialog", { name: "图像详情" });
   await expect(reopened).toBeVisible({ timeout: 5_000 });
   await expect(reopened.getByText("e2e-upload.png")).toBeVisible();

@@ -55,6 +55,32 @@ async function setupPromptWithImages(page: Page, app: AppHandle, count: number):
   return detail;
 }
 
+test("多图全屏导航后：在图像详情页打开应跳到当前这张（图像详情，不是原入口）", async ({
+  page,
+  app,
+}) => {
+  const detail = await setupPromptWithImages(page, app, 3);
+  const viewer = await openFullscreenViewer(app, detail, 0);
+  await expect(navIndexInput(viewer)).toHaveValue("1");
+
+  // 导航到第 3 张
+  await viewer.getByTitle("下一个").click();
+  await viewer.getByTitle("下一个").click();
+  await expect(navIndexInput(viewer)).toHaveValue("3");
+
+  // 记录全屏当前（第 3 张）的原图地址：主页排序与关联顺序相反，不能拿索引断言
+  const viewerSrc = await viewer.getByRole("img").getAttribute("src");
+  expect(viewerSrc, "全屏当前图应有 src").toBeTruthy();
+
+  // 跳详情：主窗口应切到图像页，并打开当前这张（不是入口的第 1 张）
+  await viewer.getByTitle("在图像详情页打开").click();
+  await expect(page).toHaveURL(/#\/images/);
+  const imageDetail = page.getByRole("dialog", { name: "图像详情" });
+  await expect(imageDetail).toBeVisible({ timeout: 5_000 });
+  await expect(imageDetail.getByRole("img")).toHaveAttribute("src", viewerSrc!);
+  e2eLog.info("[step] 已从全屏第 3 张跳到同一张图的图像详情");
+});
+
 test("双击第 N 张缩略图：查看器以第 N 张开场，索引不与所点错位", async ({ page, app }) => {
   const detail = await setupPromptWithImages(page, app, 3);
   // 双击第 3 张（索引 2）：应以 3 开场（若索引偏一格会是 2）

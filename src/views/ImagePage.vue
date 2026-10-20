@@ -11,14 +11,8 @@ import {
   watch,
 } from "vue";
 import { relativePathToAssetUrl } from "@/utils/assetUrl";
-import {
-  commands,
-  events,
-  type Image,
-  type ImageCard,
-  type TagGroup,
-  type TagItem,
-} from "@/bindings";
+import { commands, type Image, type ImageCard, type TagGroup, type TagItem } from "@/bindings";
+import { pendingImageDetailId } from "@/utils/pendingImageDetail";
 import { log } from "@/utils/logger";
 import { useToast } from "@/components/useToast";
 import { useOpenImageLocation } from "@/components/useOpenImageLocation";
@@ -564,25 +558,29 @@ function openDetail(img: ImageCard) {
   void loadDetailOrder();
 }
 
-// 全屏查看器点「在详情页打开」：切回图像页，并按 id 直接打开该图详情
-let unlistenOpenDetail: (() => void) | null = null;
-onMounted(async () => {
-  unlistenOpenDetail = await events.openImageDetail.listen((e) => {
-    void openDetailById(e.payload);
-  });
-});
-onUnmounted(() => unlistenOpenDetail?.());
+// 全屏查看器点「在图像详情页打开」：App 已切到图像页并写入 id，这里消费并打开
+// （未挂载/未激活时靠 immediate 在挂载后取走，避免事件被页面级监听漏掉）
+watch(
+  pendingImageDetailId,
+  (id) => {
+    if (!id) return;
+    pendingImageDetailId.value = null;
+    void openDetailById(id);
+  },
+  { immediate: true },
+);
 
 async function openDetailById(id: string) {
-  if (window.location.hash !== "#/images") window.location.hash = "#/images";
   try {
     const [card] = await commands.imageCardsByIds([id]);
     if (!card) return;
+    // 详情页顺序与主页一致（全量 id），导航/序号才对得上；目标不在当前筛选结果时兜底单条
+    const order = await commands.listImageIds(currentQuery());
     nested.closeAll();
     detailExtra.value = [card];
-    detailOrder.value = [id];
+    detailOrder.value = order.includes(id) ? order : [id];
     detailDirty.value = false;
-    detailIndex.value = 0;
+    detailIndex.value = Math.max(0, detailOrder.value.indexOf(id));
     detailOpen.value = true;
   } catch (e) {
     log.warn("[ImagePage] 全屏跳详情失败", String(e));
