@@ -90,7 +90,14 @@ test("图像域：合并 zit 到 zit-aio，关联去重且详情标签同步", a
 
   await mergeTagViaManager(page, source, target, extra);
   await expectToastAndDismiss(page, `已合并到「${target}」`);
-  e2eLog.info(`[step] 已把「${source}」合并到「${target}」`);
+  // 被合并掉的源标签进回收站，快照是合并前的关联数（只关联图 A → 1）
+  const trash = await invokeCommand<Array<{ name: string; owner_count: number }>>(
+    page,
+    "list_trashed_tags",
+    { domain: "image" },
+  );
+  expect(trash.some((t) => t.name === source && t.owner_count === 1)).toBe(true);
+  e2eLog.info(`[step] 已把「${source}」合并到「${target}」（源标签进回收站）`);
 
   // 数据层：源标签已删除，图 A 只剩目标；图 B 还有用于禁用断言的第三个标签
   expect(await getItemTagNames(page, "image", a.imageId)).toEqual([target]);

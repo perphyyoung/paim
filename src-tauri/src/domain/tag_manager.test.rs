@@ -301,3 +301,36 @@ fn restore_merges_into_existing_same_name_then_purge_and_empty() {
     assert_eq!(empty_trash(&conn, TagDomain::Image).unwrap(), 1);
     assert!(list_trashed(&conn, TagDomain::Image).unwrap().is_empty());
 }
+
+#[test]
+fn merge_puts_source_into_trash_with_pre_merge_snapshot() {
+    let (_dir, bk) = setup();
+    let conn = bk.0.lock().unwrap();
+    let source = add_tag(&conn, "zit");
+    let target = add_tag(&conn, "zit-aio");
+    for id in ["img1", "img2"] {
+        add_image(&conn, id);
+    }
+    relate(&conn, "img1", source);
+    relate(&conn, "img2", source);
+    relate(&conn, "img2", target);
+
+    merge_tags(&conn, TagDomain::Image, source, target).unwrap();
+
+    // 源标签进回收站；快照是合并前的关联（2 个，而不是去重后的 1 个）
+    let trash = list_trashed(&conn, TagDomain::Image).unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].name, "zit");
+    assert_eq!(trash[0].owner_count, 2);
+
+    // 恢复后源标签与目标并存，关联回到 img1/img2
+    restore_trashed(&conn, TagDomain::Image, trash[0].id).unwrap();
+    let restored: i64 = conn
+        .query_row("SELECT id FROM image_tags WHERE name = 'zit'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(owners_of(&conn, restored), vec!["img1", "img2"]);
+    assert!(owners_of(&conn, target).iter().any(|id| id == "img2"));
+    assert!(list_trashed(&conn, TagDomain::Image).unwrap().is_empty());
+}

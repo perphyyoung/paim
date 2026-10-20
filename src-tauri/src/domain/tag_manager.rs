@@ -458,14 +458,14 @@ pub fn rename_tag(
     Ok(())
 }
 
-/// 删除标签（进回收站）：先把标签名 / 组 / 关联实体 id 快照写入 trash，再物理删除标签
-/// （关联关系由外键 CASCADE 一并清除），恢复时按快照重建。
-pub fn delete_tag(conn: &Connection, domain: TagDomain, id: i64) -> Result<(), String> {
+/// 删除标签并在回收站留快照（事务内；调用方负责 commit / rollback）。
+/// 采集顺序必须是「先读 owner ids，再 DELETE」——DELETE 会级联清关联。
+/// 所有「删除标签」的入口（直接删除 / 合并时的源标签）都必须经这里，避免漏写回收站。
+fn trash_tag_in_tx(tx: &rusqlite::Transaction, domain: TagDomain, id: i64) -> Result<(), String> {
     let tags = domain.tags_table();
     let rel = domain.relations_table();
     let owner = domain.owner_column();
     let trash = domain.trash_table();
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let (name, group_id): (String, Option<i64>) = tx
         .query_row(
             &format!("SELECT name, group_id FROM {tags} WHERE id = ?1"),
@@ -496,6 +496,13 @@ pub fn delete_tag(conn: &Connection, domain: TagDomain, id: i64) -> Result<(), S
     .map_err(|e| e.to_string())?;
     tx.execute(&format!("DELETE FROM {tags} WHERE id = ?1"), [id])
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 删除标签（进回收站）：写快照后物理删除，恢复时按快照重建。
+pub fn delete_tag(conn: &Connection, domain: TagDomain, id: i64) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    trash_tag_in_tx(&tx, domain, id)?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -681,10 +688,9 @@ pub fn merge_tags(
         rusqlite::params![source_id, target_id],
     )
     .map_err(|e| e.to_string())?;
-    tx.execute(&format!("DELETE FROM {rel} WHERE tag_id = ?1"), [source_id])
-        .map_err(|e| e.to_string())?;
-    tx.execute(&format!("DELETE FROM {tags} WHERE id = ?1"), [source_id])
-        .map_err(|e| e.to_string())?;
+    // 源标签的关联此刻仍在：快照采集到的是合并前的完整关联；
+    // 随后 DELETE tags 由外键 CASCADE 清掉源关联（不再单独 DELETE rel）。
+    trash_tag_in_tx(&tx, domain, source_id)?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
