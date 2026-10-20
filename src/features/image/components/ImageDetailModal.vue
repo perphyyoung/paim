@@ -667,7 +667,7 @@ const fmtSize = (bytes: number) => {
                 </span>
                 <button
                   type="button"
-                  class="shrink-0 rounded px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 text-red-400 hover:bg-red-900/30"
+                  class="shrink-0 rounded px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 text-gray-400 hover:text-red-400 hover:bg-red-500/15"
                   title="解除关联"
                   @click.stop="requestUnlink(p)"
                 >
@@ -687,7 +687,7 @@ const fmtSize = (bytes: number) => {
               <button
                 v-if="currentPrompt"
                 type="button"
-                class="shrink-0 rounded px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 text-red-400 hover:bg-red-900/30"
+                class="shrink-0 rounded px-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 text-gray-400 hover:text-red-400 hover:bg-red-500/15"
                 title="解除关联"
                 @click.stop="requestUnlink(currentPrompt)"
               >

@@ -955,7 +955,7 @@ function refresh() {
                       <button
                         type="button"
                         title="删除到回收站"
-                        class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-red-500 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90 border-gray-600 bg-gray-800"
+                        class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border text-gray-400 opacity-0 shadow transition hover:scale-110 hover:text-red-500 hover:bg-red-500/15 group-hover:opacity-90 border-gray-600 bg-gray-800"
                         @click="openDeleteTag(item)"
                       >
                         ✕

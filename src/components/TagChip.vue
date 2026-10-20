@@ -61,7 +61,7 @@ const rootClass = computed(() => [
     <button
       v-if="removable"
       type="button"
-      class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 bg-gray-800 text-red-500 opacity-0 shadow transition hover:scale-110 group-hover:opacity-90"
+      class="absolute -right-2 -top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 bg-gray-800 text-gray-400 opacity-0 shadow transition hover:scale-110 hover:text-red-500 group-hover:opacity-90"
       title="删除标签"
       @click.stop="emit('remove')"
     >

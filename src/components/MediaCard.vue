@@ -272,7 +272,7 @@ const scoreText = (s: number) => s.toFixed(3);
       <div class="flex items-center justify-center">
         <button
           type="button"
-          class="rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+          class="rounded-full bg-black/40 p-1 text-white hover:bg-red-500/15 hover:text-red-400"
           :title="variant === 'trash' ? '彻底删除' : '删除到回收站'"
           @click.stop="variant === 'trash' ? emit('purge') : emit('delete')"
         >

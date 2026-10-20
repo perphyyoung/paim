@@ -757,7 +757,7 @@ async function onPickerImported() {
                 </button>
                 <button
                   type="button"
-                  class="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-red-600/80 text-xs text-white hover:bg-red-700 group-hover:flex"
+                  class="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-black/40 text-xs text-white hover:bg-red-600/80 group-hover:flex"
                   title="移除关联"
                   @click.stop="requestRemoveImage(img)"
                 >

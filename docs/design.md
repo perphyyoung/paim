@@ -70,6 +70,21 @@
 
    - 统一 `disabled:cursor-not-allowed disabled:opacity-50`。
 
+### 删除操作的颜色规范
+
+> 删除分三类：**危险确认**、**图标操作**、**文字操作**。不要一刀切「所有删除 hover 变红」。
+
+| 类别 | 常态度 | hover | 适用 |
+| --- | --- | --- | --- |
+| 危险确认 | 红底白字 `bg-red-600 text-white` | 提亮 `hover:bg-red-500` | ConfirmDialog / InlineDialog 的 danger 主按钮、清空回收站、批量删除、移除关联（红底） |
+| 图标操作 | 白/灰图标（`text-white` / `text-gray-400`） | `hover:text-red-400` + `hover:bg-red-500/15` | MediaCard 删除 / 彻底删除、TagChip 删除、标签项删除、组删除、解除关联图标 |
+| 文字操作 | 红字 `text-red-400` | `hover:text-red-300` + `hover:bg-red-900/30` | 清除已选标签、解除关联文字 |
+
+- **危险确认按钮必须在静止状态就是红色**：它是不可撤销操作的视觉锚点，不允许改成「灰 → hover 红」；hover 只做提亮。
+- 图标操作常态度用中性色，只有指针悬停时才转红；同排的收藏 / 复制等图标保持原有 hover，不受影响。
+- 文字操作保持红字常态（清除类动作需要静止可见），hover 只加深底色 / 提亮文字。
+- 新增删除入口先归类，再按对应行取 class；不要混用（例如把批量删除改成「灰 → hover 红」）。
+
 ### 状态与展示色（表达状态，非操作按钮）
 
 | 状态/用途          | 色（Tailwind class）                                                    | 示例                                             |
