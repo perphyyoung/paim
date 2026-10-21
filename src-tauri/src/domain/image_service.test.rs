@@ -114,7 +114,7 @@ fn update_detail_writes_file_name() {
 }
 
 #[test]
-fn replace_image_migrates_relations_and_meta() {
+fn replace_image_copies_relations_and_meta() {
     let (dir, db) = setup_image_db();
     let conn = db.0.lock().unwrap();
     let src_a = dir.join("src-a.png");
@@ -197,7 +197,25 @@ fn replace_image_migrates_relations_and_meta() {
         .unwrap();
     assert_eq!(tag_cnt, 1);
 
-    // 元数据（备注/收藏/安全）迁移到新图
+    // 旧图保留原关联与标签（回收站恢复后原信息完整）
+    let old_rel: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM prompt_image_relations WHERE image_id = ?1",
+            rusqlite::params![old.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(old_rel, 1, "旧图应保留原提示词关联");
+    let old_tag: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM image_tag_relations WHERE image_id = ?1",
+            rusqlite::params![old.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(old_tag, 1, "旧图应保留原标签关联");
+
+    // 元数据（备注/收藏/安全）复制到新图
     let (note, fav, safe): (String, bool, bool) = conn
         .query_row(
             "SELECT note, is_favorite, is_safe FROM images WHERE id = ?1",

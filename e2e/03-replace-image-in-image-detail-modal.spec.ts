@@ -13,6 +13,7 @@ import { expect, type Page } from "@playwright/test";
 import {
   expectToastAndDismiss,
   getImagePromptsMap,
+  invokeCommand,
   listTrashedImageIds,
   openImageDetail,
   test,
@@ -50,7 +51,7 @@ test("替换为同内容文件时提示未替换（SameImage 分支）", async (
   expect(await listTrashedImageIds(page)).not.toContain(imageId);
 });
 
-test("替换为不同内容文件时旧图进回收站且关联迁移（Replaced 分支）", async ({ page, app }) => {
+test("替换为不同内容文件时旧图进回收站且关联复制（Replaced 分支）", async ({ page, app }) => {
   const { imageId, promptContent } = await uploadImageWithPrompt(
     page,
     `e2e 替换图像关联 ${Date.now()}`,
@@ -75,4 +76,9 @@ test("替换为不同内容文件时旧图进回收站且关联迁移（Replaced
 
   // 旧图进回收站
   expect(await listTrashedImageIds(page)).toContain(imageId);
+
+  // 替换只复制关联：恢复旧图后仍带原提示词（不会被“迁移”成空图）
+  await invokeCommand(page, "restore_image", { id: imageId });
+  const restoredMap = await getImagePromptsMap(page);
+  expect(restoredMap[imageId] ?? []).toContain(promptContent);
 });

@@ -983,7 +983,8 @@ pub(crate) fn replace_ensure_old(conn: &Connection, old_id: &str) -> Result<(), 
     Ok(())
 }
 
-/// 替换的最后一步（**短锁阶段**）：软删旧图并迁移关联 / 标签 / 元数据。
+/// 替换的最后一步（**短锁阶段**）：软删旧图，并把提示词/标签关联与元数据**复制**到新图。
+/// 旧图保留原有全部信息（关联、标签、备注、收藏、安全），从回收站恢复后即可完整使用。
 pub(crate) fn replace_commit(
     conn: &Connection,
     old_id: &str,
@@ -995,14 +996,16 @@ pub(crate) fn replace_commit(
         "UPDATE images SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
         rusqlite::params![old_id],
     )?;
-    // 迁移提示词-图像关联（UPDATE OR IGNORE 防新图已有同关联时主键冲突）
+    // 复制提示词-图像关联到新图（旧图保留原关联，便于从回收站恢复后原信息完整）
     tx.execute(
-        "UPDATE OR IGNORE prompt_image_relations SET image_id = ?1 WHERE image_id = ?2",
+        "INSERT OR IGNORE INTO prompt_image_relations(prompt_id, image_id)
+         SELECT prompt_id, ?1 FROM prompt_image_relations WHERE image_id = ?2",
         rusqlite::params![new_img.id, old_id],
     )?;
-    // 迁移图像-标签关联
+    // 复制图像-标签关联到新图（旧图保留）
     tx.execute(
-        "UPDATE OR IGNORE image_tag_relations SET image_id = ?1 WHERE image_id = ?2",
+        "INSERT OR IGNORE INTO image_tag_relations(image_id, tag_id)
+         SELECT ?1, tag_id FROM image_tag_relations WHERE image_id = ?2",
         rusqlite::params![new_img.id, old_id],
     )?;
     // 迁移元数据（备注/收藏/安全状态），保留用户手工设置
