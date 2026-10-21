@@ -213,10 +213,26 @@ pub async fn compress_and_replace_image(
     let data_dir = db::data_dir(&app);
     let images_dir = db::images_dir(&app);
     let thumbs_dir = db::thumbnails_dir(&app);
-    db::blocking(&db, move |conn| {
-        image_service::compress_and_replace_with(conn, &data_dir, &images_dir, &thumbs_dir, &old_id)
+
+    // 三段式：短锁取路径 → 无锁压缩（CPU 密集）→ 短锁替换；压缩期间不持 DB 锁
+    let old_for_source = old_id.clone();
+    let source = db::blocking(&db, move |conn| {
+        image_service::png_source_path(conn, &data_dir, &old_for_source)
     })
-    .await
+    .await?;
+
+    let tmp = crate::infra::task::spawn_blocking("压缩图像", move || {
+        image_service::compress_png_to_webp(&source)
+    })
+    .await?;
+
+    let replace_src = tmp.to_string_lossy().into_owned();
+    let result = db::blocking(&db, move |conn| {
+        image_service::replace_image_with(conn, &images_dir, &thumbs_dir, &old_id, &replace_src)
+    })
+    .await;
+    let _ = std::fs::remove_file(&tmp);
+    result
 }
 
 /// 替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。

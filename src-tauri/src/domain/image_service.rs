@@ -883,16 +883,12 @@ pub(crate) fn replace_image_with(
     replace_commit(conn, old_id, &new_img)
 }
 
-/// 压缩并替换：源文件必须是 PNG；输出有损 WebP（quality=100），
-/// 并把 PNG 的 `tEXt` workflow 写入 WebP EXIF（ImageDescription: "Workflow:..."）。
-/// 之后复用 [`replace_image_with`] 的标准替换流程（旧图进回收站、关联迁移）。
-pub(crate) fn compress_and_replace_with(
+/// 短锁阶段：取旧图原图绝对路径并校验必须是 PNG（结果交给无锁压缩）。
+pub(crate) fn png_source_path(
     conn: &Connection,
     data_dir: &Path,
-    images_dir: &Path,
-    thumbnails_dir: &Path,
     old_id: &str,
-) -> Result<ImageReplaceOutcome, AppError> {
+) -> Result<PathBuf, AppError> {
     let relative_path: String = conn
         .query_row(
             "SELECT relative_path FROM images WHERE id = ?1 AND is_deleted = 0",
@@ -910,9 +906,14 @@ pub(crate) fn compress_and_replace_with(
     {
         return Err(AppError::Message("仅支持 PNG 图像".into()));
     }
-    let bytes = std::fs::read(&source)?;
-    let workflow = png_workflow_text(&bytes);
+    Ok(source)
+}
 
+/// 无锁阶段：PNG → 有损 WebP（quality=100 / method=6），workflow 写入 EXIF。
+/// 返回临时文件路径（调用方替换完成后删除）。CPU 密集，必须在阻塞池执行、不持 DB 锁。
+pub(crate) fn compress_png_to_webp(source: &Path) -> Result<PathBuf, AppError> {
+    let bytes = std::fs::read(source)?;
+    let workflow = png_workflow_text(&bytes);
     let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
         .map_err(|e| AppError::Message(format!("解码 PNG 失败：{e}")))?;
     let rgba = img.to_rgba8();
@@ -926,7 +927,11 @@ pub(crate) fn compress_and_replace_with(
     let webp_data = encoder
         .encode_advanced(&config)
         .map_err(|e| AppError::Message(format!("WebP 编码失败：{e:?}")))?;
-    let tmp = std::env::temp_dir().join(format!("paim-compress-{old_id}.webp"));
+    let stem = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("image");
+    let tmp = std::env::temp_dir().join(format!("paim-compress-{stem}.webp"));
     std::fs::write(&tmp, &*webp_data)?;
     if let Some(wf) = workflow {
         if let Err(e) = write_webp_workflow(&tmp, &wf) {
@@ -934,15 +939,7 @@ pub(crate) fn compress_and_replace_with(
             return Err(e);
         }
     }
-    let result = replace_image_with(
-        conn,
-        images_dir,
-        thumbnails_dir,
-        old_id,
-        &tmp.to_string_lossy(),
-    );
-    let _ = std::fs::remove_file(&tmp);
-    result
+    Ok(tmp)
 }
 
 /// 读 PNG `tEXt` 块里的 workflow 文本（ComfyUI 写入的 keyword）。
