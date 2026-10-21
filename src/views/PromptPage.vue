@@ -427,7 +427,13 @@ const { batchAddTag } = useBatchTagAdd({
 // 批量添加标签：成功才关闭批量添加弹窗，失败保持打开便于修改
 const batchBarRef = ref<InstanceType<typeof BatchActionBar> | null>(null);
 async function onBatchAddTag(tag: string) {
-  if (await batchAddTag(tag)) batchBarRef.value?.closeTagDialog();
+  if (await batchAddTag(tag)) {
+    batchBarRef.value?.closeTagDialog();
+    // 当前筛选结果已变化（无标 / 标签筛选）：按原筛选重拉，刚打标签的卡片应消失。
+    // 不自动清掉「无标」：清掉会让筛选失效、卡片重新出现（用户可点「清除已选标签」退出筛选）。
+    await loadPrompts();
+    loadTagFilter();
+  }
 }
 
 const batchDeleteOpen = ref(false);

@@ -23,6 +23,7 @@ import {
   createPromptViaDialog,
   expectToastAndDismiss,
   findPromptIdByContent,
+  gotoImagesPage,
   gotoPromptsPage,
   openBatchAddTagDialog,
   openSettings,
@@ -103,6 +104,45 @@ test("图像主页拖拽添加标签后：无标计数随之刷新（chip 消失
   await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
   await expect(specialTagChip(page, NO_TAG)).toBeHidden();
   e2eLog.info("[step] 无标 chip 已消失（计数已刷新）");
+});
+
+test("图像主页：「无标」筛选下全选批量加标签，列表按筛选重载且 chip 消失", async ({
+  page,
+  app,
+}) => {
+  const first = await uploadImageWithPrompt(
+    page,
+    `e2e 无标全选 A ${Date.now()}`,
+    app.mockImagePath,
+  );
+  const second = await uploadImageWithPrompt(
+    page,
+    `e2e 无标全选 B ${Date.now()}`,
+    app.mockImagePath,
+  );
+  await gotoImagesPage(page);
+  await expect(specialTagChip(page, NO_TAG)).toBeVisible();
+
+  // 选中「无标」→ 全选 → 批量添加标签
+  await specialTagChip(page, NO_TAG).click();
+  await page.keyboard.press("Control+A");
+  await page.getByRole("button", { name: "添加标签" }).click();
+  const input = page.getByPlaceholder("标签名");
+  await input.fill(TAG);
+  await input.press("Enter");
+  await expectToastAndDismiss(page, "已为 2 张图像添加标签");
+
+  // 列表按当前筛选重载：两张无标卡消失、chip 消失（修复前卡片残留但全选选不中）
+  await expect(specialTagChip(page, NO_TAG)).toBeHidden();
+  // 按卡片 id 断言：提示词内容在提示词页的卡片里同样存在（KeepAlive 保留在 DOM），不能用文本
+  await expect(cardById(page, first.imageId)).toHaveCount(0);
+  await expect(cardById(page, second.imageId)).toHaveCount(0);
+
+  // 清掉筛选后两张卡回来（已带新标签）
+  await page.getByTitle("清除已选标签").click();
+  await expect(page.getByText(first.promptContent)).toBeVisible();
+  await expect(page.getByText(second.promptContent)).toBeVisible();
+  e2eLog.info("[step] 无标筛选下批量打标后列表已重载，清除筛选可见两张卡");
 });
 
 // 卡片上的**单张**收藏 / 安全切换（MediaCard 的按钮行）只把新对象写回列表，不重载列表——
