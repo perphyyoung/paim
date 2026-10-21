@@ -888,12 +888,12 @@ pub(crate) fn png_source_path(
     conn: &Connection,
     data_dir: &Path,
     old_id: &str,
-) -> Result<PathBuf, AppError> {
-    let relative_path: String = conn
+) -> Result<(PathBuf, String), AppError> {
+    let (relative_path, file_name): (String, String) = conn
         .query_row(
-            "SELECT relative_path FROM images WHERE id = ?1 AND is_deleted = 0",
+            "SELECT relative_path, file_name FROM images WHERE id = ?1 AND is_deleted = 0",
             [old_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?
         .ok_or_else(|| AppError::Message(format!("图像 {old_id} 不存在或已在回收站")))?;
@@ -906,12 +906,12 @@ pub(crate) fn png_source_path(
     {
         return Err(AppError::Message("仅支持 PNG 图像".into()));
     }
-    Ok(source)
+    Ok((source, file_name))
 }
 
 /// 无锁阶段：PNG → 有损 WebP（quality=100 / method=6），workflow 写入 EXIF。
 /// 返回临时文件路径（调用方替换完成后删除）。CPU 密集，必须在阻塞池执行、不持 DB 锁。
-pub(crate) fn compress_png_to_webp(source: &Path) -> Result<PathBuf, AppError> {
+pub(crate) fn compress_png_to_webp(source: &Path, display_name: &str) -> Result<PathBuf, AppError> {
     let bytes = std::fs::read(source)?;
     let workflow = png_workflow_text(&bytes);
     let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
@@ -927,11 +927,12 @@ pub(crate) fn compress_png_to_webp(source: &Path) -> Result<PathBuf, AppError> {
     let webp_data = encoder
         .encode_advanced(&config)
         .map_err(|e| AppError::Message(format!("WebP 编码失败：{e:?}")))?;
-    let stem = source
+    // 新图显示名 = paim-{原显示名去扩展名}.webp（用用户可见名，不用无意义的落盘名）
+    let stem = Path::new(display_name)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("image");
-    let tmp = std::env::temp_dir().join(format!("paim-compress-{stem}.webp"));
+    let tmp = std::env::temp_dir().join(format!("paim-{}.webp", sanitize_file_stem(stem)));
     std::fs::write(&tmp, &*webp_data)?;
     if let Some(wf) = workflow {
         if let Err(e) = write_webp_workflow(&tmp, &wf) {
@@ -940,6 +941,23 @@ pub(crate) fn compress_png_to_webp(source: &Path) -> Result<PathBuf, AppError> {
         }
     }
     Ok(tmp)
+}
+
+/// 文件名片段清洗：替换 Windows 非法字符，避免临时文件创建失败；空名回退 image。
+fn sanitize_file_stem(stem: &str) -> String {
+    let cleaned: String = stem
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => c,
+        })
+        .collect();
+    let trimmed = cleaned.trim_matches(|c: char| c.is_whitespace() || c == '.');
+    if trimmed.is_empty() {
+        "image".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// 读 PNG `tEXt` 块里的 workflow 文本（ComfyUI 写入的 keyword）。

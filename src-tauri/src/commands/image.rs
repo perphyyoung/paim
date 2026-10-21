@@ -214,13 +214,13 @@ pub async fn compress_and_replace_image(
 
     // 三段式：短锁取路径 → 无锁压缩（CPU 密集）→ 无锁导入 + 短锁迁移；压缩期间不持 DB 锁
     let old_for_source = old_id.clone();
-    let source = db::blocking(&db, move |conn| {
+    let (source, display_name) = db::blocking(&db, move |conn| {
         image_service::png_source_path(conn, &data_dir, &old_for_source)
     })
     .await?;
 
     let tmp = crate::infra::task::spawn_blocking("压缩图像", move || {
-        image_service::compress_png_to_webp(&source)
+        image_service::compress_png_to_webp(&source, &display_name)
     })
     .await?;
 

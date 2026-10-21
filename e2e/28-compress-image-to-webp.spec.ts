@@ -40,8 +40,8 @@ test("PNG 右键压缩为 WebP 并替换：旧图进回收站、关联迁移", a
   const map = await getImagePromptsMap(page);
   expect(Object.keys(map)).not.toContain(imageId);
   expect(Object.values(map).some((cs) => cs.includes(promptContent))).toBe(true);
-  // 详情切到新图，文件名后缀为 .webp
-  await expect(detail.getByText(/\.webp$/).first()).toBeVisible();
+  // 详情切到新图：显示名 = paim-{原显示名}.webp（不是无意义的落盘名）
+  await expect(detail.getByText(/paim-e2e-upload\.webp/).first()).toBeVisible();
 });
 
 test("搜索过滤下压缩替换：详情仍显示新图，不被筛选结果挤出", async ({ page, app }) => {

@@ -1,9 +1,9 @@
 //! 图像领域服务单元测试：搜索 WHERE 子句拼接（filter_sql）、导入、替换图像、详情更新。
 
 use super::{
-    filter_sql, filter_sql_with_mode, first_prompts_for_trashed, import_with, list_ids, list_page,
-    list_related_prompts, replace_image_with, special_tags_counts, update_detail,
-    ImageReplaceOutcome, PaginatedImages,
+    compress_png_to_webp, filter_sql, filter_sql_with_mode, first_prompts_for_trashed, import_with,
+    list_ids, list_page, list_related_prompts, replace_image_with, sanitize_file_stem,
+    special_tags_counts, update_detail, ImageReplaceOutcome, PaginatedImages,
 };
 use crate::domain::list_query::{ListQuery, SearchMode};
 use crate::domain::similarity_service;
@@ -226,6 +226,22 @@ fn replace_image_copies_relations_and_meta() {
     assert_eq!(note, "备注");
     assert!(fav);
     assert!(!safe);
+}
+
+#[test]
+fn sanitize_file_stem_replaces_illegal_chars() {
+    assert_eq!(sanitize_file_stem("my:image?"), "my_image_");
+    assert_eq!(sanitize_file_stem("  ...  "), "image");
+}
+
+#[test]
+fn compress_uses_display_name_for_webp_file() {
+    let (dir, _db) = setup_image_db();
+    let src = dir.join("src.png");
+    make_png(&src, 1, 2, 3);
+    let out = compress_png_to_webp(&src, "e2e-upload.png").unwrap();
+    assert_eq!(out.file_name().unwrap(), "paim-e2e-upload.webp");
+    let _ = std::fs::remove_file(&out);
 }
 
 #[test]
