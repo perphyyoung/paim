@@ -62,6 +62,30 @@ test("上传图像附带提示词后，图像卡片应关联该提示词", async
   await expect(page.getByText(promptContent).first()).toBeVisible();
 });
 
+test("上传图像弹窗：提示词规范化只改草稿，上传后按规范内容落库", async ({ page, app }) => {
+  await gotoImagesPage(page);
+  await page.getByRole("button", { name: "上传图像" }).click();
+  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
+  await promptInput.fill("  e2e   规范化   上传  ");
+  await page.getByRole("button", { name: "选择图像", exact: true }).click();
+  await expect(page.getByText(path.basename(app.mockImagePath))).toBeVisible();
+
+  // 规范化只替换草稿（去多余空白），不落库
+  await page.getByRole("button", { name: "规范化" }).click();
+  await expectToastAndDismiss(page, "已按规范化格式填入，上传后生效");
+  await expect(promptInput).toHaveValue("e2e 规范化 上传");
+
+  await page.getByRole("button", { name: "确定" }).click();
+  await expectToastAndDismiss(page, "已上传 1 张图像");
+
+  // 落库内容为规范形态
+  const prompts = await listPrompts(page);
+  expect(
+    prompts.some((p) => p.content === "e2e 规范化 上传"),
+    "上传后提示词内容应为规范化形态",
+  ).toBe(true);
+});
+
 test("两张图像附带同一提示词，应只创建一个提示词并关联两张图像", async ({ page, app }) => {
   // 一次上传批次附带两张图与同一提示词（弹窗确定按钮即此命令：逐图 import 后关联提示词）
   const firstPath = path.join(app.dataDir, "e2e-batch-1.png");

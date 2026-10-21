@@ -5,6 +5,7 @@ import { nextTick, ref, watch } from "vue";
 import { absolutePathToAssetUrl } from "@/utils/assetUrl";
 import { commands } from "@/bindings";
 import { useToast } from "@/components/useToast";
+import { usePromptNormalize } from "@/composables/usePromptNormalize";
 import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{ open: boolean }>();
@@ -23,6 +24,10 @@ interface UploadedImage {
 
 const files = ref<PendingFile[]>([]);
 const prompt = ref("");
+// 上传弹窗同样只改草稿：点「确定」上传时才按草稿落库
+const { normalize: normalizePrompt } = usePromptNormalize(prompt, {
+  appliedMessage: "已按规范化格式填入，上传后生效",
+});
 const promptInput = ref<HTMLTextAreaElement | null>(null);
 const uploading = ref(false);
 const thumbLoading = ref(false);
@@ -169,10 +174,19 @@ async function doUpload() {
 
           <!-- 提示词内容（可选） -->
           <div>
-            <label class="mb-2 block text-sm font-medium text-gray-200">
-              提示词内容
-              <span class="font-normal text-gray-400">（可选，将应用到本次所有图像）</span>
-            </label>
+            <div class="mb-2 flex items-center justify-between">
+              <label class="text-sm font-medium text-gray-200">
+                提示词内容
+                <span class="font-normal text-gray-400">（可选，将应用到本次所有图像）</span>
+              </label>
+              <button
+                type="button"
+                class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
+                @click="normalizePrompt"
+              >
+                规范化
+              </button>
+            </div>
             <textarea
               ref="promptInput"
               v-model="prompt"
