@@ -29,12 +29,25 @@ export interface UseBatchTagAddOptions {
    * 只在真正写入成功后调用（已存在 / 失败 / 特殊标签都不调）。
    */
   afterChange?: () => void;
+  /**
+   * 写入成功后的页面级刷新（按当前筛选重载列表 + 筛选计数）。
+   * 与拖拽入口共用页面注入的同一个函数，避免两个入口各写一份重载逻辑。
+   */
+  afterAdd?: () => Promise<void> | void;
   showToast: (message: string, type?: ToastType) => void;
 }
 
 export function useBatchTagAdd(options: UseBatchTagAddOptions) {
-  const { domain, selectedIds, tagNames, exitBatch, reloadTagViews, afterChange, showToast } =
-    options;
+  const {
+    domain,
+    selectedIds,
+    tagNames,
+    exitBatch,
+    reloadTagViews,
+    afterChange,
+    afterAdd,
+    showToast,
+  } = options;
   const noun = domain === "image" ? "张图像" : "个提示词";
 
   /**
@@ -74,6 +87,8 @@ export function useBatchTagAdd(options: UseBatchTagAddOptions) {
       }
       exitBatch();
       await reloadTagViews();
+      // 当前筛选结果可能变化（无标 / 按标签）：按筛选重载列表
+      await afterAdd?.();
       return true;
     } catch (e) {
       showToast(`批量添加标签失败：${e}`, "error");

@@ -20,6 +20,7 @@ function setup(overrides: { tagNames?: Record<string, string[]> } = {}) {
   const exitBatch = vi.fn();
   const reloadTagViews = vi.fn();
   const afterChange = vi.fn();
+  const afterAdd = vi.fn();
   const showToast = vi.fn();
   const { batchAddTag } = useBatchTagAdd({
     domain: "image",
@@ -28,9 +29,10 @@ function setup(overrides: { tagNames?: Record<string, string[]> } = {}) {
     exitBatch,
     reloadTagViews,
     afterChange,
+    afterAdd,
     showToast,
   });
-  return { batchAddTag, exitBatch, reloadTagViews, afterChange, showToast };
+  return { batchAddTag, exitBatch, reloadTagViews, afterChange, afterAdd, showToast };
 }
 
 beforeEach(() => {
@@ -40,39 +42,43 @@ beforeEach(() => {
 describe("useBatchTagAdd 的变化后置钩子", () => {
   it("写入成功后触发 afterChange 并退出批量模式", async () => {
     mocks.batchAddTag.mockResolvedValue(1);
-    const { batchAddTag, afterChange, exitBatch, reloadTagViews } = setup();
+    const { batchAddTag, afterChange, afterAdd, exitBatch, reloadTagViews } = setup();
 
     await expect(batchAddTag("新标签")).resolves.toBe(true);
 
     expect(afterChange).toHaveBeenCalledTimes(1);
+    expect(afterAdd).toHaveBeenCalledTimes(1);
     expect(exitBatch).toHaveBeenCalledTimes(1);
     expect(reloadTagViews).toHaveBeenCalledTimes(1);
   });
 
   it("全部已存在时不写库、不触发 afterChange", async () => {
-    const { batchAddTag, afterChange } = setup({ tagNames: { i1: ["已有"] } });
+    const { batchAddTag, afterChange, afterAdd } = setup({ tagNames: { i1: ["已有"] } });
 
     await expect(batchAddTag("已有")).resolves.toBe(false);
 
     expect(mocks.batchAddTag).not.toHaveBeenCalled();
     expect(afterChange).not.toHaveBeenCalled();
+    expect(afterAdd).not.toHaveBeenCalled();
   });
 
   it("后端失败时不触发 afterChange", async () => {
     mocks.batchAddTag.mockRejectedValue(new Error("db"));
-    const { batchAddTag, afterChange } = setup();
+    const { batchAddTag, afterChange, afterAdd } = setup();
 
     await expect(batchAddTag("新标签")).resolves.toBe(false);
 
     expect(afterChange).not.toHaveBeenCalled();
+    expect(afterAdd).not.toHaveBeenCalled();
   });
 
   it("特殊标签直接拒绝、不触发 afterChange", async () => {
-    const { batchAddTag, afterChange } = setup();
+    const { batchAddTag, afterChange, afterAdd } = setup();
 
     await expect(batchAddTag("收藏")).resolves.toBe(false);
 
     expect(mocks.batchAddTag).not.toHaveBeenCalled();
     expect(afterChange).not.toHaveBeenCalled();
+    expect(afterAdd).not.toHaveBeenCalled();
   });
 });

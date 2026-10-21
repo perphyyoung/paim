@@ -18,6 +18,7 @@ function setup(tagNames: Record<string, string[]> = {}) {
     tagNames: ref(tagNames),
     reloadTagViews: vi.fn(),
     afterChange: vi.fn(),
+    afterAdd: vi.fn(),
     showToast: vi.fn(),
   };
   return options;
@@ -35,6 +36,7 @@ describe("addTagToCard 的变化后置钩子", () => {
     await addTagToCard(options, "img1", "新标签");
 
     expect(options.afterChange).toHaveBeenCalledTimes(1);
+    expect(options.afterAdd).toHaveBeenCalledTimes(1);
     expect(options.tagNames.value.img1).toEqual(["新标签"]);
     expect(options.reloadTagViews).toHaveBeenCalledTimes(1);
   });
@@ -46,6 +48,7 @@ describe("addTagToCard 的变化后置钩子", () => {
 
     expect(mocks.addTag).not.toHaveBeenCalled();
     expect(options.afterChange).not.toHaveBeenCalled();
+    expect(options.afterAdd).not.toHaveBeenCalled();
   });
 
   it("后端失败不触发 afterChange", async () => {
@@ -55,5 +58,6 @@ describe("addTagToCard 的变化后置钩子", () => {
     await addTagToCard(options, "img1", "新标签");
 
     expect(options.afterChange).not.toHaveBeenCalled();
+    expect(options.afterAdd).not.toHaveBeenCalled();
   });
 });

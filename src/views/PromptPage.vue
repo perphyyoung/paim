@@ -422,18 +422,13 @@ const { batchAddTag } = useBatchTagAdd({
   exitBatch,
   reloadTagViews,
   afterChange: invalidateRelatedPromptsCache,
+  afterAdd: refreshAfterTagAdded,
   showToast,
 });
 // 批量添加标签：成功才关闭批量添加弹窗，失败保持打开便于修改
 const batchBarRef = ref<InstanceType<typeof BatchActionBar> | null>(null);
 async function onBatchAddTag(tag: string) {
-  if (await batchAddTag(tag)) {
-    batchBarRef.value?.closeTagDialog();
-    // 当前筛选结果已变化（无标 / 标签筛选）：按原筛选重拉，刚打标签的卡片应消失。
-    // 不自动清掉「无标」：清掉会让筛选失效、卡片重新出现（用户可点「清除已选标签」退出筛选）。
-    await loadPrompts();
-    loadTagFilter();
-  }
+  if (await batchAddTag(tag)) batchBarRef.value?.closeTagDialog();
 }
 
 const batchDeleteOpen = ref(false);
@@ -581,11 +576,19 @@ async function loadTagFilter() {
 }
 
 // 拖拽筛选区标签到卡片：快捷添加标签（激活时注册，KeepAlive 下与另一主页共用单例回调）
+/// 主页添加标签（批量 / 拖拽）后的统一刷新：按当前筛选重载列表 + 刷新筛选计数。
+/// 两个入口共用，避免各自维护一份重载逻辑。
+async function refreshAfterTagAdded() {
+  await loadPrompts();
+  loadTagFilter();
+}
+
 const cardTagAdd = useCardTagAdd({
   domain: "prompt",
   tagNames,
   reloadTagViews,
   afterChange: invalidateRelatedPromptsCache,
+  afterAdd: refreshAfterTagAdded,
   showToast,
 });
 function onModalUploaded() {

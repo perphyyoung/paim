@@ -113,6 +113,11 @@ export interface UseCardTagAddOptions {
    * 页面注入缓存作废（与批量入口一致）。
    */
   afterChange?: () => void;
+  /**
+   * 写入成功后的页面级刷新（重载列表 + 筛选计数）：
+   * 当前筛选（无标 / 按标签）结果会变化，卡片必须按筛选重拉，否则残留且全选选不中。
+   */
+  afterAdd?: () => Promise<void> | void;
   showToast: (message: string, type?: ToastType) => void;
 }
 
@@ -133,7 +138,7 @@ export async function addTagToCard(
   cardId: string,
   tagName: string,
 ): Promise<void> {
-  const { domain, tagNames, reloadTagViews, afterChange, showToast } = options;
+  const { domain, tagNames, reloadTagViews, afterChange, afterAdd, showToast } = options;
   const existing = tagNames.value[cardId];
   if (existing?.includes(tagName)) {
     showToast(`标签「${tagName}」已存在`, "warning");
@@ -148,6 +153,8 @@ export async function addTagToCard(
     tagNames.value = { ...tagNames.value, [cardId]: [...(existing ?? []), tagName] };
     showToast(`已添加标签「${tagName}」`, "success");
     await reloadTagViews();
+    // 当前筛选结果可能变化（无标 / 按标签）：按筛选重载列表
+    await afterAdd?.();
   } catch (e) {
     showToast(`添加标签失败：${e}`, "error");
   }

@@ -145,6 +145,41 @@ test("图像主页：「无标」筛选下全选批量加标签，列表按筛�
   e2eLog.info("[step] 无标筛选下批量打标后列表已重载，清除筛选可见两张卡");
 });
 
+test("图像主页：「无标」筛选下拖拽加标签，列表按筛选重载且卡片消失", async ({ page, app }) => {
+  const first = await uploadImageWithPrompt(
+    page,
+    `e2e 无标拖拽筛选 A ${Date.now()}`,
+    app.mockImagePath,
+  );
+  const second = await uploadImageWithPrompt(
+    page,
+    `e2e 无标拖拽筛选 B ${Date.now()}`,
+    app.mockImagePath,
+  );
+  // 先给第一张批量加 TAG（同时让筛选区出现 TAG，作为拖拽源）
+  const input = await openBatchAddTagDialog(page, first.promptContent);
+  await input.fill(TAG);
+  await input.press("Enter");
+  await expectToastAndDismiss(page, "已为 1 张图像添加标签");
+
+  // 选中无标：只剩第二张
+  await specialTagChip(page, NO_TAG).click();
+  await expect(cardById(page, second.imageId)).toBeVisible();
+  await expect(cardById(page, first.imageId)).toHaveCount(0);
+
+  // 拖拽 TAG 到第二张
+  await dragTagToCard(page, TAG, second.promptContent);
+  await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
+
+  // 列表按筛选重载：第二张消失、无标 chip 消失（修复前卡片残留）
+  await expect(specialTagChip(page, NO_TAG)).toBeHidden();
+  await expect(cardById(page, second.imageId)).toHaveCount(0);
+
+  // 清掉筛选后回来
+  await page.getByTitle("清除已选标签").click();
+  await expect(cardById(page, second.imageId)).toBeVisible();
+});
+
 // 卡片上的**单张**收藏 / 安全切换（MediaCard 的按钮行）只把新对象写回列表，不重载列表——
 // 因此也要显式重拉特殊计数（「收藏」「敏感」），否则 chip 停在旧值。两条用例对称覆盖两个主页。
 // 卡片上的按钮是文字层的兄弟节点，故用 `cardById`（按条目 id 取卡片根）作作用域。
