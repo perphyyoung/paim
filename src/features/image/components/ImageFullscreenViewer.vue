@@ -42,6 +42,10 @@ const emit = defineEmits<{
   (e: "openDetail", id: string): void;
 }>();
 
+/// 右上角悬浮按钮统一外观：白底 / 黑底图像上都要清晰（与信息条的黑底一致）
+const VIEWER_BTN =
+  "flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white shadow-lg transition-colors hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400";
+
 const current0basedIndex = ref(0);
 const srcs = ref<Record<string, string>>({});
 const metas = ref<Record<string, FullscreenMeta>>({});
@@ -190,7 +194,8 @@ function onWheel(e: WheelEvent) {
     <!-- 右上角：在图像详情页打开 + 关闭（无遮罩点击 / Esc / 双击退出） -->
     <button
       type="button"
-      class="absolute top-3 right-14 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+      class="absolute top-3 right-14 z-20"
+      :class="VIEWER_BTN"
       title="在图像详情页打开"
       aria-label="在图像详情页打开"
       @click="current && emit('openDetail', current.id)"
@@ -213,7 +218,8 @@ function onWheel(e: WheelEvent) {
     </button>
     <button
       type="button"
-      class="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-lg text-white hover:bg-white/20"
+      class="absolute top-3 right-3 z-20 text-lg"
+      :class="VIEWER_BTN"
       title="关闭"
       @click="emit('close')"
     >
