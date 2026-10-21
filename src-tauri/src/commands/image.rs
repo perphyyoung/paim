@@ -211,10 +211,8 @@ pub async fn compress_and_replace_image(
     old_id: String,
 ) -> Result<ImageReplaceOutcome, AppError> {
     let data_dir = db::data_dir(&app);
-    let images_dir = db::images_dir(&app);
-    let thumbs_dir = db::thumbnails_dir(&app);
 
-    // 三段式：短锁取路径 → 无锁压缩（CPU 密集）→ 短锁替换；压缩期间不持 DB 锁
+    // 三段式：短锁取路径 → 无锁压缩（CPU 密集）→ 无锁导入 + 短锁迁移；压缩期间不持 DB 锁
     let old_for_source = old_id.clone();
     let source = db::blocking(&db, move |conn| {
         image_service::png_source_path(conn, &data_dir, &old_for_source)
@@ -226,13 +224,18 @@ pub async fn compress_and_replace_image(
     })
     .await?;
 
-    let replace_src = tmp.to_string_lossy().into_owned();
-    let result = db::blocking(&db, move |conn| {
-        image_service::replace_image_with(conn, &images_dir, &thumbs_dir, &old_id, &replace_src)
-    })
-    .await;
+    // 复用四段式导入（无锁哈希/落盘/缩略图，锁内只有点查询与 INSERT）
+    let tmp_src = tmp.to_string_lossy().into_owned();
+    let (new_img, is_duplicate) = import_one(&db, &app, &tmp_src).await?;
     let _ = std::fs::remove_file(&tmp);
-    result
+    if is_duplicate && new_img.id == old_id {
+        return Ok(ImageReplaceOutcome::SameImage);
+    }
+    // 短锁：软删旧图 + 迁移关联（与 replace_image 的收尾一致）
+    db::blocking(&db, move |conn| {
+        image_service::replace_commit(conn, &old_id, &new_img)
+    })
+    .await
 }
 
 /// 替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。
