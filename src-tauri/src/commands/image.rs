@@ -202,6 +202,23 @@ pub async fn get_source_thumbnail(
     .await
 }
 
+/// 压缩并替换：仅 PNG → 有损 WebP（保留 workflow），之后走标准替换流程。
+#[tauri::command]
+#[specta::specta]
+pub async fn compress_and_replace_image(
+    app: tauri::AppHandle,
+    db: State<'_, BkDb>,
+    old_id: String,
+) -> Result<ImageReplaceOutcome, AppError> {
+    let data_dir = db::data_dir(&app);
+    let images_dir = db::images_dir(&app);
+    let thumbs_dir = db::thumbnails_dir(&app);
+    db::blocking(&db, move |conn| {
+        image_service::compress_and_replace_with(conn, &data_dir, &images_dir, &thumbs_dir, &old_id)
+    })
+    .await
+}
+
 /// 替换图像：新图走标准入库管线，旧图软删并迁移关联（详情页右键）。
 /// 编排与导入同口径：**短锁校验旧图 → 无锁导入新图 → 短锁迁移**，复制与缩略图期间不持锁。
 #[tauri::command]

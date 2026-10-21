@@ -71,6 +71,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::image::get_image_detail,
             commands::image::get_image_src,
             commands::image::replace_image,
+            commands::image::compress_and_replace_image,
             commands::image::update_image_detail,
             commands::image::create_prompt_for_image,
             commands::image::relate_images_to_prompt,

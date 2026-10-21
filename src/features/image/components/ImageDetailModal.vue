@@ -136,6 +136,31 @@ async function replaceWithPicked() {
   }
 }
 
+// 压缩图像（png2webp，保留 workflow）：仅 PNG 可用；输出 WebP 后走与「替换图像」相同的替换流程
+async function compressAndReplace() {
+  const img = current.value;
+  closeCtxMenu();
+  if (!img) return;
+  if (!img.file_name.toLowerCase().endsWith(".png")) {
+    showToast("仅支持 PNG 图像", "warning");
+    return;
+  }
+  showToast("正在压缩…", "info");
+  try {
+    const outcome = await commands.compressAndReplaceImage(img.id);
+    if (outcome.kind === "same_image" || !outcome.image) {
+      showToast("与原图相同，未替换", "warning");
+      return;
+    }
+    showToast("已压缩并替换", "success");
+    markPageStale("prompts");
+    emit("replaced", { oldId: img.id, image: outcome.image });
+    currentId.value = outcome.image.id;
+  } catch (e) {
+    showToast(`压缩失败：${e}`, "error");
+  }
+}
+
 const edit = ref(false);
 const fileName = ref("");
 const note = ref("");
@@ -997,6 +1022,13 @@ const fmtLocal = formatLocalTime;
       @click="replaceWithPicked"
     >
       替换图像
+    </button>
+    <button
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+      @click="compressAndReplace"
+    >
+      压缩图像（png2webp，保留工作流）
     </button>
     <button
       v-if="similarityEnabled"

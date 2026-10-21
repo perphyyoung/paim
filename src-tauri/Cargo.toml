@@ -30,6 +30,10 @@ rusqlite = { version = "0.34", features = ["bundled", "functions"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff"] }
+# PNG → WebP 有损压缩（libwebp：quality / method），用于详情右键「压缩图像」
+webp = "0.3"
+# WebP EXIF 写入：保留 PNG 的 workflow 文本（ImageDescription: "Workflow:..."）
+little_exif = "0.6"
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 md-5 = "0.10"
 # 搜索正则（SQLite REGEXP 标量函数）：线性时间引擎，无回溯风险

@@ -883,6 +883,100 @@ pub(crate) fn replace_image_with(
     replace_commit(conn, old_id, &new_img)
 }
 
+/// 压缩并替换：源文件必须是 PNG；输出有损 WebP（quality=100），
+/// 并把 PNG 的 `tEXt` workflow 写入 WebP EXIF（ImageDescription: "Workflow:..."）。
+/// 之后复用 [`replace_image_with`] 的标准替换流程（旧图进回收站、关联迁移）。
+pub(crate) fn compress_and_replace_with(
+    conn: &Connection,
+    data_dir: &Path,
+    images_dir: &Path,
+    thumbnails_dir: &Path,
+    old_id: &str,
+) -> Result<ImageReplaceOutcome, AppError> {
+    let relative_path: String = conn
+        .query_row(
+            "SELECT relative_path FROM images WHERE id = ?1 AND is_deleted = 0",
+            [old_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| AppError::Message(format!("图像 {old_id} 不存在或已在回收站")))?;
+    // relative_path 相对**数据目录**（形如 images/202610/x.png），不能再用 images_dir 拼
+    let source = crate::infra::db::data_path(data_dir, &relative_path);
+    if !source
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("png"))
+    {
+        return Err(AppError::Message("仅支持 PNG 图像".into()));
+    }
+    let bytes = std::fs::read(&source)?;
+    let workflow = png_workflow_text(&bytes);
+
+    let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+        .map_err(|e| AppError::Message(format!("解码 PNG 失败：{e}")))?;
+    let rgba = img.to_rgba8();
+    let encoder = webp::Encoder::from_rgba(&rgba, rgba.width(), rgba.height());
+    // 与 png2webp.py 对齐：quality=100、有损、method=6（最慢、压缩率最高）
+    let mut config = webp::WebPConfig::new()
+        .map_err(|e| AppError::Message(format!("WebP 编码器初始化失败：{e:?}")))?;
+    config.quality = 100.0;
+    config.lossless = 0;
+    config.method = 6;
+    let webp_data = encoder
+        .encode_advanced(&config)
+        .map_err(|e| AppError::Message(format!("WebP 编码失败：{e:?}")))?;
+    let tmp = std::env::temp_dir().join(format!("paim-compress-{old_id}.webp"));
+    std::fs::write(&tmp, &*webp_data)?;
+    if let Some(wf) = workflow {
+        if let Err(e) = write_webp_workflow(&tmp, &wf) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+    }
+    let result = replace_image_with(
+        conn,
+        images_dir,
+        thumbnails_dir,
+        old_id,
+        &tmp.to_string_lossy(),
+    );
+    let _ = std::fs::remove_file(&tmp);
+    result
+}
+
+/// 读 PNG `tEXt` 块里的 workflow 文本（ComfyUI 写入的 keyword）。
+fn png_workflow_text(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 8 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
+        return None;
+    }
+    let mut offset = 8;
+    while offset + 12 <= bytes.len() {
+        let len = u32::from_be_bytes(bytes[offset..offset + 4].try_into().ok()?) as usize;
+        let kind = &bytes[offset + 4..offset + 8];
+        let data = bytes.get(offset + 8..offset + 8 + len)?;
+        if kind == b"tEXt" {
+            if let Some(sep) = data.iter().position(|&b| b == 0) {
+                if &data[..sep] == b"workflow" {
+                    return String::from_utf8(data[sep + 1..].to_vec()).ok();
+                }
+            }
+        }
+        offset += 12 + len;
+    }
+    None
+}
+
+/// 把 workflow 写入 WebP 的 EXIF `ImageDescription`（与 png2webp.py 的 piexif 写法一致）。
+fn write_webp_workflow(path: &Path, workflow: &str) -> Result<(), AppError> {
+    use little_exif::exif_tag::ExifTag;
+    use little_exif::metadata::Metadata;
+    let mut meta = Metadata::new();
+    meta.set_tag(ExifTag::ImageDescription(format!("Workflow:{workflow}")));
+    meta.write_to_file(path)
+        .map_err(|e| AppError::Message(format!("写入 workflow 失败：{e}")))
+}
+
 /// 替换的第一步（**短锁阶段**）：旧图必须存在，防止对无效 id 操作。
 /// 命令层的编排把「导入新图」（重 IO）放在这一步之后、[`replace_commit`] 之前，期间不持锁。
 pub(crate) fn replace_ensure_old(conn: &Connection, old_id: &str) -> Result<(), AppError> {

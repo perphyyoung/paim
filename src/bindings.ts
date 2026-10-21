@@ -110,6 +110,8 @@ export const commands = {
 	 *  编排与导入同口径：**短锁校验旧图 → 无锁导入新图 → 短锁迁移**，复制与缩略图期间不持锁。
 	 */
 	replaceImage: (oldId: string, source: string) => __TAURI_INVOKE<ImageReplaceOutcome>("replace_image", { oldId, source }),
+	/**  压缩并替换：仅 PNG → 有损 WebP（保留 workflow），之后走标准替换流程。 */
+	compressAndReplaceImage: (oldId: string) => __TAURI_INVOKE<ImageReplaceOutcome>("compress_and_replace_image", { oldId }),
 	/**  更新图像详情字段（文件名、备注、收藏、安全评级）。埋点口径与提示词详情对称。 */
 	updateImageDetail: (id: string, fileName: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Image>("update_image_detail", { id, fileName, note, isFavorite, isSafe }),
 	/**  为指定图像新建提示词并关联（复用 create_prompt + relate），供图像详情「新建提示词」。 */

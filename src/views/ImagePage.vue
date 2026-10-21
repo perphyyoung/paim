@@ -641,6 +641,9 @@ function onDetailChanged() {
 function onDetailReplaced({ oldId, image }: { oldId: string; image: Image }) {
   // 替换后排序位置会变，交给重载处理；详情顺序快照先原位替换，保持导航位置
   detailOrder.value = detailOrder.value.map((id) => (id === oldId ? image.id : id));
+  // 新图可能不在当前筛选结果里（文件名 / 标签已变，如压缩生成 xxx.webp）：
+  // 作为详情额外卡片注入，避免详情按 props.images 找不到它而空白
+  detailExtra.value = [image];
   // 旧图软删、新图承接关联：提示词详情里的关联图像应换成新图 → 整池作废
   invalidateRelatedImagesCache();
   void loadImages();
