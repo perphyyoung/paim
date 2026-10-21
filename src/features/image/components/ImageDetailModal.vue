@@ -136,8 +136,11 @@ async function replaceWithPicked() {
   }
 }
 
-// 压缩图像（png2webp，保留 workflow）：仅 PNG 可用；输出 WebP 后走与「替换图像」相同的替换流程
-async function compressAndReplace() {
+// 压缩图像（png2webp，保留 workflow）：仅 PNG 可用；先确认再执行
+const compressConfirmOpen = ref(false);
+
+/// 右键入口：先做格式预检，避免对非 PNG 弹确认
+function requestCompress() {
   const img = current.value;
   closeCtxMenu();
   if (!img) return;
@@ -145,6 +148,14 @@ async function compressAndReplace() {
     showToast("仅支持 PNG 图像", "warning");
     return;
   }
+  compressConfirmOpen.value = true;
+}
+
+/// 确认后执行：输出 WebP 并走与「替换图像」相同的替换流程
+async function doCompress() {
+  const img = current.value;
+  compressConfirmOpen.value = false;
+  if (!img) return;
   showToast("正在压缩…", "info");
   try {
     const outcome = await commands.compressAndReplaceImage(img.id);
@@ -1026,9 +1037,9 @@ const fmtLocal = formatLocalTime;
     <button
       type="button"
       class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
-      @click="compressAndReplace"
+      @click="requestCompress"
     >
-      压缩图像（png2webp，保留工作流）
+      压缩并替换 PNG 图像
     </button>
     <button
       v-if="similarityEnabled"
@@ -1052,6 +1063,17 @@ const fmtLocal = formatLocalTime;
     :danger="confirmDanger"
     @confirm="confirmAction"
     @cancel="cancelConfirm"
+  />
+
+  <!-- 压缩并替换确认：说明限制与保留项 -->
+  <ConfirmDialog
+    :open="compressConfirmOpen"
+    title="压缩并替换 PNG 图像"
+    message="将当前图像压缩为 WebP 后替换原图；原图移入回收站，可恢复。仅支持 PNG 图像；转换会保留工作流（workflow）元数据。"
+    confirm-text="压缩并替换"
+    danger
+    @confirm="doCompress"
+    @cancel="compressConfirmOpen = false"
   />
 
   <!-- 新建提示词（无关联时，纯内容输入，创建后关联当前图像；复用公共 InlineDialog，ModalZ.inlineDialog；

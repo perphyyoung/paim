@@ -15,7 +15,8 @@ import {
   uploadImageWithPrompt,
 } from "./e2e-helpers";
 
-const COMPRESS_ITEM = "压缩图像（png2webp，保留工作流）";
+const COMPRESS_ITEM = "压缩并替换 PNG 图像";
+const CONFIRM_TITLE = "压缩并替换 PNG 图像";
 
 test("PNG 右键压缩为 WebP 并替换：旧图进回收站、关联迁移", async ({ page, app }) => {
   const { imageId, promptContent } = await uploadImageWithPrompt(
@@ -26,6 +27,11 @@ test("PNG 右键压缩为 WebP 并替换：旧图进回收站、关联迁移", a
   const detail = await openImageDetail(page, promptContent);
   await detail.getByRole("img").click({ button: "right" });
   await page.getByRole("button", { name: COMPRESS_ITEM }).click();
+  const dlg = page.getByRole("dialog", { name: CONFIRM_TITLE });
+  await expect(dlg).toBeVisible();
+  await expect(dlg.getByText("仅支持 PNG 图像")).toBeVisible();
+  await expect(dlg.getByText("保留工作流")).toBeVisible();
+  await dlg.getByRole("button", { name: "压缩并替换" }).click();
   await expectToastAndDismiss(page, "已压缩并替换");
 
   // 旧图进回收站
@@ -51,6 +57,11 @@ test("搜索过滤下压缩替换：详情仍显示新图，不被筛选结果�
   const detail = await openImageDetail(page, promptContent);
   await detail.getByRole("img").click({ button: "right" });
   await page.getByRole("button", { name: COMPRESS_ITEM }).click();
+  const dlg = page.getByRole("dialog", { name: CONFIRM_TITLE });
+  await expect(dlg).toBeVisible();
+  await expect(dlg.getByText("仅支持 PNG 图像")).toBeVisible();
+  await expect(dlg.getByText("保留工作流")).toBeVisible();
+  await dlg.getByRole("button", { name: "压缩并替换" }).click();
   await expectToastAndDismiss(page, "已压缩并替换");
 
   // 详情切换到新图并真实加载（修复前 current 找不到新图 → 空白）
@@ -79,6 +90,7 @@ test("非 PNG 图像：右键压缩提示仅支持 PNG", async ({ page, app }) =
   const detail = await openImageDetail(page, promptContent);
   await detail.getByRole("img").click({ button: "right" });
   await page.getByRole("button", { name: COMPRESS_ITEM }).click();
+  await expect(page.getByRole("dialog", { name: CONFIRM_TITLE })).toHaveCount(0);
   await expectToastAndDismiss(page, "仅支持 PNG 图像");
 
   // 未替换，原图仍在正常列表
