@@ -61,6 +61,18 @@ test("图像选择界面：标签筛选可搜索、选中后回显，Esc 关闭"
   const option = page.getByRole("button", { name: tag, exact: true });
   await expect(option).toBeVisible();
 
+  // 输入后滚到列表顶部，第一个匹配可见
+  const listbox = page.getByRole("listbox", { name: "选项" });
+  await expect(listbox).toBeVisible();
+  expect(await listbox.evaluate((el) => el.scrollTop)).toBe(0);
+
+  // 清除筛选：清空搜索词，回到全量并回顶部
+  await page.getByRole("button", { name: "清除筛选" }).click();
+  await expect(search).toHaveValue("");
+  await expect(listbox.getByRole("button", { name: "所有标签" })).toBeVisible();
+  expect(await listbox.evaluate((el) => el.scrollTop)).toBe(0);
+
+  await search.fill(tag);
   // 面板内滚轮不关闭面板（旧实现全局 scroll 捕获会立即关闭）
   await option.hover();
   await page.mouse.wheel(0, 200);
@@ -77,6 +89,14 @@ test("图像选择界面：标签筛选可搜索、选中后回显，Esc 关闭"
   await expect(search).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(search).toBeHidden();
+
+  // 选「所有标签」清除筛选，触发器回显
+  await page.getByRole("button", { name: new RegExp(tag) }).click();
+  await page
+    .getByRole("listbox", { name: "选项" })
+    .getByRole("button", { name: "所有标签" })
+    .click();
+  await expect(page.getByRole("button", { name: "所有标签" })).toBeVisible();
 });
 
 test("图像选择界面：提示词/首图相似度排序与分数角标", async ({ page, app }) => {

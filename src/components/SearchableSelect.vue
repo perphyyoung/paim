@@ -83,8 +83,17 @@ const displayText = computed(
 );
 const panelWidth = computed(() => props.panelWidth ?? anchor.value?.width ?? 200);
 
-watch(keyword, () => {
-  activeIndex.value = 0;
+/// 清除搜索词：回到全量候选，焦点回输入框
+function clearQuery() {
+  keyword.value = "";
+  searchInput.value?.focus();
+}
+
+watch(keyword, async () => {
+  // 有清空项时，第一个匹配从索引 1 开始；并滚到列表顶部，保证第一个匹配可见
+  activeIndex.value = props.clearLabel && matched.value.length > 0 ? 1 : 0;
+  await nextTick();
+  if (listEl.value) listEl.value.scrollTop = 0;
 });
 
 // 首次展开时选项可能是异步加载的（如字体家族）：加载完成后再滚动到选中项，
@@ -190,17 +199,34 @@ onBeforeUnmount(close);
         }"
       >
         <div class="border-b border-gray-700 p-2">
-          <input
-            ref="searchInput"
-            v-model="keyword"
-            type="text"
-            :placeholder="searchPlaceholder"
-            class="w-full rounded border border-gray-600 bg-gray-900 px-2 py-1 text-sm text-gray-100 outline-none placeholder:text-gray-500"
-            @keydown="onKeydown"
-          />
+          <div class="relative">
+            <input
+              ref="searchInput"
+              v-model="keyword"
+              type="text"
+              :placeholder="searchPlaceholder"
+              class="w-full rounded border border-gray-600 bg-gray-900 px-2 py-1 pr-7 text-sm text-gray-100 outline-none placeholder:text-gray-500"
+              @keydown="onKeydown"
+            />
+            <button
+              v-if="keyword"
+              type="button"
+              class="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-200"
+              title="清除筛选"
+              aria-label="清除筛选"
+              @click="clearQuery"
+            >
+              ✕
+            </button>
+          </div>
         </div>
         <slot name="notice" />
-        <ul ref="listEl" class="max-h-64 overflow-y-auto overscroll-contain py-1">
+        <ul
+          ref="listEl"
+          role="listbox"
+          aria-label="选项"
+          class="max-h-64 overflow-y-auto overscroll-contain py-1"
+        >
           <li v-if="clearLabel">
             <button
               type="button"
