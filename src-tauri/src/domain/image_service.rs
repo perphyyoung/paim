@@ -9,7 +9,7 @@ use crate::infra::error::AppError;
 use image::GenericImageView;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -1062,6 +1062,80 @@ pub(crate) fn replace_commit(
         image,
         related_prompt_ids,
     })
+}
+
+/// 图像选择界面的相似度排序模式：用当前提示词 / 首图的 vec 与候选图像 vec 算余弦。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub enum PickerSortMode {
+    Prompt,
+    FirstImage,
+}
+
+#[derive(Debug, Serialize, Clone, specta::Type)]
+pub struct PickerImage {
+    pub image: ImageCard,
+    pub similarity: f32,
+}
+
+#[derive(Debug, Serialize, Clone, specta::Type)]
+pub struct PickerSortAvailability {
+    pub prompt: bool,
+    pub first_image: bool,
+}
+
+/// 相似度排序可用性：提示词 / 首图是否已有 vec。
+pub fn picker_sort_availability(
+    conn: &Connection,
+    prompt_id: &str,
+) -> std::result::Result<PickerSortAvailability, AppError> {
+    let first_image = crate::domain::prompt_service::first_related_image_id(conn, prompt_id)?
+        .map(|id| crate::domain::similarity_service::vec_of(conn, &id))
+        .transpose()?
+        .flatten();
+    Ok(PickerSortAvailability {
+        prompt: crate::domain::similarity_service::prompt_vec_of(conn, prompt_id)?.is_some(),
+        first_image: first_image.is_some(),
+    })
+}
+
+/// 图像选择界面：按相似度排序**全部未删除图像**（与相似度结果页同一套全量打分），
+/// 返回已排序的分数与 top100 卡片；启用后上层搜索/标签筛选被禁用，故不接受过滤参数。
+pub fn list_picker_images_by_similarity(
+    conn: &Connection,
+    prompt_id: &str,
+    mode: PickerSortMode,
+) -> std::result::Result<Vec<PickerImage>, AppError> {
+    let base = match mode {
+        PickerSortMode::Prompt => {
+            crate::domain::similarity_service::prompt_vec_of(conn, prompt_id)?
+        }
+        PickerSortMode::FirstImage => {
+            match crate::domain::prompt_service::first_related_image_id(conn, prompt_id)? {
+                Some(id) => crate::domain::similarity_service::vec_of(conn, &id)?,
+                None => None,
+            }
+        }
+    };
+    let Some(base) = base else {
+        return Ok(Vec::new());
+    };
+    // 与结果页相同：全量候选 → 点积打分 → top100（复用 similarity_service，避免两套实现）
+    let candidates =
+        crate::domain::similarity_service::image_rank_candidates(conn, base.len(), "")?;
+    let hits = crate::domain::similarity_service::score_ranked(&candidates.rows, &base, 100, 0.0);
+    let ids: Vec<String> = hits.iter().map(|(id, _)| id.clone()).collect();
+    let cards = cards_by_ids(conn, &ids)?;
+    let score_by_id: HashMap<&str, f32> = hits
+        .iter()
+        .map(|(id, score)| (id.as_str(), *score))
+        .collect();
+    Ok(cards
+        .into_iter()
+        .map(|image| PickerImage {
+            similarity: score_by_id.get(image.id.as_str()).copied().unwrap_or(0.0),
+            image,
+        })
+        .collect())
 }
 
 fn row_to_image(row: &rusqlite::Row) -> rusqlite::Result<Image> {

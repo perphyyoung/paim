@@ -99,6 +99,10 @@ export const commands = {
 	listImages: (limit: number | null, search: string | null, tag: string | null) => __TAURI_INVOKE<PaginatedImages>("list_images", { limit, search, tag }),
 	/**  主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。 */
 	listImagesPage: (query: ListQuery) => __TAURI_INVOKE<PaginatedImages>("list_images_page", { query }),
+	/**  图像选择界面：两个相似度排序按钮是否可用（提示词 / 首图是否已有 vec）。 */
+	getPickerSortAvailability: (promptId: string) => __TAURI_INVOKE<PickerSortAvailability>("get_picker_sort_availability", { promptId }),
+	/**  图像选择界面：按提示词 / 首图向量与候选图像 vec 的相似度排序（最多 100 张）。 */
+	listPickerImagesBySimilarity: (promptId: string, mode: PickerSortMode) => __TAURI_INVOKE<PickerImage[]>("list_picker_images_by_similarity", { promptId, mode }),
 	/**  同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。 */
 	listImageIds: (query: ListQuery) => __TAURI_INVOKE<string[]>("list_image_ids", { query }),
 	/**  特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件）。 */
@@ -367,12 +371,17 @@ export const commands = {
 	 */
 	e2eIsWindowVisible: (label: string) => __TAURI_INVOKE<boolean | null>("e2e_is_window_visible", { label }),
 	/**
-	 *  e2e 测试缝：往指定行写入**指定维度**的确定性伪向量（已 L2 归一化）。
-	 *  用途：制造「库里混有不同维度的向量」的场景 —— 真实索引由 mock embedder 产出固定维度，
-	 *  无法自己造出旧维度，只能从这里注入。
+	 *  e2e 测试缝：往指定行写入向量。
+	 * 
+	 *  两种用法：
+	 *  - `values: [..]`：写入**指定向量**（调用方保证已 L2 归一化），用于构造可预测的相似度分数/顺序
+	 *    （如「图像选择界面」的相似度排序）；
+	 *  - `dim: N`：写入由 id 派生的确定性伪向量，用于制造「库里混有不同维度」的场景
+	 *    （真实索引由 mock embedder 产出固定维度，无法自己造旧维度）。
+	 * 
 	 *  `kind` 复用检索侧的 [`MixedSource`]（Image / Prompt）表示写哪张表。
 	 */
-	e2eStoreVector: (kind: MixedSource, id: string, dim: number) => __TAURI_INVOKE<null>("e2e_store_vector", { kind, id, dim }),
+	e2eSeedSimilarityVectors: (kind: MixedSource, id: string, values: (number | null)[] | null, dim: number | null) => __TAURI_INVOKE<null>("e2e_seed_similarity_vectors", { kind, id, values, dim }),
 	/**
 	 *  e2e 测试缝：覆盖 `select_images` 的返回值（支持多张）。
 	 *  默认仍是 fixture 注入的单张；需要「一次选多张」的用例显式调用，结束后复位。
@@ -679,6 +688,19 @@ export type PaginatedPrompts = {
 	/**  搜索正则在进入 SQL 前就判定非法：本次返回空结果，前端据此提示「非法正则」而非「无匹配」 */
 	invalid_regex: boolean,
 };
+
+export type PickerImage = {
+	image: ImageCard,
+	similarity: number | null,
+};
+
+export type PickerSortAvailability = {
+	prompt: boolean,
+	first_image: boolean,
+};
+
+/**  图像选择界面的相似度排序模式：用当前提示词 / 首图的 vec 与候选图像 vec 算余弦。 */
+export type PickerSortMode = "Prompt" | "FirstImage";
 
 export type Prompt = {
 	id: string,

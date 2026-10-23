@@ -118,19 +118,33 @@ pub fn e2e_is_window_visible(app: AppHandle, label: String) -> Result<Option<boo
         .map_err(|e| AppError::Message(format!("读取窗口可见性失败: {e}")))
 }
 
-/// e2e 测试缝：往指定行写入**指定维度**的确定性伪向量（已 L2 归一化）。
-/// 用途：制造「库里混有不同维度的向量」的场景 —— 真实索引由 mock embedder 产出固定维度，
-/// 无法自己造出旧维度，只能从这里注入。
+/// e2e 测试缝：往指定行写入向量。
+///
+/// 两种用法：
+/// - `values: [..]`：写入**指定向量**（调用方保证已 L2 归一化），用于构造可预测的相似度分数/顺序
+///   （如「图像选择界面」的相似度排序）；
+/// - `dim: N`：写入由 id 派生的确定性伪向量，用于制造「库里混有不同维度」的场景
+///   （真实索引由 mock embedder 产出固定维度，无法自己造旧维度）。
+///
 /// `kind` 复用检索侧的 [`MixedSource`]（Image / Prompt）表示写哪张表。
 #[tauri::command]
 #[specta::specta]
-pub async fn e2e_store_vector(
+pub async fn e2e_seed_similarity_vectors(
     db: State<'_, BkDb>,
     kind: MixedSource,
     id: String,
-    dim: usize,
+    // 指定向量值（已归一化）；为空时按 dim 生成 id 派生的伪向量
+    values: Option<Vec<f32>>,
+    // values 为空时必填：伪向量维度
+    dim: Option<usize>,
 ) -> Result<(), AppError> {
-    let vec = pseudo_vector(&id, dim);
+    let vec = match values {
+        Some(v) => v,
+        None => {
+            let dim = dim.ok_or_else(|| AppError::Message("缺 dim 或 values".into()))?;
+            pseudo_vector(&id, dim)
+        }
+    };
     db::blocking(&db, move |conn| match kind {
         MixedSource::Image => similarity_service::store(conn, &id, &vec),
         MixedSource::Prompt => similarity_service::store_prompt(conn, &id, &vec),

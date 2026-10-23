@@ -287,6 +287,33 @@ pub async fn list_images(
     .await
 }
 
+/// 图像选择界面：两个相似度排序按钮是否可用（提示词 / 首图是否已有 vec）。
+#[tauri::command]
+#[specta::specta]
+pub async fn get_picker_sort_availability(
+    db: State<'_, BkDb>,
+    prompt_id: String,
+) -> Result<image_service::PickerSortAvailability, AppError> {
+    db::blocking(&db, move |conn| {
+        image_service::picker_sort_availability(conn, &prompt_id)
+    })
+    .await
+}
+
+/// 图像选择界面：按提示词 / 首图向量与候选图像 vec 的相似度排序（最多 100 张）。
+#[tauri::command]
+#[specta::specta]
+pub async fn list_picker_images_by_similarity(
+    db: State<'_, BkDb>,
+    prompt_id: String,
+    mode: image_service::PickerSortMode,
+) -> Result<Vec<image_service::PickerImage>, AppError> {
+    db::blocking(&db, move |conn| {
+        image_service::list_picker_images_by_similarity(conn, &prompt_id, mode)
+    })
+    .await
+}
+
 /// 主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。
 #[tauri::command]
 #[specta::specta]

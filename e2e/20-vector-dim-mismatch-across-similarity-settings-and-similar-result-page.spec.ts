@@ -9,7 +9,7 @@
  * 「看清现状 / 别再往混杂里续写 / 让人知道哪些没进结果」。
  *
  * 测试缝：假 embedding（`PAIM_EMBEDDING_MOCK=1`）固定产出 2048 维，造不出「旧维度」，
- * 因此用命令缝 `e2e_store_vector` 直接给指定行注入任意维度的确定性伪向量（见 e2e-helpers 注释）。
+ * 因此用命令缝 `e2e_seed_similarity_vectors` 直接给指定行注入任意维度的确定性伪向量（见 e2e-helpers 注释）。
  *
  * 用例按 1~5 顺序在同一实例里跑（数据累积），每个用例开头用直连命令把起点拉回确定状态
  * （用例间只 reload UI，不清库）；assert 一律以「本用例自己造的那份」为准。
@@ -53,8 +53,13 @@ function promptStatus(page: Page): Promise<PromptStatus> {
 }
 
 /// 命令缝：给指定行注入指定维度的确定性伪向量
-function storeVector(page: Page, kind: "Image" | "Prompt", id: string, dim: number): Promise<void> {
-  return invokeCommand(page, "e2e_store_vector", { kind, id, dim });
+function seedSimilarityVectors(
+  page: Page,
+  kind: "Image" | "Prompt",
+  id: string,
+  dim: number,
+): Promise<void> {
+  return invokeCommand(page, "e2e_seed_similarity_vectors", { kind, id, dim });
 }
 
 /// 清空全部提示词向量（把起点拉回「无向量」）
@@ -75,7 +80,7 @@ test("维度分布（单维度）：相似度设置报出已建立的维度与�
   const content = `e2e 维度单维 ${Date.now()}`;
   await createPromptViaDialog(page, content);
   const id = await findPromptIdByContent(page, content);
-  await storeVector(page, "Prompt", id, OLD_DIM);
+  await seedSimilarityVectors(page, "Prompt", id, OLD_DIM);
   e2eLog.info(`[step] 已给该提示词注入 ${OLD_DIM} 维向量`);
 
   const panel = await openSimilaritySettings(page);
@@ -92,7 +97,7 @@ test("维度分布（混维）：相似度设置列出各维度条数，可按�
   await createPromptViaDialog(page, content);
   const id = await findPromptIdByContent(page, content);
   // 表内此时已有上一用例的 8 维，再注入一个 4 维 → 混维
-  await storeVector(page, "Prompt", id, 4);
+  await seedSimilarityVectors(page, "Prompt", id, 4);
   e2eLog.info("[step] 已制造混维：8 维 + 4 维");
 
   const panel = await openSimilaritySettings(page);
@@ -129,7 +134,7 @@ test("增量索引遇维度不一致：直接终止、不入库，并把原因�
   await createPromptViaDialog(page, seed);
   await createPromptViaDialog(page, pending);
   // 表内唯一维度 = 8（旧模型）；另一条 vec IS NULL 是本次增量的待处理项
-  await storeVector(page, "Prompt", await findPromptIdByContent(page, seed), OLD_DIM);
+  await seedSimilarityVectors(page, "Prompt", await findPromptIdByContent(page, seed), OLD_DIM);
 
   const panel = await openSimilaritySettings(page);
   await promptPanelButton(panel, "增量索引").click();
@@ -162,7 +167,7 @@ test("检索结果页提醒：本表维度不一致的条目被排除时，对�
   const content = `e2e 维度检索 ${Date.now()}`;
   const { imageId } = await uploadImageWithPrompt(page, content, app.mockImagePath);
   // 把这张图改成旧维度 → 相对 2048 维的查询，它会被候选筛选排除并计数
-  await storeVector(page, "Image", imageId, OLD_DIM);
+  await seedSimilarityVectors(page, "Image", imageId, OLD_DIM);
   e2eLog.info(`[step] 已把关联图像改成 ${OLD_DIM} 维（对 ${MOCK_DIM} 维查询是不一致项）`);
 
   await gotoPromptsPage(page);
@@ -183,7 +188,7 @@ test("检索结果页提醒：本表尚未建立向量的条目也在对应栏�
   // 源提示词：显式给一个当前维度（2048）的向量，避免检索时现场补算
   const src = `e2e 未建源 ${Date.now()}`;
   await createPromptViaDialog(page, src);
-  await storeVector(page, "Prompt", await findPromptIdByContent(page, src), MOCK_DIM);
+  await seedSimilarityVectors(page, "Prompt", await findPromptIdByContent(page, src), MOCK_DIM);
   // 另一条保持无向量（新建的提示词默认没有向量）：它是本用例要断言的「未建立向量」项
   const pending = `e2e 未建向量 ${Date.now()}`;
   await createPromptViaDialog(page, pending);
@@ -194,7 +199,7 @@ test("检索结果页提醒：本表尚未建立向量的条目也在对应栏�
   // 再造一条旧维度向量：与上面的无向量条目一起，让两类提醒同时出现（验证各自成条，不是拼成一句）
   const oldDim = `e2e 未建旧维 ${Date.now()}`;
   await createPromptViaDialog(page, oldDim);
-  await storeVector(page, "Prompt", await findPromptIdByContent(page, oldDim), OLD_DIM);
+  await seedSimilarityVectors(page, "Prompt", await findPromptIdByContent(page, oldDim), OLD_DIM);
 
   const detail = await openPromptDetail(page, src);
   const modal = await openSimilarSearchFromPromptDetail(page, detail, src);

@@ -244,6 +244,53 @@ fn compress_uses_display_name_for_webp_file() {
     let _ = std::fs::remove_file(&out);
 }
 
+fn vec_blob(v: &[f32]) -> Vec<u8> {
+    v.iter().flat_map(|x| x.to_le_bytes()).collect()
+}
+
+#[test]
+fn picker_similarity_sorts_by_cosine_and_reports_availability() {
+    let (dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content, vec) VALUES ('p1', 't', 'c', ?1)",
+        rusqlite::params![vec_blob(&[1.0, 0.0])],
+    )
+    .unwrap();
+    for (id, v) in [("near", [0.9f32, 0.1f32]), ("far", [0.0f32, 1.0f32])] {
+        conn.execute(
+            "INSERT INTO images(id, file_name, stored_name, relative_path, vec)
+             VALUES (?1, ?2, ?1, ?3, ?4)",
+            rusqlite::params![
+                id,
+                format!("{id}.png"),
+                format!("images/202601/{id}.png"),
+                vec_blob(&v)
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO prompt_image_relations(prompt_id, image_id, sort_order)
+             VALUES ('p1', ?1, 0)",
+            [id],
+        )
+        .unwrap();
+    }
+
+    // 提示词 vec 与首图（near）vec 都存在
+    let availability = super::picker_sort_availability(&conn, "p1").unwrap();
+    assert!(availability.prompt);
+    assert!(availability.first_image);
+
+    let rows =
+        super::list_picker_images(&conn, "p1", super::PickerSortMode::Prompt, None, None).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].image.id, "near");
+    assert!(rows[0].similarity > rows[1].similarity);
+
+    let _ = dir;
+}
+
 #[test]
 fn replace_image_rejects_same_content() {
     let (dir, db) = setup_image_db();

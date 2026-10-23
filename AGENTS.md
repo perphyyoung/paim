@@ -13,7 +13,8 @@
 - 对同一文件的多处修改：合并为一次编辑完成，或分多条消息串行执行；禁止在同一条消息里并行发起多个编辑到同一文件（并行读-改-写会竞态覆盖，仅最后一个编辑生效，其余静默丢失）
 - 不因「要重新编译/重新验证」降低代码质量标准
 - 对称结构优先于改动成本，不为「现状能跑」保留次优写法
-- 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → typecheck → build），通过后再按需跑 `pnpm test`（全部单元测试，含前后端）/ `sentrux check .` / `pnpm e2e`；验证通过才输出**单独一行**的简要的一句话 git commit 信息，方便复制。不要跳过 `pnpm check` 直接跑其它命令
+- 修改代码后，**先**执行 `pnpm check` 验证（format → build:rs → gen:bindings → lint → typecheck → build），通过后再按需跑 `pnpm test`（全部单元测试，含前后端）/ `sentrux check .` / `pnpm e2e`；验证通过才输出**单独一行**的简要的一句话 git commit 信息，方便复制；后面再追加一行 输出结束，避免截断提交信息。不要跳过 `pnpm check` 直接跑其它命令
+- 新增/修改 e2e 测试缝前，先完整读 `src-tauri/src/commands/e2e.rs` 现有命令，禁止并存功能相似的第二套命令；命名要能自解释（如 `e2e_seed_similarity_vectors` 明确表示为相似度检索播种向量）。
 - 日志文件的删除会被阻止，用清空代替
 - 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
 - 及时删除不再使用的代码和文件；检查死代码时，需要考虑 e2e

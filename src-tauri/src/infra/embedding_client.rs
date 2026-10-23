@@ -55,6 +55,20 @@ pub trait Embedder: Send + Sync {
     fn embed_text(&self, text: &str) -> Result<Vec<f32>, AppError>;
 }
 
+/// 余弦相似度：向量已 L2 归一化时即点积；维度不一致或空向量返回 None。
+pub fn cosine(a: &[f32], b: &[f32]) -> Option<f32> {
+    if a.len() != b.len() || a.is_empty() {
+        return None;
+    }
+    Some(
+        a.iter()
+            .zip(b)
+            .map(|(x, y)| x * y)
+            .sum::<f32>()
+            .clamp(-1.0, 1.0),
+    )
+}
+
 /// L2 归一化（零向量原样返回，避免除零）；归一化后点积即余弦。
 pub fn l2_normalize(v: &mut [f32]) {
     let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();

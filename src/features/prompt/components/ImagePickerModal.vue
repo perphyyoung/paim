@@ -6,8 +6,11 @@ import { commands, type ImageCard } from "@/bindings";
 import { toTimestamp } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
 import { ModalZ } from "@/utils/modalZ";
+import { useToast } from "@/components/useToast";
 import SortGroup from "@/components/SortGroup.vue";
 import SearchableSelect from "@/components/SearchableSelect.vue";
+import ScoreBadge from "@/features/similarity/ScoreBadge.vue";
+import type { ResultRow } from "@/features/similarity/rows";
 
 const props = defineProps<{
   open: boolean;
@@ -38,6 +41,64 @@ const SORT_OPTIONS = [
   { value: "width", label: "宽度" },
   { value: "height", label: "高度" },
 ];
+
+const { showToast } = useToast();
+
+// —— 相似度排序：用提示词 / 首图的 vec 与候选图像 vec 的余弦 ——
+type PickerSort = "default" | "prompt" | "firstImage";
+const pickerSort = ref<PickerSort>("default");
+const sortLoading = ref(false);
+const sortAvailability = ref({ prompt: false, first_image: false });
+const similarityRows = ref<ResultRow<ImageCard>[]>([]);
+
+const similarityById = computed(
+  () => new Map(similarityRows.value.map((r) => [r.card.id, r.score])),
+);
+const displayImages = computed(() =>
+  pickerSort.value === "default" ? sortedImages.value : similarityRows.value.map((r) => r.card),
+);
+
+async function loadSortAvailability() {
+  try {
+    sortAvailability.value = await commands.getPickerSortAvailability(props.promptId);
+  } catch {
+    sortAvailability.value = { prompt: false, first_image: false };
+  }
+}
+
+/// 相似度结果缓存：key = promptId + mode（启用后不再受搜索/标签影响）
+const sortCache = new Map<string, ResultRow<ImageCard>[]>();
+
+async function togglePickerSort(mode: "prompt" | "firstImage") {
+  if (pickerSort.value === mode) {
+    pickerSort.value = "default";
+    similarityRows.value = [];
+    return;
+  }
+  pickerSort.value = mode;
+  const key = `${props.promptId}:${mode}`;
+  const cached = sortCache.get(key);
+  if (cached) {
+    similarityRows.value = cached;
+    return;
+  }
+  sortLoading.value = true;
+  try {
+    const rows = await commands.listPickerImagesBySimilarity(
+      props.promptId,
+      mode === "prompt" ? "Prompt" : "FirstImage",
+    );
+    const mapped = rows.map((r) => ({ card: r.image, score: r.similarity ?? 0 }));
+    sortCache.set(key, mapped);
+    similarityRows.value = mapped;
+  } catch (e) {
+    pickerSort.value = "default";
+    similarityRows.value = [];
+    showToast(`相似度排序失败：${e}`, "error");
+  } finally {
+    sortLoading.value = false;
+  }
+}
 
 const sortedImages = computed(() => {
   let arr = [...images.value];
@@ -121,6 +182,8 @@ async function loadTags() {
 let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 watch([keyword, selectedTag], () => {
   clearTimeout(reloadTimer);
+  pickerSort.value = "default";
+  similarityRows.value = [];
   reloadTimer = setTimeout(() => loadImages(), 300);
 });
 
@@ -128,6 +191,7 @@ onMounted(() => {
   if (props.open) {
     loadImages();
     loadTags();
+    loadSortAvailability();
   }
 });
 
@@ -163,7 +227,11 @@ function close() {
         <!-- 顶部：标题 + 3 控件（搜索 / 标签筛选 / 排序组，均分中间区域）+ 关闭 -->
         <div class="flex items-center gap-3 border-b px-4 py-3 border-gray-700">
           <h3 class="shrink-0 text-base font-semibold text-gray-100">图像选择界面</h3>
-          <div class="flex min-w-0 flex-1 items-center gap-2">
+          <fieldset
+            :disabled="pickerSort !== 'default'"
+            aria-label="筛选"
+            class="m-0 flex min-w-0 flex-1 items-center gap-2 border-0 p-0 disabled:opacity-40"
+          >
             <input
               v-model="keyword"
               class="min-w-0 flex-1 rounded-lg border px-3 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
@@ -186,7 +254,7 @@ function close() {
               @update:model-value="sortBy = $event"
               @toggle-order="sortDesc = !sortDesc"
             />
-          </div>
+          </fieldset>
           <button
             type="button"
             class="shrink-0 rounded px-2 py-1 text-gray-400 hover:bg-gray-700"
@@ -214,7 +282,7 @@ function close() {
           </div>
           <ul v-else class="grid grid-cols-6 gap-2 xl:grid-cols-8">
             <li
-              v-for="img in sortedImages"
+              v-for="img in displayImages"
               :key="img.id"
               class="group relative cursor-pointer overflow-hidden rounded-lg border"
               :class="
@@ -224,6 +292,10 @@ function close() {
               "
               @click="toggleSelect(img.id)"
             >
+              <ScoreBadge
+                v-if="pickerSort !== 'default' && similarityById.has(img.id)"
+                :score="similarityById.get(img.id) ?? 0"
+              />
               <img
                 v-if="thumbUrl(img)"
                 :src="thumbUrl(img)"
@@ -257,6 +329,44 @@ function close() {
         <!-- 底部：已选 + 取消/确认 -->
         <div class="flex items-center justify-between border-t px-4 py-3 border-gray-700">
           <span class="text-sm text-gray-400">{{ infoText }}</span>
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+              :class="
+                pickerSort === 'prompt'
+                  ? 'border-blue-500 bg-blue-600 text-white'
+                  : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+              "
+              :disabled="!sortAvailability.prompt || sortLoading"
+              :title="
+                sortAvailability.prompt
+                  ? '按当前提示词向量与图像向量的相似度排序'
+                  : '当前提示词未建立向量，无法排序'
+              "
+              @click="togglePickerSort('prompt')"
+            >
+              提示词相似度
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+              :class="
+                pickerSort === 'firstImage'
+                  ? 'border-blue-500 bg-blue-600 text-white'
+                  : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+              "
+              :disabled="!sortAvailability.first_image || sortLoading"
+              :title="
+                sortAvailability.first_image
+                  ? '按当前提示词首图向量与图像向量的相似度排序'
+                  : '首图不存在或未建立向量，无法排序'
+              "
+              @click="togglePickerSort('firstImage')"
+            >
+              首图相似度
+            </button>
+          </div>
           <div class="grid grid-cols-2 gap-2">
             <button
               type="button"

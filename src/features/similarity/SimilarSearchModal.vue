@@ -87,10 +87,7 @@ async function loadSourceThumb() {
   }
 }
 
-interface ResultRow<T> {
-  card: T;
-  score: number;
-}
+import type { ResultRow } from "./rows";
 const imageRows = ref<ResultRow<ImageCard>[]>([]);
 const promptRows = ref<ResultRow<PromptCard>[]>([]);
 /// 两栏各自的滚动同步（与主页 / 回收站同一套：VirtualGrid 内部隐藏原生条，由 CustomScrollBar 呈现）。

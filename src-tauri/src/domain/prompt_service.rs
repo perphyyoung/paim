@@ -810,6 +810,23 @@ fn related_image_ids(conn: &Connection, prompt_ids: &[String]) -> Result<Vec<Str
     rows.collect()
 }
 
+/// 首图：关联顺序第一张未删除图像（`sort_order, rowid` 最小）。
+pub fn first_related_image_id(
+    conn: &Connection,
+    prompt_id: &str,
+) -> std::result::Result<Option<String>, AppError> {
+    Ok(conn
+        .query_row(
+            "SELECT pir.image_id FROM prompt_image_relations pir
+             JOIN images img ON img.id = pir.image_id
+             WHERE pir.prompt_id = ?1 AND img.is_deleted = 0
+             ORDER BY pir.sort_order, pir.rowid LIMIT 1",
+            [prompt_id],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
 /// 重排提示词关联图像：按给定顺序写入 sort_order（集合必须与当前关联完全一致）。
 pub fn reorder_prompt_images(
     conn: &Connection,

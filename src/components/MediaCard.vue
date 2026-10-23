@@ -14,6 +14,7 @@
  * - trash：恢复/彻底删除 2 钮，卡片本身不可点。
  */
 import CardTagRow from "@/components/CardTagRow.vue";
+import ScoreBadge from "@/features/similarity/ScoreBadge.vue";
 import { homeCardInfoVisible } from "@/utils/homeCardInfo";
 import { computed, nextTick, onMounted, onUpdated, ref, watch } from "vue";
 
@@ -125,8 +126,6 @@ watch(
 );
 onMounted(scheduleMeasure);
 onUpdated(scheduleMeasure);
-
-const scoreText = (s: number) => s.toFixed(3);
 </script>
 
 <template>
@@ -176,12 +175,7 @@ const scoreText = (s: number) => s.toFixed(3);
     ></div>
 
     <!-- 相似度角标（similar，左上） -->
-    <span
-      v-if="variant === 'similar' && score !== undefined"
-      class="absolute left-1 top-1 z-[2] rounded bg-black/70 px-1.5 py-0.5 text-[11px] tabular-nums text-emerald-300"
-    >
-      {{ scoreText(score) }}
-    </span>
+    <ScoreBadge v-if="variant === 'similar' && score !== undefined" :score="score" />
 
     <!-- 顶行：home 4 钮 / trash 恢复+彻底删除；悬停或批量模式才显示 -->
     <div

@@ -67,6 +67,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::image::get_source_thumbnail,
             commands::image::list_images,
             commands::image::list_images_page,
+            commands::image::get_picker_sort_availability,
+            commands::image::list_picker_images_by_similarity,
             commands::image::list_image_ids,
             commands::image::image_special_tags_counts,
             commands::image::get_image_detail,
@@ -165,7 +167,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::e2e::e2e_delete_image_thumbnail,
             commands::e2e::e2e_get_image_paths,
             commands::e2e::e2e_is_window_visible,
-            commands::e2e::e2e_store_vector,
+            commands::e2e::e2e_seed_similarity_vectors,
             commands::e2e::e2e_set_mock_image_paths,
         ])
 }
