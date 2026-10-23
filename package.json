@@ -22,7 +22,7 @@
     "test:rs": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:ui": "vitest run",
     "e2e": "playwright test --config e2e/playwright.config.ts",
-    "check": "pnpm format && pnpm build:rs && pnpm gen:bindings && pnpm typecheck && pnpm lint && pnpm build"
+    "check": "pnpm format && pnpm build:rs && pnpm gen:bindings && pnpm lint && pnpm typecheck && pnpm build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",

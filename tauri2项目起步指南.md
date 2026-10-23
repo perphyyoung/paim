@@ -22,7 +22,7 @@
 | 环境变量前缀 | `PAIM_*`、`VITE_PORT`、`TAURI_DEV_HOST` | 可不同（换自己的前缀） |
 | 应用标识 | `productName` / `identifier` / 窗口标题尺寸 / bundle targets / 图标 | 可不同 |
 | 前端栈 | Vue 3 + TS + Tailwind 3 + vite 6 + vue-router | 可不同（换框架时保留工程约定） |
-| 质量门 | `pnpm check` = format → build:rs → gen:bindings → typecheck → **lint** → build | 建议统一 |
+| 质量门 | `pnpm check` = format → build:rs → gen:bindings → **lint** → typecheck → build | 建议统一 |
 | 测试 | vitest + cargo test + Playwright(CDP) 三层 | 建议统一 |
 | 命令执行 | PowerShell 7（`&&` / `||` 可用） | 建议统一 |
 
@@ -149,7 +149,7 @@ const exe = path.join(targetDir, "debug", "paim.exe");
 spawnSync(exe, { env: { ...process.env, PAIM_EXPORT_BINDINGS: "1" }, timeout: 10_000 });
 ```
 
-- 登记了命令/事件却忘了跑导出，症状是「编译通过但前端没有这个命令」——把导出挂进 `pnpm check`（paim 的 `check` = `format → build:rs → gen:bindings → typecheck → build`）就不会漏。
+- 登记了命令/事件却忘了跑导出，症状是「编译通过但前端没有这个命令」——把导出挂进 `pnpm check`（paim 的 `check` = `format → build:rs → gen:bindings → lint → typecheck → build`）就不会漏。
 - 改了 Rust 命令签名后，必须重跑 `pnpm check`（或 `pnpm dev`）让 `src/bindings.ts` 复写；验证时 **grep warning 与 error 双查**。
 
 ## 5. tauri.conf.json（逐项约定，含片段）
@@ -289,7 +289,7 @@ paim 的约定：**应用私有变量一律带 `PAIM_` 前缀**，只保留 vite
 ```
 
 - Rust 侧格式化用 `cargo fmt`，与 oxfmt 一起挂进 `format:check`。
-- **lint：必须接 `oxlint`**（`pnpm add -D oxlint`），脚本 `"lint": "oxlint src e2e"`，并挂进 `pnpm check`（`typecheck` 之后、`build` 之前）。
+- **lint：必须接 `oxlint`**（`pnpm add -D oxlint`），脚本 `"lint": "oxlint src e2e"`，并挂进 `pnpm check`（`gen:bindings` 之后、`typecheck` 之前：lint 毫秒级，先跑早失败）。
   - **不要只跑 typecheck**：`vue-tsc` / `tsc` 默认不报未使用导入、未使用变量（`tsconfig` 未开 `noUnusedLocals`），这类问题只有 lint 能检出；`check` 全绿不代表没有告警（IDE 的 oxc 诊断不等于项目质量门）。
   - 先让 lint 以 warning 跑（oxlint 默认 warning 不阻塞退出码），清理存量后再考虑 `--deny-warnings` 收紧。
   - 新增文件后至少跑一次 `pnpm lint`，不要依赖 IDE 诊断兜底。
@@ -308,7 +308,7 @@ paim 的 `package.json` scripts（可直接照搬，只改项目名字符串）�
 | `format` / `format:check` | oxfmt + cargo fmt（check 版加 `--check`） |
 | `test` / `test:ui` / `test:rs` | `pnpm test:ui && pnpm test:rs` / `vitest run` / `cargo test --manifest-path src-tauri/Cargo.toml` |
 | `e2e` | `playwright test --config e2e/playwright.config.ts` |
-| `check` | `format → build:rs → gen:bindings → typecheck → lint → build` |
+| `check` | `format → build:rs → gen:bindings → lint → typecheck → build` |
 
 - **`check` 是收尾唯一入口**：它保证「代码格式 + Rust 能编 + bindings 是最新的 + 前后端类型都对 + 前端能构建」。提交前跑它，能挡掉绝大多数「编译过但功能不对」。
 - `test` 里前端在前（快、先失败早停），Rust 测试在后。
