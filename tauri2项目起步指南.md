@@ -22,7 +22,7 @@
 | 环境变量前缀 | `PAIM_*`、`VITE_PORT`、`TAURI_DEV_HOST` | 可不同（换自己的前缀） |
 | 应用标识 | `productName` / `identifier` / 窗口标题尺寸 / bundle targets / 图标 | 可不同 |
 | 前端栈 | Vue 3 + TS + Tailwind 3 + vite 6 + vue-router | 可不同（换框架时保留工程约定） |
-| 质量门 | `pnpm check` = format → build:rs → gen:bindings → **lint** → typecheck → build | 建议统一 |
+| 质量门 | `pnpm quick`（日常：format:check → lint → typecheck → check:rs → test:compile，<10s）；`pnpm check`（收尾：format → build:rs → gen:bindings → lint → typecheck → **test** → build） | 建议统一 |
 | 测试 | vitest + cargo test + Playwright(CDP) 三层 | 建议统一 |
 | 命令执行 | PowerShell 7（`&&` / `||` 可用） | 建议统一 |
 
@@ -149,7 +149,7 @@ const exe = path.join(targetDir, "debug", "paim.exe");
 spawnSync(exe, { env: { ...process.env, PAIM_EXPORT_BINDINGS: "1" }, timeout: 10_000 });
 ```
 
-- 登记了命令/事件却忘了跑导出，症状是「编译通过但前端没有这个命令」——把导出挂进 `pnpm check`（paim 的 `check` = `format → build:rs → gen:bindings → lint → typecheck → build`）就不会漏。
+- 登记了命令/事件却忘了跑导出，症状是「编译通过但前端没有这个命令」——把导出挂进 `pnpm check`（paim 的 `check` = `format → build:rs → gen:bindings → lint → typecheck → test → build`）就不会漏。
 - 改了 Rust 命令签名后，必须重跑 `pnpm check`（或 `pnpm dev`）让 `src/bindings.ts` 复写；验证时 **grep warning 与 error 双查**。
 
 ## 5. tauri.conf.json（逐项约定，含片段）
@@ -305,12 +305,16 @@ paim 的 `package.json` scripts（可直接照搬，只改项目名字符串）�
 | `gen:bindings` | `node scripts/gen-bindings.mjs` |
 | `typecheck` | `vue-tsc --noEmit && tsc --noEmit -p e2e` |
 | `lint` | `oxlint src e2e` |
+| `check:rs` | `cargo check --manifest-path src-tauri/Cargo.toml` |
+| `test:compile` | `cargo test --no-run --manifest-path src-tauri/Cargo.toml`（只编译测试） |
+| `quick` | 编排：`format:check → lint → typecheck → check:rs → test:compile`（日常，<10s） |
 | `format` / `format:check` | oxfmt + cargo fmt（check 版加 `--check`） |
 | `test` / `test:ui` / `test:rs` | `pnpm test:ui && pnpm test:rs` / `vitest run` / `cargo test --manifest-path src-tauri/Cargo.toml` |
 | `e2e` | `playwright test --config e2e/playwright.config.ts` |
-| `check` | `format → build:rs → gen:bindings → lint → typecheck → build` |
+| `check` | `format → build:rs → gen:bindings → lint → typecheck → test → build` |
 
-- **`check` 是收尾唯一入口**：它保证「代码格式 + Rust 能编 + bindings 是最新的 + 前后端类型都对 + 前端能构建」。提交前跑它，能挡掉绝大多数「编译过但功能不对」。
+- **`quick` 是日常入口**：改完先跑，秒级反馈（格式检查、lint、类型、Rust 编译、测试编译）；它只检查不改文件，也不跑测试。
+- **`check` 是收尾唯一入口**：它保证「代码格式 + Rust 能编 + bindings 是最新的 + 前后端类型都对 + 单元测试通过 + 前端能构建」。提交前跑它，能挡掉绝大多数「编译过但功能不对」。
 - `test` 里前端在前（快、先失败早停），Rust 测试在后。
 
 ## 12. 测试体系与 e2e 骨架（建议统一）
