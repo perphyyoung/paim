@@ -14,10 +14,15 @@ import type { ResultRow } from "@/features/similarity/rows";
 import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
 import { applyThumbFix } from "@/utils/thumbFix";
 
-const props = defineProps<{
-  open: boolean;
-  promptId: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    promptId: string;
+    /** 遮罩层级：默认最底层弹窗；嵌套详情里由调用方按当前层 +1 传入 */
+    zIndex?: number;
+  }>(),
+  { zIndex: ModalZ.baseModal },
+);
 
 const emit = defineEmits<{
   (e: "close"): void;
@@ -237,7 +242,7 @@ function close() {
     <div
       v-if="open"
       class="fixed inset-0 flex items-center justify-center bg-black/40"
-      :style="{ zIndex: ModalZ.baseModal }"
+      :style="{ zIndex }"
       @click.self="close()"
     >
       <div

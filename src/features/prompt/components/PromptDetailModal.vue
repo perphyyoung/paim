@@ -64,6 +64,8 @@ const { showToast } = useToast();
 // 嵌套详情槽（页面 provide + `<NestedDetailSlots>` 渲染）：本弹窗只负责「打开/替换槽」，
 // 槽位上限与实例重建由栈统一管（槽位模型见 docs/开发经验.md 第 5 节）
 const nested = useNestedDetails();
+/// 图像选择界面层级：高于当前提示词详情所在层（底层 50 / 嵌套 51+）
+const pickerZ = computed(() => nested.promptZ.value + 1);
 const { openImageLocation } = useOpenImageLocation();
 
 // 以「顺序快照」定位当前提示词，避免列表重载/重排后数据或位置漂移
@@ -1191,6 +1193,7 @@ async function onPickerImported() {
     v-if="pickerOpen"
     :open="pickerOpen"
     :prompt-id="current?.id ?? ''"
+    :z-index="pickerZ"
     @close="pickerOpen = false"
     @imported="onPickerImported"
   />
