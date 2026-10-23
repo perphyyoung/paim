@@ -68,6 +68,8 @@ export const commands = {
 	ensurePromptThumbnails: (ids: string[]) => __TAURI_INVOKE<ThumbnailEnsureResult>("ensure_prompt_thumbnails", { ids }),
 	/**  返回一个提示词关联的（未删除）图像列表（含缩略图与标签），供详情页网格展示。 */
 	getPromptRelatedImages: (id: string) => __TAURI_INVOKE<RelatedImage[]>("get_prompt_related_images", { id }),
+	/**  重排关联图像顺序（最大化视图拖拽排序）。 */
+	reorderPromptImages: (promptId: string, orderedIds: string[]) => __TAURI_INVOKE<null>("reorder_prompt_images", { promptId, orderedIds }),
 	/**  设为首图：提示词详情图像右键，调整关联 sort_order 使该图排首位（对齐 pm）。 */
 	setPromptFirstImage: (promptId: string, imageId: string) => __TAURI_INVOKE<null>("set_prompt_first_image", { promptId, imageId }),
 	/**  提示词详情解绑图像：从提示词移除一张图像的关联（与图像侧 remove_prompt_from_image 对称）。 */

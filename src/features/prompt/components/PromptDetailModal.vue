@@ -256,6 +256,7 @@ watch(current0basedIndex, (i) => {
 watch(
   () => current.value?.id,
   () => {
+    closeMaximize();
     cancelEdit();
     void loadTags();
     loadRelatedImages();
@@ -493,6 +494,120 @@ async function openSavedLocation() {
   if (img) await openImageLocation(img.id);
 }
 
+// —— 关联图像区域最大化 + 拖拽排序 ——
+const imagesMaximized = ref(false);
+const maxOrder = ref<RelatedImage[]>([]);
+const dragFrom = ref<number | null>(null);
+/// 插入位置：目标项索引 + 在其前/后（左右半区决定）
+const dragInsert = ref<{ index: number; after: boolean } | null>(null);
+const maxRootEl = ref<HTMLElement | null>(null);
+
+/// 最大化期间禁止切换提示词（导航按钮已被遮罩挡住，这里拦住键盘/序号跳转）
+function guardedNav(delta: number) {
+  if (!imagesMaximized.value) nav(delta);
+}
+function guardedFirst() {
+  if (!imagesMaximized.value) goFirst();
+}
+function guardedLast() {
+  if (!imagesMaximized.value) goLast();
+}
+function guardedJump(index1based: number) {
+  if (!imagesMaximized.value) jumpTo1basedIndex(index1based);
+}
+
+/// 换算成「删除源项后」的最终插入下标（用于提示与提交）
+const insertIndex = computed(() => {
+  if (!dragInsert.value) return null;
+  const { index, after } = dragInsert.value;
+  let to = after ? index + 1 : index;
+  if (dragFrom.value !== null && to > dragFrom.value) to -= 1;
+  return to;
+});
+
+function resetDrag() {
+  dragFrom.value = null;
+  dragInsert.value = null;
+}
+
+function openMaximize() {
+  maxOrder.value = [...relatedImages.value];
+  imagesMaximized.value = true;
+}
+function closeMaximize() {
+  imagesMaximized.value = false;
+  resetDrag();
+}
+
+/// pointer 拖拽（WebView2 下 HTML5 DnD 会显示禁止图标，改用项目一致的 pointer 方案）
+function onItemPointerDown(e: PointerEvent, i: number) {
+  if (e.button !== 0) return;
+  dragFrom.value = i;
+  dragInsert.value = { index: i, after: false };
+  const move = (ev: PointerEvent) => {
+    const root = maxRootEl.value;
+    if (!root) return;
+    const cards = Array.from(root.querySelectorAll<HTMLElement>("[data-max-index]"));
+    if (cards.length === 0) {
+      dragInsert.value = null;
+      return;
+    }
+    // 不要求命中卡片：取距离指针最近的卡片，第一列左侧 / 最后一列右侧 / 空白区都能给出位置
+    let best = { index: 0, after: false, dist: Number.POSITIVE_INFINITY };
+    cards.forEach((card, index) => {
+      const rect = card.getBoundingClientRect();
+      const cx = Math.max(rect.left, Math.min(ev.clientX, rect.right));
+      const cy = Math.max(rect.top, Math.min(ev.clientY, rect.bottom));
+      const dist = Math.hypot(ev.clientX - cx, ev.clientY - cy);
+      if (dist < best.dist) {
+        best = { index, after: ev.clientX > rect.left + rect.width / 2, dist };
+      }
+    });
+    // 拖到最后一张下方/右下大片空白：始终提示插到最后一张右侧
+    const lastRect = cards[cards.length - 1].getBoundingClientRect();
+    if (best.index === cards.length - 1 && ev.clientY > lastRect.bottom) {
+      best.after = true;
+    }
+    dragInsert.value = { index: best.index, after: best.after };
+  };
+  const up = () => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+    const from = dragFrom.value;
+    const to = insertIndex.value;
+    resetDrag();
+    if (from !== null && to !== null) dropImageAt(from, to);
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", up);
+}
+
+async function commitImageOrder() {
+  const p = current.value;
+  if (!p) return;
+  try {
+    await commands.reorderPromptImages(
+      p.id,
+      maxOrder.value.map((i) => i.id),
+    );
+    relatedImages.value = [...maxOrder.value];
+    relatedImagesCache.invalidate(p.id);
+    notifyUpdated(); // 首图/顺序变化会影响卡片封面
+  } catch (e) {
+    showToast(`排序保存失败：${e}`, "error");
+    maxOrder.value = [...relatedImages.value]; // 回滚
+  }
+}
+
+function dropImageAt(from: number, to: number) {
+  if (from === to) return;
+  const list = [...maxOrder.value];
+  const [moved] = list.splice(from, 1);
+  list.splice(to, 0, moved);
+  maxOrder.value = list;
+  void commitImageOrder();
+}
+
 // 设为首图（对齐 pm）：仅非首图显示；调命令改 sort_order，本地移到首位不重拉
 const ctxImageIndex = computed(() =>
   ctxMenu.value ? relatedImages.value.findIndex((i) => i.id === ctxMenu.value!.image.id) : -1,
@@ -690,7 +805,18 @@ async function onPickerImported() {
             <label class="text-xs font-medium uppercase tracking-wide text-gray-500">
               关联图像（{{ relatedImages.length }}）
             </label>
-            <span v-if="imagesLoading" class="text-xs text-gray-400">加载中...</span>
+            <div class="flex items-center gap-2">
+              <span v-if="imagesLoading" class="text-xs text-gray-400">加载中...</span>
+              <button
+                type="button"
+                class="rounded px-1.5 py-0.5 text-xs text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
+                title="关联图像区域最大化（可拖拽排序）"
+                aria-label="关联图像区域最大化"
+                @click="openMaximize"
+              >
+                ⤢
+              </button>
+            </div>
           </div>
           <div class="flex-1 overflow-auto p-4">
             <div
@@ -1045,12 +1171,12 @@ async function onPickerImported() {
           <NavAndIndex
             :current1based-index="current1basedIndex"
             :total-count="totalCount"
-            :disabled="overlayOpen"
-            @first="goFirst"
-            @prev="nav(-1)"
-            @next="nav(1)"
-            @last="goLast"
-            @jump="jumpTo1basedIndex"
+            :disabled="overlayOpen || imagesMaximized"
+            @first="guardedFirst"
+            @prev="guardedNav(-1)"
+            @next="guardedNav(1)"
+            @last="guardedLast"
+            @jump="guardedJump"
           />
         </div>
       </div>
@@ -1102,6 +1228,70 @@ async function onPickerImported() {
     </button>
   </ContextMenu>
 
+  <!-- 关联图像区域最大化：拖拽排序（z=56，夹在详情与详情内的子弹窗之间） -->
+  <div
+    v-if="imagesMaximized"
+    ref="maxRootEl"
+    role="dialog"
+    aria-modal="true"
+    aria-label="关联图像区域最大化"
+    class="fixed inset-0 z-[56] flex flex-col bg-black/85 p-6"
+  >
+    <div class="mb-3 grid grid-cols-3 items-center text-gray-100">
+      <span class="justify-self-start text-sm font-medium">
+        关联图像区域最大化（{{ maxOrder.length }}）
+      </span>
+      <span v-if="insertIndex !== null" class="justify-self-center text-xs text-blue-300">
+        松手插入到第 {{ insertIndex + 1 }} 位
+      </span>
+      <span v-else class="justify-self-center text-xs text-gray-400">拖拽缩略图调整顺序</span>
+      <button
+        type="button"
+        class="justify-self-end rounded border border-gray-600 px-3 py-1 text-sm text-gray-200 transition-colors hover:bg-gray-700"
+        @click="closeMaximize"
+      >
+        完成
+      </button>
+    </div>
+    <div
+      v-if="maxOrder.length === 0"
+      class="flex flex-1 items-center justify-center text-sm text-gray-500"
+    >
+      暂无关联图像
+    </div>
+    <div v-else role="list" class="grid flex-1 auto-rows-min grid-cols-4 gap-3 overflow-y-auto">
+      <div
+        v-for="(img, i) in maxOrder"
+        :key="img.id"
+        :data-max-index="i"
+        role="listitem"
+        :aria-label="`第 ${i + 1} 张关联图像`"
+        class="relative rounded-lg border border-gray-700 p-1"
+        :class="[
+          dragFrom === i ? 'cursor-grabbing opacity-40' : 'cursor-grab',
+          dragInsert?.index === i ? (dragInsert.after ? 'insert-after' : 'insert-before') : '',
+        ]"
+        @pointerdown="onItemPointerDown($event, i)"
+        @dblclick.stop="openFullscreen(i)"
+        @contextmenu.prevent="openCtxMenu($event, img)"
+      >
+        <img
+          v-if="imgUrl(img)"
+          :src="imgUrl(img)"
+          :alt="img.file_name"
+          draggable="false"
+          class="h-40 w-full rounded object-contain"
+        />
+        <div v-else class="flex h-40 w-full items-center justify-center text-xs text-gray-400">
+          无图像
+        </div>
+        <span class="absolute left-2 top-2 rounded bg-black/70 px-1.5 text-xs text-white">
+          {{ i + 1 }}
+        </span>
+      </div>
+    </div>
+  </div>
+
   <!-- 右键菜单：设为首图（对齐 pm，首图不显示）/ 打开本地保存位置 -->
   <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
     <button
@@ -1121,3 +1311,13 @@ async function onPickerImported() {
     </button>
   </ContextMenu>
 </template>
+
+<style scoped>
+/* 拖拽插入线：卡片内侧 4px 内阴影（外侧负偏移会被滚动容器裁剪，首/末列尤其明显） */
+.insert-before {
+  box-shadow: inset 4px 0 0 0 #3b82f6;
+}
+.insert-after {
+  box-shadow: inset -4px 0 0 0 #3b82f6;
+}
+</style>

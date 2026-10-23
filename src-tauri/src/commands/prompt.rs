@@ -403,6 +403,20 @@ pub async fn get_prompt_related_images(
     .await
 }
 
+/// 重排关联图像顺序（最大化视图拖拽排序）。
+#[tauri::command]
+#[specta::specta]
+pub async fn reorder_prompt_images(
+    db: State<'_, BkDb>,
+    prompt_id: String,
+    ordered_ids: Vec<String>,
+) -> Result<(), AppError> {
+    db::blocking(&db, move |conn| {
+        prompt_service::reorder_prompt_images(conn, &prompt_id, &ordered_ids)
+    })
+    .await
+}
+
 /// 设为首图：提示词详情图像右键，调整关联 sort_order 使该图排首位（对齐 pm）。
 #[tauri::command]
 #[specta::specta]

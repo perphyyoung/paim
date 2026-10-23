@@ -1128,3 +1128,55 @@ fn ensure_prompt_thumbnails_fills_missing_and_reports_changed_prompts() {
         "重建路径与原 DB 路径相同（stored_name 没变）"
     );
 }
+
+#[test]
+fn reorder_prompt_images_writes_order_and_rejects_bad_sets() {
+    let dir = std::env::temp_dir().join(format!("paim-test-reorder-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = crate::infra::db::init(dir.join("paim.db")).unwrap();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    for id in ["i1", "i2", "i3"] {
+        conn.execute(
+            "INSERT INTO images(id, file_name, stored_name, relative_path) VALUES (?1, ?2, ?1, ?3)",
+            rusqlite::params![id, format!("{id}.png"), format!("images/202601/{id}.png")],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO prompt_image_relations(prompt_id, image_id, sort_order)
+             VALUES ('p1', ?1, 0)",
+            [id],
+        )
+        .unwrap();
+    }
+
+    super::reorder_prompt_images(
+        &conn,
+        "p1",
+        &["i3".to_string(), "i1".to_string(), "i2".to_string()],
+    )
+    .unwrap();
+    let order: Vec<String> = conn
+        .prepare(
+            "SELECT image_id FROM prompt_image_relations
+             WHERE prompt_id = 'p1' ORDER BY sort_order",
+        )
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(order, vec!["i3", "i1", "i2"]);
+
+    assert!(super::reorder_prompt_images(&conn, "p1", &["i1".to_string()]).is_err());
+    assert!(super::reorder_prompt_images(
+        &conn,
+        "p1",
+        &["i1".to_string(), "i2".to_string(), "zzz".to_string()]
+    )
+    .is_err());
+}

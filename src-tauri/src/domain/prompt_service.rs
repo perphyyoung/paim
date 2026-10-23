@@ -810,6 +810,49 @@ fn related_image_ids(conn: &Connection, prompt_ids: &[String]) -> Result<Vec<Str
     rows.collect()
 }
 
+/// 重排提示词关联图像：按给定顺序写入 sort_order（集合必须与当前关联完全一致）。
+pub fn reorder_prompt_images(
+    conn: &Connection,
+    prompt_id: &str,
+    ordered_ids: &[String],
+) -> std::result::Result<(), AppError> {
+    let tx = conn.unchecked_transaction()?;
+    let mut current: Vec<String> = {
+        let mut stmt =
+            tx.prepare("SELECT image_id FROM prompt_image_relations WHERE prompt_id = ?1")?;
+        let rows = stmt.query_map(rusqlite::params![prompt_id], |r| r.get(0))?;
+        rows.collect::<Result<Vec<String>>>()?
+    };
+    if current.len() != ordered_ids.len() {
+        return Err(AppError::Message("关联图像数量不一致".into()));
+    }
+    current.sort();
+    let mut given = ordered_ids.to_vec();
+    given.sort();
+    if current != given {
+        return Err(AppError::Message("存在不属于该提示词的图像".into()));
+    }
+    for (i, id) in ordered_ids.iter().enumerate() {
+        tx.execute(
+            "UPDATE prompt_image_relations SET sort_order = ?1
+             WHERE prompt_id = ?2 AND image_id = ?3",
+            rusqlite::params![i as i64, prompt_id, id],
+        )?;
+    }
+    // 首图/顺序变化：刷新提示词与关联图像的 updated_at（与设为首图一致）
+    tx.execute(
+        "UPDATE prompts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+        rusqlite::params![prompt_id],
+    )?;
+    tx.execute(
+        "UPDATE images SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id IN (SELECT image_id FROM prompt_image_relations WHERE prompt_id = ?1)",
+        rusqlite::params![prompt_id],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
 /// 设为首图：将关联行的 sort_order 置为当前最小值 - 1（借鉴标签组固定首位的模式）。
 /// 对齐 pm 的"设为首图"：读取侧按 sort_order 升序，最小者即首图；存量全 0 数据置 -1 自然生效。
 pub fn set_prompt_first_image(
