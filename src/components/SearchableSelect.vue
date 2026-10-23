@@ -87,6 +87,17 @@ watch(keyword, () => {
   activeIndex.value = 0;
 });
 
+// 首次展开时选项可能是异步加载的（如字体家族）：加载完成后再滚动到选中项，
+// 否则第一次打开时列表还是空的，要第二次打开才滚到正确位置。
+watch(
+  () => [props.options.length, props.loading, open.value] as const,
+  async ([len, loading, isOpen]) => {
+    if (!isOpen || loading || len === 0) return;
+    await nextTick();
+    scrollToSelected();
+  },
+);
+
 function toggle() {
   if (open.value) close();
   else void openPanel();
