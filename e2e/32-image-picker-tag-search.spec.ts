@@ -5,7 +5,6 @@ import { expect } from "@playwright/test";
 import {
   addItemTag,
   createPromptViaDialog,
-  expectToastAndDismiss,
   gotoPromptsPage,
   openPromptDetail,
   test,

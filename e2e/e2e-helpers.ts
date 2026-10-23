@@ -324,6 +324,7 @@ const helpersTest = base.extend<
   // 含 describe 层级；worker 号显式传入，见 e2e-logger.testLog 注释）。
   // 声明为 auto：全部用例自动生效，spec 侧零改动。
   testSection: [
+    // oxlint-disable-next-line no-empty-pattern -- Playwright fixture 必须以对象解构声明
     async ({}, use, testInfo) => {
       const name = `${path.basename(testInfo.file, ".spec.ts")} › ${testInfo.titlePath.slice(1).join(" › ")}`;
       testLog(testInfo.workerIndex, `▶ ${name}`);
@@ -344,6 +345,7 @@ const helpersTest = base.extend<
     { scope: "test", auto: true },
   ],
   _appPool: [
+    // oxlint-disable-next-line no-empty-pattern -- Playwright fixture 必须以对象解构声明
     async ({}, use, workerInfo) => {
       let seq = 0;
       // 用对象包一层：闭包内改写属性，TS 的控制流分析不会把外面的读取窄化成 null

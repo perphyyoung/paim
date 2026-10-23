@@ -12,6 +12,7 @@
     "build:rs": "cargo build --manifest-path src-tauri/Cargo.toml",
     "gen:bindings": "node scripts/gen-bindings.mjs",
     "typecheck": "vue-tsc --noEmit && tsc --noEmit -p e2e",
+    "lint": "oxlint src e2e",
     "preview": "vite preview",
     "format": "pnpm format:ui && pnpm format:rs",
     "format:ui": "oxfmt src/ e2e/",
@@ -21,7 +22,7 @@
     "test:rs": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:ui": "vitest run",
     "e2e": "playwright test --config e2e/playwright.config.ts",
-    "check": "pnpm format && pnpm build:rs && pnpm gen:bindings && pnpm typecheck && pnpm build"
+    "check": "pnpm format && pnpm build:rs && pnpm gen:bindings && pnpm typecheck && pnpm lint && pnpm build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",
@@ -36,6 +37,7 @@
     "@vitejs/plugin-vue": "^5",
     "autoprefixer": "^10.4",
     "oxfmt": "^0.65.0",
+    "oxlint": "^1.89.0",
     "postcss": "^8.4",
     "tailwindcss": "^3.4",
     "typescript": "^5.6",

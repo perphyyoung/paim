@@ -1,5 +1,5 @@
 // 提示词命令封装：类型安全绑定转调（bindings 由 tauri-specta 自动生成）。
-import { commands, type Prompt } from "@/bindings";
+import { commands } from "@/bindings";
 
 export type { Prompt } from "@/bindings";
 
