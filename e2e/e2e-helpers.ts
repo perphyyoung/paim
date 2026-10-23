@@ -918,6 +918,16 @@ export function listPrompts(page: Page): Promise<PromptLite[]> {
   return invokeCommand(page, "list_prompts");
 }
 
+/// 显式播种相似度向量：用例只依赖这里的写入，不假设索引状态或其他用例的数据。
+export function seedSimilarityVectors(
+  page: Page,
+  entries: { kind: "Image" | "Prompt"; id: string; values: number[] }[],
+): Promise<unknown> {
+  return Promise.all(
+    entries.map((e) => invokeCommand(page, "e2e_seed_similarity_vectors", { ...e, dim: null })),
+  );
+}
+
 /// 按内容取提示词 id（用例自建内容的唯一性由调用方保证）
 export async function findPromptIdByContent(page: Page, content: string): Promise<string> {
   const prompts = await listPrompts(page);
