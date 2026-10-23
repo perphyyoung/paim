@@ -63,6 +63,8 @@ const sortAvailability = ref({ prompt: false, first_image: false });
 const similarityRows = ref<ResultRow<ImageCard>[]>([]);
 /// 被排除的「当前提示词已关联」数量（底部文案）
 const excludedCount = ref(0);
+/// 相似度模式下候选中向量不可用的数量
+const vecUnavailable = ref(0);
 
 const similarityById = computed(
   () => new Map(similarityRows.value.map((r) => [r.card.id, r.score])),
@@ -109,6 +111,7 @@ async function togglePickerSort(mode: "prompt" | "firstImage") {
       mode === "prompt" ? "Prompt" : "FirstImage",
     );
     excludedCount.value = res.excluded;
+    vecUnavailable.value = res.vec_unavailable;
     const mapped = res.items.map((r) => ({ card: r.image, score: r.similarity ?? 0 }));
     sortCache.set(key, mapped);
     similarityRows.value = mapped;
@@ -157,7 +160,11 @@ const infoText = computed(() => {
     : `共 ${total.value} 张图像，显示上限 ${shown} 张`;
   const excluded =
     excludedCount.value > 0 ? ` · 已排除当前提示词已关联的 ${excludedCount.value} 张` : "";
-  return `${base} · 已选 ${selectedIds.value.size} 张${excluded}`;
+  const unavailable =
+    pickerSort.value !== "default" && vecUnavailable.value > 0
+      ? ` · 有 ${vecUnavailable.value} 张图像的向量不可用，可在「相似度设置」处理`
+      : "";
+  return `${base} · 已选 ${selectedIds.value.size} 张${excluded}${unavailable}`;
 });
 
 /// 缩略图 URL：优先前端映射（自愈回写 / cache-buster），未命中回退到行内 path
@@ -194,6 +201,7 @@ async function loadImages() {
     images.value = page.items;
     total.value = page.total;
     excludedCount.value = page.excluded;
+    vecUnavailable.value = 0;
     const map: Record<string, string> = {};
     for (const img of page.items) {
       if (img.thumbnail_path) map[img.id] = relativePathToAssetUrl(dir, img.thumbnail_path);

@@ -22,7 +22,7 @@ import MergePromptsModal from "@/features/prompt/components/MergePromptsModal.vu
 import { useNestedDetails } from "@/composables/useNestedDetails";
 import ScoreStepper from "./ScoreStepper.vue";
 import SimilarNotices from "./SimilarNotices.vue";
-import { dimNotice, noticeList, pendingNotice } from "./notices";
+import { noticeList, vecUnavailableNotice } from "./notices";
 import MediaCard from "@/components/MediaCard.vue";
 import { DEFAULT_LIMIT, DEFAULT_MIN_SCORE, LIMIT_RANGE, useSimilaritySettings } from "./settings";
 
@@ -141,16 +141,10 @@ const promptsDirty = computed(
 
 /// 两栏提醒条目（纯函数见 notices.ts，样式见 SimilarNotices.vue）
 const imageNotices = computed(() =>
-  noticeList(
-    dimNotice(imageDimMismatch.value, imageDim.value, "张"),
-    pendingNotice(imagePending.value, "张"),
-  ),
+  noticeList(vecUnavailableNotice(imageDimMismatch.value + imagePending.value, "张")),
 );
 const promptNotices = computed(() =>
-  noticeList(
-    dimNotice(promptDimMismatch.value, promptDim.value, "条"),
-    pendingNotice(promptPending.value, "条"),
-  ),
+  noticeList(vecUnavailableNotice(promptDimMismatch.value + promptPending.value, "条")),
 );
 /// 重置只改该栏草稿（回到默认条数 / 阈值），仍需点该栏「重查」生效
 function resetImages() {
@@ -545,7 +539,7 @@ function pickPrompt(id: string) {
                 <p class="break-all text-sm text-red-400">{{ imageError }}</p>
                 <!-- 服务未启动是常态（llama.cpp 不常驻）：错误之外还要给出下一步去哪 -->
                 <p class="mt-1 text-xs text-gray-500">
-                  检索依赖本地 embedding 服务：到「设置 → 相似度」用「测试」确认服务与地址；
+                  检索依赖本地 embedding 服务：到「相似度设置」用「测试」确认服务与地址；
                   服务未启动不影响其余功能
                 </p>
               </div>
@@ -649,7 +643,7 @@ function pickPrompt(id: string) {
               <div v-else-if="promptError" class="p-2">
                 <p class="break-all text-sm text-red-400">{{ promptError }}</p>
                 <p class="mt-1 text-xs text-gray-500">
-                  检索依赖本地 embedding 服务：到「设置 → 相似度」用「测试」确认服务与地址；
+                  检索依赖本地 embedding 服务：到「相似度设置」用「测试」确认服务与地址；
                   服务未启动不影响其余功能
                 </p>
               </div>

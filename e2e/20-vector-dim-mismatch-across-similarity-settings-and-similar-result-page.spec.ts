@@ -176,14 +176,14 @@ test("检索结果页提醒：本表维度不一致的条目被排除时，对�
 
   // 左栏（相似图像）：维度不一致的条数随命中一起回传，单独一行提醒（空态时该提醒与「没有达到阈值」并存）
   const pane = similarResultPane(modal, "image");
-  await expect(pane.getByText(/向量维度不一致/)).toBeVisible({ timeout: 5_000 });
+  await expect(pane.getByText(/向量不可用/)).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 结果页左栏已提示维度不一致");
 
   await closeSimilarResult(page);
   await closeDetail(detail);
 });
 
-test("检索结果页提醒：本表尚未建立向量的条目也在对应栏位提示", async ({ page }) => {
+test("检索结果页提醒：向量不可用（未建立或维度不一致）的条数合并提示", async ({ page }) => {
   await gotoPromptsPage(page);
   // 源提示词：显式给一个当前维度（2048）的向量，避免检索时现场补算
   const src = `e2e 未建源 ${Date.now()}`;
@@ -205,16 +205,13 @@ test("检索结果页提醒：本表尚未建立向量的条目也在对应栏�
   const modal = await openSimilarSearchFromPromptDetail(page, detail, src);
   // 右栏（相似提示词）：两类条数随命中一起回传，与命中是否为空无关
   const pane = similarResultPane(modal, "prompt");
-  // 两类提醒各自成条（修复前用空格拼成一句，窄栏里从任意字符处折行，两条粘在一起）
+  // 合并为一条；数量受同文件累计数据影响，精确值由 Rust 单测覆盖，这里只验文案与去处
   const notice = pane.getByRole("status");
   const items = notice.getByRole("listitem");
-  await expect(items).toHaveCount(2, { timeout: 5_000 });
-  await expect(items.nth(0)).toContainText(/向量维度不一致/);
-  await expect(items.nth(1)).toContainText(/尚未建立向量/);
-  const firstBox = await items.nth(0).boundingBox();
-  const secondBox = await items.nth(1).boundingBox();
-  expect(firstBox, "第一条提醒应可见").toBeTruthy();
-  expect(secondBox!.y, "第二条提醒应在第一条下方（分行而非拼成一句）").toBeGreaterThan(firstBox!.y);
+  await expect(items).toHaveCount(1, { timeout: 5_000 });
+  await expect(items.nth(0)).toContainText(
+    /另有 \d+ 条的向量不可用（未建立或维度不一致），可在「相似度设置」处理/,
+  );
   e2eLog.info("[step] 结果页右栏两类提醒各占一行");
 
   await closeSimilarResult(page);

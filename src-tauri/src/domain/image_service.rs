@@ -1089,6 +1089,8 @@ pub struct PickerImages {
     pub items: Vec<PickerImage>,
     /// 被排除的「当前提示词已关联」数量
     pub excluded: usize,
+    /// 候选中向量不可用（未建立或维度不一致）的数量
+    pub vec_unavailable: usize,
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -1110,6 +1112,27 @@ pub fn picker_sort_availability(
         prompt: crate::domain::similarity_service::prompt_vec_of(conn, prompt_id)?.is_some(),
         first_image: first_image.is_some(),
     })
+}
+
+/// 候选图像里向量不可用的数量（未建立或维度不一致），已关联的图不计入。
+fn picker_vec_unavailable(
+    conn: &Connection,
+    prompt_id: &str,
+    dim: usize,
+) -> rusqlite::Result<usize> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM images
+         WHERE is_deleted = 0
+           AND id NOT IN (
+             SELECT pir.image_id FROM prompt_image_relations pir
+             JOIN images i ON i.id = pir.image_id AND i.is_deleted = 0
+             WHERE pir.prompt_id = ?1
+           )
+           AND (vec IS NULL OR length(vec) <> ?2)",
+        rusqlite::params![prompt_id, (dim * 4) as i64],
+        |r| r.get(0),
+    )?;
+    Ok(count as usize)
 }
 
 /// 图像选择界面：按相似度排序**全部未删除图像**（与相似度结果页同一套全量打分），
@@ -1136,8 +1159,10 @@ pub fn list_picker_images_by_similarity(
         return Ok(PickerImages {
             items: Vec::new(),
             excluded: related.len(),
+            vec_unavailable: 0,
         });
     };
+    let vec_unavailable = picker_vec_unavailable(conn, prompt_id, base.len())?;
     // 与结果页相同：全量候选 → 排除已关联 → 点积打分 → top100
     let mut candidates =
         crate::domain::similarity_service::image_rank_candidates(conn, base.len(), "")?;
@@ -1160,6 +1185,7 @@ pub fn list_picker_images_by_similarity(
             })
             .collect(),
         excluded: related.len(),
+        vec_unavailable,
     })
 }
 

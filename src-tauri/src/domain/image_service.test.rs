@@ -292,6 +292,7 @@ fn picker_similarity_sorts_by_cosine_and_reports_availability() {
     let rows = super::list_picker_images_by_similarity(&conn, "p1", super::PickerSortMode::Prompt)
         .unwrap();
     assert_eq!(rows.excluded, 1);
+    assert_eq!(rows.vec_unavailable, 0);
     assert_eq!(rows.items.len(), 2);
     assert_eq!(rows.items[0].image.id, "near");
     assert!(rows.items[0].similarity > rows.items[1].similarity);

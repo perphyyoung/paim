@@ -17,8 +17,7 @@ defineProps<{ items: NoticeItem[] }>();
       <li v-for="(n, i) in items" :key="i" class="flex gap-1.5">
         <span aria-hidden="true" class="select-none">•</span>
         <div class="min-w-0">
-          <p class="break-words">{{ n.summary }}</p>
-          <p class="text-amber-400/70">{{ n.action }}</p>
+          <p class="break-words">{{ n.text }}</p>
         </div>
       </li>
     </ul>

@@ -700,6 +700,8 @@ export type PickerImages = {
 	items: PickerImage[],
 	/**  被排除的「当前提示词已关联」数量 */
 	excluded: number,
+	/**  候选中向量不可用（未建立或维度不一致）的数量 */
+	vec_unavailable: number,
 };
 
 export type PickerSortAvailability = {
