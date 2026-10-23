@@ -70,8 +70,8 @@ const SORT_KEY = "image.sortBy";
 const SORT_DESC_KEY = "image.sortDesc";
 
 const SORT_OPTIONS = [
-  { value: "createdAt", label: "导入时间" },
   { value: "updatedAt", label: "更新时间" },
+  { value: "createdAt", label: "导入时间" },
   { value: "fileSize", label: "文件大小" },
   { value: "fileName", label: "文件名" },
   { value: "width", label: "宽度" },
@@ -95,7 +95,7 @@ function toggleRegexMode() {
 }
 
 // 排序状态（localStorage 持久化）
-const sortBy = ref(localStorage.getItem(SORT_KEY) || "createdAt");
+const sortBy = ref(localStorage.getItem(SORT_KEY) || "updatedAt");
 const sortDesc = ref(localStorage.getItem(SORT_DESC_KEY) !== "0");
 
 function setSortBy(v: string) {
