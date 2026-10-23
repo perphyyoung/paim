@@ -147,8 +147,14 @@ const infoText = computed(() => {
   return `${base} · 已选 ${selectedIds.value.size} 张`;
 });
 
+/// 缩略图 URL：优先前端映射（自愈回写 / cache-buster），未命中回退到行内 path
 function thumbUrl(img: ImageCard): string {
-  return thumbs.value[img.id] ?? "";
+  return (
+    thumbs.value[img.id] ??
+    (dataDir.value && img.thumbnail_path
+      ? relativePathToAssetUrl(dataDir.value, img.thumbnail_path)
+      : "")
+  );
 }
 
 function toggleSelect(id: string) {
@@ -235,6 +241,8 @@ function close() {
       @click.self="close()"
     >
       <div
+        role="dialog"
+        aria-label="图像选择界面"
         class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
         <!-- 顶部：标题 + 3 控件（搜索 / 标签筛选 / 排序组，均分中间区域）+ 关闭 -->
