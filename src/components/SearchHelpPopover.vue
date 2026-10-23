@@ -101,11 +101,11 @@ onBeforeUnmount(close);
   <button
     ref="btnRef"
     type="button"
-    class="h-8 w-8 shrink-0 rounded-lg border text-center font-mono text-xs transition-colors"
+    class="h-7 w-7 shrink-0 rounded-md text-center font-mono text-xs transition-colors"
     :class="
       open
-        ? 'border-amber-500/60 bg-amber-500/20 text-amber-300'
-        : 'border-gray-600 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+        ? 'bg-amber-500/20 text-amber-300'
+        : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
     "
     aria-label="搜索说明"
     aria-controls="search-help-panel"

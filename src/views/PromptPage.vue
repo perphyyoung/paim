@@ -30,7 +30,7 @@ import NestedDetailSlots from "@/components/NestedDetailSlots.vue";
 import { provideNestedDetails } from "@/composables/useNestedDetails";
 import MediaCard from "@/components/MediaCard.vue";
 import CardSizeSlider from "@/components/CardSizeSlider.vue";
-import SearchHelpPopover from "@/components/SearchHelpPopover.vue";
+import SearchBar from "@/components/SearchBar.vue";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
@@ -75,9 +75,12 @@ const keyword = ref("");
 // 正则搜索开关（持久化）：开启后关键词按正则匹配（后端 Rust regex，线性时间、无 lookaround）
 const REGEX_MODE_KEY = "paim.search.regex.prompt";
 const regexMode = ref(localStorage.getItem(REGEX_MODE_KEY) === "1");
+function setRegexMode(v: boolean) {
+  regexMode.value = v;
+  localStorage.setItem(REGEX_MODE_KEY, v ? "1" : "0");
+}
 function toggleRegexMode() {
-  regexMode.value = !regexMode.value;
-  localStorage.setItem(REGEX_MODE_KEY, regexMode.value ? "1" : "0");
+  setRegexMode(!regexMode.value);
 }
 
 const sortBy = ref(localStorage.getItem(SORT_KEY) || "updatedAt");
@@ -762,7 +765,8 @@ onDeactivated(() => {
 });
 
 // ---- 主页快捷键（统一注册：Ctrl+F 搜索、Ctrl+P/I 切页、F5 刷新、Ctrl+T 标签折叠、Ctrl+A 全选）----
-const searchInput = ref<HTMLInputElement | null>(null);
+const searchBarRef = ref<InstanceType<typeof SearchBar> | null>(null);
+const searchInput = computed(() => searchBarRef.value?.inputEl ?? null);
 const tagFilterRef = ref<InstanceType<typeof TagFilterPanel> | null>(null);
 useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelectAll });
 </script>
@@ -779,32 +783,16 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
         >
           新建提示词
         </button>
-        <div class="flex min-w-0 items-center gap-1">
-          <input
-            ref="searchInput"
-            v-model="keyword"
-            type="search"
-            :placeholder="regexMode ? '正则搜索（如 \\bsole\\b）' : '搜索标题/内容/翻译/备注/标签'"
-            title="聚焦搜索 (Ctrl+F)"
-            class="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
-            :class="regexMode ? 'ring-1 ring-amber-500/60' : ''"
-          />
-          <button
-            type="button"
-            class="shrink-0 rounded-lg border px-2 py-2 font-mono text-xs transition-colors"
-            :class="
-              regexMode
-                ? 'border-amber-500/60 bg-amber-500/20 text-amber-300'
-                : 'border-gray-600 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
-            "
-            :aria-pressed="regexMode"
-            title="正则搜索（整词写 \bsole\b；不支持 (?=) (?<=)）"
-            @click="toggleRegexMode"
-          >
-            .*
-          </button>
-          <SearchHelpPopover scope="prompt" />
-        </div>
+        <SearchBar
+          ref="searchBarRef"
+          :model-value="keyword"
+          :regex-mode="regexMode"
+          scope="prompt"
+          placeholder="搜索标题/内容/翻译/备注/标签"
+          regex-placeholder="正则搜索（如 \bsole\b）"
+          @update:model-value="keyword = $event"
+          @update:regex-mode="setRegexMode"
+        />
         <button
           type="button"
           class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
