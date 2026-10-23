@@ -5,7 +5,7 @@
  * - 触发器点击展开：全屏透明遮罩（点外部关闭）+ fixed 面板（无全局 scroll 监听，列表内滚轮正常）；
  * - 面板顶部搜索框自动聚焦，候选按 `filter`（默认 filterOptions）过滤；
  * - 打开时滚动到当前选中项；候选过多只渲染 maxVisible 项，并保证选中项在窗口内；
- * - 键盘 ↑/↓ 移动、Enter 选中、Esc 关闭；清空项（clearLabel）置于列表首位。
+ * - 键盘 ↑/↓ 移动、Enter 选中、Esc 关闭；已选值可在顶部固定行一键清除。
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { filterOptions } from "@/utils/filterOptions";
@@ -15,8 +15,6 @@ const props = withDefaults(
   defineProps<{
     modelValue: string;
     options: string[];
-    /** 清空项文案（如「所有标签」「默认（系统字体栈）」）；空串不显示 */
-    clearLabel?: string;
     placeholder?: string;
     searchPlaceholder?: string;
     emptyText?: string;
@@ -35,7 +33,6 @@ const props = withDefaults(
     maxVisible?: number;
   }>(),
   {
-    clearLabel: "",
     placeholder: "",
     searchPlaceholder: "搜索…",
     emptyText: "没有匹配项",
@@ -78,9 +75,7 @@ const visible = computed(() => {
 });
 
 const displayValue = computed(() => props.display ?? ((v: string) => v));
-const displayText = computed(
-  () => props.modelValue || props.clearLabel || props.placeholder || "请选择",
-);
+const displayText = computed(() => props.modelValue || props.placeholder || "请选择");
 const panelWidth = computed(() => props.panelWidth ?? anchor.value?.width ?? 200);
 
 /// 清除搜索词：回到全量候选，焦点回输入框
@@ -90,8 +85,8 @@ function clearQuery() {
 }
 
 watch(keyword, async () => {
-  // 有清空项时，第一个匹配从索引 1 开始；并滚到列表顶部，保证第一个匹配可见
-  activeIndex.value = props.clearLabel && matched.value.length > 0 ? 1 : 0;
+  // 输入后第一个匹配高亮，并滚到列表顶部
+  activeIndex.value = 0;
   await nextTick();
   if (listEl.value) listEl.value.scrollTop = 0;
 });
@@ -212,13 +207,29 @@ onBeforeUnmount(close);
               v-if="keyword"
               type="button"
               class="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-200"
-              title="清除筛选"
-              aria-label="清除筛选"
+              title="清除搜索词"
+              aria-label="清除搜索词"
               @click="clearQuery"
             >
               ✕
             </button>
           </div>
+        </div>
+        <!-- 固定顶部：清除已选值（与清搜索词分开） -->
+        <div
+          v-if="modelValue"
+          class="flex items-center justify-between border-b border-gray-700 px-3 py-1.5 text-xs text-gray-300"
+        >
+          <span class="truncate">当前筛选：{{ displayValue(modelValue) }}</span>
+          <button
+            type="button"
+            class="flex h-5 w-5 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-200"
+            title="清除筛选"
+            aria-label="清除筛选"
+            @click="pick('')"
+          >
+            ✕
+          </button>
         </div>
         <slot name="notice" />
         <ul
@@ -227,16 +238,6 @@ onBeforeUnmount(close);
           aria-label="选项"
           class="max-h-64 overflow-y-auto overscroll-contain py-1"
         >
-          <li v-if="clearLabel">
-            <button
-              type="button"
-              class="block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-gray-700"
-              :class="modelValue ? 'text-gray-200' : 'text-blue-300'"
-              @click="pick('')"
-            >
-              {{ clearLabel }}
-            </button>
-          </li>
           <li v-if="loading" class="px-3 py-1.5 text-sm text-gray-500">加载中…</li>
           <li v-for="(opt, i) in visible" :key="opt">
             <button

@@ -66,10 +66,9 @@ test("图像选择界面：标签筛选可搜索、选中后回显，Esc 关闭"
   await expect(listbox).toBeVisible();
   expect(await listbox.evaluate((el) => el.scrollTop)).toBe(0);
 
-  // 清除筛选：清空搜索词，回到全量并回顶部
-  await page.getByRole("button", { name: "清除筛选" }).click();
+  // 清除搜索词：回到全量并回顶部
+  await page.getByRole("button", { name: "清除搜索词" }).click();
   await expect(search).toHaveValue("");
-  await expect(listbox.getByRole("button", { name: "所有标签" })).toBeVisible();
   expect(await listbox.evaluate((el) => el.scrollTop)).toBe(0);
 
   await search.fill(tag);
@@ -90,12 +89,10 @@ test("图像选择界面：标签筛选可搜索、选中后回显，Esc 关闭"
   await page.keyboard.press("Escape");
   await expect(search).toBeHidden();
 
-  // 选「所有标签」清除筛选，触发器回显
+  // 重新打开 → 顶部显示当前筛选，点 x 清除后触发器回到「所有标签」
   await page.getByRole("button", { name: new RegExp(tag) }).click();
-  await page
-    .getByRole("listbox", { name: "选项" })
-    .getByRole("button", { name: "所有标签" })
-    .click();
+  await expect(page.getByText(`当前筛选：${tag}`)).toBeVisible();
+  await page.getByRole("button", { name: "清除筛选" }).click();
   await expect(page.getByRole("button", { name: "所有标签" })).toBeVisible();
 });
 

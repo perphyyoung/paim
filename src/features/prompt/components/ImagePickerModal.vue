@@ -298,7 +298,7 @@ function close() {
               class="min-w-0 flex-1"
               :model-value="selectedTag"
               :options="allTags"
-              clear-label="所有标签"
+              placeholder="所有标签"
               empty-text="没有匹配的标签"
               @update:model-value="selectedTag = $event"
             />

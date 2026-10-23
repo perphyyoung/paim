@@ -110,7 +110,7 @@ function pickFont(value: string) {
     :model-value="modelValue"
     :options="fonts"
     :loading="loading"
-    clear-label="默认（系统字体栈）"
+    placeholder="默认（系统字体栈）"
     :search-placeholder="fonts.length ? `在 ${fonts.length} 个字体家族中筛选` : '搜索字体'"
     empty-text="没有匹配的字体家族"
     align="right"
