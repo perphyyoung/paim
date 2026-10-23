@@ -77,7 +77,7 @@ pub struct ImageCard {
     pub has_vec: bool,
 }
 
-/// 分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。
+/// 分页图像列表：items 为本页图像，total 为总数（供「图像选择界面」信息栏使用）。
 #[derive(Debug, Serialize, Clone, specta::Type)]
 pub struct PaginatedImages {
     pub items: Vec<ImageCard>,

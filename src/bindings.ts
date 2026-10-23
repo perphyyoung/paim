@@ -118,7 +118,7 @@ export const commands = {
 	updateImageDetail: (id: string, fileName: string | null, note: string | null, isFavorite: boolean | null, isSafe: boolean | null) => __TAURI_INVOKE<Image>("update_image_detail", { id, fileName, note, isFavorite, isSafe }),
 	/**  为指定图像新建提示词并关联（复用 create_prompt + relate），供图像详情「新建提示词」。 */
 	createPromptForImage: (content: string, imageId: string) => __TAURI_INVOKE<null>("create_prompt_for_image", { content, imageId }),
-	/**  将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。 */
+	/**  将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像选择界面导入」。 */
 	relateImagesToPrompt: (promptId: string, imageIds: string[]) => __TAURI_INVOKE<number>("relate_images_to_prompt", { promptId, imageIds }),
 	/**  返回回收站中的图像（已移入回收站），与 list_trashed_prompts 对称。 */
 	listTrashedImages: () => __TAURI_INVOKE<ImageCard[]>("list_trashed_images"),
@@ -664,7 +664,7 @@ export type OrphanRecordItem = {
 	relative_path: string,
 };
 
-/**  分页图像列表：items 为本页图像，total 为总数（供「从图像列表导入」信息栏使用）。 */
+/**  分页图像列表：items 为本页图像，total 为总数（供「图像选择界面」信息栏使用）。 */
 export type PaginatedImages = {
 	items: ImageCard[],
 	total: number,

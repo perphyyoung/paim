@@ -726,7 +726,7 @@ async function importFromExternal() {
   }
 }
 
-// 从图像列表导入
+// 从图像选择界面导入
 const pickerOpen = ref(false);
 function importFromPicker() {
   if (!current.value) return;
@@ -893,7 +893,7 @@ async function onPickerImported() {
             </ul>
           </div>
 
-          <!-- 导入区：从外界导入 / 从图像列表导入（左右布局，压缩高度以保留关联图像区域） -->
+          <!-- 导入区：从外界导入 / 从图像选择界面导入（左右布局，压缩高度以保留关联图像区域） -->
           <div class="grid grid-cols-2 gap-2 border-t px-4 py-2.5 border-gray-700">
             <button
               type="button"
@@ -908,7 +908,7 @@ async function onPickerImported() {
               class="rounded-lg border px-2 py-2 text-sm font-medium transition-colors hover:bg-blue-100 border-blue-800 bg-blue-900/30 text-blue-300"
               @click="importFromPicker"
             >
-              从图像列表导入
+              从图像选择界面导入
             </button>
           </div>
         </div>
@@ -1186,7 +1186,7 @@ async function onPickerImported() {
   <!-- 嵌套的图像详情由页面统一渲染（<NestedDetailSlots>：图像 / 提示词各至多一个槽，
        换内容即换实例；槽位模型见 docs/开发经验.md 第 5 节） -->
 
-  <!-- 从图像列表导入选择器 -->
+  <!-- 图像选择界面 -->
   <ImagePickerModal
     v-if="pickerOpen"
     :open="pickerOpen"

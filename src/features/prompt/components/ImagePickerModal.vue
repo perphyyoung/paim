@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 图像选择弹窗：从已有图像列表中多选并导入到指定提示词。供提示词详情「从图像列表导入」使用。
+// 图像选择界面：从已有图像中多选并关联到指定提示词。供提示词详情「从图像选择界面导入」使用。
 import { computed, onMounted, ref, watch } from "vue";
 import { relativePathToAssetUrl } from "@/utils/assetUrl";
 import { commands, type ImageCard } from "@/bindings";
@@ -161,7 +161,7 @@ function close() {
       >
         <!-- 顶部：标题 + 3 控件（搜索 / 标签筛选 / 排序组，均分中间区域）+ 关闭 -->
         <div class="flex items-center gap-3 border-b px-4 py-3 border-gray-700">
-          <h3 class="shrink-0 text-base font-semibold text-gray-100">从图像列表导入</h3>
+          <h3 class="shrink-0 text-base font-semibold text-gray-100">图像选择界面</h3>
           <div class="flex min-w-0 flex-1 items-center gap-2">
             <input
               v-model="keyword"

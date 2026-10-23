@@ -325,7 +325,7 @@ pub async fn image_special_tags_counts(
     .await
 }
 
-/// 将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像列表导入」。
+/// 将一批已存在的图像关联到指定提示词（幂等，不重新导入文件），供详情页「从图像选择界面导入」。
 #[tauri::command]
 #[specta::specta]
 pub async fn relate_images_to_prompt(
