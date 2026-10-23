@@ -84,6 +84,8 @@ pub struct PaginatedImages {
     pub total: i64,
     /// 搜索正则在进入 SQL 前就判定非法：本次返回空结果，前端据此提示「非法正则」而非「无匹配」
     pub invalid_regex: bool,
+    /// 图像选择界面：被排除的「当前提示词已关联」数量（主页恒为 0）
+    pub excluded: usize,
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -531,6 +533,7 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
             items: Vec::new(),
             total: 0,
             invalid_regex: true,
+            excluded: 0,
         });
     }
     let (filter, mut params) = page_filter(q);
@@ -555,6 +558,7 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
         items: rows.collect::<Result<Vec<_>>>()?,
         total,
         invalid_regex: false,
+        excluded: 0,
     })
 }
 
@@ -1064,6 +1068,9 @@ pub(crate) fn replace_commit(
     })
 }
 
+/// 图像选择界面一次展示/打分的结果上限。
+pub const PICKER_LIMIT: usize = 100;
+
 /// 图像选择界面的相似度排序模式：用当前提示词 / 首图的 vec 与候选图像 vec 算余弦。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub enum PickerSortMode {
@@ -1075,6 +1082,13 @@ pub enum PickerSortMode {
 pub struct PickerImage {
     pub image: ImageCard,
     pub similarity: f32,
+}
+
+#[derive(Debug, Serialize, Clone, specta::Type)]
+pub struct PickerImages {
+    pub items: Vec<PickerImage>,
+    /// 被排除的「当前提示词已关联」数量
+    pub excluded: usize,
 }
 
 #[derive(Debug, Serialize, Clone, specta::Type)]
@@ -1104,7 +1118,9 @@ pub fn list_picker_images_by_similarity(
     conn: &Connection,
     prompt_id: &str,
     mode: PickerSortMode,
-) -> std::result::Result<Vec<PickerImage>, AppError> {
+) -> std::result::Result<PickerImages, AppError> {
+    let related =
+        crate::domain::prompt_service::related_image_ids_for_single_prompt(conn, prompt_id)?;
     let base = match mode {
         PickerSortMode::Prompt => {
             crate::domain::similarity_service::prompt_vec_of(conn, prompt_id)?
@@ -1117,26 +1133,34 @@ pub fn list_picker_images_by_similarity(
         }
     };
     let Some(base) = base else {
-        return Ok(Vec::new());
+        return Ok(PickerImages {
+            items: Vec::new(),
+            excluded: related.len(),
+        });
     };
-    // 与结果页相同：全量候选 → 点积打分 → top100（复用 similarity_service，避免两套实现）
-    let candidates =
+    // 与结果页相同：全量候选 → 排除已关联 → 点积打分 → top100
+    let mut candidates =
         crate::domain::similarity_service::image_rank_candidates(conn, base.len(), "")?;
+    candidates.rows.retain(|(id, _)| !related.contains(id));
     // 相似度低于 0.5 不展示（与结果页阈值口径一致）
-    let hits = crate::domain::similarity_service::score_ranked(&candidates.rows, &base, 100, 0.5);
+    let hits =
+        crate::domain::similarity_service::score_ranked(&candidates.rows, &base, PICKER_LIMIT, 0.5);
     let ids: Vec<String> = hits.iter().map(|(id, _)| id.clone()).collect();
     let cards = cards_by_ids(conn, &ids)?;
     let score_by_id: HashMap<&str, f32> = hits
         .iter()
         .map(|(id, score)| (id.as_str(), *score))
         .collect();
-    Ok(cards
-        .into_iter()
-        .map(|image| PickerImage {
-            similarity: score_by_id.get(image.id.as_str()).copied().unwrap_or(0.0),
-            image,
-        })
-        .collect())
+    Ok(PickerImages {
+        items: cards
+            .into_iter()
+            .map(|image| PickerImage {
+                similarity: score_by_id.get(image.id.as_str()).copied().unwrap_or(0.0),
+                image,
+            })
+            .collect(),
+        excluded: related.len(),
+    })
 }
 
 fn row_to_image(row: &rusqlite::Row) -> rusqlite::Result<Image> {

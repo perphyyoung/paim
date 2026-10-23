@@ -87,11 +87,7 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
   const detail = await openPromptDetail(page, content);
 
   const promptId = await findPromptIdByContent(page, content);
-  await invokeCommand(page, "relate_images_to_prompt", {
-    promptId,
-    imageIds: [a.imageId, b.imageId, c.imageId],
-  });
-
+  // 不关联 A/B/C：选择界面会排除已关联，候选必须保持未关联才能验证排序
   await seedSimilarityVectors(page, [
     { kind: "Prompt", id: promptId, values: [1, 0] },
     { kind: "Image", id: a.imageId, values: [1, 0] },
@@ -103,7 +99,8 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
   const promptBtn = page.getByRole("button", { name: "提示词相似度" });
   const firstBtn = page.getByRole("button", { name: "首图相似度" });
   await expect(promptBtn).toBeEnabled();
-  await expect(firstBtn).toBeEnabled();
+  // 首次打开时尚未关联首图 → 首图按钮不可用
+  await expect(firstBtn).toBeDisabled();
 
   // 阈值 0.5：0.000 的那张被过滤
   const scores = page.getByRole("note", { name: /^相似度 / });
@@ -116,11 +113,23 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
   await expect(filterGroup.getByRole("button", { name: /所有标签/ })).toBeDisabled();
   await expect(filterGroup.getByRole("combobox")).toBeDisabled();
 
-  await firstBtn.click();
-  await expect(scores).toHaveText(["1.000", "0.707"]);
+  // 首图模式：先把 A 关联为首图（A 会被排除，候选只剩 B）
+  const picker = page.getByRole("dialog", { name: "图像选择界面" });
+  await picker.getByTitle("关闭").click();
+  await invokeCommand(page, "relate_images_to_prompt", {
+    promptId,
+    imageIds: [a.imageId],
+  });
+  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  const reopened = page.getByRole("dialog", { name: "图像选择界面" });
+  const firstBtn2 = reopened.getByRole("button", { name: "首图相似度" });
+  await expect(firstBtn2).toBeEnabled();
+  const scores2 = reopened.getByRole("note", { name: /^相似度 / });
+  await firstBtn2.click();
+  await expect(scores2).toHaveText(["0.707"]);
 
-  await firstBtn.click();
-  await expect(scores).toHaveCount(0);
+  await firstBtn2.click();
+  await expect(scores2).toHaveCount(0);
   await expect(page.getByPlaceholder("搜索文件名/备注/标签")).toBeEnabled();
   await expect(page.getByRole("button", { name: /所有标签/ })).toBeEnabled();
 });
@@ -147,10 +156,7 @@ test("图像选择界面：相似度结果中的卡片走缓存未命中回退�
   await createPromptViaDialog(page, content);
   const detail = await openPromptDetail(page, content);
   const promptId = await findPromptIdByContent(page, content);
-  await invokeCommand(page, "relate_images_to_prompt", {
-    promptId,
-    imageIds: [a.imageId, b.imageId],
-  });
+  // A/B 都不关联：A 靠标签筛选留在默认列表，B 只出现在相似度结果里
   await seedSimilarityVectors(page, [
     { kind: "Prompt", id: promptId, values: [1, 0] },
     { kind: "Image", id: a.imageId, values: [1, 0] },
@@ -244,4 +250,21 @@ test("嵌套提示词详情：图像选择界面应开在嵌套层之上", async
     { x: box!.x + 12, y: box!.y + 12 },
   );
   expect(topDialog, "选择界面应盖在嵌套提示词详情之上").toBe("图像选择界面");
+});
+
+test("图像选择界面：排除当前提示词已关联的图像并在底部说明", async ({ page, app }) => {
+  const content = `e2e 已关联排除 ${Date.now()}`;
+  // A 由 uploadImageWithPrompt 自动关联到 content 提示词
+  await uploadImageWithPrompt(page, content, app.mockImagePath);
+  await uploadImageWithPrompt(page, `e2e 未关联 ${Date.now()}`, app.mockImagePath);
+
+  await gotoPromptsPage(page);
+  const detail = await openPromptDetail(page, content);
+  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  const picker = page.getByRole("dialog", { name: "图像选择界面" });
+  await expect(picker).toBeVisible();
+
+  // 已关联的 A 被排除（本用例只关联了 1 张）
+  await expect(picker.getByText(/已排除当前提示词已关联的 1 张/)).toBeVisible();
+  await expect(picker.getByText("无缩略图")).toHaveCount(0);
 });

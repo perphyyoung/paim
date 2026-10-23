@@ -272,16 +272,28 @@ pub async fn list_images(
     limit: Option<i64>,
     search: Option<String>,
     tag: Option<String>,
+    exclude_prompt_id: Option<String>,
 ) -> Result<PaginatedImages, AppError> {
     db::blocking(&db, move |conn| {
-        let items = image_service::list(conn, search.as_deref(), tag.as_deref(), limit)
+        let mut items = image_service::list(conn, search.as_deref(), tag.as_deref(), limit)
             .map_err(|e| AppError::Message(e.to_string()))?;
-        let total = image_service::count(conn, search.as_deref(), tag.as_deref())
+        let mut total = image_service::count(conn, search.as_deref(), tag.as_deref())
             .map_err(|e| AppError::Message(e.to_string()))?;
+        let mut excluded = 0;
+        if let Some(pid) = exclude_prompt_id {
+            let related =
+                crate::domain::prompt_service::related_image_ids_for_single_prompt(conn, &pid)?;
+            excluded = related.len();
+            // total 是「排除已关联后」的匹配总数（截断前），items 只保留展示上限
+            total = total.saturating_sub(excluded as i64);
+            items.retain(|img| !related.contains(&img.id));
+            items.truncate(image_service::PICKER_LIMIT);
+        }
         Ok(PaginatedImages {
             items,
             total,
             invalid_regex: false,
+            excluded,
         })
     })
     .await
@@ -307,7 +319,7 @@ pub async fn list_picker_images_by_similarity(
     db: State<'_, BkDb>,
     prompt_id: String,
     mode: image_service::PickerSortMode,
-) -> Result<Vec<image_service::PickerImage>, AppError> {
+) -> Result<image_service::PickerImages, AppError> {
     db::blocking(&db, move |conn| {
         image_service::list_picker_images_by_similarity(conn, &prompt_id, mode)
     })

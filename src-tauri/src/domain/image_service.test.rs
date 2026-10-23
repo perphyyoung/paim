@@ -257,7 +257,21 @@ fn picker_similarity_sorts_by_cosine_and_reports_availability() {
         rusqlite::params![vec_blob(&[1.0, 0.0])],
     )
     .unwrap();
-    for (id, v) in [("near", [0.9f32, 0.1f32]), ("far", [0.0f32, 1.0f32])] {
+    // 首图：关联 p1（会被排除），vec 与提示词同向
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path, vec)
+         VALUES ('first', 'first.png', 'first', 'images/202601/first.png', ?1)",
+        rusqlite::params![vec_blob(&[1.0f32, 0.0f32])],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id, sort_order)
+         VALUES ('p1', 'first', 0)",
+        [],
+    )
+    .unwrap();
+    // 候选 near/far：不关联 p1，才不会被排除；两者点积都需 ≥0.5 才进结果
+    for (id, v) in [("near", [0.9f32, 0.1f32]), ("far", [0.6f32, 0.8f32])] {
         conn.execute(
             "INSERT INTO images(id, file_name, stored_name, relative_path, vec)
              VALUES (?1, ?2, ?1, ?3, ?4)",
@@ -269,24 +283,18 @@ fn picker_similarity_sorts_by_cosine_and_reports_availability() {
             ],
         )
         .unwrap();
-        conn.execute(
-            "INSERT INTO prompt_image_relations(prompt_id, image_id, sort_order)
-             VALUES ('p1', ?1, 0)",
-            [id],
-        )
-        .unwrap();
     }
 
-    // 提示词 vec 与首图（near）vec 都存在
     let availability = super::picker_sort_availability(&conn, "p1").unwrap();
     assert!(availability.prompt);
     assert!(availability.first_image);
 
-    let rows =
-        super::list_picker_images(&conn, "p1", super::PickerSortMode::Prompt, None, None).unwrap();
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0].image.id, "near");
-    assert!(rows[0].similarity > rows[1].similarity);
+    let rows = super::list_picker_images_by_similarity(&conn, "p1", super::PickerSortMode::Prompt)
+        .unwrap();
+    assert_eq!(rows.excluded, 1);
+    assert_eq!(rows.items.len(), 2);
+    assert_eq!(rows.items[0].image.id, "near");
+    assert!(rows.items[0].similarity > rows.items[1].similarity);
 
     let _ = dir;
 }

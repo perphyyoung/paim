@@ -96,13 +96,13 @@ export const commands = {
 	 *  解码 + 编码是重活，放阻塞池（命令层不在主线程上做编解码）。
 	 */
 	getSourceThumbnail: (source: string) => __TAURI_INVOKE<string>("get_source_thumbnail", { source }),
-	listImages: (limit: number | null, search: string | null, tag: string | null) => __TAURI_INVOKE<PaginatedImages>("list_images", { limit, search, tag }),
+	listImages: (limit: number | null, search: string | null, tag: string | null, excludePromptId: string | null) => __TAURI_INVOKE<PaginatedImages>("list_images", { limit, search, tag, excludePromptId }),
 	/**  主页分页列表：排序 / 搜索 / 标签筛选（含特殊标签）由后端完成，返回本页与符合条件的总数。 */
 	listImagesPage: (query: ListQuery) => __TAURI_INVOKE<PaginatedImages>("list_images_page", { query }),
 	/**  图像选择界面：两个相似度排序按钮是否可用（提示词 / 首图是否已有 vec）。 */
 	getPickerSortAvailability: (promptId: string) => __TAURI_INVOKE<PickerSortAvailability>("get_picker_sort_availability", { promptId }),
 	/**  图像选择界面：按提示词 / 首图向量与候选图像 vec 的相似度排序（最多 100 张）。 */
-	listPickerImagesBySimilarity: (promptId: string, mode: PickerSortMode) => __TAURI_INVOKE<PickerImage[]>("list_picker_images_by_similarity", { promptId, mode }),
+	listPickerImagesBySimilarity: (promptId: string, mode: PickerSortMode) => __TAURI_INVOKE<PickerImages>("list_picker_images_by_similarity", { promptId, mode }),
 	/**  同条件只取 id（全选 / 反选 / 批量操作用），条数封顶 `MAX_IDS`。 */
 	listImageIds: (query: ListQuery) => __TAURI_INVOKE<string[]>("list_image_ids", { query }),
 	/**  特殊标签命中数（基于全部未删除图像，不含搜索 / 标签条件）。 */
@@ -679,6 +679,8 @@ export type PaginatedImages = {
 	total: number,
 	/**  搜索正则在进入 SQL 前就判定非法：本次返回空结果，前端据此提示「非法正则」而非「无匹配」 */
 	invalid_regex: boolean,
+	/**  图像选择界面：被排除的「当前提示词已关联」数量（主页恒为 0） */
+	excluded: number,
 };
 
 /**  分页提示词列表：items 为本页，total 为符合条件总数。 */
@@ -692,6 +694,12 @@ export type PaginatedPrompts = {
 export type PickerImage = {
 	image: ImageCard,
 	similarity: number | null,
+};
+
+export type PickerImages = {
+	items: PickerImage[],
+	/**  被排除的「当前提示词已关联」数量 */
+	excluded: number,
 };
 
 export type PickerSortAvailability = {

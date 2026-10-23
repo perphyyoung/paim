@@ -41,6 +41,9 @@ const selectedTag = ref("");
 const sortBy = ref("updatedAt");
 const sortDesc = ref(true);
 
+/// 列表多取一些再排除已关联，保证排除后仍能凑满展示上限
+const PICKER_FETCH_LIMIT = 500;
+
 const SORT_OPTIONS = [
   { value: "updatedAt", label: "更新时间" },
   { value: "createdAt", label: "导入时间" },
@@ -58,6 +61,8 @@ const pickerSort = ref<PickerSort>("default");
 const sortLoading = ref(false);
 const sortAvailability = ref({ prompt: false, first_image: false });
 const similarityRows = ref<ResultRow<ImageCard>[]>([]);
+/// 被排除的「当前提示词已关联」数量（底部文案）
+const excludedCount = ref(0);
 
 const similarityById = computed(
   () => new Map(similarityRows.value.map((r) => [r.card.id, r.score])),
@@ -99,11 +104,12 @@ async function togglePickerSort(mode: "prompt" | "firstImage") {
   }
   sortLoading.value = true;
   try {
-    const rows = await commands.listPickerImagesBySimilarity(
+    const res = await commands.listPickerImagesBySimilarity(
       props.promptId,
       mode === "prompt" ? "Prompt" : "FirstImage",
     );
-    const mapped = rows.map((r) => ({ card: r.image, score: r.similarity ?? 0 }));
+    excludedCount.value = res.excluded;
+    const mapped = res.items.map((r) => ({ card: r.image, score: r.similarity ?? 0 }));
     sortCache.set(key, mapped);
     similarityRows.value = mapped;
     scheduleThumbCheck();
@@ -149,7 +155,9 @@ const infoText = computed(() => {
   const base = hasFilter
     ? `找到 ${total.value} 张匹配图像，显示前 ${shown} 张`
     : `共 ${total.value} 张图像，显示上限 ${shown} 张`;
-  return `${base} · 已选 ${selectedIds.value.size} 张`;
+  const excluded =
+    excludedCount.value > 0 ? ` · 已排除当前提示词已关联的 ${excludedCount.value} 张` : "";
+  return `${base} · 已选 ${selectedIds.value.size} 张${excluded}`;
 });
 
 /// 缩略图 URL：优先前端映射（自愈回写 / cache-buster），未命中回退到行内 path
@@ -174,12 +182,18 @@ async function loadImages() {
   try {
     // 列表与数据目录并行取；缩略图 URL 由行内 thumbnail_path 本地拼，不再逐图 IPC
     const [page, dir] = await Promise.all([
-      commands.listImages(100, keyword.value.trim() || null, selectedTag.value),
+      commands.listImages(
+        PICKER_FETCH_LIMIT,
+        keyword.value.trim() || null,
+        selectedTag.value,
+        props.promptId,
+      ),
       commands.getDataDir(),
     ]);
     dataDir.value = dir;
     images.value = page.items;
     total.value = page.total;
+    excludedCount.value = page.excluded;
     const map: Record<string, string> = {};
     for (const img of page.items) {
       if (img.thumbnail_path) map[img.id] = relativePathToAssetUrl(dir, img.thumbnail_path);
@@ -301,10 +315,14 @@ function close() {
             加载中...
           </div>
           <div
-            v-else-if="sortedImages.length === 0"
+            v-else-if="displayImages.length === 0"
             class="flex h-full flex-col items-center justify-center p-8 text-center text-sm text-gray-400"
           >
-            没有找到图像
+            {{
+              excludedCount > 0 && (pickerSort !== "default" || (!keyword.trim() && !selectedTag))
+                ? "当前提示词已关联全部图像"
+                : "没有找到图像"
+            }}
           </div>
           <ul v-else class="grid grid-cols-6 gap-2 xl:grid-cols-8">
             <li

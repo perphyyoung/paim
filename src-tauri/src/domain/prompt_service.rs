@@ -686,7 +686,7 @@ pub fn thumb_plan(
     ids: &[String],
 ) -> std::result::Result<PromptThumbPlan, String> {
     let before = thumbs_for(conn, ids).map_err(|e| e.to_string())?;
-    let image_ids = related_image_ids(conn, ids).map_err(|e| e.to_string())?;
+    let image_ids = related_image_ids_for_prompts(conn, ids).map_err(|e| e.to_string())?;
     let (targets, unknown) = thumbnail_service::targets_by_ids(conn, &image_ids)?;
     if !unknown.is_empty() {
         crate::log_warn!("缩略图自愈：{} 条关联图像记录已不存在", unknown.len());
@@ -793,8 +793,8 @@ fn prompt_ids_by_image_ids(conn: &Connection, image_ids: &[String]) -> Result<Ve
     rows.collect()
 }
 
-/// 这些提示词关联的全部（未删除）图像 id（去重），供缩略图自愈。
-fn related_image_ids(conn: &Connection, prompt_ids: &[String]) -> Result<Vec<String>> {
+/// 这些提示词（复数）关联的全部（未删除）图像 id（去重），供缩略图自愈。
+fn related_image_ids_for_prompts(conn: &Connection, prompt_ids: &[String]) -> Result<Vec<String>> {
     if prompt_ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -808,6 +808,19 @@ fn related_image_ids(conn: &Connection, prompt_ids: &[String]) -> Result<Vec<Str
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(prompt_ids.iter()), |r| r.get(0))?;
     rows.collect()
+}
+
+/// 单个提示词关联的（未删除）图像 id 集合。
+/// 批量版本的单元素封装：不重复 SQL，只把结果转成集合供成员判断。
+pub fn related_image_ids_for_single_prompt(
+    conn: &Connection,
+    prompt_id: &str,
+) -> std::result::Result<std::collections::HashSet<String>, AppError> {
+    Ok(
+        related_image_ids_for_prompts(conn, &[prompt_id.to_string()])?
+            .into_iter()
+            .collect(),
+    )
 }
 
 /// 首图：关联顺序第一张未删除图像（`sort_order, rowid` 最小）。
