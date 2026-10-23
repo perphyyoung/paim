@@ -35,3 +35,13 @@
   resize: none;
   overflow-y: auto;
 }
+
+/* 原生 select 下拉跟随深色主题：color-scheme 让系统弹层用深色；
+   option 背景/文字显式指定，避免 WebView2 里出现白底浅字（不可读）。 */
+select {
+  color-scheme: dark;
+}
+select option {
+  background-color: #1f2937;
+  color: #e5e7eb;
+}

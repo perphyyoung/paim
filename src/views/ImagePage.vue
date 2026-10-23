@@ -34,6 +34,7 @@ import { provideNestedDetails } from "@/composables/useNestedDetails";
 import TagManagerModal from "@/features/tag/components/TagManagerModal.vue";
 import TagFilterPanel from "@/features/tag/components/TagFilterPanel.vue";
 import SearchBar from "@/components/SearchBar.vue";
+import SortGroup from "@/components/SortGroup.vue";
 import { useCardTagAdd } from "@/features/tag/useTagDragToCard";
 import ImageUploadModal from "@/features/image/components/ImageUploadModal.vue";
 import MediaCard from "@/components/MediaCard.vue";
@@ -100,9 +101,6 @@ const sortDesc = ref(localStorage.getItem(SORT_DESC_KEY) !== "0");
 function setSortBy(v: string) {
   sortBy.value = v;
   localStorage.setItem(SORT_KEY, v);
-}
-function onSortChange(e: Event) {
-  setSortBy((e.target as HTMLSelectElement).value);
 }
 function toggleSortDesc() {
   sortDesc.value = !sortDesc.value;
@@ -816,7 +814,7 @@ function onUploadDone() {
   <section class="relative flex h-full flex-col overflow-hidden px-6">
     <!-- 顶部固定区：工具栏 + 标签筛选区 + 错误提示（不参与滚动） -->
     <div class="shrink-0 pt-3">
-      <div class="mb-4 grid grid-cols-6 items-center gap-3">
+      <div role="toolbar" aria-label="主页工具栏" class="mb-4 grid grid-cols-5 items-center gap-3">
         <button
           type="button"
           class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
@@ -842,23 +840,13 @@ function onUploadDone() {
         >
           图像回收站
         </button>
-        <select
-          v-model="sortBy"
-          class="min-w-0 rounded-lg border px-2 py-2 text-sm border-gray-600 bg-gray-800 text-gray-200"
-          @change="onSortChange"
-        >
-          <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
-            {{ o.label }}
-          </option>
-        </select>
-        <button
-          type="button"
-          class="rounded-lg border px-3 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
-          :title="sortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
-          @click="toggleSortDesc"
-        >
-          {{ sortDesc ? "↓ 逆序" : "↑ 正序" }}
-        </button>
+        <SortGroup
+          :model-value="sortBy"
+          :options="SORT_OPTIONS"
+          :desc="sortDesc"
+          @update:model-value="setSortBy"
+          @toggle-order="toggleSortDesc"
+        />
         <!-- 调节卡片大小（滑杆，底层仍调列数，见 components/CardSizeSlider.vue） -->
         <CardSizeSlider :model-value="columns" @update:model-value="setColumns" />
       </div>
