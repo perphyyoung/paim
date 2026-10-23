@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
- * 可搜索单选下拉（图像选择界面的「按标签筛选」等场景）。
+ * 可搜索单选下拉（通用）：以设置页「字体家族选择」的实现为基础。
  *
- * - 触发器显示当前值（空值显示 clearLabel/placeholder）；
- * - 面板 Teleport 到 body，顶部搜索框自动聚焦，候选项按 `filterOptions` 过滤；
- * - 键盘 ↑/↓/Enter/Esc、点击外部关闭；选中即回写并关闭。
+ * - 触发器点击展开：全屏透明遮罩（点外部关闭）+ fixed 面板（无全局 scroll 监听，列表内滚轮正常）；
+ * - 面板顶部搜索框自动聚焦，候选按 `filter`（默认 filterOptions）过滤；
+ * - 打开时滚动到当前选中项；候选过多只渲染 maxVisible 项，并保证选中项在窗口内；
+ * - 键盘 ↑/↓ 移动、Enter 选中、Esc 关闭；清空项（clearLabel）置于列表首位。
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { filterOptions } from "@/utils/filterOptions";
@@ -14,70 +15,115 @@ const props = withDefaults(
   defineProps<{
     modelValue: string;
     options: string[];
-    /** 清空项文案（如「所有标签」）；空串则不显示清空项 */
+    /** 清空项文案（如「所有标签」「默认（系统字体栈）」）；空串不显示 */
     clearLabel?: string;
     placeholder?: string;
+    searchPlaceholder?: string;
+    emptyText?: string;
+    loading?: boolean;
+    /** 自定义过滤（字体需要中英文匹配）；不传用 filterOptions */
+    filter?: (options: string[], query: string) => string[];
+    /** 选项显示文本（默认原值）；字体用它显示中文名 */
+    display?: (value: string) => string;
+    /** 面板宽度；不传则跟随触发器宽度 */
+    panelWidth?: number;
+    /** 面板对齐：left（默认）或 right */
+    align?: "left" | "right";
+    /** 遮罩/面板层级 */
+    zIndex?: number;
+    /** 候选超过该数量时只渲染前 N 项 */
+    maxVisible?: number;
   }>(),
-  { clearLabel: "", placeholder: "" },
+  {
+    clearLabel: "",
+    placeholder: "",
+    searchPlaceholder: "搜索…",
+    emptyText: "没有匹配项",
+    loading: false,
+    filter: undefined,
+    display: undefined,
+    panelWidth: undefined,
+    align: "left",
+    zIndex: ModalZ.inlineDialog,
+    maxVisible: 200,
+  },
 );
 
 const emit = defineEmits<{
   (e: "update:modelValue", v: string): void;
+  (e: "open"): void;
 }>();
 
 const open = ref(false);
-const query = ref("");
+const keyword = ref("");
 const activeIndex = ref(0);
-const triggerRef = ref<HTMLButtonElement | null>(null);
-const panelRef = ref<HTMLElement | null>(null);
-const searchRef = ref<HTMLInputElement | null>(null);
-const pos = ref({ top: "0px", left: "0px", width: "0px" });
+const anchor = ref<{ left: number; right: number; top: number; width: number } | null>(null);
+const trigger = ref<HTMLElement | null>(null);
+const searchInput = ref<HTMLInputElement | null>(null);
+const listEl = ref<HTMLElement | null>(null);
 
-/// 过滤后的选项（不含清空项，空态提示用它判断）
-const filtered = computed(() => filterOptions(props.options, query.value));
-/// 面板候选：清空项 + 过滤后的选项
-const options = computed(() =>
-  props.clearLabel ? [props.clearLabel, ...filtered.value] : filtered.value,
-);
+const matched = computed(() => (props.filter ?? filterOptions)(props.options, keyword.value));
 
-const display = computed(
+/// 只渲染 maxVisible 项，但保证当前选中项在窗口内（字体列表上千项）
+const visible = computed(() => {
+  const list = matched.value;
+  if (list.length <= props.maxVisible) return list;
+  const idx = list.indexOf(props.modelValue);
+  if (idx < 0) return list.slice(0, props.maxVisible);
+  const start = Math.min(
+    Math.max(0, idx - Math.floor(props.maxVisible / 2)),
+    Math.max(0, list.length - props.maxVisible),
+  );
+  return list.slice(start, start + props.maxVisible);
+});
+
+const displayValue = computed(() => props.display ?? ((v: string) => v));
+const displayText = computed(
   () => props.modelValue || props.clearLabel || props.placeholder || "请选择",
 );
+const panelWidth = computed(() => props.panelWidth ?? anchor.value?.width ?? 200);
+
+watch(keyword, () => {
+  activeIndex.value = 0;
+});
 
 function toggle() {
   if (open.value) close();
-  else openPanel();
+  else void openPanel();
 }
 
-function openPanel() {
-  const rect = triggerRef.value?.getBoundingClientRect();
+async function openPanel() {
+  const rect = trigger.value?.getBoundingClientRect();
   if (!rect) return;
-  const panelWidth = Math.max(rect.width, 200);
-  const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - panelWidth - 8));
-  const top = rect.bottom + 6;
-  pos.value = { top: `${top}px`, left: `${left}px`, width: `${panelWidth}px` };
+  anchor.value = {
+    left: rect.left,
+    right: window.innerWidth - rect.right,
+    top: rect.bottom + 6,
+    width: rect.width,
+  };
   open.value = true;
-  query.value = "";
-  activeIndex.value = props.clearLabel ? 0 : 0;
-  void nextTick(() => searchRef.value?.focus());
-  document.addEventListener("click", onDocClick, true);
-  document.addEventListener("keydown", onKeydown, true);
-  window.addEventListener("scroll", close, true);
+  keyword.value = "";
+  activeIndex.value = 0;
+  emit("open");
+  await nextTick();
+  searchInput.value?.focus();
+  scrollToSelected();
 }
 
 function close() {
   open.value = false;
-  document.removeEventListener("click", onDocClick, true);
-  document.removeEventListener("keydown", onKeydown, true);
-  window.removeEventListener("scroll", close, true);
-  // 焦点还给触发器
-  triggerRef.value?.focus();
 }
 
-function onDocClick(e: MouseEvent) {
-  const t = e.target as Node;
-  if (panelRef.value?.contains(t) || triggerRef.value?.contains(t)) return;
+function scrollToSelected() {
+  listEl.value
+    ?.querySelector<HTMLElement>('[data-selected="true"]')
+    ?.scrollIntoView({ block: "center", inline: "nearest" });
+}
+
+function pick(value: string) {
+  emit("update:modelValue", value);
   close();
+  trigger.value?.focus();
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -89,7 +135,7 @@ function onKeydown(e: KeyboardEvent) {
   }
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();
-    const n = options.value.length;
+    const n = visible.value.length;
     if (n === 0) return;
     const step = e.key === "ArrowDown" ? 1 : -1;
     activeIndex.value = (activeIndex.value + step + n) % n;
@@ -97,23 +143,9 @@ function onKeydown(e: KeyboardEvent) {
   }
   if (e.key === "Enter") {
     e.preventDefault();
-    pick(options.value[activeIndex.value] ?? "");
+    pick(visible.value[activeIndex.value] ?? "");
   }
 }
-
-function pick(value: string) {
-  emit("update:modelValue", value === props.clearLabel ? "" : value);
-  open.value = false;
-  document.removeEventListener("click", onDocClick, true);
-  document.removeEventListener("keydown", onKeydown, true);
-  window.removeEventListener("scroll", close, true);
-  triggerRef.value?.focus();
-}
-
-// 搜索词变化时重置高亮位置
-watch(query, () => {
-  activeIndex.value = 0;
-});
 
 onBeforeUnmount(close);
 </script>
@@ -121,47 +153,79 @@ onBeforeUnmount(close);
 <template>
   <div class="min-w-0">
     <button
-      ref="triggerRef"
+      ref="trigger"
       type="button"
-      class="flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border px-2 text-sm transition-colors border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700"
-      :title="display"
+      class="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-gray-600 bg-gray-800 px-2 py-1.5 text-sm text-gray-200 transition-colors hover:bg-gray-700"
+      :title="displayText"
       @click.stop="toggle"
     >
-      <span class="truncate" :class="modelValue ? '' : 'text-gray-400'">{{ display }}</span>
-      <span class="shrink-0 text-xs text-gray-500">▾</span>
+      <slot name="trigger" :label="displayText">
+        <span class="truncate" :class="modelValue ? '' : 'text-gray-400'">{{ displayText }}</span>
+        <span class="shrink-0 text-xs text-gray-500">▾</span>
+      </slot>
     </button>
 
     <Teleport to="body">
+      <div v-if="open" class="fixed inset-0" :style="{ zIndex }" @click="close" />
       <div
-        v-if="open"
-        ref="panelRef"
-        class="fixed rounded-lg border border-gray-700 bg-gray-800 p-1 shadow-lg"
-        :style="{ top: pos.top, left: pos.left, width: pos.width, zIndex: ModalZ.tagAutocomplete }"
-        @click.stop
+        v-if="open && anchor"
+        class="fixed rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+        :style="{
+          left: align === 'left' ? `${anchor.left}px` : undefined,
+          right: align === 'right' ? `${anchor.right}px` : undefined,
+          top: `${anchor.top}px`,
+          width: `${panelWidth}px`,
+          zIndex,
+        }"
       >
-        <input
-          ref="searchRef"
-          v-model="query"
-          type="text"
-          placeholder="搜索…"
-          class="mb-1 w-full rounded border px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-900 text-gray-200 placeholder-gray-500"
-        />
-        <div class="max-h-56 overflow-y-auto">
-          <button
-            v-for="(opt, i) in options"
-            :key="opt"
-            type="button"
-            class="block w-full truncate rounded px-2 py-1 text-left text-sm"
-            :class="
-              i === activeIndex ? 'bg-blue-600 text-white' : 'text-gray-200 hover:bg-gray-700'
-            "
-            @mouseenter="activeIndex = i"
-            @click="pick(opt)"
-          >
-            {{ opt }}
-          </button>
-          <p v-if="filtered.length === 0" class="px-2 py-2 text-xs text-gray-500">没有匹配的标签</p>
+        <div class="border-b border-gray-700 p-2">
+          <input
+            ref="searchInput"
+            v-model="keyword"
+            type="text"
+            :placeholder="searchPlaceholder"
+            class="w-full rounded border border-gray-600 bg-gray-900 px-2 py-1 text-sm text-gray-100 outline-none placeholder:text-gray-500"
+            @keydown="onKeydown"
+          />
         </div>
+        <slot name="notice" />
+        <ul ref="listEl" class="max-h-64 overflow-y-auto overscroll-contain py-1">
+          <li v-if="clearLabel">
+            <button
+              type="button"
+              class="block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-gray-700"
+              :class="modelValue ? 'text-gray-200' : 'text-blue-300'"
+              @click="pick('')"
+            >
+              {{ clearLabel }}
+            </button>
+          </li>
+          <li v-if="loading" class="px-3 py-1.5 text-sm text-gray-500">加载中…</li>
+          <li v-for="(opt, i) in visible" :key="opt">
+            <button
+              type="button"
+              class="block w-full truncate px-3 py-1.5 text-left text-sm"
+              :class="
+                i === activeIndex
+                  ? 'bg-blue-600 text-white'
+                  : opt === modelValue
+                    ? 'text-blue-300'
+                    : 'text-gray-200 hover:bg-gray-700'
+              "
+              :data-selected="opt === modelValue"
+              @mouseenter="activeIndex = i"
+              @click="pick(opt)"
+            >
+              <slot name="option" :value="opt" :selected="opt === modelValue">
+                {{ displayValue(opt) }}
+              </slot>
+            </button>
+          </li>
+          <li v-if="!loading && matched.length === 0" class="px-3 py-1.5 text-sm text-gray-500">
+            {{ emptyText }}
+          </li>
+        </ul>
+        <slot name="footer" />
       </div>
     </Teleport>
   </div>

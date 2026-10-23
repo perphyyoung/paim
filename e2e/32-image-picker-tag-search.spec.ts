@@ -40,6 +40,12 @@ test("图像选择界面：标签筛选可搜索、选中后回显，Esc 关闭"
   await search.fill(tag);
   const option = page.getByRole("button", { name: tag, exact: true });
   await expect(option).toBeVisible();
+
+  // 面板内滚轮不关闭面板（旧实现全局 scroll 捕获会立即关闭）
+  await option.hover();
+  await page.mouse.wheel(0, 200);
+  await expect(search).toBeVisible();
+
   await option.click();
 
   // 触发器回显选中标签，面板关闭
