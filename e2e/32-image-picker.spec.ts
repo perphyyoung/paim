@@ -268,3 +268,37 @@ test("图像选择界面：排除当前提示词已关联的图像并在底部�
   await expect(picker.getByText(/已排除当前提示词已关联的 1 张/)).toBeVisible();
   await expect(picker.getByText("无缩略图")).toHaveCount(0);
 });
+
+test("图像选择界面：底部按钮组固定在右侧，不随文案长度跳变", async ({ page, app }) => {
+  const content = `e2e 底部按钮 ${Date.now()}`;
+  // uploadImageWithPrompt 自动创建 content 提示词并关联 A
+  await uploadImageWithPrompt(page, content, app.mockImagePath);
+  await uploadImageWithPrompt(page, `e2e 底部按钮 B ${Date.now()}`, app.mockImagePath);
+
+  await gotoPromptsPage(page);
+  const promptId = await findPromptIdByContent(page, content);
+  // 打开界面前先播种，availability 才会在 onMounted 时判定为可用
+  await seedSimilarityVectors(page, [{ kind: "Prompt", id: promptId, values: [1, 0] }]);
+  const detail = await openPromptDetail(page, content);
+  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  const picker = page.getByRole("dialog", { name: "图像选择界面" });
+  const promptBtn = picker.getByRole("button", { name: "提示词相似度" });
+  await expect(promptBtn).toBeVisible();
+
+  // 4 个操作按钮的固定顺序（从右往左读：导入 → 取消 │ 首图 → 提示词）
+  const labels = (await picker.getByRole("button").allTextContents())
+    .map((s) => s.trim())
+    .filter((s) => ["提示词相似度", "首图相似度", "取消", "导入"].includes(s));
+  expect(labels).toEqual(["提示词相似度", "首图相似度", "取消", "导入"]);
+
+  const before = (await promptBtn.boundingBox())!.x;
+
+  // 让底部文案变长：A 已关联被排除；B 无向量 → 不可用提示
+  await promptBtn.click();
+  await expect(picker.getByText(/已排除当前提示词已关联的 1 张/)).toBeVisible();
+  // 数量受同文件累计数据影响，只验文案出现（精确数量由 Rust 单测覆盖）
+  await expect(picker.getByText(/有 \d+ 张图像的向量不可用/)).toBeVisible();
+
+  const after = (await promptBtn.boundingBox())!.x;
+  expect(Math.abs(after - before), "按钮组不应随文案长度移动").toBeLessThanOrEqual(1);
+});

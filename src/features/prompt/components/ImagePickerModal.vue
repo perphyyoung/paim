@@ -378,13 +378,15 @@ function close() {
           </ul>
         </div>
 
-        <!-- 底部：已选 + 取消/确认 -->
-        <div class="flex items-center justify-between border-t px-4 py-3 border-gray-700">
-          <span class="text-sm text-gray-400">{{ infoText }}</span>
-          <div class="flex items-center gap-1">
+        <!-- 底部：文案可伸缩；按钮组固定在右侧（从右往左：导入 → 取消 │ 首图 → 提示词） -->
+        <div class="flex items-center gap-3 border-t px-4 py-3 border-gray-700">
+          <span class="min-w-0 flex-1 truncate text-sm text-gray-400" :title="infoText">
+            {{ infoText }}
+          </span>
+          <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              class="rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+              class="min-w-28 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               :class="
                 pickerSort === 'prompt'
                   ? 'border-blue-500 bg-blue-600 text-white'
@@ -402,7 +404,7 @@ function close() {
             </button>
             <button
               type="button"
-              class="rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+              class="min-w-28 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               :class="
                 pickerSort === 'firstImage'
                   ? 'border-blue-500 bg-blue-600 text-white'
@@ -418,18 +420,17 @@ function close() {
             >
               首图相似度
             </button>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
+            <span class="mx-1 h-5 w-px bg-gray-700" aria-hidden="true"></span>
             <button
               type="button"
-              class="rounded-lg border px-4 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
+              class="min-w-20 rounded-lg border px-4 py-2 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700"
               @click="close()"
             >
               取消
             </button>
             <button
               type="button"
-              class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              class="min-w-20 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="selectedIds.size === 0"
               @click="confirm"
             >
