@@ -7,6 +7,7 @@ import { toTimestamp } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
 import { ModalZ } from "@/utils/modalZ";
 import SortGroup from "@/components/SortGroup.vue";
+import SearchableSelect from "@/components/SearchableSelect.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -169,14 +170,13 @@ function close() {
               placeholder="搜索文件名/备注/标签"
               title="搜索范围：文件名、备注、标签（模糊匹配，不区分大小写）"
             />
-            <select
-              v-model="selectedTag"
-              class="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
-              title="按标签筛选"
-            >
-              <option value="">所有标签</option>
-              <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
-            </select>
+            <SearchableSelect
+              class="min-w-0 flex-1"
+              :model-value="selectedTag"
+              :options="allTags"
+              clear-label="所有标签"
+              @update:model-value="selectedTag = $event"
+            />
             <SortGroup
               class="min-w-0 flex-1"
               :model-value="sortBy"
