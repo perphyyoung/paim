@@ -6,6 +6,7 @@ import { commands, type ImageCard } from "@/bindings";
 import { toTimestamp } from "@/utils/date";
 import { markPageStale } from "@/utils/crossPageCache";
 import { ModalZ } from "@/utils/modalZ";
+import SortGroup from "@/components/SortGroup.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -158,7 +159,7 @@ function close() {
       <div
         class="flex h-[85vh] w-[90vw] max-w-[calc(100vw-80px)] max-h-[calc(100vh-80px)] flex-col rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
-        <!-- 顶部：标题 + 4 控件（均分中间全部区域）+ 关闭 -->
+        <!-- 顶部：标题 + 3 控件（搜索 / 标签筛选 / 排序组，均分中间区域）+ 关闭 -->
         <div class="flex items-center gap-3 border-b px-4 py-3 border-gray-700">
           <h3 class="shrink-0 text-base font-semibold text-gray-100">从图像列表导入</h3>
           <div class="flex min-w-0 flex-1 items-center gap-2">
@@ -176,22 +177,14 @@ function close() {
               <option value="">所有标签</option>
               <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
             </select>
-            <select
-              v-model="sortBy"
-              class="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-sm border-gray-600 bg-gray-800 text-gray-200"
-            >
-              <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
-                {{ o.label }}
-              </option>
-            </select>
-            <button
-              type="button"
-              class="flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg border text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
-              :title="sortDesc ? '降序' : '升序'"
-              @click="sortDesc = !sortDesc"
-            >
-              {{ sortDesc ? "↓" : "↑" }}
-            </button>
+            <SortGroup
+              class="min-w-0 flex-1"
+              :model-value="sortBy"
+              :options="SORT_OPTIONS"
+              :desc="sortDesc"
+              @update:model-value="sortBy = $event"
+              @toggle-order="sortDesc = !sortDesc"
+            />
           </div>
           <button
             type="button"

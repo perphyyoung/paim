@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import TagChip from "@/components/TagChip.vue";
+import SortGroup from "@/components/SortGroup.vue";
 import { startTagDrag, tagDrag } from "../useTagDragToCard";
 import { ModalZ } from "@/utils/modalZ";
 
@@ -114,13 +115,15 @@ const TAG_SORT_KEY = `${props.domain}.tagSortBy`;
 const TAG_SORT_DESC_KEY = `${props.domain}.tagSortDesc`;
 const tagSortBy = ref(localStorage.getItem(TAG_SORT_KEY) || "name");
 const tagSortDesc = ref(localStorage.getItem(TAG_SORT_DESC_KEY) === "1");
+const TAG_SORT_OPTIONS = [
+  { value: "name", label: "名称" },
+  { value: "count", label: "数量" },
+];
 function setTagSortBy(v: string) {
   tagSortBy.value = v;
   localStorage.setItem(TAG_SORT_KEY, v);
 }
-function onTagSortChange(e: Event) {
-  setTagSortBy((e.target as HTMLSelectElement).value);
-}
+
 function toggleTagSortDesc() {
   tagSortDesc.value = !tagSortDesc.value;
   localStorage.setItem(TAG_SORT_DESC_KEY, tagSortDesc.value ? "1" : "0");
@@ -244,22 +247,15 @@ const tagSections = computed<TagSection[]>(() => {
       >
         {{ inverted ? "正选" : "反选" }}
       </button>
-      <select
-        v-model="tagSortBy"
-        class="ml-auto rounded border px-1.5 py-0.5 text-xs border-gray-600 bg-gray-800 text-gray-300"
-        @change="onTagSortChange"
-      >
-        <option value="name">名称</option>
-        <option value="count">数量</option>
-      </select>
-      <button
-        type="button"
-        class="rounded border px-1.5 py-0.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
-        :title="tagSortDesc ? '当前逆序，点击转为正序' : '当前正序，点击转为逆序'"
-        @click="toggleTagSortDesc"
-      >
-        {{ tagSortDesc ? "↓" : "↑" }}
-      </button>
+      <SortGroup
+        class="ml-auto"
+        size="sm"
+        :model-value="tagSortBy"
+        :options="TAG_SORT_OPTIONS"
+        :desc="tagSortDesc"
+        @update:model-value="setTagSortBy"
+        @toggle-order="toggleTagSortDesc"
+      />
       <slot name="toolbar-extra" />
     </div>
 

@@ -4,6 +4,7 @@ import { commands, type TagData, type TagGroup, type TagItem, type TrashedTag } 
 import { useToast } from "@/components/useToast";
 import ContextMenu from "@/components/ContextMenu.vue";
 import InlineDialog from "@/components/InlineDialog.vue";
+import SortGroup from "@/components/SortGroup.vue";
 import TagChip from "@/components/TagChip.vue";
 import MediaCard from "@/components/MediaCard.vue";
 import TrashOverlay from "@/components/TrashOverlay.vue";
@@ -56,9 +57,6 @@ const SORT_OPTIONS = [
 const sortBy = ref("name");
 const orderDesc = ref(false);
 
-function onSortChange(e: Event) {
-  sortBy.value = (e.target as HTMLSelectElement).value;
-}
 function toggleOrder() {
   orderDesc.value = !orderDesc.value;
 }
@@ -722,20 +720,20 @@ function refresh() {
 
         <!-- 工具栏 -->
         <div
-          class="grid shrink-0 grid-cols-7 items-center gap-2 border-b px-4 py-3 border-gray-700"
+          class="grid shrink-0 grid-cols-6 items-center gap-2 border-b px-4 py-3 border-gray-700"
         >
           <div class="flex justify-center">
             <input
               v-model="search"
               type="text"
               placeholder="搜索标签…"
-              class="w-full rounded border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+              class="w-full rounded border px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
             />
           </div>
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+              class="w-full rounded bg-blue-600 px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
               @click="openNewTag"
             >
               + 新建标签
@@ -744,7 +742,7 @@ function refresh() {
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded border px-2.5 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
+              class="w-full rounded border px-2.5 py-2 text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               :title="`${domainLabel}标签回收站`"
               @click="openTagTrash"
             >
@@ -754,37 +752,26 @@ function refresh() {
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded border px-2.5 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
+              class="w-full rounded border px-2.5 py-2 text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               @click="openNewGroup"
             >
               + 新建组
             </button>
           </div>
           <div class="flex justify-center">
-            <select
-              :value="sortBy"
-              class="w-full rounded border px-1.5 py-1.5 text-xs border-gray-600 bg-gray-800 text-gray-300"
-              @change="onSortChange"
-            >
-              <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">
-                {{ o.label }}
-              </option>
-            </select>
+            <SortGroup
+              class="w-full"
+              :model-value="sortBy"
+              :options="SORT_OPTIONS"
+              :desc="orderDesc"
+              @update:model-value="sortBy = $event"
+              @toggle-order="toggleOrder"
+            />
           </div>
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded border px-1.5 py-1.5 text-xs transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
-              title="切换排序顺序"
-              @click="toggleOrder"
-            >
-              {{ orderDesc ? "↓" : "↑" }}
-            </button>
-          </div>
-          <div class="flex justify-center">
-            <button
-              type="button"
-              class="w-full rounded border px-2.5 py-1.5 text-xs transition-colors"
+              class="w-full rounded border px-2.5 py-2 text-sm transition-colors"
               :class="
                 mergeMode
                   ? 'border-amber-500/60 bg-amber-500/15 text-amber-300'
