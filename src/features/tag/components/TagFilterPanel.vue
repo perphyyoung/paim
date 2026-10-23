@@ -223,7 +223,7 @@ const tagSections = computed<TagSection[]>(() => {
       <button
         v-if="selectedTags.length > 0"
         type="button"
-        class="rounded px-1.5 py-0.5 text-xs transition-colors text-red-400 hover:bg-red-900/30 hover:text-red-300"
+        class="rounded-lg px-1.5 py-0.5 text-xs transition-colors text-red-400 hover:bg-red-900/30 hover:text-red-300"
         title="清除已选标签"
         @click="clearTags"
       >
@@ -231,7 +231,7 @@ const tagSections = computed<TagSection[]>(() => {
       </button>
       <button
         type="button"
-        class="rounded border px-1.5 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+        class="rounded-lg border px-1.5 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40"
         :class="
           inverted
             ? 'border-blue-500 bg-blue-600 text-white'

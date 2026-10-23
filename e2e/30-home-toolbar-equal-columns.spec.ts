@@ -31,6 +31,12 @@ async function expectToolbarEqualColumns(page: Page): Promise<void> {
     els.map((el) => el.scrollWidth - el.clientWidth),
   );
   expect(Math.max(...overflow), "子元素内容不应横向溢出").toBeLessThanOrEqual(1);
+
+  // 前 4 个交互控件同圆角（新建 / 搜索组 / 回收站 / 排序组，规范：rounded-lg）
+  const radii = await cells.evaluateAll((els) =>
+    els.slice(0, 4).map((el) => getComputedStyle(el).borderRadius),
+  );
+  expect(new Set(radii).size, `前 4 个控件圆角应一致：${radii.join(", ")}`).toBe(1);
 }
 
 test("提示词主页工具栏：5 个子元素平分且无空出/挤压", async ({ page }) => {

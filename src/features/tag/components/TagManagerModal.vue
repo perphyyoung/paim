@@ -727,13 +727,13 @@ function refresh() {
               v-model="search"
               type="text"
               placeholder="搜索标签…"
-              class="w-full rounded border px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
+              class="w-full rounded-lg border px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-600 bg-gray-800 text-gray-200 placeholder-gray-500"
             />
           </div>
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded bg-blue-600 px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+              class="w-full rounded-lg bg-blue-600 px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
               @click="openNewTag"
             >
               + 新建标签
@@ -742,7 +742,7 @@ function refresh() {
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded border px-2.5 py-2 text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
+              class="w-full rounded-lg border px-2.5 py-2 text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               :title="`${domainLabel}标签回收站`"
               @click="openTagTrash"
             >
@@ -752,7 +752,7 @@ function refresh() {
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded border px-2.5 py-2 text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
+              class="w-full rounded-lg border px-2.5 py-2 text-sm transition-colors border-gray-600 text-gray-300 hover:bg-gray-700"
               @click="openNewGroup"
             >
               + 新建组
@@ -771,7 +771,7 @@ function refresh() {
           <div class="flex justify-center">
             <button
               type="button"
-              class="w-full rounded border px-2.5 py-2 text-sm transition-colors"
+              class="w-full rounded-lg border px-2.5 py-2 text-sm transition-colors"
               :class="
                 mergeMode
                   ? 'border-amber-500/60 bg-amber-500/15 text-amber-300'
