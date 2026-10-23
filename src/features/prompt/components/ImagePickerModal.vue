@@ -11,6 +11,8 @@ import SortGroup from "@/components/SortGroup.vue";
 import SearchableSelect from "@/components/SearchableSelect.vue";
 import ScoreBadge from "@/features/similarity/ScoreBadge.vue";
 import type { ResultRow } from "@/features/similarity/rows";
+import { useThumbnailSelfHeal } from "@/features/image/useThumbnailSelfHeal";
+import { applyThumbFix } from "@/utils/thumbFix";
 
 const props = defineProps<{
   open: boolean;
@@ -25,6 +27,7 @@ const emit = defineEmits<{
 const images = ref<ImageCard[]>([]);
 const total = ref(0);
 const thumbs = ref<Record<string, string>>({});
+const dataDir = ref("");
 const loading = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 const keyword = ref("");
@@ -58,6 +61,12 @@ const displayImages = computed(() =>
   pickerSort.value === "default" ? sortedImages.value : similarityRows.value.map((r) => r.card),
 );
 
+// 缩略图懒自愈：缺缩略图的卡片（含相似度结果）按可见项批量校验并回填
+const pickerVisibleIds = computed(() => displayImages.value.map((img) => img.id));
+const { scheduleCheck: scheduleThumbCheck } = useThumbnailSelfHeal(pickerVisibleIds, (fixed) => {
+  thumbs.value = applyThumbFix(dataDir.value, thumbs.value, fixed);
+});
+
 async function loadSortAvailability() {
   try {
     sortAvailability.value = await commands.getPickerSortAvailability(props.promptId);
@@ -80,6 +89,7 @@ async function togglePickerSort(mode: "prompt" | "firstImage") {
   const cached = sortCache.get(key);
   if (cached) {
     similarityRows.value = cached;
+    scheduleThumbCheck();
     return;
   }
   sortLoading.value = true;
@@ -91,6 +101,7 @@ async function togglePickerSort(mode: "prompt" | "firstImage") {
     const mapped = rows.map((r) => ({ card: r.image, score: r.similarity ?? 0 }));
     sortCache.set(key, mapped);
     similarityRows.value = mapped;
+    scheduleThumbCheck();
   } catch (e) {
     pickerSort.value = "default";
     similarityRows.value = [];
@@ -155,6 +166,7 @@ async function loadImages() {
       commands.listImages(100, keyword.value.trim() || null, selectedTag.value),
       commands.getDataDir(),
     ]);
+    dataDir.value = dir;
     images.value = page.items;
     total.value = page.total;
     const map: Record<string, string> = {};
@@ -162,6 +174,7 @@ async function loadImages() {
       if (img.thumbnail_path) map[img.id] = relativePathToAssetUrl(dir, img.thumbnail_path);
     }
     thumbs.value = map;
+    scheduleThumbCheck();
   } catch {
     images.value = [];
   } finally {

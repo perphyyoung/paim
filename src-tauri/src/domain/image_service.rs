@@ -1122,7 +1122,8 @@ pub fn list_picker_images_by_similarity(
     // 与结果页相同：全量候选 → 点积打分 → top100（复用 similarity_service，避免两套实现）
     let candidates =
         crate::domain::similarity_service::image_rank_candidates(conn, base.len(), "")?;
-    let hits = crate::domain::similarity_service::score_ranked(&candidates.rows, &base, 100, 0.0);
+    // 相似度低于 0.5 不展示（与结果页阈值口径一致）
+    let hits = crate::domain::similarity_service::score_ranked(&candidates.rows, &base, 100, 0.5);
     let ids: Vec<String> = hits.iter().map(|(id, _)| id.clone()).collect();
     let cards = cards_by_ids(conn, &ids)?;
     let score_by_id: HashMap<&str, f32> = hits

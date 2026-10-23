@@ -46,9 +46,10 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
   await expect(promptBtn).toBeEnabled();
   await expect(firstBtn).toBeEnabled();
 
+  // 阈值 0.5：0.000 的那张被过滤
   const scores = page.getByRole("note", { name: /^相似度 / });
   await promptBtn.click();
-  await expect(scores).toHaveText(["1.000", "0.707", "0.000"]);
+  await expect(scores).toHaveText(["1.000", "0.707"]);
 
   // 相似度模式下顶部筛选全部禁用（搜索 / 标签 / 排序）
   const filterGroup = page.getByRole("group", { name: "筛选" });
@@ -58,7 +59,7 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
 
   // 首图 A 的向量与提示词相同 → 顺序一致
   await firstBtn.click();
-  await expect(scores).toHaveText(["1.000", "0.707", "0.000"]);
+  await expect(scores).toHaveText(["1.000", "0.707"]);
 
   // 再点当前项 → 回默认排序，分数角标消失、筛选恢复
   await firstBtn.click();
