@@ -148,7 +148,7 @@ const infoText = computed(() => {
   const hasFilter = !!keyword.value.trim() || !!selectedTag.value;
   const base = hasFilter
     ? `找到 ${total.value} 张匹配图像，显示前 ${shown} 张`
-    : `共 ${total.value} 张图像，显示符合要求的 ${shown} 张`;
+    : `共 ${total.value} 张图像，显示上限 ${shown} 张`;
   return `${base} · 已选 ${selectedIds.value.size} 张`;
 });
 
