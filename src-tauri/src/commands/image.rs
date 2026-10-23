@@ -283,11 +283,12 @@ pub async fn list_images(
         if let Some(pid) = exclude_prompt_id {
             let related =
                 crate::domain::prompt_service::related_image_ids_for_single_prompt(conn, &pid)?;
-            excluded = related.len();
-            // total 是「排除已关联后」的匹配总数（截断前），items 只保留展示上限
-            total = total.saturating_sub(excluded as i64);
+            // 只统计「本次筛选结果里」的已关联数量，避免文案与 total 口径不一致
+            let excluded_matched = items.iter().filter(|img| related.contains(&img.id)).count();
+            excluded = excluded_matched;
             items.retain(|img| !related.contains(&img.id));
             items.truncate(image_service::PICKER_LIMIT);
+            total = total.saturating_sub(excluded_matched as i64).max(0);
         }
         Ok(PaginatedImages {
             items,

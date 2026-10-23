@@ -5,7 +5,10 @@
  * 2. 相似度排序：可控向量下的分数/顺序、阈值 0.5、启用时筛选禁用、再点回默认；
  * 3. 缩略图缓存未命中回退：相似度结果里不在默认列表的卡片也要显示；
  * 4. 缩略图文件丢失自愈：删文件后打开界面会重建并真实加载；
- * 5. 嵌套提示词详情：选择界面必须开在嵌套层之上。
+ * 5. 嵌套提示词详情：选择界面必须开在嵌套层之上；
+ * 6. 已关联排除：当前提示词已关联的图像不参与候选，底部说明排除数；
+ * 7. 底部按钮：固定右对齐，文案变长不跳变；
+ * 8. 匹配数不为负；筛选/相似度切换清空选中。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -106,6 +109,7 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
   const scores = page.getByRole("note", { name: /^相似度 / });
   await promptBtn.click();
   await expect(scores).toHaveText(["1.000", "0.707"]);
+  await expect(page.getByText("相似图像 2 张")).toBeVisible();
 
   // 相似度模式下顶部筛选全部禁用（搜索 / 标签 / 排序）
   const filterGroup = page.getByRole("group", { name: "筛选" });
@@ -127,6 +131,8 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
   const scores2 = reopened.getByRole("note", { name: /^相似度 / });
   await firstBtn2.click();
   await expect(scores2).toHaveText(["0.707"]);
+  // 文案按相似度返回结果重新统计（A 被排除、C 低于阈值）
+  await expect(reopened.getByText("相似图像 1 张")).toBeVisible();
 
   await firstBtn2.click();
   await expect(scores2).toHaveCount(0);
@@ -293,7 +299,7 @@ test("图像选择界面：底部按钮组固定在右侧，不随文案长度�
 
   const before = (await promptBtn.boundingBox())!.x;
 
-  // 让底部文案变长：A 已关联被排除；B 无向量 → 不可用提示
+  // 让底部文案变长：A 已关联被排除；B 无向量 → 不可用提示（同文件累计，数量不写死）
   await promptBtn.click();
   await expect(picker.getByText(/已排除当前提示词已关联的 1 张/)).toBeVisible();
   // 数量受同文件累计数据影响，只验文案出现（精确数量由 Rust 单测覆盖）
@@ -301,4 +307,41 @@ test("图像选择界面：底部按钮组固定在右侧，不随文案长度�
 
   const after = (await promptBtn.boundingBox())!.x;
   expect(Math.abs(after - before), "按钮组不应随文案长度移动").toBeLessThanOrEqual(1);
+});
+
+test("图像选择界面：匹配数不为负，筛选/相似度切换清空选中", async ({ page, app }) => {
+  const content = `e2e 选中清理 ${Date.now()}`;
+  // A 已关联（会被排除），B 未关联且无向量（候选）
+  await uploadImageWithPrompt(page, content, app.mockImagePath);
+  await uploadImageWithPrompt(page, `e2e 选中清理 B ${Date.now()}`, app.mockImagePath);
+
+  await gotoPromptsPage(page);
+  const promptId = await findPromptIdByContent(page, content);
+  await seedSimilarityVectors(page, [{ kind: "Prompt", id: promptId, values: [1, 0] }]);
+  const detail = await openPromptDetail(page, content);
+  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  const picker = page.getByRole("dialog", { name: "图像选择界面" });
+  await expect(picker).toBeVisible();
+
+  // 匹配数不能是负数
+  await expect(picker.getByText(/找到 -\d+ 张|共 -\d+ 张/)).toHaveCount(0);
+
+  const firstCard = picker.getByRole("img").first();
+  await firstCard.click();
+  await expect(picker.getByText(/已选 1 张/)).toBeVisible();
+
+  // 筛选变化：立即清空
+  const search = picker.getByPlaceholder("搜索文件名/备注/标签");
+  await search.fill(`zzz-${Date.now()}`);
+  await expect(picker.getByText(/已选 0 张/)).toBeVisible();
+  await search.fill("");
+
+  // 相似度切换：直接清空选中（不保留交集）
+  await picker.getByRole("img").first().click();
+  await expect(picker.getByText(/已选 1 张/)).toBeVisible();
+  await picker.getByRole("button", { name: "提示词相似度" }).click();
+  await expect(picker.getByText(/已选 0 张/)).toBeVisible();
+  // 切回默认：选中仍为空
+  await picker.getByRole("button", { name: "提示词相似度" }).click();
+  await expect(picker.getByText(/已选 0 张/)).toBeVisible();
 });

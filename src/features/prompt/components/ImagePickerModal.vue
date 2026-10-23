@@ -91,6 +91,8 @@ async function loadSortAvailability() {
 const sortCache = new Map<string, ResultRow<ImageCard>[]>();
 
 async function togglePickerSort(mode: "prompt" | "firstImage") {
+  // 切换排序视图：直接清空选中，避免出现「已选但不在列表」的项
+  selectedIds.value = new Set();
   if (pickerSort.value === mode) {
     pickerSort.value = "default";
     similarityRows.value = [];
@@ -153,15 +155,19 @@ const sortedImages = computed(() => {
 
 // 信息栏文案与 pm 图像选择器对齐（有筛选/无筛选两态）；「已选」为 paim 多选导入特有，保留在后
 const infoText = computed(() => {
-  const shown = images.value.length;
+  const isSimilarity = pickerSort.value !== "default";
+  // 相似度模式按返回结果重新统计，不复用默认列表的 total/条数
+  const shown = isSimilarity ? displayImages.value.length : images.value.length;
   const hasFilter = !!keyword.value.trim() || !!selectedTag.value;
-  const base = hasFilter
-    ? `找到 ${total.value} 张匹配图像，显示前 ${shown} 张`
-    : `共 ${total.value} 张图像，显示上限 ${shown} 张`;
+  const base = isSimilarity
+    ? `相似图像 ${shown} 张`
+    : hasFilter
+      ? `找到 ${total.value} 张匹配图像，显示前 ${shown} 张`
+      : `共 ${total.value} 张图像，显示上限 ${shown} 张`;
   const excluded =
     excludedCount.value > 0 ? ` · 已排除当前提示词已关联的 ${excludedCount.value} 张` : "";
   const unavailable =
-    pickerSort.value !== "default" && vecUnavailable.value > 0
+    isSimilarity && vecUnavailable.value > 0
       ? ` · 有 ${vecUnavailable.value} 张图像的向量不可用，可在「相似度设置」处理`
       : "";
   return `${base} · 已选 ${selectedIds.value.size} 张${excluded}${unavailable}`;
@@ -227,6 +233,8 @@ async function loadTags() {
 // 搜索/标签变化时重查（对齐 pm 的输入即查；防抖避免逐键请求）
 let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 watch([keyword, selectedTag], () => {
+  // 筛选条件改变：立即清空选中，不等防抖重载
+  selectedIds.value = new Set();
   clearTimeout(reloadTimer);
   pickerSort.value = "default";
   similarityRows.value = [];
