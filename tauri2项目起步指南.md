@@ -94,6 +94,11 @@ specta-typescript = "=0.0.12"
 
 三者版本要一起改、一起测（rc 阶段 API 仍在动，paim 用 `=` 精确锁死）。
 
+前端类型检查依赖（paim 当前）：
+
+- `typescript`: `6.0.3`
+- `vue-tsc`: `3.3.13`（与 TS 大版本同代升级，升级后先跑 `pnpm check`）
+
 ### 4.2 单一声明表 + 运行期导出（paim 路线）
 
 `lib.rs` 里一个 `specta_builder()` 同时供 `invoke_handler` 与 TS 导出使用，命令/事件只在 `collect_commands!` / `collect_events!` 里登记一次：
