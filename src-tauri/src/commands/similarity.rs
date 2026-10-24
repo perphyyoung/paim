@@ -247,6 +247,16 @@ pub async fn index_image_embeddings(
     mode: IndexMode,
     concurrency: usize,
 ) -> Result<SimilarityIndexSummary, AppError> {
+    // 两类索引共用同一个 embedding 服务：提示词索引在跑时不允许再启动图像索引
+    if app
+        .state::<PromptIndexState>()
+        .indexing
+        .load(Ordering::SeqCst)
+    {
+        return Err(AppError::Message(
+            "提示词索引正在运行，请等待完成或取消".into(),
+        ));
+    }
     let state = app.state::<SimilarityState>();
     if state.indexing.swap(true, Ordering::SeqCst) {
         return Err(AppError::Message("索引任务已在运行".into()));
@@ -738,6 +748,16 @@ pub async fn index_prompt_embeddings(
     mode: IndexMode,
     concurrency: usize,
 ) -> Result<SimilarityIndexSummary, AppError> {
+    // 反向互斥：图像索引在跑时不允许再启动提示词索引
+    if app
+        .state::<SimilarityState>()
+        .indexing
+        .load(Ordering::SeqCst)
+    {
+        return Err(AppError::Message(
+            "图像索引正在运行，请等待完成或取消".into(),
+        ));
+    }
     let state = app.state::<PromptIndexState>();
     if state.indexing.swap(true, Ordering::SeqCst) {
         return Err(AppError::Message("提示词索引任务已在运行".into()));

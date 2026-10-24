@@ -3,7 +3,7 @@
 // 图像与提示词共用本组件，差异（命令 / 事件 / 文案）由父组件按 `api` 注入。
 // 进度既可订阅也可查询：事件不重放，离开本页期间推送的增量会丢，挂载时用快照命令取回后端任务状态，
 // 从而恢复进度条与 ETA；三个动作都先弹确认框（全量 / 清空标 danger），避免误点造成长时间任务或向量丢失。
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { useConfirm } from "@/components/useConfirm";
@@ -11,7 +11,10 @@ import { useToast } from "@/components/useToast";
 import type { IndexPanelApi, IndexProgressLike, IndexStatusLike } from "./indexPanel";
 import { markPageStale } from "@/utils/crossPageCache";
 
-const props = defineProps<{ api: IndexPanelApi }>();
+const props = withDefaults(defineProps<{ api: IndexPanelApi; peerRunning?: boolean }>(), {
+  peerRunning: false,
+});
+const emit = defineEmits<{ (e: "update:running", v: boolean): void }>();
 
 const { showToast } = useToast();
 const {
@@ -29,6 +32,7 @@ const status = ref<IndexStatusLike | null>(null);
 /// 是否有索引任务在跑（由后端快照 / 事件同步，不依赖本组件是否一直挂载）
 const running = ref(false);
 const progress = ref<IndexProgressLike | null>(null);
+watch(running, (v) => emit("update:running", v), { immediate: true });
 
 let unlisten: UnlistenFn | null = null;
 /// 索引进行中每 5s 刷新一次本地状态（已建立向量数），结束时停掉
@@ -131,7 +135,7 @@ const multiDim = computed(() => (status.value?.dims.length ?? 0) > 1);
 
 /// 增量索引：先确认（仅统计待处理条数；无待处理时直接提示，不弹框）
 function requestIncremental() {
-  if (running.value) return;
+  if (running.value || props.peerRunning) return;
   const s = status.value;
   // 多维度并存时增量会一开跑就因维度不一致而终止（后端防线），这里先拦下。
   // 处置指引（清旧维度 → 增量索引）不在此复述：它由下方提示块给出，与后端 `dim_conflict_reason`
@@ -154,7 +158,7 @@ function requestIncremental() {
 
 /// 全量重建：会先清空已有向量，属破坏性操作
 function requestFullRebuild() {
-  if (running.value) return;
+  if (running.value || props.peerRunning) return;
   const s = status.value;
   ask(
     `将先清空现有 ${s?.indexed ?? 0} 条向量，再为全部 ${s?.total ?? 0} ${props.api.unit}${props.api.label}重新生成；期间相似检索结果不完整。` +
@@ -166,7 +170,7 @@ function requestFullRebuild() {
 
 /// 清空：删除全部向量（不影响原始数据）
 function requestClear() {
-  if (running.value) return;
+  if (running.value || props.peerRunning) return;
   const n = status.value?.indexed ?? 0;
   if (n <= 0) {
     showToast("当前没有向量", "info");
@@ -180,7 +184,7 @@ function requestClear() {
 }
 
 async function runIndex(mode: "Incremental" | "Full") {
-  if (running.value) return;
+  if (running.value || props.peerRunning) return;
   running.value = true;
   progress.value = {
     running: true,
@@ -248,7 +252,7 @@ async function clearIndex() {
 
 /// 按维度清空：换模型后只清旧维度再增量，比整表全量重建省得多（属破坏性操作，走 danger 确认）
 function requestClearDim(dim: number, count: number) {
-  if (running.value) return;
+  if (running.value || props.peerRunning) return;
   ask(
     `将删除维度 ${dim} 的 ${count} ${props.api.unit}向量（${props.api.clearHint}），其余维度的向量不受影响。` +
       `清掉后点「增量索引」即可用当前模型重建这些${props.api.label}。`,
@@ -288,9 +292,9 @@ async function clearDim(dim: number) {
       <button
         type="button"
         class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
-        :disabled="running"
+        :disabled="running || peerRunning"
         :aria-label="`${api.title}：增量索引`"
-        title="增量索引"
+        :title="peerRunning ? '另一类索引正在运行，完成或取消后再操作' : '增量索引'"
         @click="requestIncremental"
       >
         增量索引
@@ -298,9 +302,9 @@ async function clearDim(dim: number) {
       <button
         type="button"
         class="rounded border px-3 py-1 text-sm transition-colors border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
-        :disabled="running"
+        :disabled="running || peerRunning"
         :aria-label="`${api.title}：全量重建`"
-        title="全量重建"
+        :title="peerRunning ? '另一类索引正在运行，完成或取消后再操作' : '全量重建'"
         @click="requestFullRebuild"
       >
         全量重建
@@ -308,9 +312,9 @@ async function clearDim(dim: number) {
       <button
         type="button"
         class="rounded border px-3 py-1 text-sm text-gray-200 transition-colors border-gray-600 hover:bg-gray-700 disabled:opacity-50"
-        :disabled="running"
+        :disabled="running || peerRunning"
         :aria-label="`${api.title}：清空索引`"
-        title="清空索引"
+        :title="peerRunning ? '另一类索引正在运行，完成或取消后再操作' : '清空索引'"
         @click="requestClear"
       >
         清空
@@ -334,7 +338,7 @@ async function clearDim(dim: number) {
         :key="d.dim"
         type="button"
         class="rounded border px-2 py-0.5 transition-colors border-red-500/60 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-        :disabled="running"
+        :disabled="running || peerRunning"
         :aria-label="`${api.title}：清空维度 ${d.dim} 的向量`"
         :title="`清空维度 ${d.dim}`"
         @click="requestClearDim(d.dim, d.count)"

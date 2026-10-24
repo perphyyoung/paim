@@ -13,6 +13,9 @@ import { CONCURRENCY_RANGE, DEFAULT_BASE_URL, useSimilaritySettings } from "./se
 
 const { showToast } = useToast();
 const { baseUrl, concurrency, setBaseUrl, setConcurrency } = useSimilaritySettings("image");
+// 两类索引互斥：一方运行中，另一方的动作按钮禁用
+const imageRunning = ref(false);
+const promptRunning = ref(false);
 
 const serviceText = ref("");
 const testing = ref(false);
@@ -129,13 +132,21 @@ const promptApi: IndexPanelApi = {
 
   <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">图像相似度</h3>
   <dl class="divide-y divide-gray-700">
-    <SimilarityIndexPanel :api="imageApi" />
+    <SimilarityIndexPanel
+      :api="imageApi"
+      :peer-running="promptRunning"
+      @update:running="imageRunning = $event"
+    />
   </dl>
 
   <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
     提示词相似度
   </h3>
   <dl class="divide-y divide-gray-700">
-    <SimilarityIndexPanel :api="promptApi" />
+    <SimilarityIndexPanel
+      :api="promptApi"
+      :peer-running="imageRunning"
+      @update:running="promptRunning = $event"
+    />
   </dl>
 </template>
