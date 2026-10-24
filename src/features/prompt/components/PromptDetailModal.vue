@@ -20,7 +20,6 @@ import TagChip from "@/components/TagChip.vue";
 import VecStatusIcon from "@/components/VecStatusIcon.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
-import { useSimilaritySettings } from "@/features/similarity/settings";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
 import { markPageStale } from "@/utils/crossPageCache";
 import { log } from "@/utils/logger";
@@ -633,7 +632,6 @@ async function setAsFirst() {
 // 查询向量取自当前提示词的 content（只算内容）；参数用提示词自己的一套偏好。
 // 结果页是**页面级全局单例**（只保留最新一个，由页面渲染，见 useNestedDetails）：这里只提交
 // 查询源快照；点结果开的详情由页面转 `openNested`，结果页保留在其下（只显式关闭才收起）
-const { enabled: similarityEnabled } = useSimilaritySettings("prompt");
 /// 内容区右键坐标（与关联图像右键各一份状态，互不影响）
 const contentCtxMenu = ref<{ x: number; y: number } | null>(null);
 function openContentCtxMenu(e: MouseEvent) {
@@ -1222,7 +1220,6 @@ async function onPickerImported() {
     @close="closeContentCtxMenu"
   >
     <button
-      v-if="similarityEnabled"
       type="button"
       class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
       @click="openSimilarSearch"

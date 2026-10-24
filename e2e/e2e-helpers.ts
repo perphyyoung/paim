@@ -587,7 +587,7 @@ export async function closeSimilarResult(page: Page): Promise<void> {
 }
 
 /// 从图像详情打开相似结果页：右键大图 → 菜单项「搜索相似的图像和提示词」，返回结果页定位器。
-/// 入口受设置页「启用图像相似度检索」开关控制，关掉时该菜单项不渲染。
+/// 入口始终渲染（相似度检索始终启用）。
 export async function openSimilarSearchFromImageDetail(
   page: Page,
   detail: Locator,

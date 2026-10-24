@@ -12,9 +12,7 @@ import type { IndexPanelApi } from "./indexPanel";
 import { CONCURRENCY_RANGE, DEFAULT_BASE_URL, useSimilaritySettings } from "./settings";
 
 const { showToast } = useToast();
-const { baseUrl, enabled, concurrency, setBaseUrl, setEnabled, setConcurrency } =
-  useSimilaritySettings("image");
-const { enabled: promptEnabled, setEnabled: setPromptEnabled } = useSimilaritySettings("prompt");
+const { baseUrl, concurrency, setBaseUrl, setConcurrency } = useSimilaritySettings("image");
 
 const serviceText = ref("");
 const testing = ref(false);
@@ -131,22 +129,6 @@ const promptApi: IndexPanelApi = {
 
   <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">图像相似度</h3>
   <dl class="divide-y divide-gray-700">
-    <div class="flex items-center justify-between gap-3 py-3">
-      <div class="min-w-0">
-        <dt class="text-gray-400">启用相似度检索</dt>
-        <dd class="text-sm text-gray-500">
-          在图像详情弹窗的右键菜单提供「搜索相似的图像和提示词」
-        </dd>
-      </div>
-      <input
-        type="checkbox"
-        class="h-4 w-4 shrink-0 accent-blue-600"
-        :checked="enabled"
-        aria-label="启用图像相似度检索"
-        @change="setEnabled(($event.target as HTMLInputElement).checked)"
-      />
-    </div>
-
     <SimilarityIndexPanel :api="imageApi" />
   </dl>
 
@@ -154,22 +136,6 @@ const promptApi: IndexPanelApi = {
     提示词相似度
   </h3>
   <dl class="divide-y divide-gray-700">
-    <div class="flex items-center justify-between gap-3 py-3">
-      <div class="min-w-0">
-        <dt class="text-gray-400">启用相似度检索</dt>
-        <dd class="text-sm text-gray-500">
-          在提示词详情（非编辑态）的「提示词内容」右键菜单提供「搜索相似的图像和提示词」
-        </dd>
-      </div>
-      <input
-        type="checkbox"
-        class="h-4 w-4 shrink-0 accent-blue-600"
-        :checked="promptEnabled"
-        aria-label="启用提示词相似度检索"
-        @change="setPromptEnabled(($event.target as HTMLInputElement).checked)"
-      />
-    </div>
-
     <SimilarityIndexPanel :api="promptApi" />
   </dl>
 </template>

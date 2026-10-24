@@ -164,7 +164,7 @@ node scripts/bench-data.mjs clean --dir paim-data.压测
 
 数据目录下 `paim.db`，启动时自动建表（与 prompt-manager 同构，便于导入其全量备份）：
 
-- `prompts` / `images` — 提示词、图像（软删除回收站、收藏、备注）；两者各有一个 `vec` 列存相似度向量（未启用相似度检索时恒为 NULL）
+- `prompts` / `images` — 提示词、图像（软删除回收站、收藏、备注）；两者各有一个 `vec` 列存相似度向量（相似度检索始终可用，按索引结果写入）
 - `prompt_tag_groups` / `prompt_tags` / `prompt_tag_relations` — 提示词标签体系
 - `image_tag_groups` / `image_tags` / `image_tag_relations` — 图像标签体系
 - `prompt_image_relations` — 提示词 ↔ 图像关联（带排序）

@@ -30,7 +30,6 @@ import {
   relatedPromptsCache,
   resolveImageSrc,
 } from "@/features/image/api/detailCache";
-import { useSimilaritySettings } from "@/features/similarity/settings";
 
 const props = defineProps<{
   open: boolean;
@@ -91,7 +90,6 @@ function closeCtxMenu() {
 // 搜索相似的图像和提示词：入口只在右键菜单（设置里关闭相似度时隐藏该项）。
 // 结果页是**页面级全局单例**（只保留最新一个，由页面渲染，见 useNestedDetails）：这里只提交
 // 查询源快照；点结果开的详情由页面转 `openNested`，结果页保留在其下（只显式关闭才收起）
-const { enabled: similarityEnabled } = useSimilaritySettings();
 function openSimilar() {
   closeCtxMenu();
   nested.openSimilar({
@@ -1042,7 +1040,6 @@ const fmtLocal = formatLocalTime;
       压缩并替换 PNG 图像
     </button>
     <button
-      v-if="similarityEnabled"
       type="button"
       class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
       @click="openSimilar"

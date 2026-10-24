@@ -4,7 +4,7 @@
  *
  * 参数分两级：
  * - **服务级**（服务地址、索引并发）：图像与提示词共用 —— 同一个 embedding 服务、同一套索引流程；
- * - **类别级**（是否启用、返回条数、相似度阈值）：各自独立保存 —— 图像向量与文本向量的余弦分布不同，
+ * - **类别级**（返回条数、相似度阈值）：各自独立保存 —— 图像向量与文本向量的余弦分布不同，
  *   共用一套阈值会互相干扰（同内容图像 ≈0.99、文本 ≈0.7 量级，无关内容都在 ≈0.2）。
  */
 import { ref } from "vue";
@@ -15,12 +15,10 @@ const CONCURRENCY_KEY = "image.similarity.concurrency";
 /** 各类别自己的开关与检索参数。 */
 const KEYS = {
   image: {
-    enabled: "image.similarity.enabled",
     limit: "image.similarity.limit",
     minScore: "image.similarity.minScore",
   },
   prompt: {
-    enabled: "prompt.similarity.enabled",
     limit: "prompt.similarity.limit",
     minScore: "prompt.similarity.minScore",
   },
@@ -69,10 +67,6 @@ const concurrency = ref(
   readNumber(CONCURRENCY_KEY, DEFAULT_CONCURRENCY, CONCURRENCY_RANGE.min, CONCURRENCY_RANGE.max),
 );
 
-const enabled = {
-  image: ref(read(KEYS.image.enabled, "1") === "1"),
-  prompt: ref(read(KEYS.prompt.enabled, "1") === "1"),
-};
 const limit = {
   image: ref(readNumber(KEYS.image.limit, DEFAULT_LIMIT, LIMIT_RANGE.min, LIMIT_RANGE.max)),
   prompt: ref(readNumber(KEYS.prompt.limit, DEFAULT_LIMIT, LIMIT_RANGE.min, LIMIT_RANGE.max)),
@@ -111,13 +105,8 @@ export function useSimilaritySettings(kind: SimilarityKind = "image") {
     concurrency,
     setBaseUrl,
     setConcurrency,
-    enabled: enabled[kind],
     limit: limit[kind],
     minScore: minScore[kind],
-    setEnabled(v: boolean) {
-      enabled[kind].value = v;
-      write(keys.enabled, v ? "1" : "0");
-    },
     setLimit(v: number) {
       const n = Number.isFinite(v) ? Math.round(v) : DEFAULT_LIMIT;
       limit[kind].value = Math.min(LIMIT_RANGE.max, Math.max(LIMIT_RANGE.min, n || DEFAULT_LIMIT));
