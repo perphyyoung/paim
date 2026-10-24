@@ -891,9 +891,12 @@ async function onPickerImported() {
                 >
                   ✕
                 </button>
+                <!-- 相似检索：hover 卡片才显示（与图像详情大图同一手法）。
+                     用 opacity 而不是同卡片另两个按钮的 hidden：保住 tab 序，键盘 Tab 到时显形；
+                     pointer-events 门控让不可见时点不中，hover 卡片后才可点 -->
                 <button
                   type="button"
-                  class="absolute bottom-1 right-1 z-[2] flex h-6 w-6 items-center justify-center rounded bg-black/60 text-gray-200 transition-colors hover:bg-black/80"
+                  class="pointer-events-none absolute bottom-1 right-1 z-[2] flex h-6 w-6 items-center justify-center rounded bg-black/60 text-gray-200 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-black/80 focus-visible:opacity-100"
                   :title="`以图像 ${img.file_name} 搜索相似项`"
                   :aria-label="`以图像 ${img.file_name} 搜索相似项`"
                   @click.stop="openSimilarFromImage(img)"

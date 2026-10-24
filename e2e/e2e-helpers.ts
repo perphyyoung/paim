@@ -608,6 +608,20 @@ export async function openSimilarSearchFromPromptDetail(
   return expectSimilarResultModal(page);
 }
 
+/// 从提示词详情「关联图右下角」打开相似结果页（以该图检索）。
+/// 图标 hover 卡片才显示，故先 hover 缩略图再点（与「查看图像详情」同一前提）。
+export async function openSimilarSearchFromPromptRelatedImage(
+  page: Page,
+  detail: Locator,
+): Promise<Locator> {
+  await detail.getByRole("img").first().hover();
+  await detail
+    .getByRole("button", { name: /^以图像 .* 搜索相似项$/ })
+    .first()
+    .click();
+  return expectSimilarResultModal(page);
+}
+
 /// 结果页「搜索源」缩略图必须真的解码出图（naturalWidth > 0）：路径坏掉的 `<img>` 在 Playwright
 /// 眼里同样「可见」，只有解码结果能区分「加载出来」与「破图」。各入口的缩略图 URL 由各自那套规则取
 /// （调用方给或结果页自取），这里只校验「显示正常」，不关心实现。

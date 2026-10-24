@@ -34,6 +34,7 @@ import {
   openPromptDetail,
   openSimilarSearchFromImageDetail,
   openSimilarSearchFromPromptDetail,
+  openSimilarSearchFromPromptRelatedImage,
   resetBothPanesAndRequery,
   similarResultModal,
   similarResultPane,
@@ -319,13 +320,8 @@ test("提示词详情关联图右下角：以该图检索，结果页源为该�
 
   await gotoPromptsPage(page);
   const detail = await openPromptDetail(page, source);
-  // 两张关联图同名（e2e-upload.png），取第一张的右下角入口
-  const entry = detail.getByRole("button", { name: "以图像 e2e-upload.png 搜索相似项" }).first();
-  await expect(entry).toBeVisible();
-  await entry.click();
-
-  const modal = similarResultModal(page);
-  await expect(modal).toBeVisible({ timeout: 5_000 });
+  // 右下角图标 hover 卡片才显示：helper 内先 hover 缩略图，再点第一张的入口
+  const modal = await openSimilarSearchFromPromptRelatedImage(page, detail);
   // 源行显示所点图像的文件名（区别于内容入口的提示词内容）
   await expect(modal.getByText("e2e-upload.png").first()).toBeVisible();
   e2eLog.info("[step] 关联图入口：结果页源为该图像");
@@ -364,10 +360,10 @@ test("结果页源缩略图：四个入口都显示正常", async ({ page, app }
   await closeSimilarResult(page);
   e2eLog.info("[step] 提示词源（提示词详情内容）：源缩略图正常");
 
-  // ④ 提示词详情关联图右下角（图像源：缩略图来自关联图卡片，本用例只关联一张图）
-  await promptDetail.getByRole("button", { name: "以图像 e2e-upload.png 搜索相似项" }).click();
-  await expect(similarResultModal(page)).toBeVisible({ timeout: 5_000 });
-  await expectSimilarSourceThumbLoaded(similarResultModal(page));
+  // ④ 提示词详情关联图右下角（图像源：缩略图来自关联图卡片，本用例只关联一张图；图标 hover 才显示）
+  await expectSimilarSourceThumbLoaded(
+    await openSimilarSearchFromPromptRelatedImage(page, promptDetail),
+  );
   e2eLog.info("[step] 图像源（提示词详情关联图）：源缩略图正常");
 
   await closeSimilarResult(page);
