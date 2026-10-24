@@ -622,7 +622,7 @@ test("合并提示词后：图像详情的关联提示词应换成合并后的�
   // 提示词详情 → 相似搜索 → 右键另一条结果 → 合并
   await gotoPromptsPage(page);
   const pd = await openPromptDetail(page, source);
-  const modal = await openSimilarSearchFromPromptDetail(page, pd, source);
+  const modal = await openSimilarSearchFromPromptDetail(page, pd);
   const promptPane = similarResultPane(modal, "prompt");
   await lowerThresholdToZeroAndRequery(promptPane);
   await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });

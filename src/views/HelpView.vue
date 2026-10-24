@@ -131,7 +131,8 @@ const FEATURES: FeatureGroup[] = [
     rows: [
       {
         name: "相似度检索",
-        detail: "依赖本地 embedding 服务；在图像或提示词详情右键发起，支持跨模态",
+        detail:
+          "依赖本地 embedding 服务；两个详情内的相似度图标（内容右上角 / 图像右下角）发起，支持跨模态",
       },
       {
         name: "结果页两栏",

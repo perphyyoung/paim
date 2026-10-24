@@ -58,7 +58,7 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   expect(sourceId && otherId, "两条前置提示词都应在库").toBeTruthy();
 
   const detail = await openPromptDetail(page, source);
-  const modal = await openSimilarSearchFromPromptDetail(page, detail, source);
+  const modal = await openSimilarSearchFromPromptDetail(page, detail);
   const promptPane = similarResultPane(modal, "prompt");
   await lowerThresholdToZeroAndRequery(promptPane);
   await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });

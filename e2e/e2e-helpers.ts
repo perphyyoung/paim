@@ -586,32 +586,30 @@ export async function closeSimilarResult(page: Page): Promise<void> {
   await expect(modal).toBeHidden({ timeout: 5_000 });
 }
 
-/// 从图像详情打开相似结果页：右键大图 → 菜单项「搜索相似的图像和提示词」，返回结果页定位器。
-/// 入口始终渲染（相似度检索始终启用）。
+/// 从图像详情打开相似结果页：hover 大图 → 点右下角「以图像 … 搜索相似项」图标，返回结果页定位器。
+/// 入口始终渲染（相似度检索始终启用），但 hover 才可见。
 export async function openSimilarSearchFromImageDetail(
   page: Page,
   detail: Locator,
 ): Promise<Locator> {
-  // 点大图而不是文字：图像详情的右键处理绑在大图区域（与 03 的「替换图像」同一入口）。
-  // 详情内只有一个内容图（两个 v-if 分支互斥），按 img 角色即可唯一定位
-  await detail.getByRole("img").click({ button: "right" });
+  // 先 hover 大图让右下角图标显形；详情内只有一个内容图（两个 v-if 分支互斥），按 img 角色即可唯一定位。
+  // 图像详情内只有这一个带「以图像 …」的按钮（右上角的「替换图像」等走右键菜单，不撞名）
+  await detail.getByRole("img").hover();
+  await detail.getByRole("button", { name: /^以图像 .* 搜索相似项$/ }).click();
   return expectSimilarResultModal(page);
 }
 
-/// 从提示词详情打开相似结果页：右键**非编辑态**的提示词内容 → 同一菜单项。
-/// 编辑态不绑定右键（保留浏览器原生复制 / 粘贴），故用例不要先进入编辑态。
+/// 从提示词详情打开相似结果页：点**非编辑态**内容右上角的相似检索图标。
 export async function openSimilarSearchFromPromptDetail(
   page: Page,
   detail: Locator,
-  content: string,
 ): Promise<Locator> {
-  await detail.getByText(content).first().click({ button: "right" });
+  await detail.getByRole("button", { name: "以提示词内容搜索相似项" }).click();
   return expectSimilarResultModal(page);
 }
 
-/// 点菜单项并等结果页出现（两个入口共用）
+/// 点入口按钮后等结果页出现（内容入口 / 关联图入口共用）
 async function expectSimilarResultModal(page: Page): Promise<Locator> {
-  await page.getByRole("button", { name: "搜索相似的图像和提示词" }).click();
   const modal = similarResultModal(page);
   await expect(modal).toBeVisible({ timeout: 5_000 });
   return modal;

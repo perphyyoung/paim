@@ -18,6 +18,7 @@ import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import VecStatusIcon from "@/components/VecStatusIcon.vue";
+import SimilarityIcon from "@/components/SimilarityIcon.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { formatLocalTime } from "@/utils/date";
@@ -78,7 +79,7 @@ const {
   initBy0basedIndex,
 } = useDetailSnapshot<ImageCard>(() => props.images, toRef(props, "order"));
 
-// 右键图像区：弹出「打开本地保存位置」「替换图像」「搜索相似的图像和提示词」菜单
+// 右键图像区：弹出「打开本地保存位置」「替换图像」「压缩并替换 PNG」菜单（相似检索已移到图标入口）
 const ctxMenu = ref<{ x: number; y: number } | null>(null);
 function openCtxMenu(e: MouseEvent) {
   ctxMenu.value = { x: e.clientX, y: e.clientY };
@@ -87,7 +88,7 @@ function closeCtxMenu() {
   ctxMenu.value = null;
 }
 
-// 搜索相似的图像和提示词：入口只在右键菜单（设置里关闭相似度时隐藏该项）。
+// 搜索相似的图像和提示词：入口在大图右下角（hover）与提示词内容右上角。
 // 结果页是**页面级全局单例**（只保留最新一个，由页面渲染，见 useNestedDetails）：这里只提交
 // 查询源快照；点结果开的详情由页面转 `openNested`，结果页保留在其下（只显式关闭才收起）
 function openSimilar() {
@@ -98,6 +99,18 @@ function openSimilar() {
     sourceName: currentPrompt.value?.content ?? current.value?.file_name,
     sourceTextKind: currentPrompt.value ? "content" : "name",
     sourceThumb: props.thumbs[currentId.value],
+  });
+}
+
+/// 以当前选中的关联提示词内容为起点检索
+function openSimilarFromPrompt() {
+  const p = currentPrompt.value;
+  if (!p) return;
+  nested.openSimilar({
+    sourceKind: "Prompt",
+    sourceId: p.id,
+    sourceName: p.content,
+    sourceTextKind: "content",
   });
 }
 async function openSavedLocation() {
@@ -730,13 +743,25 @@ const fmtLocal = formatLocalTime;
               <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
                 提示词内容
               </div>
-              <button
-                type="button"
-                class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
-                @click="copyPromptContent"
-              >
-                复制
-              </button>
+              <div class="flex items-center gap-1">
+                <button
+                  v-if="currentPrompt"
+                  type="button"
+                  class="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
+                  title="以提示词内容搜索相似项"
+                  aria-label="以提示词内容搜索相似项"
+                  @click="openSimilarFromPrompt"
+                >
+                  <SimilarityIcon class="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
+                  @click="copyPromptContent"
+                >
+                  复制
+                </button>
+              </div>
             </div>
             <div class="mt-1 whitespace-pre-wrap text-[length:var(--fs-detail)] text-gray-200">
               <HighlightText :segments="fieldSegs.prompt_content" :active-index="activeMatch" />
@@ -776,9 +801,9 @@ const fmtLocal = formatLocalTime;
           </div>
         </div>
 
-        <!-- 中：图像显示（右键弹出「打开本地保存位置」菜单）；占 1/2，左右各 1/4 -->
+        <!-- 中：图像显示（右键弹出「打开本地保存位置 / 替换图像 / 压缩并替换 PNG」菜单）；占 1/2，左右各 1/4 -->
         <div
-          class="relative flex min-w-0 flex-[2_1_0%] items-center justify-center bg-gray-900"
+          class="group relative flex min-w-0 flex-[2_1_0%] items-center justify-center bg-gray-900"
           @contextmenu.prevent="openCtxMenu"
         >
           <img
@@ -796,6 +821,17 @@ const fmtLocal = formatLocalTime;
             @dblclick.stop="openFullscreen"
           />
           <p v-else class="text-sm text-gray-500">无图像</p>
+          <!-- 相似检索：大图右下角，hover 才显示（无图时没有可检索的源） -->
+          <button
+            v-if="current"
+            type="button"
+            class="absolute bottom-3 right-3 z-10 flex h-7 w-7 items-center justify-center rounded bg-black/60 text-gray-200 opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+            :title="`以图像 ${current?.file_name ?? ''} 搜索相似项`"
+            :aria-label="`以图像 ${current?.file_name ?? ''} 搜索相似项`"
+            @click.stop="openSimilar"
+          >
+            <SimilarityIcon class="h-4 w-4" />
+          </button>
           <!-- 导航 + 索引：图像区底部居中，与提示词详情共用组件 -->
           <div class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
             <NavAndIndex
@@ -1016,7 +1052,7 @@ const fmtLocal = formatLocalTime;
     </div>
   </Teleport>
 
-  <!-- 右键菜单：打开本地保存位置 / 替换图像 / 搜索相似的图像和提示词（设置里关掉相似度时隐藏入口） -->
+  <!-- 右键菜单：打开本地保存位置 / 替换图像 / 压缩并替换 PNG（相似检索已移到图标入口） -->
   <ContextMenu :open="!!ctxMenu" :x="ctxMenu?.x ?? 0" :y="ctxMenu?.y ?? 0" @close="closeCtxMenu">
     <button
       type="button"
@@ -1038,13 +1074,6 @@ const fmtLocal = formatLocalTime;
       @click="requestCompress"
     >
       压缩并替换 PNG 图像
-    </button>
-    <button
-      type="button"
-      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
-      @click="openSimilar"
-    >
-      搜索相似的图像和提示词
     </button>
   </ContextMenu>
 

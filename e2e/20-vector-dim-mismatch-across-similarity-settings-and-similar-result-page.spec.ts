@@ -172,7 +172,7 @@ test("检索结果页提醒：本表维度不一致的条目被排除时，对�
 
   await gotoPromptsPage(page);
   const detail = await openPromptDetail(page, content);
-  const modal = await openSimilarSearchFromPromptDetail(page, detail, content);
+  const modal = await openSimilarSearchFromPromptDetail(page, detail);
 
   // 左栏（相似图像）：维度不一致的条数随命中一起回传，单独一行提醒（空态时该提醒与「没有达到阈值」并存）
   const pane = similarResultPane(modal, "image");
@@ -202,7 +202,7 @@ test("检索结果页提醒：向量不可用（未建立或维度不一致）�
   await seedSimilarityVectors(page, "Prompt", await findPromptIdByContent(page, oldDim), OLD_DIM);
 
   const detail = await openPromptDetail(page, src);
-  const modal = await openSimilarSearchFromPromptDetail(page, detail, src);
+  const modal = await openSimilarSearchFromPromptDetail(page, detail);
   // 右栏（相似提示词）：两类条数随命中一起回传，与命中是否为空无关
   const pane = similarResultPane(modal, "prompt");
   // 合并为一条；数量受同文件累计数据影响，精确值由 Rust 单测覆盖，这里只验文案与去处

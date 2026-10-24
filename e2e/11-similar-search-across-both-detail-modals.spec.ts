@@ -2,8 +2,8 @@
  * 相似度检索的 e2e（CDP 连接真实应用，走真实后端与数据库）。
  *
  * 覆盖两条入口与一条核心交互：
- * - 图像详情右键「搜索相似的图像和提示词」→ 结果页（左相似图像 / 右相似提示词）；
- * - 提示词详情**非编辑态**的提示词内容右键 → 同一结果页；
+ * - 图像详情大图右下角图标（hover）→ 结果页（左相似图像 / 右相似提示词）；
+ * - 提示词详情**非编辑态**内容右上角图标 → 同一结果页；关联图右下角图标 → 以该图检索；
  * - 两栏的「阈值 / 重查」互相独立：降左栏只影响左栏，右栏结果保持（反之亦然）；
  * - 首行源文案：图像有关联提示词时显示提示词内容，提示词源显示提示词内容；
  * - 点结果：同类 / 跨模态结果都落嵌套槽，第 0 层原始详情不被替换（逐层关闭可回到出发点）；
@@ -50,7 +50,7 @@ function makeContentPair(tag: string): { source: string; other: string } {
   };
 }
 
-test("图像详情右键搜索：源文案取关联提示词 + 两栏独立重查 + 点提示词结果打开提示词详情", async ({
+test("图像详情大图图标搜索：源文案取关联提示词 + 两栏独立重查 + 点提示词结果打开提示词详情", async ({
   page,
   app,
 }) => {
@@ -109,7 +109,7 @@ test("图像详情右键搜索：源文案取关联提示词 + 两栏独立重�
   await clearSimilarityThresholds(page); // 阈值是持久化偏好，收尾还原（同 worker 其它 spec 共用 profile）
 });
 
-test("提示词详情内容右键搜索：跨模态命中图像并可打开图像详情", async ({ page, app }) => {
+test("提示词详情内容图标搜索：跨模态命中图像并可打开图像详情", async ({ page, app }) => {
   const { source, other } = makeContentPair("B");
   await uploadImageWithPrompt(page, source, app.mockImagePath);
   await uploadImageWithPrompt(page, other, app.mockImagePath);
@@ -118,7 +118,7 @@ test("提示词详情内容右键搜索：跨模态命中图像并可打开图�
   // 打开查询源那条提示词的详情（停在图像主页 → 先切提示词主页）
   await gotoPromptsPage(page);
   const detail = await openPromptDetail(page, source);
-  const modal = await openSimilarSearchFromPromptDetail(page, detail, source);
+  const modal = await openSimilarSearchFromPromptDetail(page, detail);
   await expect(modal.getByText(source, { exact: true }).first()).toBeVisible();
   e2eLog.info("[step] 结果页首行显示提示词内容");
 
@@ -148,10 +148,9 @@ test("提示词详情内容右键搜索：跨模态命中图像并可打开图�
 });
 
 // —— 嵌套详情的「槽位」模型：原始详情永不被替换，嵌套的图像/提示词各最多一个（模型见 docs/开发经验.md 第 5 节）——
-// 修复前：嵌套态（`is-nested`）的提示词详情内容右键**没有菜单项**（空盒子），且嵌套层缺 `@open-*` 接线，
-// 于是「在嵌套层里继续搜」这条路是死的。本用例把它钉住：菜单可用 + 两层槽位的收敛行为 +
+// 嵌套态的内容入口同样可用：两层槽位的收敛行为 +
 // 结果页是页面级单例（就地换源、不随宿主详情被替换而销毁、只能显式关闭）。
-test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底部详情不动、同类只替换不叠加）", async ({
+test("嵌套详情内的搜索：图标可见 + 结果落在本层槽位（底部详情不动、同类只替换不叠加）", async ({
   page,
   app,
 }) => {
@@ -177,11 +176,11 @@ test("嵌套详情内的搜索：右键可见 + 结果落在本层槽位（底�
   await expect(modal).toBeVisible();
   e2eLog.info("[step] 第 1 层：嵌套提示词详情已打开（结果页保留在下面）");
 
-  // ① 嵌套层的内容右键必须能用：修复前菜单项不存在，这一步会超时。
+  // ① 嵌套层的内容入口图标必须能用。
   //    再搜一次只**就地换源**（结果页是单例，不叠加第二个实例）
-  await openSimilarSearchFromPromptDetail(page, nestedPrompt, other);
+  await openSimilarSearchFromPromptDetail(page, nestedPrompt);
   await expect(similarResultModal(page)).toHaveCount(1);
-  e2eLog.info("[step] 嵌套提示词详情的内容右键可用（结果页就地换源，仍只有一个）");
+  e2eLog.info("[step] 嵌套提示词详情的内容图标可用（结果页就地换源，仍只有一个）");
 
   // ② 跨类结果（图像）→ 落在本层自己的嵌套图像槽：底部与第 1 层都保留（层数 2 + 1）
   await lowerThresholdToZeroAndRequery(similarResultPane(modal, "image"));
@@ -288,7 +287,7 @@ test("提示词原始详情点同类结果：相似提示词落槽（计数 2、
   await expect(bottom.getByText(source, { exact: true }).first()).toBeVisible();
 
   // 同类结果（右栏；已排除源自身，只剩另一条）→ 落嵌套提示词槽
-  const modal = await openSimilarSearchFromPromptDetail(page, bottom, source);
+  const modal = await openSimilarSearchFromPromptDetail(page, bottom);
   await lowerThresholdToZeroAndRequery(similarResultPane(modal, "prompt"));
   await similarResultPane(modal, "prompt").getByText(other, { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(2, { timeout: 5_000 });
@@ -308,5 +307,49 @@ test("提示词原始详情点同类结果：相似提示词落槽（计数 2、
   await closeSimilarResult(page);
   await closeDetail(bottom);
   e2eLog.info("[step] 关详情与结果页后回到原始提示词详情");
+  await clearSimilarityThresholds(page);
+});
+
+test("提示词详情关联图右下角：以该图检索，结果页源为该图", async ({ page, app }) => {
+  const { source, other } = makeContentPair("D");
+  await uploadImageWithPrompt(page, source, app.mockImagePath);
+  await uploadImageWithPrompt(page, other, app.mockImagePath);
+  await indexBothSimilarityKinds(page);
+
+  await gotoPromptsPage(page);
+  const detail = await openPromptDetail(page, source);
+  // 两张关联图同名（e2e-upload.png），取第一张的右下角入口
+  const entry = detail.getByRole("button", { name: "以图像 e2e-upload.png 搜索相似项" }).first();
+  await expect(entry).toBeVisible();
+  await entry.click();
+
+  const modal = similarResultModal(page);
+  await expect(modal).toBeVisible({ timeout: 5_000 });
+  // 源行显示所点图像的文件名（区别于内容入口的提示词内容）
+  await expect(modal.getByText("e2e-upload.png").first()).toBeVisible();
+  e2eLog.info("[step] 关联图入口：结果页源为该图像");
+
+  await closeSimilarResult(page);
+  await closeDetail(detail);
+  await clearSimilarityThresholds(page);
+});
+
+test("图像详情提示词内容图标：以提示词内容检索", async ({ page, app }) => {
+  const { source, other } = makeContentPair("E");
+  await uploadImageWithPrompt(page, source, app.mockImagePath);
+  await uploadImageWithPrompt(page, other, app.mockImagePath);
+  await indexBothSimilarityKinds(page);
+
+  const detail = await openImageDetail(page, source);
+  await detail.getByRole("button", { name: "以提示词内容搜索相似项" }).click();
+
+  const modal = similarResultModal(page);
+  await expect(modal).toBeVisible({ timeout: 5_000 });
+  // 源行显示提示词内容（区别于大图入口的文件名）
+  await expect(modal.getByText(source, { exact: true }).first()).toBeVisible();
+  e2eLog.info("[step] 图像详情提示词内容入口：结果页源为提示词内容");
+
+  await closeSimilarResult(page);
+  await closeDetail(detail);
   await clearSimilarityThresholds(page);
 });

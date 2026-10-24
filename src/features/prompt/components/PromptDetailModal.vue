@@ -18,6 +18,7 @@ import HighlightText from "@/components/HighlightText.vue";
 import NavAndIndex from "@/components/NavAndIndex.vue";
 import TagChip from "@/components/TagChip.vue";
 import VecStatusIcon from "@/components/VecStatusIcon.vue";
+import SimilarityIcon from "@/components/SimilarityIcon.vue";
 import ContextMenu from "@/components/ContextMenu.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import ImagePickerModal from "@/features/prompt/components/ImagePickerModal.vue";
@@ -628,25 +629,27 @@ async function setAsFirst() {
   }
 }
 
-// —— 搜索相似的图像和提示词（入口：非编辑态的「提示词内容」右键）——
+// —— 搜索相似的图像和提示词（入口：非编辑态内容右上角图标 / 关联图右下角图标）——
 // 查询向量取自当前提示词的 content（只算内容）；参数用提示词自己的一套偏好。
 // 结果页是**页面级全局单例**（只保留最新一个，由页面渲染，见 useNestedDetails）：这里只提交
 // 查询源快照；点结果开的详情由页面转 `openNested`，结果页保留在其下（只显式关闭才收起）
-/// 内容区右键坐标（与关联图像右键各一份状态，互不影响）
-const contentCtxMenu = ref<{ x: number; y: number } | null>(null);
-function openContentCtxMenu(e: MouseEvent) {
-  contentCtxMenu.value = { x: e.clientX, y: e.clientY };
-}
-function closeContentCtxMenu() {
-  contentCtxMenu.value = null;
-}
 function openSimilarSearch() {
-  closeContentCtxMenu();
   nested.openSimilar({
     sourceKind: "Prompt",
     sourceId: current.value?.id ?? "",
     sourceName: current.value?.content,
     sourceTextKind: "content",
+  });
+}
+
+/// 以某张关联图像为起点检索
+function openSimilarFromImage(img: RelatedImage) {
+  nested.openSimilar({
+    sourceKind: "Image",
+    sourceId: img.id,
+    sourceName: img.file_name,
+    sourceTextKind: "name",
+    sourceThumb: img.src,
   });
 }
 
@@ -889,6 +892,15 @@ async function onPickerImported() {
                 >
                   ✕
                 </button>
+                <button
+                  type="button"
+                  class="absolute bottom-1 right-1 z-[2] flex h-6 w-6 items-center justify-center rounded bg-black/60 text-gray-200 transition-colors hover:bg-black/80"
+                  :title="`以图像 ${img.file_name} 搜索相似项`"
+                  :aria-label="`以图像 ${img.file_name} 搜索相似项`"
+                  @click.stop="openSimilarFromImage(img)"
+                >
+                  <SimilarityIcon class="h-4 w-4" />
+                </button>
               </li>
             </ul>
           </div>
@@ -1040,6 +1052,16 @@ async function onPickerImported() {
                     规范化
                   </button>
                   <button
+                    v-if="!edit"
+                    type="button"
+                    class="flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
+                    title="以提示词内容搜索相似项"
+                    aria-label="以提示词内容搜索相似项"
+                    @click="openSimilarSearch"
+                  >
+                    <SimilarityIcon class="h-4 w-4" />
+                  </button>
+                  <button
                     type="button"
                     class="rounded px-2 py-0.5 text-xs transition-colors text-gray-400 hover:bg-gray-700"
                     @click="copyContent"
@@ -1059,7 +1081,6 @@ async function onPickerImported() {
               <div
                 v-else
                 class="whitespace-pre-wrap text-[length:var(--fs-detail)] leading-relaxed text-gray-200"
-                @contextmenu.prevent="openContentCtxMenu($event)"
               >
                 <HighlightText :segments="fieldSegs.content" :active-index="activeMatch" />
               </div>
@@ -1209,24 +1230,6 @@ async function onPickerImported() {
 
   <!-- 相似结果页（左图像 / 右提示词）由页面统一渲染：它是页面级全局单例（只保留最新一个），
        渲染在页面顶层，宿主详情关掉也不影响它；槽位模型见 docs/开发经验.md 第 5 节 -->
-
-  <!-- 右键菜单：提示词内容 → 搜索相似的图像和提示词（设置里可关闭）。
-       嵌套态同样可用：结果跳转已收敛为「替换本层槽位 / 上抛给宿主替换其槽位」，不会越点越多
-       （嵌套详情的槽位模型见 docs/开发经验.md 第 5 节） -->
-  <ContextMenu
-    :open="!!contentCtxMenu"
-    :x="contentCtxMenu?.x ?? 0"
-    :y="contentCtxMenu?.y ?? 0"
-    @close="closeContentCtxMenu"
-  >
-    <button
-      type="button"
-      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
-      @click="openSimilarSearch"
-    >
-      搜索相似的图像和提示词
-    </button>
-  </ContextMenu>
 
   <!-- 关联图像区域最大化：拖拽排序（z=56，夹在详情与详情内的子弹窗之间） -->
   <div
