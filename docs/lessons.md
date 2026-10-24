@@ -39,6 +39,7 @@
 | 33 | 对侧详情停在旧快照（删除态 / 改了标签文案都要重开才更新） | 缓存的键是**对侧实体 id**，其失效点不止「关系变化」：后端按 `is_deleted` 过滤后才返回、对侧字段又直接显示在本侧 —— 删除态与改实体两类变化都改变结果，但都不碰关联表、没人通知缓存；受影响的对侧条目无法精确枚举（只能整池 clear）。收口到 views 层单模块 `src/views/detailEntityInvalidation.ts`（成功侧写法见 开发经验.md 第 8 节）。 |
 | 34 | e2e 按角色取图像，撞上同为 `role="img"` 的索引状态图标 | 同一个 `role` 被两种语义不同的元素共用时，**基于角色的定位与计数都会被污染**：`VecStatusIcon`（`<span role="img" aria-label=…>`）与内容图共用 `img` 角色 → 点击类报 strict mode、计数类比预期多 1（更隐蔽）。修法：给图标换更贴切的 `role="note"`（`aria-label` 仍在），e2e 图标断言改 `getByRole("note", { name })`。 |
 | 35 | 非法正则把列表拖进重试风暴 | 恒失败的块必须有「放弃」标记，否则 `ensureRange` 每帧重新拉起（10ms 一次）；用户输入的非法正则优先退化为空结果，而不是沿 IPC 抛错误路径。 |
+| 36 | 相似结果页首行缩略图破图（只有「提示词详情关联图」入口） | 四个入口原先有三种口径（传 asset URL / 传裸磁盘路径 / 不传由结果页自取），裸路径那条把 `D:\…` 当 `<img src>` 直接破图。修法：全部只传 id，两侧取图命令同形（`get_image_thumbs` / `get_prompt_thumbs`）由 `resolveThumbUrls` 统一解析（见 开发经验.md 第 4 节）；破图在 Playwright 里也算「可见」，断言必须看 `naturalWidth > 0`。 |
 
 ---
 
@@ -1095,3 +1096,31 @@ Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` �
 
 - 任何「按可见区自动补块」的加载器都必须有**失败终止条件**（attempts / abandoned），否则一个恒失败的请求会被渲染循环放大成风暴。
 - 用户输入可以直接驱动昂贵操作（全表正则）时，优先让「输入非法」退化为正常业务结果（空集），而不是错误路径。
+
+## 36. 相似结果页首行缩略图破图：把磁盘路径当 `<img src>`，而且只有一个入口坏
+
+### 现象
+
+从「提示词详情 → 关联图右下角图标」进入相似结果页，首行搜索源缩略图是破图（48px 位置只有破图标 / 灰框）；同一张图在提示词详情的关联图列表、图像详情里都显示正常。另外三个入口（图像详情大图、图像详情提示词内容、提示词详情内容）全正常。
+
+### 根因
+
+- 后端 `list_related_images` 返回的 `RelatedImage.src` 是 `data_path(data_dir, relative_path)` 的**磁盘绝对路径**（Windows 反斜杠）；详情渲染时靠 `absolutePathToAssetUrl` 转成 WebView URL 才可用。
+- 关联图入口发起检索时把 `img.src` 原样塞进结果页的 `sourceThumb`，结果页直接 `<img :src="sourceThumb">` → 浏览器把它当无效 URL，解码失败。
+- 另外三个入口：图像详情传的是主页那份 `thumbs`（已转好的 asset URL），两个提示词源不传、由结果页按 id 自取 → 只有这一条路径坏；结果页里 Image 源的「自己取」分支也因此长期没被执行过。
+
+### 为什么难发现
+
+- 破图在 Playwright 眼里同样是**可见**元素，原用例只断言了首行文案（文件名），断不到图；
+- 四个入口只有一个坏，手工点其它入口全绿时极易判定「功能正常」；
+- 缩略图只有 48px，破图在视觉上像「还没加载完」。
+
+### 修法与验证
+
+- 收口成「只传 id」：删掉 `SimilarQuery.sourceThumb` 与结果页的 `sourceThumb` prop / 二选一逻辑，两个详情都不再传图。取图命令做成两侧同形（新增 `get_image_thumbs`，与 `get_prompt_thumbs` 同签名，都返回 `thumbnail_path` 原值），再由 `src/utils/thumbUrls.ts` 的 `resolveThumbUrls(kind, ids)` 统一「取相对路径 → 缺图自愈 → 拼 asset URL」；结果页源缩略图、两栏结果卡片、合并弹窗共用这一条通路（图像侧原先还要 `imageCardsByIds` 读整卡取一个字段）。
+- 回归用例：e2e/11「结果页源缩略图：四个入口都显示正常」——每个入口开结果页后断言缩略图 `naturalWidth > 0`（给该图补 `aria-label="搜索源缩略图"` 作语义定位），不关心 URL 形态。
+
+### 后续参考 / 通用约束
+
+- 跨组件传图只传 id 或**已经转换好**的 URL；`absolutePathToAssetUrl` 对已转换的 `asset.localhost` URL **不幂等**，别指望接收端兜底规范化。
+- e2e 断言图片是否真的加载，必须看解码结果（`naturalWidth` / `complete`）：`toBeVisible()` 对破图恒真。

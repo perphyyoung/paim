@@ -1334,6 +1334,30 @@ pub fn first_prompts_for_trashed(
     Ok(map)
 }
 
+/// 图像缩略图映射：{imageId: 相对路径}，只取**未删除**且已有 `thumbnail_path` 的条目。
+/// 返回 `images.thumbnail_path` 原值（相对数据目录），由前端拼 asset URL。
+/// 与提示词侧 `prompt_service::thumbs_for`（取关联首图）对称：两侧都服务「只有 id、没有实体行」的场景。
+pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, String>> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = format!(
+        "SELECT id, thumbnail_path FROM images
+         WHERE is_deleted = 0 AND thumbnail_path IS NOT NULL AND id IN ({placeholders})"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut map: HashMap<String, String> = HashMap::new();
+    for row in rows {
+        let (id, thumb_rel) = row?;
+        map.insert(id, thumb_rel);
+    }
+    Ok(map)
+}
+
 #[cfg(test)]
 #[path = "image_service.test.rs"]
 mod tests;

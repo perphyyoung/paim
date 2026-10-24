@@ -7,9 +7,7 @@
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { commands, type MergePromptsPreview } from "@/bindings";
 import { commonText, diffTokens, type DiffToken } from "@/features/prompt/promptDiff";
-import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
-import { applyThumbFix } from "@/utils/thumbFix";
-import { relativePathToAssetUrl } from "@/utils/assetUrl";
+import { resolveThumbUrls } from "@/utils/thumbUrls";
 import HoverImagePreview from "@/components/HoverImagePreview.vue";
 import { ModalZ } from "@/utils/modalZ";
 
@@ -116,20 +114,10 @@ watch(
   },
 );
 
-/// 取两条源提示词的首图缩略图（与相似搜索卡片同口径：相对路径拼 asset URL，缺图走一次懒自愈）。
+/// 取两条源提示词的首图缩略图（与相似搜索卡片同口径：按 id 解析 + 缺图懒自愈）。
 async function loadThumbs(seq: number) {
-  const ids = [props.aId, props.bId];
-  const dir = await commands.getDataDir();
-  const raw = await commands.getPromptThumbs(ids);
+  const map = await resolveThumbUrls("prompt", [props.aId, props.bId]);
   if (seq !== openSeq) return;
-  const map: Record<string, string> = {};
-  for (const [id, rel] of Object.entries(raw)) map[id] = relativePathToAssetUrl(dir, rel);
-  const need = ids.filter((id) => !map[id]);
-  if (need.length > 0) {
-    const fixed = await ensurePromptThumbnails(need);
-    if (seq !== openSeq) return;
-    Object.assign(map, applyThumbFix(dir, {}, fixed.fixed));
-  }
   thumbs.value = map;
 }
 

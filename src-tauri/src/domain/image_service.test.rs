@@ -3,7 +3,7 @@
 use super::{
     compress_png_to_webp, filter_sql, filter_sql_with_mode, first_prompts_for_trashed, import_with,
     list_ids, list_page, list_related_prompts, replace_image_with, sanitize_file_stem,
-    special_tags_counts, update_detail, ImageReplaceOutcome, PaginatedImages,
+    special_tags_counts, thumbs_for, update_detail, ImageReplaceOutcome, PaginatedImages,
 };
 use crate::domain::list_query::{ListQuery, SearchMode};
 use crate::domain::similarity_service;
@@ -958,5 +958,33 @@ fn first_prompts_for_trashed_picks_earliest_created_prompt() {
         map.get("i1").map(String::as_str),
         Some("较早"),
         "应取 created_at 最早的关联提示词，与关系插入顺序无关"
+    );
+}
+
+/// 图像缩略图映射：{imageId: 相对路径}。无缩略图、已删除、未请求的 id 都不出现；空入参不发 SQL。
+#[test]
+fn thumbs_for_skips_deleted_and_null_thumbnail_rows() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO images(id, file_name, stored_name, relative_path, thumbnail_path, is_deleted)
+         VALUES ('i1', 'a.png', 'a.png', 'images/202610/a.png', 'thumbnails/202610/a.jpg', 0),
+                ('i2', 'b.png', 'b.png', 'images/202610/b.png', NULL, 0),
+                ('i3', 'c.png', 'c.png', 'images/202610/c.png', 'thumbnails/202610/c.jpg', 1)",
+        [],
+    )
+    .unwrap();
+
+    let map = thumbs_for(&conn, &["i1".into(), "i2".into(), "i3".into()]).unwrap();
+    assert_eq!(
+        map.get("i1").map(String::as_str),
+        Some("thumbnails/202610/a.jpg"),
+        "正常图返回 thumbnail_path 原值（相对路径，由前端拼数据目录）"
+    );
+    assert!(!map.contains_key("i2"), "无缩略图的图像不应出现在映射中");
+    assert!(!map.contains_key("i3"), "已删除的图像不应出现在映射中");
+    assert!(
+        thumbs_for(&conn, &[]).unwrap().is_empty(),
+        "空入参直接返回空映射，不拼空 IN"
     );
 }

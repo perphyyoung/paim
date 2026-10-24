@@ -12,9 +12,7 @@
 // （联合空间，跨模态直接比余弦），因此源是图像时右栏是跨模态的相似提示词，反之亦然。
 import { computed, onUnmounted, ref, watch } from "vue";
 import { commands, type ImageCard, type PromptCard } from "@/bindings";
-import { relativePathToAssetUrl } from "@/utils/assetUrl";
-import { applyThumbFix } from "@/utils/thumbFix";
-import { ensurePromptThumbnails } from "@/features/prompt/api/thumbnails";
+import { resolveThumbUrls } from "@/utils/thumbUrls";
 import VirtualGrid from "@/components/VirtualGrid.vue";
 import CustomScrollBar from "@/components/CustomScrollBar.vue";
 import { useGridScrollSync } from "@/components/useGridScrollSync";
@@ -36,8 +34,6 @@ const props = defineProps<{
   sourceName?: string;
   /** 源文案类型：`content` 按内容渲染（多行、保留换行、最多 3 行），`name` 单行截断 */
   sourceTextKind?: "name" | "content";
-  /** 源缩略图（由调用方按各自主页那一套取好；缺省时本组件自己取一次） */
-  sourceThumb?: string;
 }>();
 const emit = defineEmits<{
   close: [];
@@ -56,32 +52,14 @@ const imageSettings = useSimilaritySettings("image");
 const promptSettings = useSimilaritySettings("prompt");
 const baseUrl = imageSettings.baseUrl;
 
-/// 源缩略图：调用方给了就直接用（图像详情能顺手套上主页那份）；没给就自己取一次
-/// （提示词背景取自「关联首图」，与主页同一套 `getPromptThumbs` + 缺图自愈）
-const resolvedSourceThumb = ref("");
-const sourceThumbSrc = computed(() => props.sourceThumb || resolvedSourceThumb.value);
+/// 源缩略图：一律按 id 自取（与两栏结果卡片同一套解析）；调用方不传 URL ——
+/// 详情手里只有磁盘路径，直接塞给 `<img>` 会破图（回归见 e2e/11「结果页源缩略图」）
+const sourceThumbSrc = ref("");
 async function loadSourceThumb() {
-  resolvedSourceThumb.value = "";
-  if (props.sourceThumb) return;
+  sourceThumbSrc.value = "";
   try {
-    const dir = await commands.getDataDir();
-    if (props.sourceKind === "Prompt") {
-      const rel = (await commands.getPromptThumbs([props.sourceId]))[props.sourceId];
-      if (rel) {
-        resolvedSourceThumb.value = relativePathToAssetUrl(dir, rel);
-        return;
-      }
-      const fixed = await ensurePromptThumbnails([props.sourceId]);
-      resolvedSourceThumb.value = applyThumbFix(dir, {}, fixed.fixed)[props.sourceId] ?? "";
-    } else {
-      const [card] = await commands.imageCardsByIds([props.sourceId]);
-      if (card?.thumbnail_path) {
-        resolvedSourceThumb.value = relativePathToAssetUrl(dir, card.thumbnail_path);
-        return;
-      }
-      const fixed = await commands.ensureImageThumbnails([props.sourceId]);
-      resolvedSourceThumb.value = applyThumbFix(dir, {}, fixed.fixed)[props.sourceId] ?? "";
-    }
+    const kind = props.sourceKind === "Prompt" ? "prompt" : "image";
+    sourceThumbSrc.value = (await resolveThumbUrls(kind, [props.sourceId]))[props.sourceId] ?? "";
   } catch {
     // 取不到就用灰色占位，不影响检索本身
   }
@@ -197,20 +175,9 @@ async function loadImages(over?: { limit: number; minScore: number }) {
     if (mine !== imageSeq) return;
     const scoreById = new Map(hits.map((h) => [h.image_id, h.score ?? 0]));
     imageRows.value = cards.map((card) => ({ card, score: scoreById.get(card.id) ?? 0 }));
-    // 缩略图：行内路径优先，缺的走一次自愈（与主页同一套）
-    const dir = await commands.getDataDir();
-    const map: Record<string, string> = {};
-    for (const r of imageRows.value) {
-      if (r.card.thumbnail_path)
-        map[r.card.id] = relativePathToAssetUrl(dir, r.card.thumbnail_path);
-    }
-    imageThumbs.value = map;
-    const need = imageRows.value.filter((r) => !map[r.card.id]).map((r) => r.card.id);
-    if (need.length > 0) {
-      const fixed = await commands.ensureImageThumbnails(need);
-      if (mine !== imageSeq) return;
-      imageThumbs.value = applyThumbFix(dir, map, fixed.fixed);
-    }
+    // 缩略图：与右栏同一套按 id 解析（含缺图自愈），不再另立「行内路径优先」的口径
+    imageThumbs.value = await resolveThumbUrls("image", ids);
+    if (mine !== imageSeq) return;
   } catch (e) {
     if (mine === imageSeq) imageError.value = String(e);
   } finally {
@@ -247,18 +214,9 @@ async function loadPrompts(over?: { limit: number; minScore: number }) {
     if (mine !== promptSeq) return;
     const scoreById = new Map(hits.map((h) => [h.prompt_id, h.score ?? 0]));
     promptRows.value = cards.map((card) => ({ card, score: scoreById.get(card.id) ?? 0 }));
-    // 缩略图：背景取自「关联首图」（相对路径 → 绝对地址），缺的走一次自愈
-    const dir = await commands.getDataDir();
-    const raw = await commands.getPromptThumbs(ids);
-    const map: Record<string, string> = {};
-    for (const [id, rel] of Object.entries(raw)) map[id] = relativePathToAssetUrl(dir, rel);
-    promptThumbs.value = map;
-    const need = ids.filter((id) => !map[id]);
-    if (need.length > 0) {
-      const fixed = await ensurePromptThumbnails(need);
-      if (mine !== promptSeq) return;
-      promptThumbs.value = applyThumbFix(dir, map, fixed.fixed);
-    }
+    // 缩略图：背景取自「关联首图」，由同一套按 id 解析 + 缺图自愈处理
+    promptThumbs.value = await resolveThumbUrls("prompt", ids);
+    if (mine !== promptSeq) return;
   } catch (e) {
     if (mine === promptSeq) promptError.value = String(e);
   } finally {
@@ -437,6 +395,7 @@ function pickPrompt(id: string) {
               v-if="sourceThumbSrc"
               :src="sourceThumbSrc"
               alt=""
+              aria-label="搜索源缩略图"
               class="h-12 w-12 shrink-0 rounded object-cover"
             />
             <span v-else class="h-12 w-12 shrink-0 rounded bg-gray-700"></span>

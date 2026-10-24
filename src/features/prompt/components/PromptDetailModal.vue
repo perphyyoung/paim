@@ -642,14 +642,13 @@ function openSimilarSearch() {
   });
 }
 
-/// 以某张关联图像为起点检索
+/// 以某张关联图像为起点检索（缩略图由结果页按 id 自取：这里只有磁盘路径，不能直接当 `<img src>`）
 function openSimilarFromImage(img: RelatedImage) {
   nested.openSimilar({
     sourceKind: "Image",
     sourceId: img.id,
     sourceName: img.file_name,
     sourceTextKind: "name",
-    sourceThumb: img.src,
   });
 }
 

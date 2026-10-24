@@ -608,6 +608,17 @@ export async function openSimilarSearchFromPromptDetail(
   return expectSimilarResultModal(page);
 }
 
+/// 结果页「搜索源」缩略图必须真的解码出图（naturalWidth > 0）：路径坏掉的 `<img>` 在 Playwright
+/// 眼里同样「可见」，只有解码结果能区分「加载出来」与「破图」。各入口的缩略图 URL 由各自那套规则取
+/// （调用方给或结果页自取），这里只校验「显示正常」，不关心实现。
+export async function expectSimilarSourceThumbLoaded(modal: Locator): Promise<void> {
+  const thumb = modal.getByRole("img", { name: "搜索源缩略图" });
+  await expect(thumb).toBeVisible({ timeout: 5_000 });
+  await expect
+    .poll(() => thumb.evaluate((el) => (el as HTMLImageElement).naturalWidth), { timeout: 5_000 })
+    .toBeGreaterThan(0);
+}
+
 /// 点入口按钮后等结果页出现（内容入口 / 关联图入口共用）
 async function expectSimilarResultModal(page: Page): Promise<Locator> {
   const modal = similarResultModal(page);

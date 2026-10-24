@@ -98,7 +98,6 @@ function openSimilar() {
     sourceId: currentId.value,
     sourceName: currentPrompt.value?.content ?? current.value?.file_name,
     sourceTextKind: currentPrompt.value ? "content" : "name",
-    sourceThumb: props.thumbs[currentId.value],
   });
 }
 

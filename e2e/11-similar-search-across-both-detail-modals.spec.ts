@@ -26,6 +26,7 @@ import {
   clearSimilarityThresholds,
   closeDetail,
   closeSimilarResult,
+  expectSimilarSourceThumbLoaded,
   gotoPromptsPage,
   indexBothSimilarityKinds,
   lowerThresholdToZeroAndRequery,
@@ -331,6 +332,46 @@ test("提示词详情关联图右下角：以该图检索，结果页源为该�
 
   await closeSimilarResult(page);
   await closeDetail(detail);
+  await clearSimilarityThresholds(page);
+});
+
+// —— 源缩略图：每个入口打开的结果页，首行缩略图都要真的显示出来 ——
+// 缩略图 URL 由各入口按自己那套规则给（图像详情套主页那份 thumbs；提示词源与关联图入口的图由结果页 / 卡片解析），
+// 任一入口把磁盘路径直接塞给 `<img>` 都会表现为破图。本用例不关心实现，只要求「显示正常」。
+test("结果页源缩略图：四个入口都显示正常", async ({ page, app }) => {
+  const { source } = makeContentPair("F");
+  await uploadImageWithPrompt(page, source, app.mockImagePath);
+  await indexBothSimilarityKinds(page);
+
+  // ① 图像详情大图右下角（图像源）
+  const imageDetail = await openImageDetail(page, source);
+  await expectSimilarSourceThumbLoaded(await openSimilarSearchFromImageDetail(page, imageDetail));
+  await closeSimilarResult(page);
+  e2eLog.info("[step] 图像源（图像详情大图）：源缩略图正常");
+
+  // ② 图像详情提示词内容右上角（提示词源：缩略图由结果页取关联首图）
+  await imageDetail.getByRole("button", { name: "以提示词内容搜索相似项" }).click();
+  await expect(similarResultModal(page)).toBeVisible({ timeout: 5_000 });
+  await expectSimilarSourceThumbLoaded(similarResultModal(page));
+  await closeSimilarResult(page);
+  await closeDetail(imageDetail);
+  e2eLog.info("[step] 提示词源（图像详情内容）：源缩略图正常");
+
+  // ③ 提示词详情内容右上角（提示词源）
+  await gotoPromptsPage(page);
+  const promptDetail = await openPromptDetail(page, source);
+  await expectSimilarSourceThumbLoaded(await openSimilarSearchFromPromptDetail(page, promptDetail));
+  await closeSimilarResult(page);
+  e2eLog.info("[step] 提示词源（提示词详情内容）：源缩略图正常");
+
+  // ④ 提示词详情关联图右下角（图像源：缩略图来自关联图卡片，本用例只关联一张图）
+  await promptDetail.getByRole("button", { name: "以图像 e2e-upload.png 搜索相似项" }).click();
+  await expect(similarResultModal(page)).toBeVisible({ timeout: 5_000 });
+  await expectSimilarSourceThumbLoaded(similarResultModal(page));
+  e2eLog.info("[step] 图像源（提示词详情关联图）：源缩略图正常");
+
+  await closeSimilarResult(page);
+  await closeDetail(promptDetail);
   await clearSimilarityThresholds(page);
 });
 

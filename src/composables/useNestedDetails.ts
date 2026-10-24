@@ -28,8 +28,6 @@ export interface SimilarQuery {
   sourceName?: string;
   /** 源文案类型：`content` 按内容渲染（多行、最多 3 行），`name` 单行截断 */
   sourceTextKind?: "name" | "content";
-  /** 源缩略图（图像由发起详情按主页那套取好；缺省时结果页自己取一次） */
-  sourceThumb?: string;
 }
 
 /** 嵌套图像槽：单张图（`thumbs` 恒空 —— 详情自己按 id 解析原图，缩略图只在解析期间作兜底） */

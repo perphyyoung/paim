@@ -87,6 +87,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::image::get_image_prompts_map,
             commands::image::get_trashed_image_first_prompts,
             commands::image::get_image_related_prompts,
+            commands::image::get_image_thumbs,
             commands::image::rebuild_thumbnails,
             commands::image::ensure_image_thumbnails,
             // —— 图像全屏查看窗口（主窗口不动，查看器独立窗口）——

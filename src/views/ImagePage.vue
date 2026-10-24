@@ -1076,7 +1076,6 @@ function onUploadDone() {
       :source-id="nested.similar.value?.sourceId ?? ''"
       :source-name="nested.similar.value?.sourceName"
       :source-text-kind="nested.similar.value?.sourceTextKind"
-      :source-thumb="nested.similar.value?.sourceThumb"
       @close="nested.closeSimilar()"
       @open-image="(id) => nested.openNested('image', id)"
       @open-prompt="(id) => nested.openNested('prompt', id)"

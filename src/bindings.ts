@@ -144,6 +144,13 @@ export const commands = {
 	/**  返回单张图像关联的提示词列表（含标题/内容/翻译/备注/标签），供详情页左侧展示。 */
 	getImageRelatedPrompts: (id: string) => __TAURI_INVOKE<LinkedPrompt[]>("get_image_related_prompts", { id }),
 	/**
+	 *  返回给定图像缩略图的**相对路径**：{imageId: relPath}，供「只有 id、没有实体行」的场景
+	 *  （相似结果页首行源缩略图 / 合并弹窗首图）拼 asset URL。
+	 *  与 `prompt::get_prompt_thumbs` 对称：语义都是 `thumbnail_path` 原值，由前端拼数据目录；
+	 *  空列表直接返回空，避免拼出空 IN。
+	 */
+	getImageThumbs: (ids: string[]) => __TAURI_INVOKE<{ [key in string]: string }>("get_image_thumbs", { ids }),
+	/**
 	 *  设置页「重建缩略图」：扫描全部图像，补齐丢失的缩略图文件并回写路径，
 	 *  进度经 thumbnail-rebuild-progress 事件推送。
 	 *  三阶段：**短锁取清单 → 无锁满核生成 → 短锁批量回写**（生成期间不持锁，见 docs/lessons.md 第 28 节）。

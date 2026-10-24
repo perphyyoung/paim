@@ -561,6 +561,22 @@ pub async fn remove_prompt_from_image(
     .await
 }
 
+/// 返回给定图像缩略图的**相对路径**：{imageId: relPath}，供「只有 id、没有实体行」的场景
+/// （相似结果页首行源缩略图 / 合并弹窗首图）拼 asset URL。
+/// 与 `prompt::get_prompt_thumbs` 对称：语义都是 `thumbnail_path` 原值，由前端拼数据目录；
+/// 空列表直接返回空，避免拼出空 IN。
+#[tauri::command]
+#[specta::specta]
+pub async fn get_image_thumbs(
+    db: State<'_, BkDb>,
+    ids: Vec<String>,
+) -> Result<std::collections::HashMap<String, String>, AppError> {
+    db::blocking(&db, move |conn| {
+        image_service::thumbs_for(conn, &ids).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
+}
+
 /// 返回非删除图像到其关联提示词内容的映射：{imageId: [content,...]}，供卡片 row2 显示。
 #[tauri::command]
 #[specta::specta]
