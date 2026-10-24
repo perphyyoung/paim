@@ -512,7 +512,7 @@ export async function openImageDetail(page: Page, cardText: string): Promise<Loc
 /// 传 `openImageDetail` / `openPromptDetail` 返回的定位器：作用域由打开动作给出，
 /// 不需要再为「哪个弹窗」传参。
 export async function closeDetail(detail: Locator): Promise<void> {
-  await detail.getByTitle("关闭").click();
+  await detail.getByTitle("关闭", { exact: true }).click();
   await expect(detail).toBeHidden({ timeout: 5_000 });
 }
 
@@ -595,7 +595,7 @@ export async function openSimilarSearchFromImageDetail(
   // 先 hover 大图让右下角图标显形；详情内只有一个内容图（两个 v-if 分支互斥），按 img 角色即可唯一定位。
   // 图像详情内只有这一个带「以图像 …」的按钮（右上角的「替换图像」等走右键菜单，不撞名）
   await detail.getByRole("img").hover();
-  await detail.getByRole("button", { name: /^以图像 .* 搜索相似项$/ }).click();
+  await detail.getByRole("button", { name: /^以图像 .* 搜索相似项$/, exact: true }).click();
   return expectSimilarResultModal(page);
 }
 
@@ -604,7 +604,7 @@ export async function openSimilarSearchFromPromptDetail(
   page: Page,
   detail: Locator,
 ): Promise<Locator> {
-  await detail.getByRole("button", { name: "以提示词内容搜索相似项" }).click();
+  await detail.getByRole("button", { name: "以提示词内容搜索相似项", exact: true }).click();
   return expectSimilarResultModal(page);
 }
 
@@ -616,7 +616,7 @@ export async function openSimilarSearchFromPromptRelatedImage(
 ): Promise<Locator> {
   await detail.getByRole("img").first().hover();
   await detail
-    .getByRole("button", { name: /^以图像 .* 搜索相似项$/ })
+    .getByRole("button", { name: /^以图像 .* 搜索相似项$/, exact: true })
     .first()
     .click();
   return expectSimilarResultModal(page);

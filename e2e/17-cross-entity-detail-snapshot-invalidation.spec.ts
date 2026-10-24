@@ -91,8 +91,8 @@ test("图像删除后恢复：提示词详情重新加载出恢复的关联图�
 
   // 删除期间打开详情：后端只返回未删除图像，关联图像为 0（空列表写入缓存）
   let detail = await openPromptDetail(page, createdContent);
-  await expect(detail.getByText("关联图像（0）")).toBeVisible();
-  await expect(detail.getByText("暂无关联图像")).toBeVisible();
+  await expect(detail.getByText("关联图像（0）", { exact: true })).toBeVisible();
+  await expect(detail.getByText("暂无关联图像", { exact: true })).toBeVisible();
   e2eLog.info("[step] 图像删除期间详情显示 0 张关联图像（空列表已入缓存）");
   await closeDetail(detail);
 
@@ -103,9 +103,9 @@ test("图像删除后恢复：提示词详情重新加载出恢复的关联图�
 
   // 重开详情：必须重新读库，不能命中空缓存
   detail = await openPromptDetail(page, createdContent);
-  await expect(detail.getByText("关联图像（1）")).toBeVisible({ timeout: 5_000 });
-  await expect(detail.getByRole("img", { name: MOCK_FILE_NAME })).toBeVisible();
-  await expect(detail.getByText("暂无关联图像")).toBeHidden();
+  await expect(detail.getByText("关联图像（1）", { exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByRole("img", { name: MOCK_FILE_NAME, exact: true })).toBeVisible();
+  await expect(detail.getByText("暂无关联图像", { exact: true })).toBeHidden();
 });
 
 test("删除前打开过详情：UI 删除图像后重开提示词详情不再显示幽灵图", async ({ page, app }) => {
@@ -119,7 +119,7 @@ test("删除前打开过详情：UI 删除图像后重开提示词详情不再�
 
   // 删除前打开详情：1 张关联图写入缓存
   let detail = await openPromptDetail(page, createdContent);
-  await expect(detail.getByText("关联图像（1）")).toBeVisible();
+  await expect(detail.getByText("关联图像（1）", { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 走 UI 删除（触发 ImagePage 对侧缓存 clear）
@@ -130,9 +130,9 @@ test("删除前打开过详情：UI 删除图像后重开提示词详情不再�
   await gotoPromptsPage(page);
   await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER)).toBeVisible();
   detail = await openPromptDetail(page, createdContent);
-  await expect(detail.getByText("关联图像（0）")).toBeVisible({ timeout: 5_000 });
-  await expect(detail.getByText("暂无关联图像")).toBeVisible();
-  await expect(detail.getByRole("img", { name: MOCK_FILE_NAME })).toHaveCount(0);
+  await expect(detail.getByText("关联图像（0）", { exact: true })).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText("暂无关联图像", { exact: true })).toBeVisible();
+  await expect(detail.getByRole("img", { name: MOCK_FILE_NAME, exact: true })).toHaveCount(0);
   e2eLog.info("[step] UI 删除后重开详情无幽灵图");
   await closeDetail(detail);
 
@@ -164,7 +164,9 @@ test("对称侧：UI 删除/恢复提示词后，图像详情的关联提示词�
   await cardById(page, imageId).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText("— 暂无关联提示词 —")).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText("— 暂无关联提示词 —", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
   await expect(detail.getByText(createdContent, { exact: true })).toBeHidden();
   e2eLog.info("[step] UI 删除提示词后图像详情无幽灵关联");
   await closeDetail(detail);
@@ -179,7 +181,7 @@ test("对称侧：UI 删除/恢复提示词后，图像详情的关联提示词�
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
   await expect(detail.getByText(createdContent, { exact: true })).toBeVisible({ timeout: 5_000 });
-  await expect(detail.getByText("— 暂无关联提示词 —")).toBeHidden();
+  await expect(detail.getByText("— 暂无关联提示词 —", { exact: true })).toBeHidden();
 });
 
 // —— 同一类缓存的另一条路径：另一侧改的是**内容 / 标签**（不是删除态） ——
@@ -197,7 +199,7 @@ test("图像加标签后：提示词详情的关联图像应显示新标签（�
   // 先开一次提示词详情：此刻该图无标签，列表（含空标签）写进 relatedImagesCache
   await gotoPromptsPage(page);
   let detail = await openPromptDetail(page, created);
-  await expect(detail.getByText("关联图像（1）")).toBeVisible();
+  await expect(detail.getByText("关联图像（1）", { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 在图像详情里加标签（真实 UI 路径）
@@ -214,7 +216,7 @@ test("图像加标签后：提示词详情的关联图像应显示新标签（�
   // 再开提示词详情：关联图像应显示新标签（修复前命中旧快照 → 看不到）
   await gotoPromptsPage(page);
   detail = await openPromptDetail(page, created);
-  await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(tag, { exact: true }).first()).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 提示词详情已同步到图像新标签");
   await closeDetail(detail);
 });
@@ -229,7 +231,7 @@ test("提示词改内容后：图像详情的关联提示词文案应同步（�
 
   // 先开一次图像详情：旧文案写进 relatedPromptsCache
   let detail = await openImageDetail(page, created);
-  await expect(detail.getByText(created)).toBeVisible();
+  await expect(detail.getByText(created, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 提示词详情里改**内容**并保存：编辑态「内容」框带 aria-label → 语义定位到它
@@ -237,12 +239,12 @@ test("提示词改内容后：图像详情的关联提示词文案应同步（�
   await gotoPromptsPage(page);
   const pd = await openPromptDetail(page, created);
   await pd.getByTitle("编辑", { exact: true }).click();
-  const box = pd.getByLabel("提示词内容"); // 编辑态「内容」多行框（带 aria-label，语义定位）
+  const box = pd.getByLabel("提示词内容", { exact: true }); // 编辑态「内容」多行框（带 aria-label，语义定位）
   await box.click();
   await box.press("End");
   const updated = `${created} 已改`;
   await box.type(" 已改");
-  await pd.getByRole("button", { name: "保存" }).click();
+  await pd.getByRole("button", { name: "保存", exact: true }).click();
   await expectToastAndDismiss(page, "已保存");
   await closeDetail(pd);
   e2eLog.info("[step] 提示词内容已改为带后缀的新文案");
@@ -252,7 +254,7 @@ test("提示词改内容后：图像详情的关联提示词文案应同步（�
   await cardById(page, imageId).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText(updated)).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(updated, { exact: true })).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像详情已同步到提示词新文案");
   await closeDetail(detail);
 });
@@ -271,7 +273,7 @@ test("批量加标签后：提示词详情的关联图像应显示新标签（�
   // 先开一次提示词详情：此刻该图无标签，列表（含空标签）写进 relatedImagesCache
   await gotoPromptsPage(page);
   let detail = await openPromptDetail(page, created);
-  await expect(detail.getByText("关联图像（1）")).toBeVisible();
+  await expect(detail.getByText("关联图像（1）", { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 图像主页：Ctrl 点击卡片进批量模式 → 批量工具栏「添加标签」
@@ -286,7 +288,7 @@ test("批量加标签后：提示词详情的关联图像应显示新标签（�
   // 再开提示词详情：关联图像应显示新标签（修复前命中旧快照 → 看不到）
   await gotoPromptsPage(page);
   detail = await openPromptDetail(page, created);
-  await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(tag, { exact: true }).first()).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 提示词详情已同步到批量添加的新标签");
   await closeDetail(detail);
 });
@@ -301,7 +303,7 @@ test("提示词批量加标签后：图像详情的关联提示词应显示新�
 
   // 先开一次图像详情：此刻提示词无标签，关联提示词列表（含空标签）写进 relatedPromptsCache
   let detail = await openImageDetail(page, created);
-  await expect(detail.getByText(created)).toBeVisible();
+  await expect(detail.getByText(created, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 提示词主页：Ctrl 点击卡片进批量模式 → 批量工具栏「添加标签」
@@ -318,7 +320,7 @@ test("提示词批量加标签后：图像详情的关联提示词应显示新�
   await cardById(page, imageId).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(tag, { exact: true }).first()).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像详情已同步到提示词批量添加的新标签");
   await closeDetail(detail);
 });
@@ -334,7 +336,7 @@ test("新建提示词并选择已有图像后：图像详情的关联提示词�
 
   // 先开一次图像详情：此刻只有 1 条关联提示词，快照写进 relatedPromptsCache
   let detail = await openImageDetail(page, first.promptContent);
-  await expect(detail.getByText(first.promptContent)).toBeVisible();
+  await expect(detail.getByText(first.promptContent, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 提示词主页新建提示词，并选择同一张已导入图像（selectImages 测试缝返回 mock 图路径）
@@ -355,7 +357,9 @@ test("新建提示词并选择已有图像后：图像详情的关联提示词�
   await expect(detail).toBeVisible();
   // 多引时左上入口文案变为「编辑提示词 (1)」（单引时是「编辑提示词」）——
   // 关联列表多引只显示标题、不显示内容，故用入口文案判断条数
-  await expect(detail.getByTitle("编辑提示词")).toHaveText("编辑提示词 (1)", { timeout: 5_000 });
+  await expect(detail.getByTitle("编辑提示词", { exact: true })).toHaveText("编辑提示词 (1)", {
+    timeout: 5_000,
+  });
   e2eLog.info("[step] 图像详情已同步到新建提示词入口新增的关联");
   await closeDetail(detail);
 });
@@ -366,13 +370,13 @@ test("提示词详情移除关联图像后：图像详情不再显示该提示�
 
   // 先开一次图像详情：关联提示词写进 relatedPromptsCache
   let detail = await openImageDetail(page, content);
-  await expect(detail.getByText(content)).toBeVisible();
+  await expect(detail.getByText(content, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 提示词详情里移除该关联图像（hover 卡片的「移除关联」→ 确认「移除」）
   await gotoPromptsPage(page);
   const promptDetail = await openPromptDetail(page, content);
-  await promptDetail.getByTitle("移除关联").first().click();
+  await promptDetail.getByTitle("移除关联", { exact: true }).first().click();
   await page.getByRole("button", { name: "移除", exact: true }).click();
   await expectToastAndDismiss(page, "已移除关联图像");
   await closeDetail(promptDetail);
@@ -383,7 +387,9 @@ test("提示词详情移除关联图像后：图像详情不再显示该提示�
   await cardById(page, imageId).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText("— 暂无关联提示词 —")).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText("— 暂无关联提示词 —", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
   e2eLog.info("[step] 图像详情已同步到解除关联");
   await closeDetail(detail);
 });
@@ -398,7 +404,7 @@ test("标签管理改名后：提示词详情里关联图像的标签应同步�
   // 先开提示词详情：关联图像快照里已有 oldTag
   await gotoPromptsPage(page);
   let detail = await openPromptDetail(page, content);
-  await expect(detail.getByText(oldTag).first()).toBeVisible();
+  await expect(detail.getByText(oldTag, { exact: true }).first()).toBeVisible();
   await closeDetail(detail);
 
   // 图像主页标签管理里重命名（走 UI，才能命中 onTagManagerSaved 的失效钩子）
@@ -419,8 +425,8 @@ test("标签管理改名后：提示词详情里关联图像的标签应同步�
   // 重开提示词详情：关联图像标签应为新名（修复前命中旧快照 → 仍是旧名）
   await gotoPromptsPage(page);
   detail = await openPromptDetail(page, content);
-  await expect(detail.getByText(newTag).first()).toBeVisible({ timeout: 5_000 });
-  await expect(detail.getByText(oldTag)).toHaveCount(0);
+  await expect(detail.getByText(newTag, { exact: true }).first()).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(oldTag, { exact: true })).toHaveCount(0);
   e2eLog.info("[step] 提示词详情已同步到标签改名");
   await closeDetail(detail);
 });
@@ -431,7 +437,7 @@ test("提示词详情加标签后：图像详情的「提示词标签」应同�
 
   // 先开图像详情：关联提示词快照里标签为空
   let detail = await openImageDetail(page, content);
-  await expect(detail.getByText(content)).toBeVisible();
+  await expect(detail.getByText(content, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 提示词详情里加标签（详情内标签输入框）
@@ -450,7 +456,7 @@ test("提示词详情加标签后：图像详情的「提示词标签」应同�
   await cardById(page, imageId).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText(tag).first()).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(tag, { exact: true }).first()).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像详情已同步到提示词新标签");
   await closeDetail(detail);
 });
@@ -470,14 +476,14 @@ test("图像改安全评级后：其他图像详情里该提示词的安全状�
   await cardById(page, imageB).click();
   let detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText(content)).toBeVisible();
+  await expect(detail.getByText(content, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 图像 A 详情里把安全评级切为「敏感」（导入默认是安全）：会同步到关联提示词（DB），并应作废其他图像的缓存
   await cardById(page, imageA).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await detail.getByTitle("安全").click();
+  await detail.getByTitle("安全", { exact: true }).click();
   await expectToastAndDismiss(page, "已标记为敏感");
   await closeDetail(detail);
   e2eLog.info("[step] 已在图像 A 把安全评级切为敏感");
@@ -486,10 +492,10 @@ test("图像改安全评级后：其他图像详情里该提示词的安全状�
   await cardById(page, imageB).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await detail.getByTitle("编辑提示词").click();
+  await detail.getByTitle("编辑提示词", { exact: true }).click();
   const promptDetail = page.getByRole("dialog", { name: "提示词详情" });
   await expect(promptDetail).toBeVisible();
-  await expect(promptDetail.getByTitle("敏感")).toBeVisible({ timeout: 5_000 });
+  await expect(promptDetail.getByTitle("敏感", { exact: true })).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 图像 B 的提示词编辑弹窗已同步到新安全评级");
   await closeDetail(promptDetail);
   await closeDetail(detail);
@@ -502,7 +508,7 @@ test("清空图像回收站后：提示词详情的关联图像应同步消失",
   // 先开提示词详情：关联图像 1 张写进快照
   await gotoPromptsPage(page);
   let detail = await openPromptDetail(page, content);
-  await expect(detail.getByText("关联图像（1）")).toBeVisible();
+  await expect(detail.getByText("关联图像（1）", { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 图像主页删除该图
@@ -529,7 +535,7 @@ test("清空图像回收站后：提示词详情的关联图像应同步消失",
   // 重开提示词详情：关联图像应为 0（修复前命中旧快照 → 仍显示 1 张）
   await gotoPromptsPage(page);
   detail = await openPromptDetail(page, content);
-  await expect(detail.getByText("关联图像（0）")).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText("关联图像（0）", { exact: true })).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 提示词详情已同步到回收站清空");
   await closeDetail(detail);
 });
@@ -540,7 +546,7 @@ test("清空提示词回收站后：图像详情的关联提示词应同步消�
 
   // 先开图像详情：关联提示词写进快照
   let detail = await openImageDetail(page, content);
-  await expect(detail.getByText(content)).toBeVisible();
+  await expect(detail.getByText(content, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 提示词主页删除该提示词
@@ -570,7 +576,9 @@ test("清空提示词回收站后：图像详情的关联提示词应同步消�
   await cardById(page, imageId).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText("— 暂无关联提示词 —")).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText("— 暂无关联提示词 —", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
   e2eLog.info("[step] 图像详情已同步到提示词回收站清空");
   await closeDetail(detail);
 });
@@ -616,7 +624,7 @@ test("合并提示词后：图像详情的关联提示词应换成合并后的�
   await cardById(page, up1.imageId).click();
   let detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText(source)).toBeVisible();
+  await expect(detail.getByText(source, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
   // 提示词详情 → 相似搜索 → 右键另一条结果 → 合并
@@ -644,7 +652,7 @@ test("合并提示词后：图像详情的关联提示词应换成合并后的�
   await cardById(page, up1.imageId).click();
   detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText(mergedContent)).toBeVisible({ timeout: 5_000 });
+  await expect(detail.getByText(mergedContent, { exact: true })).toBeVisible({ timeout: 5_000 });
   await expect(detail.getByText(source, { exact: true })).toHaveCount(0);
   e2eLog.info("[step] 图像详情已同步到合并后的新提示词");
   await closeDetail(detail);

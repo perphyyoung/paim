@@ -20,12 +20,12 @@ test("关联图像区域最大化：拖拽排序并保存到详情", async ({ pa
   const detail = await openPromptDetail(page, promptContent);
   for (let i = 0; i < 4; i++) {
     writePng(app.mockImagePath);
-    await detail.getByRole("button", { name: "从外界导入图像" }).click();
+    await detail.getByRole("button", { name: "从外界导入图像", exact: true }).click();
     await expectToastAndDismiss(page, "已导入并关联 1 张图像");
   }
-  await expect(detail.getByText("关联图像（4）")).toBeVisible();
+  await expect(detail.getByText("关联图像（4）", { exact: true })).toBeVisible();
 
-  await detail.getByTitle("关联图像区域最大化（可拖拽排序）").click();
+  await detail.getByTitle("关联图像区域最大化（可拖拽排序）", { exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "关联图像区域最大化" });
   await expect(dialog).toBeVisible();
   const items = dialog.getByRole("listitem", { name: /^第 \d+ 张关联图像$/ });

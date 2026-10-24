@@ -31,27 +31,31 @@ import {
 } from "./e2e-helpers";
 import { e2eLog } from "./e2e-logger";
 
-/// 点收藏并断言弹窗内 title 立即翻转 + 成功 toast（toast 居中挡后续点击，必须点掉）
+/// 点收藏并断言**状态属性**（aria-pressed）翻转 + 成功 toast（toast 居中挡后续点击，必须点掉）。
+/// 不用 title 文案互斥断言：`收藏` 是 `取消收藏` 的子串，子串匹配会「误绿」（断言已切换却命中旧文案）。
 async function clickFavorite(
   page: Page,
   detail: Locator,
   from: "收藏" | "取消收藏",
 ): Promise<void> {
-  const to = from === "收藏" ? "取消收藏" : "收藏";
-  await detail.getByTitle(from).click();
-  await expect(detail.getByTitle(to)).toBeVisible({ timeout: 5_000 });
-  // 新值：from="收藏" → 点完 = 已收藏；from="取消收藏" → 点完 = 已取消收藏
-  await expectToastAndDismiss(page, from === "收藏" ? "已收藏" : "已取消收藏");
+  const pressed = from === "收藏"; // 点完 = 已收藏
+  await detail.getByTitle(from, { exact: true }).click();
+  await expect(detail.getByRole("button", { name: "收藏", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    pressed ? "true" : "false",
+  );
+  await expectToastAndDismiss(page, pressed ? "已收藏" : "已取消收藏");
 }
 
-/// 点安全评级并断言 label title 立即翻转 + 成功 toast（同上，点掉 toast 才能继续操作）
+/// 点安全评级并断言 checkbox 的 checked 状态 + 成功 toast（同上，点掉 toast 才能继续操作）。
 /// 点 label 而不是 input：input 是 h-0 w-0 opacity-0，直接点会被可见性/命中检查拦下。
 async function clickSafe(page: Page, detail: Locator, from: "安全" | "敏感"): Promise<void> {
-  const to = from === "安全" ? "敏感" : "安全";
-  await detail.getByTitle(from).click();
-  await expect(detail.getByTitle(to)).toBeVisible({ timeout: 5_000 });
-  // 新值：from="安全" → 点完 = 敏感；from="敏感" → 点完 = 安全
-  await expectToastAndDismiss(page, from === "安全" ? "已标记为敏感" : "已标记为安全");
+  const toSafe = from === "敏感"; // 点完 = 安全
+  await detail.getByTitle(from, { exact: true }).click();
+  await expect(detail.getByRole("checkbox", { name: "安全评级", exact: true })).toBeChecked({
+    checked: toSafe,
+  });
+  await expectToastAndDismiss(page, toSafe ? "已标记为安全" : "已标记为敏感");
 }
 
 test("图像详情切换收藏：弹窗即时反馈 + 落库 + 关闭后主页同步", async ({ page, app }) => {

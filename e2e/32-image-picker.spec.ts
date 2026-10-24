@@ -45,7 +45,7 @@ test("图像选择界面：标签筛选可搜索、选中后回显，Esc 关闭"
   const promptContent = `e2e 图像选择界面 ${Date.now()}`;
   await createPromptViaDialog(page, promptContent);
   const detail = await openPromptDetail(page, promptContent);
-  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await detail.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
   await expect(page.getByRole("heading", { name: "图像选择界面" })).toBeVisible();
 
   // 打开标签筛选 → 面板与搜索框出现
@@ -115,7 +115,7 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
     { kind: "Image", id: c.imageId, values: [0, 1] },
   ]);
 
-  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await detail.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
   const promptBtn = page.getByRole("button", { name: "提示词相似度" });
   const firstBtn = page.getByRole("button", { name: "首图相似度" });
   await expect(promptBtn).toBeEnabled();
@@ -141,7 +141,7 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
     promptId,
     imageIds: [a.imageId],
   });
-  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await detail.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
   const reopened = page.getByRole("dialog", { name: "图像选择界面" });
   const firstBtn2 = reopened.getByRole("button", { name: "首图相似度" });
   await expect(firstBtn2).toBeEnabled();
@@ -186,7 +186,7 @@ test("图像选择界面：相似度结果中的卡片走缓存未命中回退�
     { kind: "Image", id: b.imageId, values: [1, 0] },
   ]);
 
-  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await detail.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "图像选择界面" });
   await expect(picker).toBeVisible();
 
@@ -219,7 +219,7 @@ test("图像选择界面：缩略图文件被删后应自愈并显示", async ({
   const content = `e2e picker 自愈详情 ${Date.now()}`;
   await createPromptViaDialog(page, content);
   const detail = await openPromptDetail(page, content);
-  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await detail.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "图像选择界面" });
   await expect(picker).toBeVisible();
 
@@ -260,7 +260,7 @@ test("嵌套提示词详情：图像选择界面应开在嵌套层之上", async
 
   const nestedPrompt = page.getByRole("dialog", { name: "提示词详情" });
   await expect(nestedPrompt).toBeVisible({ timeout: 5_000 });
-  await nestedPrompt.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await nestedPrompt.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
 
   const picker = page.getByRole("dialog", { name: "图像选择界面" });
   await expect(picker).toBeVisible();
@@ -283,7 +283,7 @@ test("图像选择界面：排除当前提示词已关联的图像并在底部�
 
   await gotoPromptsPage(page);
   const detail = await openPromptDetail(page, content);
-  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await detail.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "图像选择界面" });
   await expect(picker).toBeVisible();
 
@@ -303,7 +303,7 @@ test("图像选择界面：底部按钮组固定在右侧，不随文案长度�
   // 打开界面前先播种，availability 才会在 onMounted 时判定为可用
   await seedSimilarityVectors(page, [{ kind: "Prompt", id: promptId, values: [1, 0] }]);
   const detail = await openPromptDetail(page, content);
-  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await detail.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "图像选择界面" });
   const promptBtn = picker.getByRole("button", { name: "提示词相似度" });
   await expect(promptBtn).toBeVisible();
@@ -336,7 +336,7 @@ test("图像选择界面：匹配数不为负，筛选/相似度切换清空选�
   const promptId = await findPromptIdByContent(page, content);
   await seedSimilarityVectors(page, [{ kind: "Prompt", id: promptId, values: [1, 0] }]);
   const detail = await openPromptDetail(page, content);
-  await detail.getByRole("button", { name: "从图像选择界面导入" }).click();
+  await detail.getByRole("button", { name: "从图像选择界面导入", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "图像选择界面" });
   await expect(picker).toBeVisible();
 

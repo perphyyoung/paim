@@ -346,7 +346,7 @@ test("结果页源缩略图：四个入口都显示正常", async ({ page, app }
   e2eLog.info("[step] 图像源（图像详情大图）：源缩略图正常");
 
   // ② 图像详情提示词内容右上角（提示词源：缩略图由结果页取关联首图）
-  await imageDetail.getByRole("button", { name: "以提示词内容搜索相似项" }).click();
+  await imageDetail.getByRole("button", { name: "以提示词内容搜索相似项", exact: true }).click();
   await expect(similarResultModal(page)).toBeVisible({ timeout: 5_000 });
   await expectSimilarSourceThumbLoaded(similarResultModal(page));
   await closeSimilarResult(page);
@@ -378,7 +378,7 @@ test("图像详情提示词内容图标：以提示词内容检索", async ({ pa
   await indexBothSimilarityKinds(page);
 
   const detail = await openImageDetail(page, source);
-  await detail.getByRole("button", { name: "以提示词内容搜索相似项" }).click();
+  await detail.getByRole("button", { name: "以提示词内容搜索相似项", exact: true }).click();
 
   const modal = similarResultModal(page);
   await expect(modal).toBeVisible({ timeout: 5_000 });

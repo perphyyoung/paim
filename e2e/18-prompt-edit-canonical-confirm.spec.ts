@@ -46,11 +46,11 @@ async function promptStatus(page: Page): Promise<EmbeddingStatus> {
 
 /** 进入编辑态 → 替换内容文本框 → 点编辑悬浮组的「保存」。 */
 async function editContentAndSave(detail: Locator, next: string): Promise<void> {
-  await detail.getByTitle("编辑").click();
-  const textarea = detail.getByLabel("提示词内容");
+  await detail.getByTitle("编辑", { exact: true }).click();
+  const textarea = detail.getByLabel("提示词内容", { exact: true });
   await expect(textarea).toBeVisible();
   await textarea.fill(next);
-  await detail.getByRole("button", { name: "保存" }).click();
+  await detail.getByRole("button", { name: "保存", exact: true }).click();
 }
 
 /**
@@ -67,7 +67,7 @@ async function openDetailExpectIcon(
   for (let attempt = 0; attempt < 10; attempt++) {
     const detail = await open(page, text);
     const hit = await detail
-      .getByRole("note", { name: iconName })
+      .getByRole("note", { name: iconName, exact: true })
       .waitFor({ timeout: 800 })
       .then(() => true)
       .catch(() => false);
@@ -108,21 +108,21 @@ test("已索引提示词实质修改：弹确认框，取消留编辑态不写�
   // 取消：确认框关闭、留在编辑态、输入保留、未写库（向量计数不变、标志仍蓝）
   await confirm.getByRole("button", { name: "取消" }).click();
   await expect(confirm).toBeHidden();
-  const textarea = detail.getByLabel("提示词内容");
+  const textarea = detail.getByLabel("提示词内容", { exact: true });
   await expect(textarea).toBeVisible();
   await expect(textarea).toHaveValue(modified);
   expect((await promptStatus(page)).indexed).toBe(before);
-  await expect(detail.getByRole("note", { name: "已建立相似度向量" })).toBeVisible();
+  await expect(detail.getByRole("note", { name: "已建立相似度向量", exact: true })).toBeVisible();
   e2eLog.info("[step] 取消后仍在编辑态、内容保留、向量未失效、标志仍蓝");
 
   // 再保存 → 确认 → 保存成功、向量失效、标志转灰
-  await detail.getByRole("button", { name: "保存" }).click();
+  await detail.getByRole("button", { name: "保存", exact: true }).click();
   await expect(confirm).toBeVisible({ timeout: 5_000 });
   await confirm.getByRole("button", { name: "保存" }).click();
   await expectToastAndDismiss(page, "已保存");
   expect((await promptStatus(page)).indexed).toBe(before - 1);
   await expect(detail.getByText(modified, { exact: true }).first()).toBeVisible();
-  await expect(detail.getByRole("note", { name: "未建立相似度向量" })).toBeVisible();
+  await expect(detail.getByRole("note", { name: "未建立相似度向量", exact: true })).toBeVisible();
   e2eLog.info("[step] 确认保存后向量失效、标志转灰、详情展示新内容");
 });
 
@@ -152,7 +152,7 @@ test("仅排版调整（首尾空白/标点旁空白/连续空白）：无确认
     detail.getByText(`e2e 排版测试 ${stamp}  ,   第二组词`, { exact: true }).first(),
   ).toBeVisible();
   expect((await promptStatus(page)).indexed).toBe(before);
-  await expect(detail.getByRole("note", { name: "已建立相似度向量" })).toBeVisible();
+  await expect(detail.getByRole("note", { name: "已建立相似度向量", exact: true })).toBeVisible();
   e2eLog.info(`[step] 仅排版调整静默保存、向量保留、标志仍蓝（indexed=${before}）`);
 });
 
@@ -167,7 +167,7 @@ test("未索引提示词实质修改：无确认框直接保存，标志始终�
   const before = (await promptStatus(page)).indexed;
 
   const detail = await openPromptDetail(page, original);
-  await expect(detail.getByRole("note", { name: "未建立相似度向量" })).toBeVisible();
+  await expect(detail.getByRole("note", { name: "未建立相似度向量", exact: true })).toBeVisible();
 
   await editContentAndSave(detail, modified);
 
@@ -175,7 +175,7 @@ test("未索引提示词实质修改：无确认框直接保存，标志始终�
   await expect(page.getByRole("dialog", { name: "确认保存" })).toHaveCount(0);
   await expectToastAndDismiss(page, "已保存");
   expect((await promptStatus(page)).indexed).toBe(before);
-  await expect(detail.getByRole("note", { name: "未建立相似度向量" })).toBeVisible();
+  await expect(detail.getByRole("note", { name: "未建立相似度向量", exact: true })).toBeVisible();
   e2eLog.info("[step] 未索引提示词实质修改直接保存、无确认框");
 });
 
@@ -184,8 +184,8 @@ test("图像详情索引标志：索引前灰色，图像增量索引后变蓝",
   await uploadImageWithPrompt(page, promptContent, app.mockImagePath);
 
   let detail = await openImageDetail(page, promptContent);
-  await expect(detail.getByRole("note", { name: "未建立相似度向量" })).toBeVisible();
-  await expect(detail.getByRole("note", { name: "已建立相似度向量" })).toHaveCount(0);
+  await expect(detail.getByRole("note", { name: "未建立相似度向量", exact: true })).toBeVisible();
+  await expect(detail.getByRole("note", { name: "已建立相似度向量", exact: true })).toHaveCount(0);
   e2eLog.info("[step] 新导入图像：标志为灰");
 
   await closeDetail(detail);
@@ -194,7 +194,7 @@ test("图像详情索引标志：索引前灰色，图像增量索引后变蓝",
 
   // 重新打开详情拿最新卡片投影：标志变蓝（关闭设置广播活动页重载，轮询重开等待数据新鲜）
   detail = await openDetailExpectIcon(page, openImageDetail, promptContent, "已建立相似度向量");
-  await expect(detail.getByRole("note", { name: "未建立相似度向量" })).toHaveCount(0);
+  await expect(detail.getByRole("note", { name: "未建立相似度向量", exact: true })).toHaveCount(0);
   e2eLog.info("[step] 图像增量索引后：标志变蓝");
 });
 
@@ -215,13 +215,13 @@ test("编辑态「规范化」按钮：仅编辑态可见、只填回输入框�
   const detail = await openDetailExpectIcon(page, openPromptDetail, original, "已建立相似度向量");
 
   // 非编辑态：没有这个入口（它改的是编辑缓冲，展示态没有草稿可改）
-  await expect(detail.getByRole("button", { name: "规范化" })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "规范化", exact: true })).toHaveCount(0);
   e2eLog.info("[step] 非编辑态不提供「规范化」");
 
-  await detail.getByTitle("编辑").click();
-  const textarea = detail.getByLabel("提示词内容");
+  await detail.getByTitle("编辑", { exact: true }).click();
+  const textarea = detail.getByLabel("提示词内容", { exact: true });
   await expect(textarea).toHaveValue(original);
-  const normalizeBtn = detail.getByRole("button", { name: "规范化" });
+  const normalizeBtn = detail.getByRole("button", { name: "规范化", exact: true });
   await expect(normalizeBtn).toBeVisible();
   e2eLog.info("[step] 编辑态出现「规范化」（复制左侧）");
 
@@ -247,16 +247,16 @@ test("编辑态「规范化」按钮：仅编辑态可见、只填回输入框�
   e2eLog.info("[step] 取消后展示态与库内都仍是原文");
 
   // 再来一次：这次点「保存」→ 落库为规范化形态；规范化前后 canonical 相同 → 无确认框、向量保留
-  await detail.getByTitle("编辑").click();
+  await detail.getByTitle("编辑", { exact: true }).click();
   // 取消已把草稿重置回库内值：重进编辑态拿到的是原文，不是规范化后的残留
   await expect(textarea).toHaveValue(original);
   await normalizeBtn.click();
   await expectToastAndDismiss(page, "已按规范化格式填入，保存后生效");
-  await detail.getByRole("button", { name: "保存" }).click();
+  await detail.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "确认保存" })).toHaveCount(0);
   await expectToastAndDismiss(page, "已保存");
   expect((await promptStatus(page)).indexed).toBe(before);
-  await expect(detail.getByRole("note", { name: "已建立相似度向量" })).toBeVisible();
+  await expect(detail.getByRole("note", { name: "已建立相似度向量", exact: true })).toBeVisible();
   await expect(detail.getByText(canonical, { exact: true }).first()).toBeVisible();
   expect(
     (await listPrompts(page)).find((p) => p.content === canonical),

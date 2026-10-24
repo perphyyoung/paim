@@ -161,7 +161,7 @@ test("不附提示词上传：图像详情内「新建提示词」创建并关�
   await allCards(page).click();
   const detail = page.getByRole("dialog", { name: "图像详情" });
   await expect(detail).toBeVisible({ timeout: 5_000 });
-  const createBtn = detail.getByTitle("新建提示词");
+  const createBtn = detail.getByTitle("新建提示词", { exact: true });
   await expect(createBtn).toHaveText("新建提示词");
   e2eLog.info("[step] 未关联提示词：左上入口为「新建提示词」");
 
@@ -190,7 +190,7 @@ test("不附提示词上传：图像详情内「新建提示词」创建并关�
   e2eLog.info("[step] 提示词已创建并关联");
 
   // 同一枚入口随关联态切换：现在应是「编辑提示词」
-  await expect(detail.getByTitle("编辑提示词")).toHaveText("编辑提示词");
+  await expect(detail.getByTitle("编辑提示词", { exact: true })).toHaveText("编辑提示词");
   await closeDetail(detail);
 
   // 新建的提示词要出现在提示词主页（新建处已标 prompts 页过期 → 主页重拉）

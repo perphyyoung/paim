@@ -39,22 +39,22 @@ test("二级跳转（提示词主页）：嵌套图像详情可「编辑提示�
   // 「重复导入」只关联同一张，撑不到两张（对齐 e2e/12 的写法）
   for (let i = 0; i < 2; i++) {
     writePng(app.mockImagePath);
-    await bottom.getByRole("button", { name: "从外界导入图像" }).click();
+    await bottom.getByRole("button", { name: "从外界导入图像", exact: true }).click();
     await expectToastAndDismiss(page, "已导入并关联 1 张图像");
   }
-  await expect(bottom.getByText("关联图像（2）")).toBeVisible();
+  await expect(bottom.getByText("关联图像（2）", { exact: true })).toBeVisible();
   await expect(bottom.getByRole("img")).toHaveCount(2);
   e2eLog.info("[step] 底部提示词详情已关联 2 张图像");
 
   // 第 1 层：底部详情的缩略图 →「查看图像详情」（既有入口；按钮 group-hover 才可见，先 hover）
   await bottom.getByRole("img").first().hover();
-  await bottom.getByTitle("查看图像详情").first().click();
+  await bottom.getByTitle("查看图像详情", { exact: true }).first().click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" });
   await expect(imageSlot).toHaveCount(1);
   e2eLog.info("[step] 第 1 层：嵌套图像详情（图像槽）已打开");
 
   // 二级跳转 ①：嵌套图像详情里的「编辑提示词」——放开前是 disabled + title「禁止二级跳转」
-  const editBtn = imageSlot.getByTitle("编辑提示词");
+  const editBtn = imageSlot.getByTitle("编辑提示词", { exact: true });
   await expect(editBtn).toBeEnabled();
   await editBtn.click();
   const promptDetails = page.getByRole("dialog", { name: "提示词详情" });
@@ -66,9 +66,9 @@ test("二级跳转（提示词主页）：嵌套图像详情可「编辑提示�
   const nestedPrompt = promptDetails.nth(1);
   const srcBefore = await imageSlot.getByRole("img").first().getAttribute("src");
   await nestedPrompt.getByRole("img").nth(1).hover();
-  await nestedPrompt.getByTitle("查看图像详情").nth(1).click();
+  await nestedPrompt.getByTitle("查看图像详情", { exact: true }).nth(1).click();
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(1); // 仍是 1 个图像槽
-  await expect(imageSlot.getByText("无图像")).toBeHidden();
+  await expect(imageSlot.getByText("无图像", { exact: true })).toBeHidden();
   await expect(imageSlot.getByRole("img").first()).not.toHaveAttribute("src", srcBefore ?? "");
   await expect(promptDetails).toHaveCount(2); // 层数上限：底部 1 + 图像槽 1 + 提示词槽 1
   e2eLog.info("[step] 二级跳转②：图像槽已替换为新图（未新增层，内容已换新）");
@@ -93,7 +93,7 @@ test("二级跳转（图像主页）：嵌套提示词详情可「查看图像�
   e2eLog.info("[step] 底部图像详情已打开（第 0 层）");
 
   // 二级跳转 ①：底部图像详情的「编辑提示词」→ 嵌套提示词槽（该入口在底层本来就可用）
-  const editBtn = bottom.getByTitle("编辑提示词");
+  const editBtn = bottom.getByTitle("编辑提示词", { exact: true });
   // 可见文案也钉住：左上这枚入口叫「编辑提示词」，与右侧图像自身的「编辑」区分（图标已去掉）
   await expect(editBtn).toHaveText("编辑提示词");
   await expect(editBtn).toBeEnabled();
@@ -105,12 +105,12 @@ test("二级跳转（图像主页）：嵌套提示词详情可「查看图像�
 
   // 二级跳转 ②：嵌套提示词槽里的「查看图像详情」——放开前是 disabled + title「禁止二级跳转」
   await promptSlot.getByRole("img").first().hover(); // 入口按钮 group-hover 才可见
-  const viewImageBtn = promptSlot.getByTitle("查看图像详情");
+  const viewImageBtn = promptSlot.getByTitle("查看图像详情", { exact: true });
   await expect(viewImageBtn).toBeEnabled();
   await viewImageBtn.click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" }).nth(1);
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 图像槽
-  await expect(imageSlot.getByText("无图像")).toBeHidden();
+  await expect(imageSlot.getByText("无图像", { exact: true })).toBeHidden();
   await expect(imageSlot.getByRole("img").first()).toHaveAttribute("src", /asset\.localhost/);
   await expect(bottom.getByText(promptContent, { exact: true }).first()).toBeVisible(); // 底部未被替换
   e2eLog.info("[step] 二级跳转②：图像槽已打开且渲染出图（底部详情未动）");
@@ -137,19 +137,19 @@ test("三级链路（图像→提示词→图像）：第三跳目标已在槽�
   const bottom = await openImageDetail(page, promptContent);
 
   // 第 1 层：底部图像详情「编辑提示词」→ 嵌套提示词槽（就是这张图关联的那条）
-  await bottom.getByTitle("编辑提示词").click();
+  await bottom.getByTitle("编辑提示词", { exact: true }).click();
   const promptSlot = page.getByRole("dialog", { name: "提示词详情" });
   await expect(promptSlot).toHaveCount(1);
 
   // 第 2 层：嵌套提示词槽「查看图像详情」→ 图像槽（同一张图，但槽是独立实例）
   await promptSlot.getByRole("img").first().hover(); // 入口按钮 group-hover 才可见
-  await promptSlot.getByTitle("查看图像详情").first().click();
+  await promptSlot.getByTitle("查看图像详情", { exact: true }).first().click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" }).nth(1);
   await expect(page.getByRole("dialog", { name: "图像详情" })).toHaveCount(2); // 底部 + 图像槽
   e2eLog.info("[step] 三级链路就位：底部图像详情 / 提示词槽 / 图像槽");
 
   // 第三跳：图像槽「编辑提示词」→ 目标提示词已在提示词槽里 → 应把它抬到最上
-  await imageSlot.getByTitle("编辑提示词").click();
+  await imageSlot.getByTitle("编辑提示词", { exact: true }).click();
   await expect(promptSlot).toBeVisible();
   await closeDetail(promptSlot); // 修复前：提示词槽被图像槽的遮罩压住 → 关闭钮点不到（timeout）
   e2eLog.info("[step] 提示词槽已置顶（可直接操作其关闭钮）");
@@ -167,23 +167,23 @@ test("三级链路（提示词→图像→提示词）：第三跳目标已在�
   await createPromptViaDialog(page, content);
   const bottom = await openPromptDetail(page, content);
   writePng(app.mockImagePath); // 每次导入前覆写：同 md5 会被判「重复导入」
-  await bottom.getByRole("button", { name: "从外界导入图像" }).click();
+  await bottom.getByRole("button", { name: "从外界导入图像", exact: true }).click();
   await expectToastAndDismiss(page, "已导入并关联 1 张图像");
 
   // 第 1 层：底部提示词详情「查看图像详情」→ 图像槽
   await bottom.getByRole("img").first().hover();
-  await bottom.getByTitle("查看图像详情").first().click();
+  await bottom.getByTitle("查看图像详情", { exact: true }).first().click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" });
   await expect(imageSlot).toHaveCount(1);
 
   // 第 2 层：图像槽「编辑提示词」→ 提示词槽（内容与底部同一条，槽是独立实例）
-  await imageSlot.getByTitle("编辑提示词").click();
+  await imageSlot.getByTitle("编辑提示词", { exact: true }).click();
   const promptSlot = page.getByRole("dialog", { name: "提示词详情" }).nth(1);
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toHaveCount(2); // 底部 + 提示词槽
 
   // 第三跳：提示词槽「查看图像详情」→ 目标那张图已在图像槽里 → 应把图像槽抬到最上
   await promptSlot.getByRole("img").first().hover();
-  await promptSlot.getByTitle("查看图像详情").first().click();
+  await promptSlot.getByTitle("查看图像详情", { exact: true }).first().click();
   await expect(imageSlot).toBeVisible();
   await closeDetail(imageSlot); // 修复前：图像槽被提示词槽的遮罩压住 → 关闭钮点不到（timeout）
   e2eLog.info("[step] 图像槽已置顶（可直接操作其关闭钮）");
@@ -207,18 +207,18 @@ test("嵌套提示词详情内保存：宿主同步不得自激（保存能完�
   const bottom = await openImageDetail(page, promptContent);
 
   // 第 1 层：底部图像详情「编辑提示词」→ 嵌套提示词槽
-  await bottom.getByTitle("编辑提示词").click();
+  await bottom.getByTitle("编辑提示词", { exact: true }).click();
   const promptSlot = page.getByRole("dialog", { name: "提示词详情" });
   await expect(promptSlot).toHaveCount(1);
   await promptSlot.getByTitle("编辑", { exact: true }).click();
-  await expect(promptSlot.getByRole("button", { name: "保存" })).toBeVisible();
+  await expect(promptSlot.getByRole("button", { name: "保存", exact: true })).toBeVisible();
 
   // 改一个字符再保存：只有「内容确实变化」才触发 revision 广播（未建立向量 → 不弹失效确认）
-  const box = promptSlot.getByLabel("提示词内容"); // 编辑态「内容」多行框（带 aria-label，语义定位）
+  const box = promptSlot.getByLabel("提示词内容", { exact: true }); // 编辑态「内容」多行框（带 aria-label，语义定位）
   await box.click();
   await box.press("End");
   await box.type("x");
-  await promptSlot.getByRole("button", { name: "保存" }).click();
+  await promptSlot.getByRole("button", { name: "保存", exact: true }).click();
   // 自激时主线程被 render job 占满 → toast 永不出现，这里必然超时（生产/调试构建都没有递归守卫）
   await expectToastAndDismiss(page, "已保存");
   e2eLog.info("[step] 保存完成且界面仍响应");
@@ -243,25 +243,26 @@ test("嵌套图像详情内切换收藏：宿主同步不得自激（操作能�
   const bottom = await openPromptDetail(page, promptContent);
   // 关联 1 张图：用来打开嵌套图像详情（叠加层入口）
   writePng(app.mockImagePath);
-  await bottom.getByRole("button", { name: "从外界导入图像" }).click();
+  await bottom.getByRole("button", { name: "从外界导入图像", exact: true }).click();
   await expectToastAndDismiss(page, "已导入并关联 1 张图像");
 
   // 第 1 层：底部提示词详情「查看图像详情」→ 嵌套图像槽（入口按钮 group-hover 才可见，先 hover）
   await bottom.getByRole("img").first().hover();
-  await bottom.getByTitle("查看图像详情").first().click();
+  await bottom.getByTitle("查看图像详情", { exact: true }).first().click();
   const imageSlot = page.getByRole("dialog", { name: "图像详情" });
   await expect(imageSlot).toHaveCount(1);
   e2eLog.info("[step] 嵌套图像槽已打开");
 
-  // 收藏：自激时主线程被 render job 占满 → title 翻转都不会发生 → 必超时
-  await imageSlot.getByTitle("收藏").click();
-  await expect(imageSlot.getByTitle("取消收藏")).toBeVisible({ timeout: 5_000 });
+  // 收藏：自激时主线程被 render job 占满 → aria-pressed 翻转都不会发生 → 必超时
+  const favoriteBtn = imageSlot.getByRole("button", { name: "收藏", exact: true });
+  await imageSlot.getByTitle("收藏", { exact: true }).click();
+  await expect(favoriteBtn).toHaveAttribute("aria-pressed", "true", { timeout: 5_000 });
   await expectToastAndDismiss(page, "已收藏");
   e2eLog.info("[step] 嵌套图像槽：收藏完成且界面仍响应");
 
   // 收藏回切，避免影响同文件后续用例的主页计数断言
-  await imageSlot.getByTitle("取消收藏").click();
-  await expect(imageSlot.getByTitle("收藏")).toBeVisible({ timeout: 5_000 });
+  await imageSlot.getByTitle("取消收藏", { exact: true }).click();
+  await expect(favoriteBtn).toHaveAttribute("aria-pressed", "false", { timeout: 5_000 });
   await expectToastAndDismiss(page, "已取消收藏");
 
   await closeDetail(imageSlot);

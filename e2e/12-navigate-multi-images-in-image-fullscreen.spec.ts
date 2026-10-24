@@ -49,10 +49,10 @@ async function setupPromptWithImages(page: Page, app: AppHandle, count: number):
   const detail = await openPromptDetail(page, promptContent);
   for (let i = 0; i < count; i++) {
     writePng(app.mockImagePath);
-    await detail.getByRole("button", { name: "从外界导入图像" }).click();
+    await detail.getByRole("button", { name: "从外界导入图像", exact: true }).click();
     await expectToastAndDismiss(page, "已导入并关联 1 张图像");
   }
-  await expect(detail.getByText(`关联图像（${count}）`)).toBeVisible();
+  await expect(detail.getByText(`关联图像（${count}）`, { exact: true })).toBeVisible();
   // 缩略图序号即数据顺序：后面的「双击第 N 张」依赖这个对应关系
   await expect(detail.getByRole("img")).toHaveCount(count);
   e2eLog.info(`[step] 提示词已关联并可双击的缩略图共 ${count} 张`);
@@ -193,7 +193,7 @@ test("叠加层不穿透：嵌套图像详情开着时，→ / ← 不切换底�
   const detail = await openPromptDetail(page, contentA);
   // A 关联 1 张图：用来打开嵌套图像详情（叠加层入口）
   writePng(app.mockImagePath);
-  await detail.getByRole("button", { name: "从外界导入图像" }).click();
+  await detail.getByRole("button", { name: "从外界导入图像", exact: true }).click();
   await expectToastAndDismiss(page, "已导入并关联 1 张图像");
 
   // 序号只作「前后不变」的信号，不假设总条数：同文件前面的用例已在同一实例建过数据
@@ -205,7 +205,7 @@ test("叠加层不穿透：嵌套图像详情开着时，→ / ← 不切换底�
   // 入口按钮是 group-hover 才可见（`hidden` → `group-hover:flex`），先 hover 缩略图再点。
   // 多条关联图时两个定位器按格序一一对应，`.first()` 即「第 1 张」这个含义（顺序有含义，非兜底）
   await detail.getByRole("img").first().hover();
-  await detail.getByTitle("查看图像详情").first().click();
+  await detail.getByTitle("查看图像详情", { exact: true }).first().click();
   await expect(page.getByRole("dialog", { name: "图像详情" })).toBeVisible();
   e2eLog.info("[step] 嵌套图像详情已打开（叠加层）");
 
@@ -229,7 +229,7 @@ test("叠加层不穿透：嵌套提示词详情开着时，→ / ← 不切换�
   const before = await idx.inputValue();
   e2eLog.info(`[step] 底层图像详情当前索引：${before}`);
 
-  await detail.getByTitle("编辑提示词").click(); // 嵌套提示词详情（叠加层）
+  await detail.getByTitle("编辑提示词", { exact: true }).click(); // 嵌套提示词详情（叠加层）
   await expect(page.getByRole("dialog", { name: "提示词详情" })).toBeVisible();
   e2eLog.info("[step] 嵌套提示词详情已打开（叠加层）");
 

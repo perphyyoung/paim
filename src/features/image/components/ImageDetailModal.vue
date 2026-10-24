@@ -882,6 +882,8 @@ const fmtLocal = formatLocalTime;
                     ? 'border-transparent bg-gradient-to-br from-amber-500 to-amber-400 text-white'
                     : 'hover:border-amber-300 hover:text-amber-600 border-gray-600 bg-gray-800 text-gray-400'
                 "
+                aria-label="收藏"
+                :aria-pressed="!!current?.is_favorite"
                 :title="current?.is_favorite ? '取消收藏' : '收藏'"
                 @click="toggleFavorite"
               >
@@ -899,6 +901,7 @@ const fmtLocal = formatLocalTime;
               >
                 <input
                   type="checkbox"
+                  aria-label="安全评级"
                   class="h-0 w-0 opacity-0"
                   :checked="current?.is_safe"
                   @change="toggleSafe"
@@ -922,6 +925,7 @@ const fmtLocal = formatLocalTime;
                 type="button"
                 class="rounded border px-2 py-1 text-xs border-gray-600 text-gray-300 hover:bg-gray-700"
                 :class="edit ? 'font-medium text-gray-200' : ''"
+                :aria-pressed="edit"
                 :title="edit ? '取消编辑' : '编辑'"
                 @click="toggleEdit"
               >
