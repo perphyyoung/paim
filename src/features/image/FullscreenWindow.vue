@@ -42,6 +42,11 @@ onMounted(async () => {
 });
 onUnmounted(() => unlisten?.());
 
+/// 模板内联箭头函数会触发 vue-tsc 3 对导入绑定误判（报 `.value` 不存在），改为 script 函数
+function openDetail(id: string) {
+  void commands.openImageDetailFromFullscreen(id);
+}
+
 async function close() {
   try {
     await commands.closeImageFullscreen();
@@ -79,6 +84,6 @@ async function resolveMeta(id: string) {
     :resolve-src="resolveImageSrc"
     :resolve-meta="resolveMeta"
     @close="close"
-    @open-detail="(id) => commands.openImageDetailFromFullscreen(id)"
+    @open-detail="openDetail"
   />
 </template>
