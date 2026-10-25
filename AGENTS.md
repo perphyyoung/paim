@@ -13,8 +13,7 @@
 - 对同一文件的多处修改：合并为一次编辑完成，或分多条消息串行执行；禁止在同一条消息里并行发起多个编辑到同一文件（并行读-改-写会竞态覆盖，仅最后一个编辑生效，其余静默丢失）
 - 不因「要重新编译/重新验证」降低代码质量标准
 - 对称结构优先于改动成本，不为「现状能跑」保留次优写法
-- 日常改完先跑 `pnpm quick`（只校验、不改文件、不跑测试）；收尾/提交前跑完整 `pnpm check`（含完整 `pnpm test` 与 build）。两者都通过后才输出**单独一行**的简要 commit 信息，并另起一行写「输出结束」。不要跳过这两个质量门直接跑其它命令。
-- 修改 Rust 命令签名/公共 API：先 `pnpm build:rs && pnpm gen:bindings`，再 `pnpm quick`；`test:compile` 会暴露测试代码里的旧引用。
+- 质量门与 bindings：日常改完先跑 `pnpm quick`（只读校验：format:check → lint → lint:e2e-locators → typecheck → check:rs → test:compile，不改文件、不跑测试）；收尾/提交前跑 `pnpm check`（会改文件：format → build:rs → gen:bindings → lint → lint:e2e-locators → typecheck → test → build）——它已含 `gen:bindings`，成功后 `src/bindings.ts` 必然是最新的，**不必再单独跑**；只有「改了 Rust 命令签名/公共 API、又要跑 `pnpm quick`」时才需要先 `pnpm build:rs && pnpm gen:bindings`（quick 不含 gen，且 gen 依赖最新的 debug 二进制；`test:compile` 会暴露测试代码里的旧引用）。两者都通过后才输出**单独一行**的简要 commit 信息，并另起一行写「输出结束」；不要跳过这两个质量门直接跑其它命令。
 - 新增/修改 e2e 测试缝前，先完整读 `src-tauri/src/commands/e2e.rs` 现有命令，禁止并存功能相似的第二套命令；命名要能自解释（如 `e2e_seed_similarity_vectors` 明确表示为相似度检索播种向量）。
 - 日志文件的删除会被阻止，用清空代替
 - 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
