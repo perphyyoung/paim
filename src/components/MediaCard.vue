@@ -17,11 +17,7 @@
 import CardTagRow from "@/components/CardTagRow.vue";
 import ScoreBadge from "@/features/similarity/ScoreBadge.vue";
 import { homeCardInfoVisible } from "@/utils/homeCardInfo";
-import {
-  HOVER_PREVIEW_DELAY_MS,
-  closeHoverPreview,
-  scheduleHoverPreview,
-} from "@/utils/hoverPreview";
+import { closeHoverPreview, scheduleHoverPreview } from "@/utils/hoverPreview";
 import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, ref, watch } from "vue";
 
 /// 背景遮罩透明度（0 = 完全不压暗，1 = 全黑）；想提亮/压暗只改这一个值
@@ -57,8 +53,6 @@ const props = withDefaults(
     copyTitle?: string;
     /** 悬停原图预览的图像 id（home 变体用；空 = 不预览。提示词卡片传关联首图 id） */
     previewImageId?: string | null;
-    /** 悬停多久才弹原图（毫秒） */
-    previewDelay?: number;
   }>(),
   {
     index: 0,
@@ -75,7 +69,6 @@ const props = withDefaults(
     cardSize: 200,
     copyTitle: "复制内容",
     previewImageId: null,
-    previewDelay: HOVER_PREVIEW_DELAY_MS,
   },
 );
 
@@ -112,13 +105,14 @@ function onRootClick(ev: MouseEvent) {
 }
 
 // ---- 悬停原图预览（仅 home 变体；批量模式下勾选优先，不弹）----
+// 延迟与总开关走全局配置（utils/hoverPreview.ts），设置面板改完即时生效，卡片不用重建
 const rootRef = ref<HTMLElement | null>(null);
 
 function onCardEnter() {
   if (props.variant !== "home" || !props.previewImageId || props.batchOpen) return;
   const el = rootRef.value;
   if (!el) return;
-  scheduleHoverPreview({ id: props.previewImageId, el }, props.previewDelay);
+  scheduleHoverPreview({ id: props.previewImageId, el });
 }
 
 function onCardContextMenu(ev: MouseEvent) {

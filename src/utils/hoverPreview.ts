@@ -16,8 +16,66 @@ import { ref } from "vue";
 import { commands } from "@/bindings";
 import { absolutePathToAssetUrl } from "@/utils/assetUrl";
 
-/** 悬停多久才弹原图：单点常量（需求值，测试与文档同口径） */
+/** 悬停多久才弹原图：默认值（设置面板未改过时用它；测试与文档同口径） */
 export const HOVER_PREVIEW_DELAY_MS = 1_000;
+
+/** 延迟可配置范围与步进（设置面板滑块与钳制逻辑同口径，改范围只改这一处） */
+export const HOVER_PREVIEW_DELAY_LIMITS = { min: 200, max: 3_000, step: 100 } as const;
+
+/** localStorage 键：延迟（毫秒）与总开关（"0" 关闭；缺省开启） */
+const DELAY_KEY = "homeCardHoverPreviewDelay";
+const ENABLED_KEY = "homeCardHoverPreviewEnabled";
+
+/// 偏好读写统一容错：node 单测环境没有 localStorage，隐私模式等场景也可能抛异常；
+/// 失败只是不持久化，本次会话仍按内存值生效。
+function readStored(key: string): string | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(key, value);
+  } catch {
+    // 写失败不阻断本次会话的配置变更
+  }
+}
+
+/** 把任意输入收敛到合法延迟：非数字回退默认值，越界钳制到范围端点 */
+export function clampHoverPreviewDelay(ms: number): number {
+  if (!Number.isFinite(ms)) return HOVER_PREVIEW_DELAY_MS;
+  return Math.min(
+    HOVER_PREVIEW_DELAY_LIMITS.max,
+    Math.max(HOVER_PREVIEW_DELAY_LIMITS.min, Math.round(ms)),
+  );
+}
+
+function loadDelay(): number {
+  const raw = readStored(DELAY_KEY);
+  if (raw === null || raw.trim() === "") return HOVER_PREVIEW_DELAY_MS;
+  return clampHoverPreviewDelay(Number(raw));
+}
+
+/** 全局配置：设置面板改这里，已挂载的卡片无需重建即可生效 */
+export const hoverPreviewDelayMs = ref(loadDelay());
+export const hoverPreviewEnabled = ref(readStored(ENABLED_KEY) !== "0");
+
+/** 改延迟：写入偏好并收起当前浮层（下次悬停按新值计时） */
+export function setHoverPreviewDelay(ms: number): void {
+  hoverPreviewDelayMs.value = clampHoverPreviewDelay(ms);
+  writeStored(DELAY_KEY, String(hoverPreviewDelayMs.value));
+  closeHoverPreview();
+}
+
+/** 总开关：关闭立即收起浮层并停止后续排期 */
+export function setHoverPreviewEnabled(enabled: boolean): void {
+  hoverPreviewEnabled.value = enabled;
+  writeStored(ENABLED_KEY, enabled ? "1" : "0");
+  if (!enabled) closeHoverPreview();
+}
 
 /** 浮层与锚点卡片之间的间隙（px） */
 const GAP = 8;
@@ -59,8 +117,9 @@ let seq = 0;
  */
 export function scheduleHoverPreview(
   next: HoverPreviewAnchor,
-  delay = HOVER_PREVIEW_DELAY_MS,
+  delay = hoverPreviewDelayMs.value,
 ): void {
+  if (!hoverPreviewEnabled.value) return;
   if (anchor?.id === next.id && (timer !== null || hoverPreviewVisible.value)) {
     anchor = next; // 卡片 DOM 可能被复用重排，位置信息以最新节点为准
     return;

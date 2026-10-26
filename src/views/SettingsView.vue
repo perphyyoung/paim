@@ -4,6 +4,13 @@ import { commands } from "@/bindings";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { appVersion } from "@/version";
 import { useFontFamily, useFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
+import {
+  HOVER_PREVIEW_DELAY_LIMITS,
+  hoverPreviewDelayMs,
+  hoverPreviewEnabled,
+  setHoverPreviewDelay,
+  setHoverPreviewEnabled,
+} from "@/utils/hoverPreview";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import FontSelect from "@/components/FontSelect.vue";
 import { useToast } from "@/components/useToast";
@@ -32,6 +39,15 @@ function onFontScaleInput(e: Event) {
 
 // 字体家族：空串 = 默认字体栈；写入 CSS 变量 --font-family（tailwind fontFamily.sans 消费）
 const { fontFamily, setFontFamily } = useFontFamily();
+
+// 主页卡片悬停预览：延迟滑块 + 总开关（同一行）；改完即时写入偏好，无需重启
+type InputEl = HTMLInputElement;
+function onHoverPreviewDelayInput(e: Event) {
+  setHoverPreviewDelay(Number((e.target as InputEl).value));
+}
+function onHoverPreviewEnabledChange(e: Event) {
+  setHoverPreviewEnabled((e.target as InputEl).checked);
+}
 
 const dataDir = ref("");
 const openError = ref("");
@@ -229,6 +245,38 @@ onMounted(loadDataDir);
           class="w-40 shrink-0 accent-blue-600"
           @input="onFontScaleInput"
         />
+      </div>
+
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <dt class="text-gray-400">主页卡片悬停预览</dt>
+          <dd class="text-sm text-gray-500">
+            鼠标停留 {{ (hoverPreviewDelayMs / 1000).toFixed(1) }} 秒后显示原图；关闭后不预览
+          </dd>
+        </div>
+        <div class="flex shrink-0 items-center gap-3">
+          <label class="flex items-center gap-1.5 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              aria-label="启用主页卡片悬停预览"
+              class="h-4 w-4 accent-indigo-500"
+              :checked="hoverPreviewEnabled"
+              @change="onHoverPreviewEnabledChange"
+            />
+            启用
+          </label>
+          <input
+            type="range"
+            aria-label="悬停预览延迟"
+            :min="HOVER_PREVIEW_DELAY_LIMITS.min"
+            :max="HOVER_PREVIEW_DELAY_LIMITS.max"
+            :step="HOVER_PREVIEW_DELAY_LIMITS.step"
+            :value="hoverPreviewDelayMs"
+            :disabled="!hoverPreviewEnabled"
+            class="w-40 shrink-0 accent-blue-600 disabled:opacity-40"
+            @input="onHoverPreviewDelayInput"
+          />
+        </div>
       </div>
     </dl>
 

@@ -46,6 +46,8 @@ describe("collectPreferences", () => {
       fontScale: "120",
       fontFamily: "SimHei",
       homeCardInfoVisible: "0",
+      homeCardHoverPreviewDelay: "1500",
+      homeCardHoverPreviewEnabled: "0",
       "paim.blockSize": "50",
       "prompt.sortBy": "createdAt",
       "image.columns": "6",
@@ -56,6 +58,8 @@ describe("collectPreferences", () => {
       fontScale: "120",
       fontFamily: "SimHei",
       homeCardInfoVisible: "0",
+      homeCardHoverPreviewDelay: "1500",
+      homeCardHoverPreviewEnabled: "0",
       "paim.blockSize": "50",
       "prompt.sortBy": "createdAt",
       "image.columns": "6",
@@ -72,6 +76,9 @@ describe("isPreferenceKey", () => {
   it("未登记在别处的新键（如 paim.blockSize2）不被纳入", () => {
     expect(isPreferenceKey("paim.blockSize2")).toBe(false);
     expect(isPreferenceKey("paim.blockSize")).toBe(true);
+    // 悬停预览的开关与延迟随偏好导出（否则换机后静默丢失）
+    expect(isPreferenceKey("homeCardHoverPreviewDelay")).toBe(true);
+    expect(isPreferenceKey("homeCardHoverPreviewEnabled")).toBe(true);
   });
 });
 

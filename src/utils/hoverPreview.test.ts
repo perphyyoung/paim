@@ -10,14 +10,19 @@ const mocks = vi.hoisted(() => ({ getImageSrc: vi.fn() }));
 vi.mock("@/bindings", () => ({ commands: { getImageSrc: mocks.getImageSrc } }));
 
 import {
+  HOVER_PREVIEW_DELAY_LIMITS,
   HOVER_PREVIEW_DELAY_MS,
   closeHoverPreview,
   computePosition,
+  hoverPreviewDelayMs,
+  hoverPreviewEnabled,
   hoverPreviewFailed,
   hoverPreviewLoading,
   hoverPreviewUrl,
   hoverPreviewVisible,
   scheduleHoverPreview,
+  setHoverPreviewDelay,
+  setHoverPreviewEnabled,
 } from "./hoverPreview";
 
 /// 卡片节点替身：只提供状态机用到的两个成员（node 环境无 DOM）
@@ -46,10 +51,25 @@ function stubWindow(innerWidth = 1200, innerHeight = 800): void {
   });
 }
 
+/// localStorage 替身：node 环境没有 WebView 的存储，setter 写入靠它断言
+let storage = new Map<string, string>();
+function stubLocalStorage(): void {
+  storage = new Map();
+  vi.stubGlobal("localStorage", {
+    getItem: (k: string) => storage.get(k) ?? null,
+    setItem: (k: string, v: string) => void storage.set(k, v),
+    removeItem: (k: string) => void storage.delete(k),
+  });
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
   stubWindow();
+  stubLocalStorage();
+  // 每个用例从默认配置开始（模块级 ref 会被前一个用例改过）
+  setHoverPreviewDelay(HOVER_PREVIEW_DELAY_MS);
+  setHoverPreviewEnabled(true);
   closeHoverPreview();
 });
 
@@ -135,6 +155,60 @@ describe("hoverPreview 延迟与取消", () => {
 
     expect(hoverPreviewVisible.value).toBe(false);
     expect(mocks.getImageSrc).not.toHaveBeenCalled();
+  });
+});
+
+describe("hoverPreview 配置", () => {
+  it("默认延迟 1s、默认开启", () => {
+    expect(hoverPreviewDelayMs.value).toBe(HOVER_PREVIEW_DELAY_MS);
+    expect(hoverPreviewEnabled.value).toBe(true);
+  });
+
+  it("改延迟后写入偏好，并按新值排期", async () => {
+    setHoverPreviewDelay(2_500);
+    expect(hoverPreviewDelayMs.value).toBe(2_500);
+    expect(storage.get("homeCardHoverPreviewDelay")).toBe("2500");
+
+    mocks.getImageSrc.mockResolvedValue("C:/data/cfg.png");
+    scheduleHoverPreview({ id: "i-cfg", el: fakeCard() });
+    await vi.advanceTimersByTimeAsync(2_499);
+    expect(hoverPreviewVisible.value).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(hoverPreviewVisible.value).toBe(true);
+  });
+
+  it("越界/非法延迟收敛到合法范围", () => {
+    setHoverPreviewDelay(HOVER_PREVIEW_DELAY_LIMITS.min - 100);
+    expect(hoverPreviewDelayMs.value).toBe(HOVER_PREVIEW_DELAY_LIMITS.min);
+    setHoverPreviewDelay(HOVER_PREVIEW_DELAY_LIMITS.max + 100);
+    expect(hoverPreviewDelayMs.value).toBe(HOVER_PREVIEW_DELAY_LIMITS.max);
+    setHoverPreviewDelay(Number.NaN);
+    expect(hoverPreviewDelayMs.value).toBe(HOVER_PREVIEW_DELAY_MS);
+  });
+
+  it("关闭开关后不再排期，重新开启恢复", async () => {
+    setHoverPreviewEnabled(false);
+    expect(storage.get("homeCardHoverPreviewEnabled")).toBe("0");
+    scheduleHoverPreview({ id: "i-off", el: fakeCard() });
+    await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS * 2);
+    expect(hoverPreviewVisible.value).toBe(false);
+    expect(mocks.getImageSrc).not.toHaveBeenCalled();
+
+    setHoverPreviewEnabled(true);
+    mocks.getImageSrc.mockResolvedValue("C:/data/on.png");
+    scheduleHoverPreview({ id: "i-on", el: fakeCard() });
+    await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS);
+    expect(hoverPreviewVisible.value).toBe(true);
+  });
+
+  it("修改配置会收起已显示的浮层", async () => {
+    mocks.getImageSrc.mockResolvedValue("C:/data/close.png");
+    scheduleHoverPreview({ id: "i-close", el: fakeCard() });
+    await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS);
+    expect(hoverPreviewVisible.value).toBe(true);
+
+    setHoverPreviewDelay(1_500);
+    expect(hoverPreviewVisible.value).toBe(false);
   });
 });
 
