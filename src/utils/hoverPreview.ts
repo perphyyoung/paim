@@ -129,7 +129,8 @@ export function closeHoverPreview(): void {
   anchor = null;
   seq++;
   hoverPreviewVisible.value = false;
-  hoverPreviewUrl.value = "";
+  // 保留 hoverPreviewUrl：浮层用 v-show 常驻，同一张图二次悬停可直接复用已解码位图；
+  // 换图时 openPreview 会先把 url 置空，不会串图
   hoverPreviewLoading.value = false;
   hoverPreviewFailed.value = false;
 }

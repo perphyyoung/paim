@@ -218,10 +218,12 @@ onUpdated(scheduleMeasure);
     <!-- 相似度角标（similar，左上） -->
     <ScoreBadge v-if="variant === 'similar' && score !== undefined" :score="score" />
 
-    <!-- 顶行：home 4 钮 / trash 恢复+彻底删除；悬停或批量模式才显示 -->
+    <!-- 顶行：home 4 钮 / trash 恢复+彻底删除；悬停或批量模式才显示。
+         进入操作行即取消预览计时：用户要的是点按钮，不该先解码一张大图 -->
     <div
       v-if="variant !== 'similar'"
       class="absolute inset-x-0 top-0 z-[3] grid items-center py-0.5 transition-opacity duration-150"
+      @mouseenter="closeHoverPreview"
       :class="[
         variant === 'home' ? 'grid-cols-4' : 'grid-cols-2',
         batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
