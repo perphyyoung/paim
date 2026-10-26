@@ -54,6 +54,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::prompt::restore_all_prompts,
             commands::prompt::empty_prompt_trash,
             commands::prompt::get_prompt_thumbs,
+            commands::prompt::get_prompt_first_image_ids,
             commands::prompt::get_trashed_prompt_thumbs,
             commands::prompt::ensure_prompt_thumbnails,
             commands::prompt::get_prompt_related_images,

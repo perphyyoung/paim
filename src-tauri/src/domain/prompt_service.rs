@@ -608,6 +608,33 @@ pub fn list_related_images_with(
     Ok(out)
 }
 
+/// 卡片首图查询的共享 SQL：按 `sort_order, rowid` 取每个提示词第一张**有缩略图**的关联图像。
+/// 同一行同时返回 `thumbnail_path` 与 `image_id`——卡片背景与悬停原图必须是同一张，
+/// 两条命令共用这条 SQL，避免两处口径漂移。
+/// `include_deleted_images` 控制是否纳入已软删的关联图像（见 [`thumbs_map`]）。
+fn first_image_sql(count: usize, include_deleted_images: bool) -> String {
+    let deleted_filter = if include_deleted_images {
+        ""
+    } else {
+        "AND img.is_deleted = 0"
+    };
+    let placeholders = vec!["?"; count].join(",");
+    format!(
+        "SELECT prompt_id, thumbnail_path, image_id
+         FROM (
+            SELECT pir.prompt_id AS prompt_id,
+                   img.thumbnail_path AS thumbnail_path,
+                   img.id AS image_id,
+                   ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.sort_order, pir.rowid) AS rn
+            FROM prompt_image_relations pir
+            JOIN images img ON img.id = pir.image_id
+            WHERE img.thumbnail_path IS NOT NULL {deleted_filter}
+              AND pir.prompt_id IN ({placeholders})
+         )
+         WHERE rn = 1"
+    )
+}
+
 /// 提示词卡片背景映射的共享实现：{promptId: 相对路径}，取每个提示词第一张**有缩略图**
 /// 的关联图像（thumbnail_path 为 NULL 的记录自动跳过、让位给后续图像）。
 /// `include_deleted_images` 控制是否纳入已软删的关联图像：
@@ -621,24 +648,7 @@ fn thumbs_map(
     if ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let deleted_filter = if include_deleted_images {
-        ""
-    } else {
-        "AND img.is_deleted = 0"
-    };
-    let placeholders = vec!["?"; ids.len()].join(",");
-    let sql = format!(
-        "SELECT prompt_id, thumbnail_path
-         FROM (
-            SELECT pir.prompt_id AS prompt_id, img.thumbnail_path AS thumbnail_path,
-                   ROW_NUMBER() OVER (PARTITION BY pir.prompt_id ORDER BY pir.sort_order, pir.rowid) AS rn
-            FROM prompt_image_relations pir
-            JOIN images img ON img.id = pir.image_id
-            WHERE img.thumbnail_path IS NOT NULL {deleted_filter}
-              AND pir.prompt_id IN ({placeholders})
-         )
-         WHERE rn = 1"
-    );
+    let sql = first_image_sql(ids.len(), include_deleted_images);
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
@@ -662,6 +672,27 @@ pub fn thumbs_for(conn: &Connection, ids: &[String]) -> Result<HashMap<String, S
 /// （回收站特殊语义：关系还在就显示）。
 pub fn thumbs_for_trashed(conn: &Connection, ids: &[String]) -> Result<HashMap<String, String>> {
     thumbs_map(conn, ids, true)
+}
+
+/// 主页提示词卡片**悬停原图预览**用的首图 id：{promptId: imageId}。
+/// 与 [`thumbs_for`] 共用同一条 SQL（同排序、同跳过无缩略图、同排除软删），
+/// 保证「卡片背景显示哪张图，悬停看到的就是哪张图的原图」；
+/// 只取未删除图像（回收站卡片不参与悬停预览）。
+pub fn first_image_ids(conn: &Connection, ids: &[String]) -> Result<HashMap<String, String>> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sql = first_image_sql(ids.len(), false);
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(2)?))
+    })?;
+    let mut map: HashMap<String, String> = HashMap::new();
+    for row in rows {
+        let (pid, iid) = row?;
+        map.insert(pid, iid);
+    }
+    Ok(map)
 }
 
 /// 提示词卡片背景懒自愈的**规划数据**（短锁阶段产出）：

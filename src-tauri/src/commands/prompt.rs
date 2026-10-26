@@ -264,6 +264,20 @@ pub async fn get_prompt_thumbs(
     .await
 }
 
+/// 返回给定提示词**首图的图像 id**：{promptId: imageId}，供主页卡片悬停预览按 id 取原图。
+/// 与 `get_prompt_thumbs` 同一条 SQL——首图 id 与卡片背景必然是同一张。
+#[tauri::command]
+#[specta::specta]
+pub async fn get_prompt_first_image_ids(
+    db: State<'_, BkDb>,
+    ids: Vec<String>,
+) -> Result<std::collections::HashMap<String, String>, AppError> {
+    db::blocking(&db, move |conn| {
+        prompt_service::first_image_ids(conn, &ids).map_err(|e| AppError::Message(e.to_string()))
+    })
+    .await
+}
+
 /// 回收站提示词卡片背景：{promptId: relPath}。与 `get_prompt_thumbs` 的差异是
 /// 纳入已软删的关联图像（回收站特殊语义：关系还在就显示，哪怕图像也在图像回收站里）。
 #[tauri::command]

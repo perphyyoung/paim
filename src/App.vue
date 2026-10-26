@@ -12,6 +12,7 @@ import PanelShell from "@/components/PanelShell.vue";
 import SimilarityIcon from "@/components/SimilarityIcon.vue";
 import StatsModal from "@/components/StatsModal.vue";
 import ToastHost from "@/components/ToastHost.vue";
+import HoverPreviewLayer from "@/components/HoverPreviewLayer.vue";
 import { homeCardInfoVisible, toggleHomeCardInfo } from "@/utils/homeCardInfo";
 
 // 应用启动即应用持久化的全局字号缩放与字体家族
@@ -244,6 +245,9 @@ function reloadAll() {
     </main>
 
     <ToastHost />
+
+    <!-- 主页卡片悬停原图预览（全局单例浮层，状态机见 utils/hoverPreview.ts） -->
+    <HoverPreviewLayer />
 
     <StatsModal :open="statsOpen" @close="statsOpen = false" />
 

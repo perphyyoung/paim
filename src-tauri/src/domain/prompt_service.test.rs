@@ -1,8 +1,8 @@
 //! 提示词领域服务单元测试：详情更新（只写传入字段，未传字段保持不变）。
 
 use super::{
-    list_ids, list_page, list_related_images_with, set_prompt_first_image, special_tags_counts,
-    thumb_apply, thumb_plan, thumbs_for, thumbs_for_trashed, update_detail,
+    first_image_ids, list_ids, list_page, list_related_images_with, set_prompt_first_image,
+    special_tags_counts, thumb_apply, thumb_plan, thumbs_for, thumbs_for_trashed, update_detail,
 };
 use crate::domain::list_query::{ListQuery, SearchMode};
 use crate::domain::similarity_service;
@@ -1014,6 +1014,82 @@ fn thumbs_for_limits_result_to_requested_prompts() {
         thumbs_for(&conn, &[]).unwrap().is_empty(),
         "空 ids 应直接返回空映射"
     );
+}
+
+/// 悬停预览的首图 id 必须与卡片背景同源：跳过 NULL 缩略图、排除软删，
+/// 且首图变化时两条映射一起移动（不会出现「背景是 i3、大图是 i2」这种错位）。
+#[test]
+fn first_image_ids_matches_thumb_rows() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    conn.execute(
+        "INSERT INTO prompts(id, title, content) VALUES ('p1', 't', 'c')",
+        [],
+    )
+    .unwrap();
+    for (id, thumb) in [
+        ("i1", None),
+        ("i2", Some("thumbnails/202609/b.jpg")),
+        ("i3", Some("thumbnails/202609/c.jpg")),
+    ] {
+        conn.execute(
+            "INSERT INTO images(id, file_name, stored_name, relative_path, thumbnail_path)
+             VALUES (?1, 'a.png', 'a.png', 'images/202609/a.png', ?2)",
+            rusqlite::params![id, thumb],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO prompt_image_relations(prompt_id, image_id, sort_order)
+         VALUES ('p1', 'i1', 1), ('p1', 'i2', 2), ('p1', 'i3', 3)",
+        [],
+    )
+    .unwrap();
+
+    let ids = vec!["p1".to_string()];
+    assert_eq!(
+        first_image_ids(&conn, &ids)
+            .unwrap()
+            .get("p1")
+            .map(String::as_str),
+        Some("i2"),
+        "跳过无缩略图的 i1"
+    );
+    assert_eq!(
+        thumbs_for(&conn, &ids)
+            .unwrap()
+            .get("p1")
+            .map(String::as_str),
+        Some("thumbnails/202609/b.jpg"),
+        "背景与首图 id 指向同一行"
+    );
+
+    // 首图被软删 → 两条映射一起顺延到 i3
+    conn.execute(
+        "UPDATE images SET is_deleted = 1, deleted_at = '2026-10-04T00:00:00Z' WHERE id = 'i2'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        first_image_ids(&conn, &ids)
+            .unwrap()
+            .get("p1")
+            .map(String::as_str),
+        Some("i3")
+    );
+    assert_eq!(
+        thumbs_for(&conn, &ids)
+            .unwrap()
+            .get("p1")
+            .map(String::as_str),
+        Some("thumbnails/202609/c.jpg")
+    );
+
+    // 全部关联图被软删 → 无首图；空 ids 不拼非法 SQL
+    conn.execute("UPDATE images SET is_deleted = 1 WHERE id = 'i3'", [])
+        .unwrap();
+    assert!(!first_image_ids(&conn, &ids).unwrap().contains_key("p1"));
+    assert!(first_image_ids(&conn, &[]).unwrap().is_empty());
 }
 
 /// 回收站特殊语义：提示词与关联图像**两边都已软删**时，主页映射不返回该提示词，

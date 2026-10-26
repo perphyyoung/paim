@@ -224,7 +224,7 @@ showToast(message, type?, duration?); // type 默认 "info"；duration 缺省按
 | 125 | 标签自动完成下拉      | TagAutocompleteInput（图像/提示词详情、BatchActionBar）                                                                      | Teleport + fixed 定位，须高于 z-120 顶层模态，低于 Toast     |
 | 128 | 设置类面板（遮罩 + 面板） | PanelShell（通用设置 / 相似度设置 / 帮助）                                                                                   | 系统级热键可在应用失焦时打开，故须高于全部业务界面（51+ 覆盖层栈、110/120 模态、125 下拉），低于 Toast |
 | 129 | 面板内子窗口          | ConfirmDialog / FontSelect（遮罩 + 菜单）/ BackupImportModal / BackupExportModal / ThumbnailRebuildModal / IntegrityCheckModal | 均 `Teleport to body`，故必须高于面板 z-128，否则会被面板自己盖住；同档内靠 DOM 顺序定先后（遮罩在前、本体在后） |
-| 130 | Toast / 悬停预览      | ToastHost / HoverImagePreview                                                                                                | Toast 永驻最高层（画面正中心；容器不拦截点击，本体可点击关闭）；悬停预览 pointer-events-none，与 Toast 同档（`ModalZ.hoverImagePreview`） |
+| 130 | Toast / 悬停预览      | ToastHost / HoverImagePreview / HoverPreviewLayer（主页卡片悬停 1s 原图）                                                     | Toast 永驻最高层（画面正中心；容器不拦截点击，本体可点击关闭）；悬停预览 pointer-events-none，与 Toast 同档（`ModalZ.hoverImagePreview`） |
 
 ### 组件内局部层级（非全屏，仅作用于自身 stacking context）
 

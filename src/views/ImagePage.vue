@@ -926,6 +926,7 @@ function onUploadDone() {
               :selected="isSelected(asCard(img).id)"
               :batch-open="batchOpen"
               :thumb="thumbs[asCard(img).id] ?? ''"
+              :preview-image-id="asCard(img).id"
               copy-title="复制提示词"
               :content="imagePrompts[asCard(img).id]?.[0] ?? ''"
               :tags="tagNames[asCard(img).id] || []"

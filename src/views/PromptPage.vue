@@ -99,6 +99,9 @@ const tagNames = shallowRef<Record<string, string[]>>({});
 // 卡片背景缩略图 URL：按需取（提示词背景取关联首图，无法随列表行内返回），
 // 只保留已加载块内的条目，规模随块缓存有界
 const thumbs = shallowRef<Record<string, string>>({});
+// 悬停原图预览用的「关联首图 id」：与卡片背景同一条后端 SQL（同一行、同一张图），
+// 生命周期与 thumbs 一致（随块加载、随块淘汰）
+const firstImageIds = shallowRef<Record<string, string>>({});
 /** 数据目录：应用运行期不变，取过一次即复用（后端只回相对路径，拼 URL 用） */
 const dataDir = ref("");
 /** 已请求过的提示词 id（含取不到背景的）：块内不重复请求，随块淘汰一并忘记 */
@@ -176,6 +179,16 @@ function pruneThumbs(keep: Set<string>) {
   }
   for (const id of Array.from(thumbTried)) if (!keep.has(id)) thumbTried.delete(id);
   if (changed) thumbs.value = map;
+
+  // 首图 id 与 thumbs 同生命周期：离开已加载块就丢，避免映射随滚动无限增长
+  const idMap = { ...firstImageIds.value };
+  let idsChanged = false;
+  for (const id of Object.keys(idMap)) {
+    if (keep.has(id)) continue;
+    delete idMap[id];
+    idsChanged = true;
+  }
+  if (idsChanged) firstImageIds.value = idMap;
 }
 
 /** 按需取缩略图 URL 并并入映射（已请求过的不重复请求，含取不到背景的） */
@@ -190,10 +203,14 @@ async function loadThumbsFor(ids: string[]) {
     return; // 取不到数据目录不记入 tried，下次窗口变化重试
   }
   try {
-    const raw = await commands.getPromptThumbs(need);
+    // 首图 id 与缩略图同一批取（后端同一条 SQL）：卡片背景是哪张，悬停就预览哪张的原图。
+    // id 请求失败不影响背景显示（降级为「该批卡片不预览」），故单独 catch 成空映射
+    const idPromise = commands.getPromptFirstImageIds(need).catch(() => ({}));
+    const [raw, ids] = await Promise.all([commands.getPromptThumbs(need), idPromise]);
     const map = { ...thumbs.value };
     for (const k of Object.keys(raw)) map[k] = relativePathToAssetUrl(dir, raw[k]);
     thumbs.value = map;
+    firstImageIds.value = { ...firstImageIds.value, ...ids };
   } catch {
     return; // 失败不记入 tried，下次窗口变化重试
   }
@@ -882,6 +899,7 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
               :selected="isSelected(asCard(p).id)"
               :batch-open="batchOpen"
               :thumb="thumbs[asCard(p).id] ?? ''"
+              :preview-image-id="firstImageIds[asCard(p).id] ?? null"
               copy-title="复制内容"
               :content="asCard(p).content"
               :tags="tagNames[asCard(p).id] || []"
