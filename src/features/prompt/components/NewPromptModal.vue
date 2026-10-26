@@ -96,6 +96,9 @@ async function doCreate() {
       :style="{ zIndex: ModalZ.baseModal }"
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="新建提示词"
         class="flex max-h-[85vh] w-[560px] max-w-[90vw] flex-col rounded-lg border shadow-sm border-gray-700 bg-gray-800"
       >
         <div class="flex items-center justify-between border-b px-4 py-3 border-gray-700">

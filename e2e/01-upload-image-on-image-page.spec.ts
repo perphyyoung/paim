@@ -146,7 +146,11 @@ test("不附提示词上传：图像详情内「新建提示词」创建并关�
   const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
   await expect(promptInput).toBeVisible();
   await page.getByRole("button", { name: "选择图像", exact: true }).click();
-  await expect(page.getByTitle(path.basename(app.mockImagePath))).toBeVisible({ timeout: 5_000 });
+  await expect(
+    page
+      .getByRole("dialog", { name: "上传图像", exact: true })
+      .getByTitle(path.basename(app.mockImagePath), { exact: true }),
+  ).toBeVisible({ timeout: 5_000 });
   // 提示词留空直接确定：上传成功且不建立任何关联
   await page.getByRole("button", { name: "确定" }).click();
   await expect(promptInput).toBeHidden({ timeout: 5_000 });

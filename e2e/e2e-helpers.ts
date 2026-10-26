@@ -866,7 +866,13 @@ export async function uploadImageWithPrompt(
   // 必须等 mock 图出现在预览列表再继续：select_images 是异步 invoke，若不等返回就点
   // 「确定」，files 仍为空 → 「请先选择图像」→ 弹窗不关（偶发 flaky，整文件跑时应用
   // 负载高更易复现；对齐 01 用例的等待写法）。选中失败时此处超时，问题在测试缝。
-  await expect(page.getByTitle("e2e-upload.png")).toBeVisible({ timeout: 5_000 });
+  // 定位收口：scope 到上传弹窗 + exact —— 同名文件在页面里还有卡片底部 `文件名：…`
+  // 与详情关联图 `:title=文件名`，子串匹配会一起命中，exact 与 scope 缺一不可。
+  await expect(
+    page
+      .getByRole("dialog", { name: "上传图像", exact: true })
+      .getByTitle(path.basename(mockImagePath), { exact: true }),
+  ).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 已选中 mock 图（预览列表出现）");
   await promptInput.fill(promptContent);
   e2eLog.info("[step] 已填写关联提示词");
