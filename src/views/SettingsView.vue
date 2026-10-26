@@ -232,29 +232,31 @@ onMounted(loadDataDir);
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
           <dt class="text-gray-400">全局字体大小</dt>
-          <dd class="text-sm text-gray-500">
-            主页卡片 + 详情页正文（比主页自动大一个字号）；当前比例 {{ fontScale }}%
-          </dd>
+          <dd class="text-sm text-gray-500">主页卡片 + 详情页正文（比主页自动大一个字号）</dd>
         </div>
-        <input
-          v-model.number="fontScale"
-          type="range"
-          :min="FONT_SCALE_LIMITS.min"
-          :max="FONT_SCALE_LIMITS.max"
-          :step="FONT_SCALE_LIMITS.step"
-          class="w-40 shrink-0 accent-blue-600"
-          @input="onFontScaleInput"
-        />
+        <div class="flex shrink-0 items-center gap-2">
+          <input
+            v-model.number="fontScale"
+            type="range"
+            aria-label="全局字体大小"
+            :min="FONT_SCALE_LIMITS.min"
+            :max="FONT_SCALE_LIMITS.max"
+            :step="FONT_SCALE_LIMITS.step"
+            class="w-40 shrink-0 accent-blue-600"
+            @input="onFontScaleInput"
+          />
+          <span class="w-12 shrink-0 text-right text-sm tabular-nums text-gray-300">
+            {{ fontScale }}%
+          </span>
+        </div>
       </div>
 
       <div class="flex items-center justify-between gap-3 py-3">
         <div class="min-w-0">
           <dt class="text-gray-400">主页卡片悬停预览</dt>
-          <dd class="text-sm text-gray-500">
-            鼠标停留 {{ (hoverPreviewDelayMs / 1000).toFixed(1) }} 秒后显示原图；关闭后不预览
-          </dd>
+          <dd class="text-sm text-gray-500">鼠标停留后显示原图；关闭后不预览</dd>
         </div>
-        <div class="flex shrink-0 items-center gap-3">
+        <div class="flex shrink-0 items-center gap-2">
           <label class="flex items-center gap-1.5 text-sm text-gray-300">
             <input
               type="checkbox"
@@ -273,9 +275,15 @@ onMounted(loadDataDir);
             :step="HOVER_PREVIEW_DELAY_LIMITS.step"
             :value="hoverPreviewDelayMs"
             :disabled="!hoverPreviewEnabled"
-            class="w-40 shrink-0 accent-blue-600 disabled:opacity-40"
+            class="w-32 shrink-0 accent-blue-600 disabled:opacity-40"
             @input="onHoverPreviewDelayInput"
           />
+          <span
+            class="w-10 shrink-0 text-right text-sm tabular-nums"
+            :class="hoverPreviewEnabled ? 'text-gray-300' : 'text-gray-500'"
+          >
+            {{ (hoverPreviewDelayMs / 1000).toFixed(1) }}s
+          </span>
         </div>
       </div>
     </dl>
