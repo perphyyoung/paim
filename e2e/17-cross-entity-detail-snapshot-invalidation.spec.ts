@@ -73,7 +73,7 @@ async function restoreCardViaTrashUi(
   await expect(page.getByRole("heading", { name: headingName })).toBeVisible();
   await cardById(page, cardId).getByRole("button", { name: "恢复", exact: true }).click();
   await expectToastAndDismiss(page, toastText);
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
   await expect(page.getByRole("heading", { name: headingName })).toBeHidden();
 }
 
@@ -128,7 +128,7 @@ test("删除前打开过详情：UI 删除图像后重开提示词详情不再�
 
   // 不 reload，直接切回提示词页重开详情：旧缓存必须已作废
   await gotoPromptsPage(page);
-  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER)).toBeVisible();
+  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER, { exact: true })).toBeVisible();
   detail = await openPromptDetail(page, createdContent);
   await expect(detail.getByText("关联图像（0）", { exact: true })).toBeVisible({ timeout: 5_000 });
   await expect(detail.getByText("暂无关联图像", { exact: true })).toBeVisible();
@@ -206,7 +206,7 @@ test("图像加标签后：提示词详情的关联图像应显示新标签（�
   await gotoImagesPage(page);
   detail = await openImageDetail(page, created);
   const tag = `e2e-tag-${Date.now()}`;
-  const tagInput = page.getByPlaceholder("回车添加单个标签");
+  const tagInput = page.getByPlaceholder("回车添加单个标签", { exact: true });
   await tagInput.fill(tag);
   await tagInput.press("Enter");
   await expectToastAndDismiss(page, `已添加标签「${tag}」`);
@@ -343,7 +343,7 @@ test("新建提示词并选择已有图像后：图像详情的关联提示词�
   await gotoPromptsPage(page);
   await page.getByRole("button", { name: "新建提示词" }).click();
   const content = `e2e 新建关联 B ${Date.now()}`;
-  await page.getByPlaceholder("输入提示词内容...").fill(content);
+  await page.getByPlaceholder("输入提示词内容...", { exact: true }).fill(content);
   await page.getByRole("button", { name: "选择图像", exact: true }).click();
   await expect(page.getByText(path.basename(app.mockImagePath))).toBeVisible();
   await page.getByRole("button", { name: "确定", exact: true }).click();
@@ -412,14 +412,17 @@ test("标签管理改名后：提示词详情里关联图像的标签应同步�
   await page.getByRole("button", { name: "管理", exact: true }).click();
   await expect(page.getByText("图像标签管理")).toBeVisible();
   // 本文件前面的用例可能已创建其他标签：先搜索过滤，确保「重命名」按钮只对应 oldTag
-  await page.getByPlaceholder("搜索标签…").fill(oldTag);
-  await page.getByTitle("重命名").first().click();
+  await page.getByPlaceholder("搜索标签…", { exact: true }).fill(oldTag);
+  await page.getByTitle("重命名", { exact: true }).first().click();
   const dlg = page.getByRole("dialog", { name: "更新标签" });
-  await dlg.getByPlaceholder("请输入名称…").fill(newTag);
+  await dlg.getByPlaceholder("请输入名称…", { exact: true }).fill(newTag);
   await dlg.getByRole("button", { name: "确定", exact: true }).click();
   await expectToastAndDismiss(page, "标签已更新");
   // 关闭标签管理：用弹窗内的关闭按钮（语义化，不再点遮罩坐标）
-  await page.getByRole("dialog", { name: "图像标签管理" }).getByTitle("关闭").click();
+  await page
+    .getByRole("dialog", { name: "图像标签管理" })
+    .getByTitle("关闭", { exact: true })
+    .click();
   e2eLog.info(`[step] 已把标签「${oldTag}」重命名为「${newTag}」`);
 
   // 重开提示词详情：关联图像标签应为新名（修复前命中旧快照 → 仍是旧名）
@@ -444,7 +447,7 @@ test("提示词详情加标签后：图像详情的「提示词标签」应同�
   await gotoPromptsPage(page);
   const promptDetail = await openPromptDetail(page, content);
   const tag = `e2e-prompt-tag-${Date.now()}`;
-  const tagInput = page.getByPlaceholder("回车添加单个标签");
+  const tagInput = page.getByPlaceholder("回车添加单个标签", { exact: true });
   await tagInput.fill(tag);
   await tagInput.press("Enter");
   await expectToastAndDismiss(page, `已添加标签「${tag}」`);
@@ -529,7 +532,7 @@ test("清空图像回收站后：提示词详情的关联图像应同步消失",
     .getByRole("button", { name: "清空", exact: true })
     .click();
   await expectToastAndDismiss(page, "回收站已清空");
-  await page.getByTitle("关闭").first().click();
+  await page.getByTitle("关闭", { exact: true }).first().click();
   e2eLog.info("[step] 已清空图像回收站");
 
   // 重开提示词详情：关联图像应为 0（修复前命中旧快照 → 仍显示 1 张）
@@ -568,7 +571,7 @@ test("清空提示词回收站后：图像详情的关联提示词应同步消�
     .getByRole("button", { name: "清空", exact: true })
     .click();
   await expectToastAndDismiss(page, "回收站已清空");
-  await page.getByTitle("关闭").first().click();
+  await page.getByTitle("关闭", { exact: true }).first().click();
   e2eLog.info("[step] 已清空提示词回收站");
 
   // 重开图像详情：关联提示词应为空

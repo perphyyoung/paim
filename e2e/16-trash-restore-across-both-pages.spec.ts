@@ -47,7 +47,7 @@ test("提示词回收站：无关联图的纯文本卡无背景，单项恢复�
 
   await invokeCommand(page, "delete_prompt", { id });
   await page.reload();
-  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER)).toBeVisible();
+  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER, { exact: true })).toBeVisible();
 
   await openTrash(page, "提示词回收站");
   const card = cardById(page, id);
@@ -62,7 +62,7 @@ test("提示词回收站：无关联图的纯文本卡无背景，单项恢复�
 
   // 唯一一项恢复后回收站置空
   await expect(page.getByText("回收站为空")).toBeVisible();
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "提示词回收站" })).toBeHidden();
 
   // 回到主页：卡片重新出现；后端正常列表（不含回收站项）也能查到
@@ -83,7 +83,7 @@ test("提示词回收站：提示词与关联图像两边都删除时，仍显�
   // uploadImageWithPrompt 结束时停在图像主页，先切回提示词页再 reload（reload 不重置路由）
   await gotoPromptsPage(page);
   await page.reload();
-  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER)).toBeVisible();
+  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER, { exact: true })).toBeVisible();
 
   await openTrash(page, "提示词回收站");
   const card = cardById(page, promptId);
@@ -100,7 +100,7 @@ test("提示词回收站：提示词与关联图像两边都删除时，仍显�
   await card.getByRole("button", { name: "恢复", exact: true }).click();
   await expectToastAndDismiss(page, "已恢复");
   await expect(page.getByText("回收站为空")).toBeVisible();
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
   // 本例只验证提示词侧展示与恢复；关联图像仍在图像回收站，直连后端复位，避免污染下一例
   await invokeCommand(page, "restore_image", { id: imageId });
 });
@@ -135,7 +135,7 @@ test("图像回收站：图像与关联提示词两边都删除时，仍显示�
   await expectToastAndDismiss(page, "已恢复");
 
   await expect(page.getByText("回收站为空")).toBeVisible();
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
 
   await expect.poll(() => listTrashedImageIds(page)).not.toContain(imageId);
   await expect(cardById(page, imageId)).toBeVisible();

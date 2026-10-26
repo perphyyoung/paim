@@ -57,14 +57,14 @@ test("双击图像详情大图：查看窗口元素齐全，关闭后详情弹�
   // 4. 导航 + 索引：单张时序号为 1（输入框禁用），前后箭头禁用
   await expect(navIndexInput(viewer)).toHaveValue("1");
   await expect(navIndexInput(viewer)).toBeDisabled();
-  await expect(viewer.getByTitle("上一个")).toBeDisabled();
-  await expect(viewer.getByTitle("下一个")).toBeDisabled();
+  await expect(viewer.getByTitle("上一个", { exact: true })).toBeDisabled();
+  await expect(viewer.getByTitle("下一个", { exact: true })).toBeDisabled();
   // 5. 右上关闭钮
-  await expect(viewer.getByTitle("关闭")).toBeVisible();
+  await expect(viewer.getByTitle("关闭", { exact: true })).toBeVisible();
 
   // 6. 右上角「在图像详情页打开」：先关主窗口详情，点图标后应重新打开该图详情
   await closeDetail(detail);
-  await viewer.getByTitle("在图像详情页打开").click();
+  await viewer.getByTitle("在图像详情页打开", { exact: true }).click();
   const reopened = page.getByRole("dialog", { name: "图像详情" });
   await expect(reopened).toBeVisible({ timeout: 5_000 });
   await expect(reopened.getByText("e2e-upload.png")).toBeVisible();

@@ -66,7 +66,7 @@ async function mergeTagViaManager(
   // 方向由弹窗里的目标单选项决定，与勾选顺序无关
   await dlg.getByRole("radio", { name: target, exact: true }).check();
   await dlg.getByRole("button", { name: "确定", exact: true }).click();
-  await page.getByTitle("关闭").first().click(); // 关闭标签管理弹窗
+  await page.getByTitle("关闭", { exact: true }).first().click(); // 关闭标签管理弹窗
 }
 
 test("图像域：合并 zit 到 zit-aio，关联去重且详情标签同步", async ({ page, app }) => {

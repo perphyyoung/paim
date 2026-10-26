@@ -46,7 +46,7 @@ async function newPromptDetail(page: import("@playwright/test").Page, label: str
   await expectToastAndDismiss(page, "提示词已创建");
   await openPromptDetail(page, content);
   e2eLog.info(`[step] 已打开提示词详情：${label}`);
-  return { content, tagInput: page.getByPlaceholder("回车添加单个标签") };
+  return { content, tagInput: page.getByPlaceholder("回车添加单个标签", { exact: true }) };
 }
 
 test("详情页首次添加：点「添加」按钮与 ↓/Enter 选候选都能提交", async ({ page }) => {
@@ -57,7 +57,7 @@ test("详情页首次添加：点「添加」按钮与 ↓/Enter 选候选都能
   await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
   const firstId = await findPromptIdByContent(page, first.content);
   expect(await getItemTagNames(page, "prompt", firstId)).toContain(TAG);
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
 
   // 第二条提示词：输入前缀 → 候选出现 → ↓ 高亮 + Enter 选中并提交
   const second = await newPromptDetail(page, "P2");
@@ -95,7 +95,7 @@ test("批量回车提交已存在的标签：提示已存在且弹窗保持打�
   await tagInput.fill(TAG);
   await tagInput.press("Enter");
   await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
 
   // Ctrl 点击卡片进入批量模式（普通点击会打开详情）
   const dlgInput = await openBatchAddTagDialog(page, content);
@@ -116,11 +116,11 @@ test("批量点击候选项：命中即提交，成功后关闭弹窗并落库",
   await seed.tagInput.fill(TAG);
   await seed.tagInput.press("Enter");
   await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
 
   // 目标提示词本身没有 TAG：输入前缀 → 点候选项提交
   const target = await newPromptDetail(page, "批量候选");
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
 
   const dlgInput = await openBatchAddTagDialog(page, target.content);
   await dlgInput.fill(TAG_PREFIX);
@@ -140,7 +140,7 @@ test("候选跨域合并：图像详情可提示提示词域标签并点击添�
   await seed.tagInput.fill(TAG);
   await seed.tagInput.press("Enter");
   await expectToastAndDismiss(page, `已添加标签「${TAG}」`);
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
 
   // 上传一张图并关联提示词（文件选择走 select_images 测试缝）
   const { promptContent } = await uploadImageWithPrompt(
@@ -151,7 +151,7 @@ test("候选跨域合并：图像详情可提示提示词域标签并点击添�
   await openImageDetail(page, promptContent);
 
   // 候选来自两域合并：图像详情里应能看到提示词域创建的 TAG
-  const tagInput = page.getByPlaceholder("回车添加单个标签");
+  const tagInput = page.getByPlaceholder("回车添加单个标签", { exact: true });
   await tagInput.fill(TAG_PREFIX);
   const option = page.getByRole("option", { name: TAG });
   await expect(option).toBeVisible();

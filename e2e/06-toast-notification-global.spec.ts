@@ -83,7 +83,7 @@ test("多条不同文案 toast 同时堆叠显示，可逐条点掉", async ({ p
   await openPromptDetail(page, content);
 
   // 详情页连续加两个不同标签 → 两条不同文案 toast 并存（间隔远小于停留时长）
-  const tagInput = page.getByPlaceholder("回车添加单个标签");
+  const tagInput = page.getByPlaceholder("回车添加单个标签", { exact: true });
   await tagInput.fill(TAG_STACK_A);
   await tagInput.press("Enter");
   const toastA = page.getByText(`已添加标签「${TAG_STACK_A}」`).first();
@@ -121,7 +121,7 @@ test("toast 层级最高，弹窗打开时也不被遮挡", async ({ page }) => 
   await expectToastAndDismiss(page, "提示词已创建");
   await openPromptDetail(page, content);
 
-  const tagInput = page.getByPlaceholder("回车添加单个标签");
+  const tagInput = page.getByPlaceholder("回车添加单个标签", { exact: true });
   await tagInput.fill(TAG_TOP);
   await tagInput.press("Enter");
   const text = `已添加标签「${TAG_TOP}」`;
@@ -176,5 +176,5 @@ test("warning toast 停留更久（约 4s）后自动消失", async ({ page, app
 
   await waitToastGone(page, "回收站已清空");
   // 回收站整页弹层不随清空关闭，显式关闭（避免残留整页层影响下一个用例的复位）
-  await page.getByTitle("关闭").click();
+  await page.getByTitle("关闭", { exact: true }).click();
 });

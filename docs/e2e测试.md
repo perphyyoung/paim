@@ -110,16 +110,17 @@ pnpm e2e --grep 上传  # 单个用例
 
 ## 定位器约定（名称一律精确匹配）
 
-两个详情弹窗共用一套按钮名，名称类定位默认是**子串匹配**，会互相吞并：既会**误红**（strict mode 命中多个），也会**误绿**（断言 A 却命中 B，如 `getByTitle("收藏")` 命中 `取消收藏`）。已发生的例子：`getByLabel("提示词内容")` 同时命中内容输入框与相似检索按钮 `以提示词内容搜索相似项`，导致「取消编辑后断言输入框消失」失败。
+两个详情弹窗共用一套按钮名，名称类定位默认是**子串匹配**，会互相吞并：既会**误红**（strict mode 命中多个），也会**误绿**（断言 A 却命中 B，如 `getByTitle("收藏")` 命中 `取消收藏`）。已发生的例子：`getByLabel("提示词内容")` 同时命中内容输入框与相似检索按钮 `以提示词内容搜索相似项`；上传预览的 `getByTitle("e2e-upload.png")` 撞上卡片底部 `文件名：e2e-upload.png`。
 
 | 规则 | 说明 |
 | --- | --- |
-| 作用域 | 先 `getByRole("dialog", { name: "提示词详情" / "图像详情" })` 再定位；嵌套层用 `.first()` / `.nth(i)` 时在用例内注明层叠顺序依据 |
-| 名称精确 | `getByRole(role, { name, exact: true })`、`getByText(x, { exact: true })`、`getByTitle(x, { exact: true })`、`getByLabel(x, { exact: true })`（或改用 `getByRole("textbox", { name })`）；`getByPlaceholder` / `getByAltText` 同理 |
+| 作用域 | 先 `getByRole("dialog", { name: … })` 再定位；嵌套层用 `.first()` / `.nth(i)` 时在用例内注明层叠顺序依据 |
+| 名称精确 | **`getByTitle` / `getByLabel` / `getByPlaceholder` / `getByAltText`：全仓一律 `exact: true`**；`getByRole(role, { name, exact: true })` 与 `getByText(x, { exact: true })` 在详情作用域内强制（页面级动态文案多，靠 review） |
+| 动态值不裸调 | 文件名 / 内容 / id 这类动态值**禁止裸 `page.getByTitle(x)`**：必须 scope 到所在弹窗或卡片（如 `getByRole("dialog", { name: "上传图像" }).getByTitle(文件名, { exact: true })`） |
 | 子串场景 | 动态计数用锚定正则（`^关联图像（\d+）$`）；确需子串的调用在该行注释 `locator-allow-substring` 说明理由 |
 | 状态断言 | 「A ↔ B 文案切换」不靠标题互斥断言：收藏按钮固定 `aria-label="收藏"` + 断 `aria-pressed`；安全评级是 `checkbox[name="安全评级"]` 断 `checked`；编辑开关断 `aria-pressed` |
 | 新增语义 | 给元素补 `aria-label` / `title` 前先 `rg -n 'name: "'` 查子串关系：同一弹窗内的可访问名不得互为子串（`收藏` ⊂ `取消收藏`、`关闭` ⊂ `关闭查找`、`提示词内容` ⊂ `以提示词内容搜索相似项`） |
-| 强制手段 | `pnpm lint:e2e-locators` 扫描两个详情作用域的调用，缺 `exact` 直接失败（`--fix` 可自动补，`--all` 可查看页面级调用的历史欠账） |
+| 强制手段 | `pnpm lint:e2e-locators`：title / label / placeholder / alt 查**全仓**，text / role-name 查两个详情作用域，缺 `exact` 直接失败；`--fix` 自动补，`--all` 查看 text / role 的页面级历史欠账 |
 
 ## 文件索引与命名
 

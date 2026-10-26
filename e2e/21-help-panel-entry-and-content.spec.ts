@@ -12,7 +12,7 @@ import { gotoPromptsPage, test } from "./e2e-helpers";
 async function openHelp(page: Page): Promise<Locator> {
   const panel = page.getByRole("dialog", { name: "帮助" });
   if (await panel.isVisible()) return panel;
-  await page.getByTitle("帮助").click();
+  await page.getByTitle("帮助", { exact: true }).click();
   await expect(panel).toBeVisible({ timeout: 5_000 });
   return panel;
 }
@@ -44,6 +44,6 @@ test("帮助面板：问号入口可打开，三小节横向页签切换（默�
     panel.getByRole("tabpanel", { name: "数据与文件位置" }).getByText("运行日志", { exact: true }),
   ).toBeVisible();
 
-  await panel.getByTitle("关闭").click();
+  await panel.getByTitle("关闭", { exact: true }).click();
   await expect(panel).toBeHidden({ timeout: 5_000 });
 });

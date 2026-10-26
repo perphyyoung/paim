@@ -472,7 +472,7 @@ async function dumpPageState(page: Page, reason: string): Promise<void> {
 /// 走「新建提示词」弹窗建一条提示词，返回内容（卡片按内容定位）
 export async function createPromptViaDialog(page: Page, content: string): Promise<void> {
   await page.getByRole("button", { name: "新建提示词" }).click();
-  const contentInput = page.getByPlaceholder("输入提示词内容...");
+  const contentInput = page.getByPlaceholder("输入提示词内容...", { exact: true });
   await expect(contentInput).toBeVisible();
   await contentInput.fill(content);
   await page.getByRole("button", { name: "确定", exact: true }).click();
@@ -542,7 +542,7 @@ export async function closeDetail(detail: Locator): Promise<void> {
 export async function openSettings(page: Page): Promise<Locator> {
   const panel = page.getByRole("dialog", { name: "设置" });
   if (await panel.isVisible()) return panel;
-  await page.getByTitle("设置 (Ctrl+Shift+,)").click();
+  await page.getByTitle("设置 (Ctrl+Shift+,)", { exact: true }).click();
   await expect(panel).toBeVisible({ timeout: 5_000 });
   return panel;
 }
@@ -553,7 +553,7 @@ export async function openSettings(page: Page): Promise<Locator> {
 export async function openSimilaritySettings(page: Page): Promise<Locator> {
   const panel = page.getByRole("dialog", { name: "相似度设置" });
   if (await panel.isVisible()) return panel;
-  await page.getByTitle("相似度设置").click();
+  await page.getByTitle("相似度设置", { exact: true }).click();
   await expect(panel).toBeVisible({ timeout: 5_000 });
   return panel;
 }
@@ -561,14 +561,14 @@ export async function openSimilaritySettings(page: Page): Promise<Locator> {
 /// 关闭设置面板（点右上 ✕）。设置是悬浮面板，不关会一直盖在主页之上。
 export async function closeSettings(page: Page): Promise<void> {
   const panel = page.getByRole("dialog", { name: "设置" });
-  await panel.getByTitle("关闭").click();
+  await panel.getByTitle("关闭", { exact: true }).click();
   await expect(panel).toBeHidden({ timeout: 5_000 });
 }
 
 /// 关闭「相似度设置」面板（点面板内的 ✕）。关掉后主页才消费脏标记（与通用设置同一事件）。
 export async function closeSimilaritySettings(page: Page): Promise<void> {
   const panel = page.getByRole("dialog", { name: "相似度设置" });
-  await panel.getByTitle("关闭").click();
+  await panel.getByTitle("关闭", { exact: true }).click();
   await expect(panel).toBeHidden({ timeout: 5_000 });
 }
 
@@ -601,7 +601,7 @@ export function similarResultModal(page: Page): Locator {
 /// 结果页下面的原始详情（结果页盖着它）。
 export async function closeSimilarResult(page: Page): Promise<void> {
   const modal = similarResultModal(page);
-  await modal.getByTitle("关闭").click();
+  await modal.getByTitle("关闭", { exact: true }).click();
   await expect(modal).toBeHidden({ timeout: 5_000 });
 }
 
@@ -701,7 +701,7 @@ export async function indexBothSimilarityKinds(page: Page): Promise<void> {
 /// 胶囊文案现为「[输入框] / 总数」，不再有 `N / N` 这样的整段文本，故索引断言一律读该输入框的值
 /// （1-based；`orderLength <= 1` 时输入框 disabled，但 `inputValue()` 仍可读）。
 export function navIndexInput(host: Page | Locator): Locator {
-  return host.getByLabel("跳转到指定序号");
+  return host.getByLabel("跳转到指定序号", { exact: true });
 }
 
 /// ---- 全屏查看（独立窗口）----
@@ -766,7 +766,7 @@ export async function openFullscreenViewer(
 /// 只是被查看器窗口盖住；页面侧 `document.visibilityState` 实测不随窗口隐藏变化。
 /// 故走窗口可见性测试缝 `e2e_is_window_visible`（由主窗口发命令，返回 null 表示窗口不存在）。
 export async function closeFullscreenViewer(app: AppHandle, viewer: Page): Promise<void> {
-  await viewer.getByTitle("关闭").click();
+  await viewer.getByTitle("关闭", { exact: true }).click();
   await expect
     .poll(
       () =>
@@ -838,7 +838,7 @@ export async function openBatchAddTagDialog(page: Page, cardText: string): Promi
     .first()
     .click({ modifiers: ["Control"] });
   await page.getByRole("button", { name: "添加标签" }).click();
-  const input = page.getByPlaceholder("标签名");
+  const input = page.getByPlaceholder("标签名", { exact: true });
   await expect(input).toBeVisible();
   e2eLog.info("[step] 已打开批量添加标签弹窗");
   return input;
@@ -860,7 +860,7 @@ export async function uploadImageWithPrompt(
   writePng(mockImagePath);
   await page.getByRole("button", { name: "上传图像" }).click();
   e2eLog.info("[step] 上传弹窗已打开");
-  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
+  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...", { exact: true });
   await expect(promptInput).toBeVisible();
   await page.getByRole("button", { name: "选择图像", exact: true }).click();
   // 必须等 mock 图出现在预览列表再继续：select_images 是异步 invoke，若不等返回就点
@@ -914,11 +914,13 @@ export async function uploadImagesWithPrompt(
   for (const p of mockImagePaths) writePng(p);
 
   await page.getByRole("button", { name: "上传图像" }).click();
-  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
+  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...", { exact: true });
   await expect(promptInput).toBeVisible();
   await page.getByRole("button", { name: "选择图像", exact: true }).click();
   for (const p of mockImagePaths) {
-    await expect(page.getByTitle(path.basename(p))).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTitle(path.basename(p), { exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
   }
   await promptInput.fill(promptContent);
   await page.getByRole("button", { name: "确定" }).click();
@@ -947,7 +949,7 @@ export const PROMPT_SEARCH_PLACEHOLDER = "搜索标题/内容/翻译/备注/标�
 /// 副作用：写 localStorage——同 worker 的其它 spec 文件共用同一 WebView2 profile，
 /// 用完请调 clearListBlockSize 清掉。
 export async function setListBlockSize(page: Page, size: number): Promise<void> {
-  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER)).toBeVisible();
+  await expect(page.getByPlaceholder(PROMPT_SEARCH_PLACEHOLDER, { exact: true })).toBeVisible();
   await page.evaluate((s) => localStorage.setItem("paim.blockSize", String(s)), size);
   await page.reload({ timeout: 8_000 });
 }

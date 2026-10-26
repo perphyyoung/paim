@@ -56,7 +56,7 @@ test("跨块滚动：滚到底部时按需补块，远端旧卡片能真正渲�
   // 用滚动条「下一页」翻屏到列表底部（每屏跨多个块）。每屏条数随窗口大小变化，
   // 故用「最旧卡片是否出现」收敛，最多 10 次足够到顶（滚到底后点击会自行钳位）
   for (let i = 0; i < 10 && !(await oldest.isVisible()); i += 1) {
-    await page.getByTitle("下一页").click();
+    await page.getByTitle("下一页", { exact: true }).click();
   }
   await expect(oldest).toBeVisible({ timeout: 5_000 });
   e2eLog.info("[step] 滚到底部后最旧卡片已渲染（远端块按需补齐，未停在占位骨架）");

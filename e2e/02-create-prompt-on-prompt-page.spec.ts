@@ -19,7 +19,7 @@ test("新建提示词后，新卡片应置顶显示", async ({ page }) => {
   const createBtn = page.getByRole("button", { name: "新建提示词" });
   await expect(createBtn).toBeVisible();
   await createBtn.click();
-  const contentInput = page.getByPlaceholder("输入提示词内容...");
+  const contentInput = page.getByPlaceholder("输入提示词内容...", { exact: true });
   await expect(contentInput).toBeVisible();
   const promptContent = `e2e 新建提示词 ${Date.now()}`;
   await contentInput.fill(promptContent);
@@ -40,7 +40,7 @@ test("新建提示词并选择图像，图像应关联到新提示词", async ({
   const createBtn = page.getByRole("button", { name: "新建提示词" });
   await expect(createBtn).toBeVisible();
   await createBtn.click();
-  const contentInput = page.getByPlaceholder("输入提示词内容...");
+  const contentInput = page.getByPlaceholder("输入提示词内容...", { exact: true });
   await expect(contentInput).toBeVisible();
   const promptContent = `e2e 新建提示词选图 ${Date.now()}`;
   await contentInput.fill(promptContent);
@@ -63,7 +63,7 @@ test("新建提示词并选择图像，图像应关联到新提示词", async ({
 
 test("新建提示词时「规范化」只改草稿，确定后按规范化形态落库", async ({ page }) => {
   await page.getByRole("button", { name: "新建提示词" }).click();
-  const contentInput = page.getByPlaceholder("输入提示词内容...");
+  const contentInput = page.getByPlaceholder("输入提示词内容...", { exact: true });
   await expect(contentInput).toBeVisible();
 
   // 多行 + 标点旁空白 + 连续空白：规范化后换行折叠为空格、逗号旁空白删除、连续空格合一

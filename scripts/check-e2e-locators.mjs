@@ -4,9 +4,10 @@
 // 子串匹配既会误红，也会误绿（断言 A 却命中 B），因此规则是：名称匹配默认 `exact: true`。
 //
 // 用法：
-//   node scripts/check-e2e-locators.mjs         # 只报告两个详情弹窗作用域的调用，有违规时退出码 1
+//   node scripts/check-e2e-locators.mjs         # 报告：title / label / placeholder / alt 全仓强制，
+//                                               #       text / role-name 只查两个详情弹窗作用域
 //   node scripts/check-e2e-locators.mjs --fix   # 自动补 exact: true
-//   node scripts/check-e2e-locators.mjs --all   # 连页面级调用一起查（待逐步清零，现在会有大量既有违规）
+//   node scripts/check-e2e-locators.mjs --all   # 连 text / role-name 的页面级调用一起查（仍有历史欠账）
 // 确需子串匹配的调用，在**调用所在行**加注释 `locator-allow-substring` 豁免。
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -28,6 +29,9 @@ const DETAIL_RECEIVERS = new Set([
   "imageSlot",
   "imgDetail",
 ]);
+/// 这几个 API 的参数是「稀缺语义名」（title / label / placeholder / alt），全仓一律要求 exact：
+/// 它们几乎总能精确表达，且最容易与动态文案（文件名、`文件名：…` tooltip）撞车。
+const ALWAYS_EXACT_KINDS = new Set(["Title", "Label", "AltText", "Placeholder"]);
 
 /// 从 `(` 位置找到配对的 `)`，跳过字符串、模板串、行/块注释与嵌套括号。
 function matchParen(src, open) {
@@ -129,7 +133,11 @@ function scan(src, file) {
       continue;
     }
     const receiver = /([A-Za-z_$][\w$]*)\s*\.\s*$/.exec(src.slice(Math.max(0, m.index - 60), m.index))?.[1];
-    if (!process.argv.includes("--all") && !DETAIL_RECEIVERS.has(receiver ?? "")) {
+    const inScope =
+      process.argv.includes("--all") ||
+      ALWAYS_EXACT_KINDS.has(m[1]) ||
+      DETAIL_RECEIVERS.has(receiver ?? "");
+    if (!inScope) {
       re.lastIndex = close;
       continue;
     }

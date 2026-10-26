@@ -32,7 +32,7 @@ const PROMPT_ONLY = ["多图", "无图", "单语"];
 const IMAGE_ONLY = ["未引", "多引"];
 
 test("统计弹窗：三列表格，名称列按三段排序，本域无此项的格子为 -", async ({ page }) => {
-  await page.getByTitle("统计").click();
+  await page.getByTitle("统计", { exact: true }).click();
   const stats = page.getByRole("dialog", { name: "数据统计" });
   await expect(stats).toBeVisible();
   const table = stats.getByRole("table");
@@ -66,6 +66,6 @@ test("统计弹窗：三列表格，名称列按三段排序，本域无此项�
   await expect(rowCells("无向")).toHaveText(["无向", /^\d+$/, /^\d+$/]);
   e2eLog.info("[step] 缺项格为 `-`，两域共有的项两侧均为计数");
 
-  await stats.getByTitle("关闭").click();
+  await stats.getByTitle("关闭", { exact: true }).click();
   await expect(table).toBeHidden();
 });

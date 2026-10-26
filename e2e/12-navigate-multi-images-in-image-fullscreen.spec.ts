@@ -68,8 +68,8 @@ test("多图全屏导航后：在图像详情页打开应跳到当前这张（�
   await expect(navIndexInput(viewer)).toHaveValue("1");
 
   // 导航到第 3 张
-  await viewer.getByTitle("下一个").click();
-  await viewer.getByTitle("下一个").click();
+  await viewer.getByTitle("下一个", { exact: true }).click();
+  await viewer.getByTitle("下一个", { exact: true }).click();
   await expect(navIndexInput(viewer)).toHaveValue("3");
 
   // 记录全屏当前（第 3 张）的原图地址：主页排序与关联顺序相反，不能拿索引断言
@@ -77,7 +77,7 @@ test("多图全屏导航后：在图像详情页打开应跳到当前这张（�
   expect(viewerSrc, "全屏当前图应有 src").toBeTruthy();
 
   // 跳详情：主窗口应切到图像页，并打开当前这张（不是入口的第 1 张）
-  await viewer.getByTitle("在图像详情页打开").click();
+  await viewer.getByTitle("在图像详情页打开", { exact: true }).click();
   await expect(page).toHaveURL(/#\/images/);
   const imageDetail = page.getByRole("dialog", { name: "图像详情" });
   await expect(imageDetail).toBeVisible({ timeout: 5_000 });

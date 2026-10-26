@@ -41,7 +41,7 @@ test("上传图像附带提示词后，图像卡片应关联该提示词", async
 
   // 打开上传弹窗，选择图像（对话框由 select_images 测试缝返回 mock 路径）
   await uploadBtn.click();
-  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
+  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...", { exact: true });
   await expect(promptInput).toBeVisible();
   await page.getByRole("button", { name: "选择图像", exact: true }).click();
   await expect(page.getByText(path.basename(app.mockImagePath))).toBeVisible();
@@ -65,7 +65,7 @@ test("上传图像附带提示词后，图像卡片应关联该提示词", async
 test("上传图像弹窗：提示词规范化只改草稿，上传后按规范内容落库", async ({ page, app }) => {
   await gotoImagesPage(page);
   await page.getByRole("button", { name: "上传图像" }).click();
-  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
+  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...", { exact: true });
   await promptInput.fill("  e2e   规范化   上传  ");
   await page.getByRole("button", { name: "选择图像", exact: true }).click();
   await expect(page.getByText(path.basename(app.mockImagePath))).toBeVisible();
@@ -143,7 +143,7 @@ test("不附提示词上传：图像详情内「新建提示词」创建并关�
   await gotoImagesPage(page);
   writePng(app.mockImagePath);
   await page.getByRole("button", { name: "上传图像" }).click();
-  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...");
+  const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...", { exact: true });
   await expect(promptInput).toBeVisible();
   await page.getByRole("button", { name: "选择图像", exact: true }).click();
   await expect(
@@ -177,7 +177,7 @@ test("不附提示词上传：图像详情内「新建提示词」创建并关�
   const stamp = Date.now();
   const raw = `e2e 详情内新建提示词 ${stamp}\n第二行  词 , 第三段`;
   const content = `e2e 详情内新建提示词 ${stamp} 第二行 词,第三段`;
-  const contentInput = composer.getByPlaceholder("输入提示词内容...");
+  const contentInput = composer.getByPlaceholder("输入提示词内容...", { exact: true });
   // 多行控件：裸回车只换行、不提交（修复前 Enter 直接创建，弹窗会消失）
   await contentInput.fill("换行验证");
   await contentInput.press("Enter");

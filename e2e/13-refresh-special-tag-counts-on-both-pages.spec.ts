@@ -127,7 +127,7 @@ test("图像主页：「无标」筛选下全选批量加标签，列表按筛�
   await specialTagChip(page, NO_TAG).click();
   await page.keyboard.press("Control+A");
   await page.getByRole("button", { name: "添加标签" }).click();
-  const input = page.getByPlaceholder("标签名");
+  const input = page.getByPlaceholder("标签名", { exact: true });
   await input.fill(TAG);
   await input.press("Enter");
   await expectToastAndDismiss(page, "已为 2 张图像添加标签");
@@ -139,7 +139,7 @@ test("图像主页：「无标」筛选下全选批量加标签，列表按筛�
   await expect(cardById(page, second.imageId)).toHaveCount(0);
 
   // 清掉筛选后两张卡回来（已带新标签）
-  await page.getByTitle("清除已选标签").click();
+  await page.getByTitle("清除已选标签", { exact: true }).click();
   await expect(page.getByText(first.promptContent)).toBeVisible();
   await expect(page.getByText(second.promptContent)).toBeVisible();
   e2eLog.info("[step] 无标筛选下批量打标后列表已重载，清除筛选可见两张卡");
@@ -176,7 +176,7 @@ test("图像主页：「无标」筛选下拖拽加标签，列表按筛选重�
   await expect(cardById(page, second.imageId)).toHaveCount(0);
 
   // 清掉筛选后回来
-  await page.getByTitle("清除已选标签").click();
+  await page.getByTitle("清除已选标签", { exact: true }).click();
   await expect(cardById(page, second.imageId)).toBeVisible();
 });
 

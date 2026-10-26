@@ -51,7 +51,7 @@ test("图像选择界面：标签筛选可搜索、选中后回显，Esc 关闭"
   // 打开标签筛选 → 面板与搜索框出现
   const trigger = page.getByRole("button", { name: /所有标签/ });
   await trigger.click();
-  const search = page.getByPlaceholder("搜索…");
+  const search = page.getByPlaceholder("搜索…", { exact: true });
   await expect(search).toBeVisible();
 
   // 输入关键字 → 候选过滤；无匹配时提示
@@ -130,13 +130,13 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
 
   // 相似度模式下顶部筛选全部禁用（搜索 / 标签 / 排序）
   const filterGroup = page.getByRole("group", { name: "筛选" });
-  await expect(page.getByPlaceholder("搜索文件名/备注/标签")).toBeDisabled();
+  await expect(page.getByPlaceholder("搜索文件名/备注/标签", { exact: true })).toBeDisabled();
   await expect(filterGroup.getByRole("button", { name: /所有标签/ })).toBeDisabled();
   await expect(filterGroup.getByRole("combobox")).toBeDisabled();
 
   // 首图模式：先把 A 关联为首图（A 会被排除，候选只剩 B）
   const picker = page.getByRole("dialog", { name: "图像选择界面" });
-  await picker.getByTitle("关闭").click();
+  await picker.getByTitle("关闭", { exact: true }).click();
   await invokeCommand(page, "relate_images_to_prompt", {
     promptId,
     imageIds: [a.imageId],
@@ -153,7 +153,7 @@ test("图像选择界面：提示词/首图相似度排序与分数角标", asyn
 
   await firstBtn2.click();
   await expect(scores2).toHaveCount(0);
-  await expect(page.getByPlaceholder("搜索文件名/备注/标签")).toBeEnabled();
+  await expect(page.getByPlaceholder("搜索文件名/备注/标签", { exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: /所有标签/ })).toBeEnabled();
 });
 
@@ -192,7 +192,7 @@ test("图像选择界面：相似度结果中的卡片走缓存未命中回退�
 
   // 标签筛选只留 A：thumbs 映射只覆盖 A
   await picker.getByRole("button", { name: /所有标签/ }).click();
-  await page.getByPlaceholder("搜索…").fill(tag);
+  await page.getByPlaceholder("搜索…", { exact: true }).fill(tag);
   await page.getByRole("button", { name: tag, exact: true }).click();
   await expect(picker.getByRole("img")).toHaveCount(1);
 
@@ -348,7 +348,7 @@ test("图像选择界面：匹配数不为负，筛选/相似度切换清空选�
   await expect(picker.getByText(/已选 1 张/)).toBeVisible();
 
   // 筛选变化：立即清空
-  const search = picker.getByPlaceholder("搜索文件名/备注/标签");
+  const search = picker.getByPlaceholder("搜索文件名/备注/标签", { exact: true });
   await search.fill(`zzz-${Date.now()}`);
   await expect(picker.getByText(/已选 0 张/)).toBeVisible();
   await search.fill("");
