@@ -15,6 +15,7 @@
 import { ref } from "vue";
 import { commands } from "@/bindings";
 import { absolutePathToAssetUrl } from "@/utils/assetUrl";
+import { readLocalStorageValue, writeLocalStorageValue } from "@/utils/localStorage";
 
 /** 悬停多久才弹原图：默认值（设置面板未改过时用它；测试与文档同口径） */
 export const HOVER_PREVIEW_DELAY_MS = 1_000;
@@ -26,24 +27,6 @@ export const HOVER_PREVIEW_DELAY_LIMITS = { min: 200, max: 3_000, step: 100 } as
 const DELAY_KEY = "homeCardHoverPreviewDelay";
 const ENABLED_KEY = "homeCardHoverPreviewEnabled";
 
-/// 偏好读写统一容错：node 单测环境没有 localStorage，隐私模式等场景也可能抛异常；
-/// 失败只是不持久化，本次会话仍按内存值生效。
-function readStored(key: string): string | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeStored(key: string, value: string): void {
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(key, value);
-  } catch {
-    // 写失败不阻断本次会话的配置变更
-  }
-}
-
 /** 把任意输入收敛到合法延迟：非数字回退默认值，越界钳制到范围端点 */
 export function clampHoverPreviewDelay(ms: number): number {
   if (!Number.isFinite(ms)) return HOVER_PREVIEW_DELAY_MS;
@@ -54,26 +37,26 @@ export function clampHoverPreviewDelay(ms: number): number {
 }
 
 function loadDelay(): number {
-  const raw = readStored(DELAY_KEY);
+  const raw = readLocalStorageValue(DELAY_KEY);
   if (raw === null || raw.trim() === "") return HOVER_PREVIEW_DELAY_MS;
   return clampHoverPreviewDelay(Number(raw));
 }
 
 /** 全局配置：设置面板改这里，已挂载的卡片无需重建即可生效 */
 export const hoverPreviewDelayMs = ref(loadDelay());
-export const hoverPreviewEnabled = ref(readStored(ENABLED_KEY) !== "0");
+export const hoverPreviewEnabled = ref(readLocalStorageValue(ENABLED_KEY) !== "0");
 
 /** 改延迟：写入偏好并收起当前浮层（下次悬停按新值计时） */
 export function setHoverPreviewDelay(ms: number): void {
   hoverPreviewDelayMs.value = clampHoverPreviewDelay(ms);
-  writeStored(DELAY_KEY, String(hoverPreviewDelayMs.value));
+  writeLocalStorageValue(DELAY_KEY, String(hoverPreviewDelayMs.value));
   closeHoverPreview();
 }
 
 /** 总开关：关闭立即收起浮层并停止后续排期 */
 export function setHoverPreviewEnabled(enabled: boolean): void {
   hoverPreviewEnabled.value = enabled;
-  writeStored(ENABLED_KEY, enabled ? "1" : "0");
+  writeLocalStorageValue(ENABLED_KEY, enabled ? "1" : "0");
   if (!enabled) closeHoverPreview();
 }
 

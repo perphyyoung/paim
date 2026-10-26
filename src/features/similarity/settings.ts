@@ -8,6 +8,12 @@
  *   共用一套阈值会互相干扰（同内容图像 ≈0.99、文本 ≈0.7 量级，无关内容都在 ≈0.2）。
  */
 import { ref } from "vue";
+import {
+  readLocalStorageNumber,
+  readLocalStorageString,
+  writeLocalStorageNumber,
+  writeLocalStorageString,
+} from "@/utils/localStorage";
 
 /** 服务地址与索引并发（两类索引共用）。 */
 const BASE_URL_KEY = "image.similarity.baseUrl";
@@ -40,49 +46,23 @@ export const DEFAULT_LIMIT = 30;
 export const DEFAULT_MIN_SCORE = 0.5;
 const DEFAULT_CONCURRENCY = 2;
 
-function read(key: string, fallback: string): string {
-  try {
-    return localStorage.getItem(key) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function write(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // 隐私模式等场景忽略：偏好丢失不影响功能
-  }
-}
-
-function readNumber(key: string, fallback: number, min: number, max: number): number {
-  const raw = Number(read(key, String(fallback)));
-  if (!Number.isFinite(raw)) return fallback;
-  return Math.min(max, Math.max(min, raw));
-}
-
-const baseUrl = ref(read(BASE_URL_KEY, DEFAULT_BASE_URL));
+const baseUrl = ref(readLocalStorageString(BASE_URL_KEY, DEFAULT_BASE_URL));
 const concurrency = ref(
-  readNumber(CONCURRENCY_KEY, DEFAULT_CONCURRENCY, CONCURRENCY_RANGE.min, CONCURRENCY_RANGE.max),
+  readLocalStorageNumber(CONCURRENCY_KEY, DEFAULT_CONCURRENCY, CONCURRENCY_RANGE),
 );
 
 const limit = {
-  image: ref(readNumber(KEYS.image.limit, DEFAULT_LIMIT, LIMIT_RANGE.min, LIMIT_RANGE.max)),
-  prompt: ref(readNumber(KEYS.prompt.limit, DEFAULT_LIMIT, LIMIT_RANGE.min, LIMIT_RANGE.max)),
+  image: ref(readLocalStorageNumber(KEYS.image.limit, DEFAULT_LIMIT, LIMIT_RANGE)),
+  prompt: ref(readLocalStorageNumber(KEYS.prompt.limit, DEFAULT_LIMIT, LIMIT_RANGE)),
 };
 const minScore = {
-  image: ref(
-    readNumber(KEYS.image.minScore, DEFAULT_MIN_SCORE, MIN_SCORE_RANGE.min, MIN_SCORE_RANGE.max),
-  ),
-  prompt: ref(
-    readNumber(KEYS.prompt.minScore, DEFAULT_MIN_SCORE, MIN_SCORE_RANGE.min, MIN_SCORE_RANGE.max),
-  ),
+  image: ref(readLocalStorageNumber(KEYS.image.minScore, DEFAULT_MIN_SCORE, MIN_SCORE_RANGE)),
+  prompt: ref(readLocalStorageNumber(KEYS.prompt.minScore, DEFAULT_MIN_SCORE, MIN_SCORE_RANGE)),
 };
 
 function setBaseUrl(v: string) {
   baseUrl.value = v.trim() || DEFAULT_BASE_URL;
-  write(BASE_URL_KEY, baseUrl.value);
+  writeLocalStorageString(BASE_URL_KEY, baseUrl.value);
 }
 
 function setConcurrency(v: number) {
@@ -91,7 +71,7 @@ function setConcurrency(v: number) {
     CONCURRENCY_RANGE.max,
     Math.max(CONCURRENCY_RANGE.min, n || DEFAULT_CONCURRENCY),
   );
-  write(CONCURRENCY_KEY, String(concurrency.value));
+  writeLocalStorageNumber(CONCURRENCY_KEY, concurrency.value);
 }
 
 /**
@@ -110,12 +90,12 @@ export function useSimilaritySettings(kind: SimilarityKind = "image") {
     setLimit(v: number) {
       const n = Number.isFinite(v) ? Math.round(v) : DEFAULT_LIMIT;
       limit[kind].value = Math.min(LIMIT_RANGE.max, Math.max(LIMIT_RANGE.min, n || DEFAULT_LIMIT));
-      write(keys.limit, String(limit[kind].value));
+      writeLocalStorageNumber(keys.limit, limit[kind].value);
     },
     setMinScore(v: number) {
       const n = Number.isFinite(v) ? v : DEFAULT_MIN_SCORE;
       minScore[kind].value = Math.min(MIN_SCORE_RANGE.max, Math.max(MIN_SCORE_RANGE.min, n));
-      write(keys.minScore, String(minScore[kind].value));
+      writeLocalStorageNumber(keys.minScore, minScore[kind].value);
     },
   };
 }

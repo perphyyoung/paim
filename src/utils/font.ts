@@ -17,6 +17,12 @@
  * 无手势调用可能连授权弹窗都弹不出来）；拒授权/不支持时静默回退，功能不残废。
  */
 import { ref } from "vue";
+import {
+  readLocalStorageNumber,
+  readLocalStorageString,
+  writeLocalStorageNumber,
+  writeLocalStorageString,
+} from "@/utils/localStorage";
 
 /** 字体缩放比例范围（%）与步进 */
 export const FONT_SCALE_LIMITS = { min: 75, max: 150, step: 5 } as const;
@@ -48,8 +54,8 @@ export function applyFontScale(scale: number) {
 }
 
 function loadScale(key: string): number {
-  const v = Number(localStorage.getItem(key));
-  return Number.isFinite(v) && v > 0 ? v : 100;
+  const v = readLocalStorageNumber(key, 100);
+  return v > 0 ? v : 100;
 }
 
 /** 应用启动时调用一次，让未打开设置弹窗时缩放也生效 */
@@ -65,7 +71,7 @@ export function useFontScale() {
   function setFontScale(v: number) {
     const clamped = Math.min(FONT_SCALE_LIMITS.max, Math.max(FONT_SCALE_LIMITS.min, v));
     fontScale.value = clamped;
-    localStorage.setItem(FONT_SCALE_KEY, String(clamped));
+    writeLocalStorageNumber(FONT_SCALE_KEY, clamped);
     applyFontScale(clamped);
   }
 
@@ -96,7 +102,7 @@ export function applyFontFamily(family: string) {
 }
 
 function loadFontFamily(): string {
-  return sanitizeFontFamily(localStorage.getItem(FONT_FAMILY_KEY) ?? "");
+  return sanitizeFontFamily(readLocalStorageString(FONT_FAMILY_KEY, ""));
 }
 
 /** 应用启动时调用一次，让未打开设置页时字体也生效 */
@@ -112,7 +118,7 @@ export function useFontFamily() {
   function setFontFamily(v: string) {
     const safe = sanitizeFontFamily(v);
     fontFamily.value = safe;
-    localStorage.setItem(FONT_FAMILY_KEY, safe);
+    writeLocalStorageString(FONT_FAMILY_KEY, safe);
     applyFontFamily(safe);
   }
 

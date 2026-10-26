@@ -55,7 +55,7 @@ function rows(start: number, count: number, prefix = "id"): Row[] {
 /// 清空微任务队列：composable 内部用 microtask 落地响应、排队重试
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-// resolveBlockSize() 无条件读 localStorage（应用里必然存在，node 环境没有）
+// resolveBlockSize() 经 utils/localStorage 读取（统一容错）；这里 stub 用于验证覆盖值与写入
 const store = new Map<string, string>();
 vi.stubGlobal("localStorage", {
   getItem: (key: string) => store.get(key) ?? null,

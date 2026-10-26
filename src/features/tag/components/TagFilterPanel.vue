@@ -4,6 +4,12 @@ import TagChip from "@/components/TagChip.vue";
 import SortGroup from "@/components/SortGroup.vue";
 import { startTagDrag, tagDrag } from "../useTagDragToCard";
 import { ModalZ } from "@/utils/modalZ";
+import {
+  readLocalStorageBoolean,
+  readLocalStorageString,
+  writeLocalStorageBoolean,
+  writeLocalStorageString,
+} from "@/utils/localStorage";
 
 // 拖拽到卡片快捷添加标签：脚本层引用防止格式化工具误删模板绑定
 const dragActive = tagDrag.active;
@@ -101,10 +107,12 @@ function clearTags() {
 }
 
 // 收起/展开（持久化）
-const tagFilterCollapsed = ref(localStorage.getItem(`${props.domain}.tagFilterCollapsed`) === "1");
+const tagFilterCollapsed = ref(
+  readLocalStorageBoolean(`${props.domain}.tagFilterCollapsed`, false),
+);
 function toggleTagFilter() {
   tagFilterCollapsed.value = !tagFilterCollapsed.value;
-  localStorage.setItem(`${props.domain}.tagFilterCollapsed`, tagFilterCollapsed.value ? "1" : "0");
+  writeLocalStorageBoolean(`${props.domain}.tagFilterCollapsed`, tagFilterCollapsed.value);
 }
 
 // 供父页 Ctrl+T 快捷键调用
@@ -113,20 +121,20 @@ defineExpose({ toggleFilter: toggleTagFilter });
 // 标签排序状态（名称/数量 + 逆序，持久化）
 const TAG_SORT_KEY = `${props.domain}.tagSortBy`;
 const TAG_SORT_DESC_KEY = `${props.domain}.tagSortDesc`;
-const tagSortBy = ref(localStorage.getItem(TAG_SORT_KEY) || "name");
-const tagSortDesc = ref(localStorage.getItem(TAG_SORT_DESC_KEY) === "1");
+const tagSortBy = ref(readLocalStorageString(TAG_SORT_KEY, "name", { emptyAsFallback: true }));
+const tagSortDesc = ref(readLocalStorageBoolean(TAG_SORT_DESC_KEY, false));
 const TAG_SORT_OPTIONS = [
   { value: "name", label: "名称" },
   { value: "count", label: "数量" },
 ];
 function setTagSortBy(v: string) {
   tagSortBy.value = v;
-  localStorage.setItem(TAG_SORT_KEY, v);
+  writeLocalStorageString(TAG_SORT_KEY, v);
 }
 
 function toggleTagSortDesc() {
   tagSortDesc.value = !tagSortDesc.value;
-  localStorage.setItem(TAG_SORT_DESC_KEY, tagSortDesc.value ? "1" : "0");
+  writeLocalStorageBoolean(TAG_SORT_DESC_KEY, tagSortDesc.value);
 }
 
 // 收起时头部标签（特殊区 + 普通区，特殊不参与排序）

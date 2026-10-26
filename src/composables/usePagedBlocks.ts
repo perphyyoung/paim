@@ -3,6 +3,7 @@
 // 只保留最近用到的若干块（LRU），其余位置用占位对象填充，使虚拟网格的窗口计算、
 // 定位与滚动条保持不变（总条数来自后端 total）。
 import { ref, shallowRef, type Ref } from "vue";
+import { readLocalStorageNumber } from "@/utils/localStorage";
 import { log } from "@/utils/logger";
 
 /** 未加载 / 加载失败的位置占位；不带 id，避免被批量选择或 key 生成误当成实体 */
@@ -25,8 +26,8 @@ const DEFAULT_MAX_BLOCKS = 25;
 const BLOCK_SIZE_KEY = "paim.blockSize";
 
 function resolveBlockSize(fallback: number): number {
-  const raw = Number(localStorage.getItem(BLOCK_SIZE_KEY));
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+  const raw = Math.floor(readLocalStorageNumber(BLOCK_SIZE_KEY, 0));
+  return raw > 0 ? raw : fallback;
 }
 
 export function isPlaceholder(x: unknown): x is Placeholder {

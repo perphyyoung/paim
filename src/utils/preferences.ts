@@ -9,6 +9,11 @@
  * （`preferences.test.ts` 里有用例专门钉住「未登记键被排除」）。
  */
 import { applyFontFamily, applyFontScale } from "@/utils/font";
+import {
+  listLocalStorageKeys,
+  readLocalStorageValue,
+  writeLocalStorageValue,
+} from "@/utils/localStorage";
 
 /** 不在域前缀下的孤立偏好键 */
 const PREF_EXACT_KEYS = [
@@ -34,10 +39,9 @@ export function isPreferenceKey(key: string): boolean {
 /** 收集当前界面偏好（仅白名单键）；localStorage 为空时返回空对象 */
 export function collectPreferences(): Record<string, string> {
   const out: Record<string, string> = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key || !isPreferenceKey(key)) continue;
-    const value = localStorage.getItem(key);
+  for (const key of listLocalStorageKeys()) {
+    if (!isPreferenceKey(key)) continue;
+    const value = readLocalStorageValue(key);
     if (value !== null) out[key] = value;
   }
   return out;
@@ -80,7 +84,7 @@ export function parsePreferenceFile(text: string): Record<string, string> {
  */
 export function applyPreferences(preferences: Record<string, string>): number {
   for (const [key, value] of Object.entries(preferences)) {
-    localStorage.setItem(key, value);
+    writeLocalStorageValue(key, value);
   }
   const scale = Number(preferences.fontScale);
   if (Number.isFinite(scale) && scale > 0) applyFontScale(scale);

@@ -15,6 +15,12 @@ import { useToast } from "@/components/useToast";
 import { log } from "@/utils/logger";
 import { formatLocalTime } from "@/utils/date";
 import { useGridColumns } from "@/utils/gridColumns";
+import {
+  readLocalStorageBoolean,
+  readLocalStorageString,
+  writeLocalStorageBoolean,
+  writeLocalStorageString,
+} from "@/utils/localStorage";
 import { parseSearch } from "@/utils/searchQuery";
 import { isPlaceholder, usePagedBlocks, type Placeholder } from "@/composables/usePagedBlocks";
 import { usePageStaleReload } from "@/composables/usePageStaleReload";
@@ -75,24 +81,24 @@ const { columns, setColumns } = useGridColumns("prompt", 5);
 const keyword = ref("");
 // 正则搜索开关（持久化）：开启后关键词按正则匹配（后端 Rust regex，线性时间、无 lookaround）
 const REGEX_MODE_KEY = "paim.search.regex.prompt";
-const regexMode = ref(localStorage.getItem(REGEX_MODE_KEY) === "1");
+const regexMode = ref(readLocalStorageBoolean(REGEX_MODE_KEY, false));
 function setRegexMode(v: boolean) {
   regexMode.value = v;
-  localStorage.setItem(REGEX_MODE_KEY, v ? "1" : "0");
+  writeLocalStorageBoolean(REGEX_MODE_KEY, v);
 }
 function toggleRegexMode() {
   setRegexMode(!regexMode.value);
 }
 
-const sortBy = ref(localStorage.getItem(SORT_KEY) || "updatedAt");
-const sortDesc = ref(localStorage.getItem(SORT_DESC_KEY) !== "0");
+const sortBy = ref(readLocalStorageString(SORT_KEY, "updatedAt", { emptyAsFallback: true }));
+const sortDesc = ref(readLocalStorageBoolean(SORT_DESC_KEY, true));
 function setSortBy(v: string) {
   sortBy.value = v;
-  localStorage.setItem(SORT_KEY, v);
+  writeLocalStorageString(SORT_KEY, v);
 }
 function toggleSortDesc() {
   sortDesc.value = !sortDesc.value;
-  localStorage.setItem(SORT_DESC_KEY, sortDesc.value ? "1" : "0");
+  writeLocalStorageBoolean(SORT_DESC_KEY, sortDesc.value);
 }
 
 const tagNames = shallowRef<Record<string, string[]>>({});

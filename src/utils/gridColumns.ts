@@ -5,6 +5,7 @@
  * 这里只管范围限制与持久化，两页只传 domain 与默认值。
  */
 import { ref } from "vue";
+import { readLocalStorageInteger, writeLocalStorageNumber } from "@/utils/localStorage";
 
 /** 显示列数范围限制，两页共用 */
 export const GRID_COLUMNS_LIMITS = { min: 2, max: 12 } as const;
@@ -28,7 +29,7 @@ export function sizeLevelToColumns(level: number): number {
 /** 显示列数状态：localStorage 持久化，按域隔离（key 形如 image.columns / prompt.columns）。 */
 export function useGridColumns(domain: string, initial: number) {
   const key = `${domain}.columns`;
-  const columns = ref(Number(localStorage.getItem(key)) || initial);
+  const columns = ref(readLocalStorageInteger(key, initial, GRID_COLUMNS_LIMITS));
 
   function setColumns(v: number) {
     const clamped = Math.min(
@@ -36,7 +37,7 @@ export function useGridColumns(domain: string, initial: number) {
       Math.max(GRID_COLUMNS_LIMITS.min, Math.round(v)),
     );
     columns.value = clamped;
-    localStorage.setItem(key, String(clamped));
+    writeLocalStorageNumber(key, clamped);
   }
 
   return { columns, setColumns };

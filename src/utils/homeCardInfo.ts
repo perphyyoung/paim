@@ -6,14 +6,15 @@
  * localStorage 持久化（key: homeCardInfoVisible，默认显示）。
  */
 import { ref } from "vue";
+import { readLocalStorageBoolean, writeLocalStorageBoolean } from "@/utils/localStorage";
 
 const KEY = "homeCardInfoVisible";
 
-const homeCardInfoVisible = ref(localStorage.getItem(KEY) !== "0");
+const homeCardInfoVisible = ref(readLocalStorageBoolean(KEY, true));
 
 function toggleHomeCardInfo() {
   homeCardInfoVisible.value = !homeCardInfoVisible.value;
-  localStorage.setItem(KEY, homeCardInfoVisible.value ? "1" : "0");
+  writeLocalStorageBoolean(KEY, homeCardInfoVisible.value);
 }
 
 export { homeCardInfoVisible, toggleHomeCardInfo };
