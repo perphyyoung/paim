@@ -258,6 +258,7 @@ const tagSections = computed<TagSection[]>(() => {
       <SortGroup
         class="ml-auto"
         size="sm"
+        select-label="标签排序"
         :model-value="tagSortBy"
         :options="TAG_SORT_OPTIONS"
         :desc="tagSortDesc"

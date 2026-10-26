@@ -255,6 +255,26 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedPrompts> {
             invalid_regex: true,
         });
     }
+    if list_query::is_random(&q.sort) {
+        let (filter, params) = page_filter(q);
+        return list_query::random_paged(
+            conn,
+            q,
+            "prompts",
+            PCARD_COLS,
+            &filter,
+            &params,
+            &|row| {
+                let card = row_to_prompt_card(row)?;
+                Ok((card.id.clone(), card))
+            },
+            |items, total, invalid_regex| PaginatedPrompts {
+                items,
+                total,
+                invalid_regex,
+            },
+        );
+    }
     let (filter, mut params) = page_filter(q);
     let total: i64 = conn.query_row(
         &format!("SELECT COUNT(*) FROM prompts WHERE is_deleted = 0{filter}"),
@@ -288,6 +308,10 @@ pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
     // 非法正则没有可匹配的条目：不跑 SQL（否则会全表扫一遍必然失败的正则）
     if regex_invalid(q) {
         return Ok(Vec::new());
+    }
+    if list_query::is_random(&q.sort) {
+        let (filter, params) = page_filter(q);
+        return list_query::random_ids(conn, q, "prompts", &filter, &params);
     }
     let (filter, params) = page_filter(q);
     let sql = format!(

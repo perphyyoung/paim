@@ -624,6 +624,8 @@ export type ListQuery = {
 	/**  排序键（驼峰，与前端 sortBy 一致）；未命中白名单时回落默认键 */
 	sort: string,
 	desc: boolean,
+	/**  随机排序种子（sort == "random" 时生效）：同 seed 同集合得同一全序，保证分页稳定 */
+	seed?: number | null,
 };
 
 /**  日志级别变更事件（payload 为新级别小写字符串），前端监听后刷新本地缓存。 */

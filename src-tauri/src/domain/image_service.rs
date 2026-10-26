@@ -536,6 +536,27 @@ pub fn list_page(conn: &Connection, q: &ListQuery) -> Result<PaginatedImages> {
             excluded: 0,
         });
     }
+    if list_query::is_random(&q.sort) {
+        let (filter, params) = page_filter(q);
+        return list_query::random_paged(
+            conn,
+            q,
+            "images",
+            CARD_COLS,
+            &filter,
+            &params,
+            &|row| {
+                let card = row_to_card(row)?;
+                Ok((card.id.clone(), card))
+            },
+            |items, total, invalid_regex| PaginatedImages {
+                items,
+                total,
+                invalid_regex,
+                excluded: 0,
+            },
+        );
+    }
     let (filter, mut params) = page_filter(q);
     let total: i64 = conn.query_row(
         &format!("SELECT COUNT(*) FROM images WHERE is_deleted = 0{filter}"),
@@ -567,6 +588,10 @@ pub fn list_ids(conn: &Connection, q: &ListQuery) -> Result<Vec<String>> {
     // 非法正则没有可匹配的条目：不跑 SQL（否则会全表扫一遍必然失败的正则）
     if regex_invalid(q) {
         return Ok(Vec::new());
+    }
+    if list_query::is_random(&q.sort) {
+        let (filter, params) = page_filter(q);
+        return list_query::random_ids(conn, q, "images", &filter, &params);
     }
     let (filter, params) = page_filter(q);
     let sql = format!(

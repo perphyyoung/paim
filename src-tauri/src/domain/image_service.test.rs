@@ -649,6 +649,7 @@ fn query(sort: &str, desc: bool) -> ListQuery {
         inverted: false,
         sort: sort.to_string(),
         desc,
+        seed: None,
     }
 }
 
@@ -987,4 +988,44 @@ fn thumbs_for_skips_deleted_and_null_thumbnail_rows() {
         thumbs_for(&conn, &[]).unwrap().is_empty(),
         "空入参直接返回空映射，不拼空 IN"
     );
+}
+
+// —— 随机排序：种子稳定、分页一致 ——
+
+#[test]
+fn random_sort_is_stable_and_paged_consistently() {
+    let (_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    for i in 0..10 {
+        insert_image(
+            &conn,
+            &format!("i{i:02}"),
+            100 + i as i64,
+            "2026-01-01T00:00:00.000Z",
+            false,
+        );
+    }
+    let mut q = query("random", false);
+    q.seed = Some(42);
+
+    let first = list_page(&conn, &q).unwrap();
+    assert_eq!(first.total, 10);
+    assert_eq!(
+        ids_of(&first),
+        ids_of(&list_page(&conn, &q).unwrap()),
+        "同 seed 两次请求顺序一致"
+    );
+
+    let mut all = Vec::new();
+    for offset in [0, 4, 8] {
+        let mut page_q = q.clone();
+        page_q.offset = offset;
+        page_q.limit = 4;
+        all.extend(ids_of(&list_page(&conn, &page_q).unwrap()));
+    }
+    assert_eq!(all, ids_of(&first));
+
+    let mut other = q.clone();
+    other.seed = Some(43);
+    assert_ne!(ids_of(&list_page(&conn, &other).unwrap()), ids_of(&first));
 }

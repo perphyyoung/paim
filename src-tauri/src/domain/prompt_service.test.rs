@@ -460,6 +460,7 @@ fn query(sort: &str, desc: bool) -> ListQuery {
         inverted: false,
         sort: sort.to_string(),
         desc,
+        seed: None,
     }
 }
 
@@ -1255,4 +1256,79 @@ fn reorder_prompt_images_writes_order_and_rejects_bad_sets() {
         &["i1".to_string(), "i2".to_string(), "zzz".to_string()]
     )
     .is_err());
+}
+
+// —— 随机排序：种子稳定、分页一致、desc 反转、list_ids 同序 ——
+
+#[test]
+fn random_sort_is_stable_paged_and_reversible() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    for i in 0..12 {
+        insert_prompt(
+            &conn,
+            &format!("p{i:02}"),
+            &format!("t{i}"),
+            "2026-01-01T00:00:00.000Z",
+            "2026-01-01T00:00:00.000Z",
+            false,
+            "",
+        );
+    }
+    let mut q = query("random", false);
+    q.seed = Some(42);
+
+    let first = list_page(&conn, &q).unwrap();
+    assert_eq!(first.total, 12);
+    assert_eq!(
+        ids_of(&first),
+        ids_of(&list_page(&conn, &q).unwrap()),
+        "同 seed 两次请求顺序一致"
+    );
+
+    // 分页切片拼回 == 全量（无重 / 无漏）
+    let mut all = Vec::new();
+    for offset in [0, 5, 10] {
+        let mut page_q = q.clone();
+        page_q.offset = offset;
+        page_q.limit = 5;
+        all.extend(ids_of(&list_page(&conn, &page_q).unwrap()));
+    }
+    assert_eq!(all, ids_of(&first));
+
+    // desc 为整体反转
+    let mut d = q.clone();
+    d.desc = true;
+    let mut reversed = ids_of(&list_page(&conn, &d).unwrap());
+    reversed.reverse();
+    assert_eq!(reversed, ids_of(&first));
+
+    // 换 seed 打乱顺序
+    let mut other = q.clone();
+    other.seed = Some(43);
+    assert_ne!(ids_of(&list_page(&conn, &other).unwrap()), ids_of(&first));
+}
+
+#[test]
+fn random_list_ids_matches_page_order() {
+    let (_dir, db) = setup();
+    let conn = db.0.lock().unwrap();
+    for i in 0..8 {
+        insert_prompt(
+            &conn,
+            &format!("p{i}"),
+            &format!("t{i}"),
+            "2026-01-01T00:00:00.000Z",
+            "2026-01-01T00:00:00.000Z",
+            false,
+            "",
+        );
+    }
+    let mut q = query("random", false);
+    q.seed = Some(7);
+    assert_eq!(
+        list_ids(&conn, &q).unwrap(),
+        ids_of(&list_page(&conn, &q).unwrap()),
+        "批量全选的 id 顺序与主页一致"
+    );
 }

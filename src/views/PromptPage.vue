@@ -17,8 +17,10 @@ import { formatLocalTime } from "@/utils/date";
 import { useGridColumns } from "@/utils/gridColumns";
 import {
   readLocalStorageBoolean,
+  readLocalStorageNumber,
   readLocalStorageString,
   writeLocalStorageBoolean,
+  writeLocalStorageNumber,
   writeLocalStorageString,
 } from "@/utils/localStorage";
 import { parseSearch } from "@/utils/searchQuery";
@@ -73,6 +75,7 @@ const SORT_OPTIONS = [
   { value: "updatedAt", label: "更新时间" },
   { value: "createdAt", label: "创建时间" },
   { value: "title", label: "标题" },
+  { value: "random", label: "随机" },
 ];
 
 // 显示列数，localStorage 持久化（范围/持久化逻辑见 utils/gridColumns）
@@ -93,6 +96,7 @@ function toggleRegexMode() {
 const sortBy = ref(readLocalStorageString(SORT_KEY, "updatedAt", { emptyAsFallback: true }));
 const sortDesc = ref(readLocalStorageBoolean(SORT_DESC_KEY, true));
 function setSortBy(v: string) {
+  if (v === "random") ensureRandomSeed();
   sortBy.value = v;
   writeLocalStorageString(SORT_KEY, v);
 }
@@ -100,6 +104,27 @@ function toggleSortDesc() {
   sortDesc.value = !sortDesc.value;
   writeLocalStorageBoolean(SORT_DESC_KEY, sortDesc.value);
 }
+
+// 随机排序种子：同 seed 同集合得同一全序（后端分页稳定）；洗牌才换种子，跨会话持久化
+const RANDOM_SEED_KEY = "prompt.randomSeed";
+const randomSeed = ref(readLocalStorageNumber(RANDOM_SEED_KEY, 0));
+function newRandomSeed(): number {
+  return 1 + Math.floor(Math.random() * 2_147_483_646);
+}
+function setRandomSeed(v: number) {
+  randomSeed.value = v;
+  writeLocalStorageNumber(RANDOM_SEED_KEY, v);
+}
+function ensureRandomSeed() {
+  if (randomSeed.value <= 0) setRandomSeed(newRandomSeed());
+}
+/// 洗牌：换一批随机顺序；还没在随机模式时顺手切过去 —— 一个按钮就是随机排序的入口
+function reshuffleRandom() {
+  setRandomSeed(newRandomSeed());
+  if (sortBy.value !== "random") setSortBy("random");
+}
+// 持久化的是随机、但种子丢了（旧数据 / 被清）时补种，别停在 seed=0 的固定序
+if (sortBy.value === "random") ensureRandomSeed();
 
 const tagNames = shallowRef<Record<string, string[]>>({});
 // 卡片背景缩略图 URL：按需取（提示词背景取关联首图，无法随列表行内返回），
@@ -289,6 +314,7 @@ function currentQuery() {
     inverted: invertedTagFilter.value,
     sort: sortBy.value,
     desc: sortDesc.value,
+    seed: sortBy.value === "random" ? randomSeed.value : null,
   };
 }
 
@@ -315,7 +341,7 @@ const {
 
 // 筛选 / 排序 / 搜索（含模式切换）变化：数据在后端重排，前端无法增量调整——回到顶部并整体重拉
 watch(
-  [debouncedKeyword, regexMode, sortBy, sortDesc, selectedTags, invertedTagFilter],
+  [debouncedKeyword, regexMode, sortBy, sortDesc, selectedTags, invertedTagFilter, randomSeed],
   async () => {
     backToTop();
     await reloadBlocks();
@@ -365,6 +391,9 @@ function rowInfo(p: PromptCard): { label: string; value: string } {
       return { label: "创建时间", value: formatLocalTime(p.created_at) };
     case "title":
       return { label: "标题", value: p.title };
+    case "random":
+      // 随机序没有可展示的排序值：底部信息条隐藏
+      return { label: "", value: "" };
     default:
       return { label: "更新时间", value: formatLocalTime(p.updated_at) };
   }
@@ -826,8 +855,10 @@ useHomeShortcuts({ searchInput, tagFilter: tagFilterRef, onSelectAll: batchSelec
           :model-value="sortBy"
           :options="SORT_OPTIONS"
           :desc="sortDesc"
+          :shuffle="true"
           @update:model-value="setSortBy"
           @toggle-order="toggleSortDesc"
+          @reshuffle="reshuffleRandom"
         />
         <!-- 调节卡片大小（滑杆，底层仍调列数，见 components/CardSizeSlider.vue） -->
         <CardSizeSlider :model-value="columns" @update:model-value="setColumns" />

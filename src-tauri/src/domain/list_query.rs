@@ -6,7 +6,9 @@
 //! 改任一处都必须同步另一处（否则筛选会退化成「按普通标签名查不到」）。
 
 use rusqlite::types::Value;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// 单块最多返回条数（前端块大小上限，防误传导致一次拉全表）
 pub const MAX_LIMIT: i64 = 200;
@@ -49,6 +51,109 @@ pub struct ListQuery {
     /// 排序键（驼峰，与前端 sortBy 一致）；未命中白名单时回落默认键
     pub sort: String,
     pub desc: bool,
+    /// 随机排序种子（sort == "random" 时生效）：同 seed 同集合得同一全序，保证分页稳定
+    #[serde(default)]
+    pub seed: Option<i64>,
+}
+
+/// 是否随机排序（"random" 不进 sort_column 白名单，走专门的洗牌分支）
+pub fn is_random(sort: &str) -> bool {
+    sort == "random"
+}
+
+fn splitmix64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = x;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// (seed, id) 的稳定哈希：同输入恒定（跨进程 / 跨请求），不同 seed 打乱顺序
+fn keyed_hash(seed: u64, id: &str) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64 ^ (seed as u64);
+    for b in id.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01B3);
+    }
+    splitmix64(h)
+}
+
+/// 随机排序：按 (seed, id) 哈希升序的全序排列。
+/// 同 seed 同集合必得同一顺序（分页 / 重复请求稳定）；desc 为整体反转。
+pub fn shuffle_ids_seeded(mut ids: Vec<String>, seed: i64, desc: bool) -> Vec<String> {
+    let seed = seed as u64;
+    let mut keyed: Vec<(u64, String)> = ids
+        .drain(..)
+        .map(|id| (keyed_hash(seed, &id), id))
+        .collect();
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    if desc {
+        keyed.reverse();
+    }
+    keyed.into_iter().map(|(_, id)| id).collect()
+}
+
+/// 随机排序：取筛选后的全部 id（稳定序，交给洗牌函数打乱）
+fn fetch_ids(
+    conn: &Connection,
+    table: &str,
+    filter: &str,
+    params: &[Value],
+) -> rusqlite::Result<Vec<String>> {
+    let sql = format!("SELECT id FROM {table} WHERE is_deleted = 0{filter} ORDER BY id");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |r| r.get(0))?;
+    rows.collect()
+}
+
+/// 随机排序的 id 列表（批量全选 / 反选用）：洗牌后截断到 MAX_IDS，与分页同序
+pub fn random_ids(
+    conn: &Connection,
+    q: &ListQuery,
+    table: &str,
+    filter: &str,
+    params: &[Value],
+) -> rusqlite::Result<Vec<String>> {
+    let ids = fetch_ids(conn, table, filter, params)?;
+    let shuffled = shuffle_ids_seeded(ids, q.seed.unwrap_or(0), q.desc);
+    Ok(shuffled.into_iter().take(MAX_IDS as usize).collect())
+}
+
+/// 随机排序的分页：取筛选后的 id → 洗牌 → 切片 → 按序取卡片。
+/// 同 seed 同筛选必得同一全序，分页切片拼回即全量（无重 / 无漏）。
+/// `row_mapper` 返回 (id, 卡片)：按 id 建索引后再按洗牌顺序拼回。
+pub fn random_paged<T, P>(
+    conn: &Connection,
+    q: &ListQuery,
+    table: &str,
+    cols: &str,
+    filter: &str,
+    params: &[Value],
+    row_mapper: &impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<(String, T)>,
+    build: impl FnOnce(Vec<T>, i64, bool) -> P,
+) -> rusqlite::Result<P> {
+    let ids = fetch_ids(conn, table, filter, params)?;
+    let total = ids.len() as i64;
+    let page_ids: Vec<String> = shuffle_ids_seeded(ids, q.seed.unwrap_or(0), q.desc)
+        .into_iter()
+        .skip(clamp_offset(q.offset) as usize)
+        .take(clamp_limit(q.limit) as usize)
+        .collect();
+
+    let mut by_id: HashMap<String, T> = HashMap::new();
+    for chunk in page_ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("SELECT {cols} FROM {table} WHERE id IN ({placeholders})");
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), row_mapper)?;
+        for row in rows {
+            let (id, item) = row?;
+            by_id.insert(id, item);
+        }
+    }
+    let items = page_ids.iter().filter_map(|id| by_id.remove(id)).collect();
+    Ok(build(items, total, false))
 }
 
 /// 排序方向：只可能是这两个字面量，禁止把用户输入拼进 SQL

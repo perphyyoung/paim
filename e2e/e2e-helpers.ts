@@ -784,6 +784,25 @@ export function cardById(page: Page, id: string): Locator {
   return page.locator(`[${CARD_ROOT_ATTR}="${id}"]`);
 }
 
+/// 当前可见卡片的 id 顺序（随机排序稳定性 / 洗牌前后对比用）
+export async function cardIdsInOrder(page: Page): Promise<string[]> {
+  return page
+    .locator(`[${CARD_ROOT_ATTR}]`)
+    .evaluateAll((nodes) =>
+      nodes.map((n) => (n as HTMLElement).getAttribute("data-card-drop-id") ?? ""),
+    );
+}
+
+/// 主页排序下拉（SortGroup 的 select；两页共用同一 aria-label）
+export function sortSelect(page: Page): Locator {
+  return page.getByRole("combobox", { name: "排序依据", exact: true });
+}
+
+/// 主页排序组的随机排序钮（洗牌图标，常显在逆序右侧）：点一下进入随机 / 换一批
+export function reshuffleButton(page: Page): Locator {
+  return page.getByRole("button", { name: "随机排序", exact: true });
+}
+
 /// 卡片背景图（MediaCard 根的装饰性缩略图，`alt=""` → 无 aria 角色，只能按标签取）。
 /// 与卡片根同理：没有语义、也没有可命名的文本，属允许保留的结构性选择器。
 export function cardImage(card: Locator): Locator {
