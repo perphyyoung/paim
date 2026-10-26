@@ -278,6 +278,19 @@ async function disposeApp(app: AppHandle): Promise<void> {
   removeDirBestEffort(app.previewDir);
 }
 
+/// 清掉共享 WebView profile 里的 localStorage。
+/// 数据目录是 per-file 的，但 WebView profile 是 per-worker（`temp/wv2-w<n>`）复用的，
+/// 排序 / 块大小 / 字体等偏好会串到同 worker 的后续文件（曾导致 07 在随机排序下断言首屏、
+/// 11/27 的上传预览项与卡片底部 tooltip 撞名）。用例之间必须彼此独立，故不做白名单、整体清空。
+/// 时机契约：必须在 `disposeApp` **之前**（之后进程已退出，evaluate 不了）；失败只记日志、不阻断清理。
+async function clearSharedPreferences(app: AppHandle): Promise<void> {
+  try {
+    await app.page.evaluate(() => localStorage.clear());
+  } catch (e) {
+    e2eLog.warn(`[cleanup] 清理共享 localStorage 失败（忽略）：${e}`);
+  }
+}
+
 /// 页面侧诊断（控制台消息/失败请求/4xx 响应）写入 paim.log，便于失败时定位卡在哪一步
 function bindDiagnostics(app: AppHandle): void {
   app.page.on("console", (msg) => {
@@ -353,15 +366,21 @@ const helpersTest = base.extend<
       await use({
         async acquire(file) {
           if (state.current?.file === file) return state.current.app;
-          if (state.current) await disposeApp(state.current.app);
+          if (state.current) {
+            await clearSharedPreferences(state.current.app);
+            await disposeApp(state.current.app);
+          }
           const app = await launchApp(workerInfo.workerIndex, seq++);
           bindDiagnostics(app);
           state.current = { file, app };
           return app;
         },
       });
-      // worker 结束（Playwright 保证执行，用例失败/超时也算）：关掉最后一个实例
-      if (state.current) await disposeApp(state.current.app);
+      // worker 结束（Playwright 保证执行，用例失败/超时也算）：先清偏好（防污染下一次运行），再关实例
+      if (state.current) {
+        await clearSharedPreferences(state.current.app);
+        await disposeApp(state.current.app);
+      }
     },
     { scope: "worker" },
   ],

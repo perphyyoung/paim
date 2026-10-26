@@ -36,14 +36,21 @@ _appPool: [
     await use({
       async acquire(file) {
         if (state.current?.file === file) return state.current.app;
-        if (state.current) await disposeApp(state.current.app); // 关进程 + 删数据目录
+        if (state.current) {
+          await clearSharedPreferences(state.current.app); // ① 清 localStorage（必须在关进程之前）
+          await disposeApp(state.current.app); // 关进程 + 删数据目录
+        }
         const app = await launchApp(workerInfo.workerIndex, seq++);
         bindDiagnostics(app);
         state.current = { file, app };
         return app;
       },
     });
-    if (state.current) await disposeApp(state.current.app); // worker teardown 兜底
+    // worker teardown：② 同样要清一次，否则会污染下一次运行（profile 跨 run 复用）
+    if (state.current) {
+      await clearSharedPreferences(state.current.app);
+      await disposeApp(state.current.app);
+    }
   },
   { scope: "worker" },
 ],
@@ -63,6 +70,40 @@ app: [
 - 旧实例在切文件时**立即关闭并删目录**，因此同时存活的实例数 ≈ worker 数，资源占用不变，
   代价只是每文件一次启动（约 2–4s）。
 - 该方案对 Electron 同样适用——这不是 Tauri/Electron 的差异，是 Playwright 的限制加 fixture 的选择。
+
+### 还必须在切文件时清 localStorage：数据目录 per-file，但 WebView profile 是 per-worker
+
+file 级隔离只换掉了**数据目录和进程**；WebView2 的 profile 目录（`temp/wv2-w<n>`）是按 **worker** 复用、
+且**跨多次运行**保留的——`localStorage` 就住在这里。排序依据、卡片块大小、字体、卡片信息开关都存在里面，
+于是上一个文件的界面偏好会原样带进下一个文件（`07` 的注释里也写过这条）：
+
+- `07` 假定「默认按更新时间倒序」，被前一个文件残留的 `sortBy=random` 一带，100 条数据成了随机序，
+  「最新一条在首屏」的断言直接超时（快照里能看到 `option "随机" [selected]`）；
+- `11` / `27` 的上传预览断言 `getByTitle("e2e-upload.png")` 是**子串**匹配，随机（或文件名）排序下
+  卡片底部 tooltip 变成 `文件名：e2e-upload.png`，于是多命中一个元素 → strict mode violation。
+
+修法是 `e2e/e2e-helpers.ts::clearSharedPreferences`，在 `_appPool` 的两处调用它（见上方代码）：
+
+```ts
+async function clearSharedPreferences(app: AppHandle): Promise<void> {
+  try {
+    await app.page.evaluate(() => localStorage.clear());
+  } catch (e) {
+    e2eLog.warn(`[cleanup] 清理共享 localStorage 失败（忽略）：${e}`);
+  }
+}
+```
+
+时机与边界：
+
+- **必须在 `disposeApp` 之前**：进程关掉之后 `evaluate` 已经不可用；
+- **不需要 `reload`**：下一个文件是全新进程 + 新文档，初始化时自然重新读 localStorage；
+  反过来「新实例启动后再清 + reload」会打断首屏 IPC（`ERR_ABORTED` + 回调失联），已踩过；
+- **整体 `localStorage.clear()`，不做白名单**：用例之间必须彼此独立，没有需要跨文件共享的开关；
+  将来真要共享，也应由 fixture 显式注入，而不是靠上一个文件的残留；
+- **清理失败只记 warn**：不能抛出去阻断 `disposeApp`，否则实例/进程泄漏；
+- **worker teardown 那一次不能省**：它挡的是「上一次运行 → 下一次运行」的污染（profile 跨 run 复用），
+  而 `acquire` 只在「切到下一个文件」时触发，最后一个文件走不到。
 
 ## 二、给 fixture 单独设 timeout：启动耗时不要算进用例
 
