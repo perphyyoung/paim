@@ -563,8 +563,8 @@ function rowInfo(img: ImageCard): { label: string; value: string } {
     case "height":
       return { label: "高", value: img.height ? `${img.height}px` : "—" };
     case "random":
-      // 随机序没有可展示的排序值：底部信息条隐藏
-      return { label: "", value: "" };
+      // 随机序没有排序值可展示：固定显示文件名（必填，必有值）
+      return { label: "文件名", value: img.file_name };
     case "updatedAt":
       return { label: "更新时间", value: fmtLocal(img.updated_at) };
     case "createdAt":

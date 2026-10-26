@@ -392,8 +392,8 @@ function rowInfo(p: PromptCard): { label: string; value: string } {
     case "title":
       return { label: "标题", value: p.title };
     case "random":
-      // 随机序没有可展示的排序值：底部信息条隐藏
-      return { label: "", value: "" };
+      // 随机序没有排序值可展示：固定显示标题，便于在随机排列里认出卡片（标题由后端保证非空）
+      return { label: "标题", value: p.title };
     default:
       return { label: "更新时间", value: formatLocalTime(p.updated_at) };
   }

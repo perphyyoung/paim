@@ -68,7 +68,9 @@ test("提示词主页：洗牌钮直接进入随机、同 seed 稳定（含刷�
   await expect(sortSelect(page)).toHaveValue("random");
   const order1 = await waitOrderChange(page, before);
   expect(new Set(order1).size).toBe(COUNT);
-  e2eLog.info("[step] 点洗牌钮直接进入随机排序");
+  // 随机序没有排序值，但卡片底部仍显示身份字段：提示词 = 标题（新建时后端用 id 兜底，必非空）
+  await expect(page.getByTitle(/^标题：/)).toHaveCount(COUNT);
+  e2eLog.info("[step] 点洗牌钮直接进入随机排序，卡片底部显示标题");
 
   // 同 seed 稳定：切走再切回
   await sortSelect(page).selectOption("updatedAt");
@@ -102,7 +104,9 @@ test("图像主页：洗牌钮直接进入随机、同 seed 稳定、再洗牌�
   await expect(sortSelect(page)).toHaveValue("random");
   const order1 = await waitOrderChange(page, before);
   expect(new Set(order1).size).toBe(COUNT);
-  e2eLog.info("[step] 图像主页：点洗牌钮直接进入随机排序");
+  // 图像随机序底部显示文件名（与「文件名」排序同一份 footer 文案）
+  await expect(page.getByTitle("文件名：e2e-rand-2.png", { exact: true })).toBeVisible();
+  e2eLog.info("[step] 图像主页：点洗牌钮直接进入随机排序，卡片底部显示文件名");
 
   await sortSelect(page).selectOption("updatedAt");
   await waitOrderChange(page, order1);
