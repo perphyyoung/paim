@@ -5,9 +5,12 @@
 // 按测试体系约定一律放这一层；e2e/33 只验证真实渲染下的主线（出现 / 是原图 / 移出即关）。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getImageSrc: vi.fn() }));
+const mocks = vi.hoisted(() => ({ peekImageSrc: vi.fn(), resolveImageSrc: vi.fn() }));
 
-vi.mock("@/bindings", () => ({ commands: { getImageSrc: mocks.getImageSrc } }));
+vi.mock("@/utils/imageSrcCache", () => ({
+  peekImageSrc: mocks.peekImageSrc,
+  resolveImageSrc: mocks.resolveImageSrc,
+}));
 
 import {
   HOVER_PREVIEW_DELAY_LIMITS,
@@ -65,6 +68,7 @@ function stubLocalStorage(): void {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  mocks.peekImageSrc.mockReturnValue(null);
   stubWindow();
   stubLocalStorage();
   // 每个用例从默认配置开始（模块级 ref 会被前一个用例改过）
@@ -81,16 +85,16 @@ afterEach(() => {
 
 describe("hoverPreview 延迟与取消", () => {
   it("满 1s 才请求并显示原图（到点前不发 IPC）", async () => {
-    mocks.getImageSrc.mockResolvedValue("C:/data/images/a.png");
+    mocks.resolveImageSrc.mockResolvedValue("asset://C:/data/images/a.png");
     scheduleHoverPreview({ id: "i-delay", el: fakeCard() });
 
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS - 1);
     expect(hoverPreviewVisible.value).toBe(false);
-    expect(mocks.getImageSrc).not.toHaveBeenCalled();
+    expect(mocks.resolveImageSrc).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
     expect(hoverPreviewVisible.value).toBe(true);
-    expect(mocks.getImageSrc).toHaveBeenCalledWith("i-delay");
+    expect(mocks.resolveImageSrc).toHaveBeenCalledWith("i-delay");
     expect(hoverPreviewUrl.value).toBe("asset://C:/data/images/a.png");
     expect(hoverPreviewLoading.value).toBe(false);
     expect(hoverPreviewFailed.value).toBe(false);
@@ -103,11 +107,11 @@ describe("hoverPreview 延迟与取消", () => {
 
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS * 2);
     expect(hoverPreviewVisible.value).toBe(false);
-    expect(mocks.getImageSrc).not.toHaveBeenCalled();
+    expect(mocks.resolveImageSrc).not.toHaveBeenCalled();
   });
 
   it("后停留者覆盖前者：先扫过的卡不会弹", async () => {
-    mocks.getImageSrc.mockImplementation(async (id: string) => `C:/data/${id}.png`);
+    mocks.resolveImageSrc.mockImplementation(async (id: string) => `asset://C:/data/${id}.png`);
     scheduleHoverPreview({ id: "i-first", el: fakeCard() });
     await vi.advanceTimersByTimeAsync(600);
 
@@ -118,12 +122,12 @@ describe("hoverPreview 延迟与取消", () => {
 
     await vi.advanceTimersByTimeAsync(400);
     expect(hoverPreviewVisible.value).toBe(true);
-    expect(mocks.getImageSrc).toHaveBeenCalledTimes(1);
-    expect(mocks.getImageSrc).toHaveBeenCalledWith("i-second");
+    expect(mocks.resolveImageSrc).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveImageSrc).toHaveBeenCalledWith("i-second");
   });
 
   it("原图加载失败显示失败态（不留空白浮层）", async () => {
-    mocks.getImageSrc.mockRejectedValue(new Error("原图被移走"));
+    mocks.resolveImageSrc.mockRejectedValue(new Error("原图被移走"));
     scheduleHoverPreview({ id: "i-fail", el: fakeCard() });
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS);
 
@@ -134,17 +138,19 @@ describe("hoverPreview 延迟与取消", () => {
   });
 
   it("同一张卡二次悬停走 URL 缓存，不再请求", async () => {
-    mocks.getImageSrc.mockResolvedValue("C:/data/images/cached.png");
+    mocks.resolveImageSrc.mockResolvedValue("asset://C:/data/images/cached.png");
     const el = fakeCard();
     scheduleHoverPreview({ id: "i-cache", el });
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS);
     closeHoverPreview();
 
+    // 二次悬停命中共享路径缓存（真实实现由 imageSrcCache 提供）
+    mocks.peekImageSrc.mockReturnValue("asset://C:/data/images/cached.png");
     scheduleHoverPreview({ id: "i-cache", el });
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS);
     expect(hoverPreviewVisible.value).toBe(true);
     expect(hoverPreviewUrl.value).toBe("asset://C:/data/images/cached.png");
-    expect(mocks.getImageSrc).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveImageSrc).toHaveBeenCalledTimes(1);
   });
 
   it("锚点已从 DOM 移除（虚拟滚动复用）时到点不打开", async () => {
@@ -154,7 +160,7 @@ describe("hoverPreview 延迟与取消", () => {
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS);
 
     expect(hoverPreviewVisible.value).toBe(false);
-    expect(mocks.getImageSrc).not.toHaveBeenCalled();
+    expect(mocks.resolveImageSrc).not.toHaveBeenCalled();
   });
 });
 
@@ -169,7 +175,7 @@ describe("hoverPreview 配置", () => {
     expect(hoverPreviewDelayMs.value).toBe(2_500);
     expect(storage.get("homeCardHoverPreviewDelay")).toBe("2500");
 
-    mocks.getImageSrc.mockResolvedValue("C:/data/cfg.png");
+    mocks.resolveImageSrc.mockResolvedValue("asset://C:/data/cfg.png");
     scheduleHoverPreview({ id: "i-cfg", el: fakeCard() });
     await vi.advanceTimersByTimeAsync(2_499);
     expect(hoverPreviewVisible.value).toBe(false);
@@ -192,17 +198,17 @@ describe("hoverPreview 配置", () => {
     scheduleHoverPreview({ id: "i-off", el: fakeCard() });
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS * 2);
     expect(hoverPreviewVisible.value).toBe(false);
-    expect(mocks.getImageSrc).not.toHaveBeenCalled();
+    expect(mocks.resolveImageSrc).not.toHaveBeenCalled();
 
     setHoverPreviewEnabled(true);
-    mocks.getImageSrc.mockResolvedValue("C:/data/on.png");
+    mocks.resolveImageSrc.mockResolvedValue("asset://C:/data/on.png");
     scheduleHoverPreview({ id: "i-on", el: fakeCard() });
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS);
     expect(hoverPreviewVisible.value).toBe(true);
   });
 
   it("修改配置会收起已显示的浮层", async () => {
-    mocks.getImageSrc.mockResolvedValue("C:/data/close.png");
+    mocks.resolveImageSrc.mockResolvedValue("asset://C:/data/close.png");
     scheduleHoverPreview({ id: "i-close", el: fakeCard() });
     await vi.advanceTimersByTimeAsync(HOVER_PREVIEW_DELAY_MS);
     expect(hoverPreviewVisible.value).toBe(true);

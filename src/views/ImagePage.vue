@@ -20,6 +20,7 @@ import { formatLocalTime } from "@/utils/date";
 import { formatSize } from "@/utils/formatSize";
 import { parseSearch } from "@/utils/searchQuery";
 import { useGridColumns } from "@/utils/gridColumns";
+import { clearImageSrcCache, invalidateImageSrc } from "@/utils/imageSrcCache";
 import {
   readLocalStorageBoolean,
   readLocalStorageString,
@@ -448,6 +449,7 @@ async function doEmptyTrash() {
     const r = await commands.emptyImageTrash();
     trashImages.value = [];
     trashThumbs.value = {};
+    clearImageSrcCache();
     trashFirstPrompts.value = {};
     await loadImages();
     markPageStale("prompts");
@@ -493,6 +495,7 @@ async function restoreImage(img: ImageCard) {
 
 async function purgeImage(img: ImageCard) {
   await commands.purgeImage(img.id);
+  invalidateImageSrc(img.id);
   // 关联关系级联删除，提示词主页的关联图像计数已变化
   markPageStale("prompts");
   invalidateRelatedImagesCache();
@@ -646,6 +649,7 @@ function onDetailChanged() {
   invalidateRelatedImagesCache();
 }
 function onDetailReplaced({ oldId, image }: { oldId: string; image: Image }) {
+  invalidateImageSrc(oldId);
   // 替换后排序位置会变，交给重载处理；详情顺序快照先原位替换，保持导航位置
   detailOrder.value = detailOrder.value.map((id) => (id === oldId ? image.id : id));
   // 新图可能不在当前筛选结果里（文件名 / 标签已变，如压缩生成 xxx.webp）：

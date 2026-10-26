@@ -27,6 +27,7 @@ import { markPageStale } from "@/utils/crossPageCache";
 import { ModalZ } from "@/utils/modalZ";
 import {
   imageTagsCache,
+  invalidateImageSrc,
   peekImageSrc,
   relatedPromptsCache,
   resolveImageSrc,
@@ -136,6 +137,8 @@ async function replaceWithPicked() {
       return;
     }
     showToast("替换成功", "success");
+    // 旧图软删，原图路径缓存随之失效（新图是新 id，会重新解析）
+    invalidateImageSrc(img.id);
     // 关联提示词的 updated_at 已变，标记提示词页过期
     markPageStale("prompts");
     emit("replaced", { oldId: img.id, image: outcome.image });
@@ -174,6 +177,7 @@ async function doCompress() {
       return;
     }
     showToast("已压缩并替换", "success");
+    invalidateImageSrc(img.id);
     markPageStale("prompts");
     emit("replaced", { oldId: img.id, image: outcome.image });
     currentId.value = outcome.image.id;

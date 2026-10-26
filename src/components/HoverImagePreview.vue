@@ -2,10 +2,9 @@
 // 原图 hover 预览：包裹任意触发元素（通常是缩略图容器，class 随根节点透传），
 // 鼠标悬停时按图像 id 取原图，在触发器侧边浮出大图；移出即关（浮层不接收指针事件）。
 // imageId 为空时禁用：无放大光标、不弹层（用于「无关联图像」占位）。
-// 原图 asset URL 按 id 做模块级缓存，同会话跨弹窗/页面只请求一次。
+// 原图路径统一走 utils/imageSrcCache（与详情/全屏/主页悬停共用，LRU 封顶）。
 import { ref } from "vue";
-import { commands } from "@/bindings";
-import { absolutePathToAssetUrl } from "@/utils/assetUrl";
+import { peekImageSrc, resolveImageSrc } from "@/utils/imageSrcCache";
 import { ModalZ } from "@/utils/modalZ";
 
 const props = withDefaults(
@@ -19,9 +18,6 @@ const props = withDefaults(
   }>(),
   { imageId: null, placement: "right" },
 );
-
-/// image id → 原图 asset URL（模块级缓存）
-const urlCache = new Map<string, string>();
 
 const triggerEl = ref<HTMLElement | null>(null);
 const visible = ref(false);
@@ -44,7 +40,7 @@ async function onEnter() {
   pos.value =
     props.placement === "right" ? { left: rect.right + 8, top } : { left: rect.left - 8, top };
   visible.value = true;
-  const cached = urlCache.get(id);
+  const cached = peekImageSrc(id);
   if (cached) {
     url.value = cached;
     failed.value = false;
@@ -55,8 +51,7 @@ async function onEnter() {
   failed.value = false;
   loading.value = true;
   try {
-    const resolved = absolutePathToAssetUrl(await commands.getImageSrc(id));
-    urlCache.set(id, resolved);
+    const resolved = await resolveImageSrc(id);
     if (my === seq) {
       url.value = resolved;
     }

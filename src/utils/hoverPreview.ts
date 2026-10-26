@@ -13,8 +13,7 @@
  * - 浮层 `pointer-events-none`，不拦截卡片上的任何点击/拖拽。
  */
 import { ref } from "vue";
-import { commands } from "@/bindings";
-import { absolutePathToAssetUrl } from "@/utils/assetUrl";
+import { peekImageSrc, resolveImageSrc } from "@/utils/imageSrcCache";
 import { readLocalStorageValue, writeLocalStorageValue } from "@/utils/localStorage";
 
 /** 悬停多久才弹原图：默认值（设置面板未改过时用它；测试与文档同口径） */
@@ -84,8 +83,8 @@ export const hoverPreviewPlacement = ref<"right" | "left">("right");
 /** 浮层最大宽度（按锚点两侧实际可用空间算，避免溢出视口） */
 export const hoverPreviewMaxWidth = ref(480);
 
-/** image id → 原图 asset URL（模块级缓存：同会话每个 id 只取一次） */
-const urlCache = new Map<string, string>();
+/** image id → 原图 asset URL */
+// 原图路径缓存统一走 utils/imageSrcCache（与详情/全屏共用、LRU 封顶），不再单独维护 Map
 
 // 计时器句柄用 ReturnType 而不是 number：DOM lib 返回 number、@types/node 返回 Timeout，
 // 显式依赖前者会在不同类型包加载顺序/TS 版本下报 2322
@@ -145,7 +144,7 @@ async function openPreview(target: HoverPreviewAnchor): Promise<void> {
   hoverPreviewVisible.value = true;
   hoverPreviewFailed.value = false;
 
-  const cached = urlCache.get(target.id);
+  const cached = peekImageSrc(target.id);
   if (cached) {
     seq++;
     hoverPreviewUrl.value = cached;
@@ -157,8 +156,7 @@ async function openPreview(target: HoverPreviewAnchor): Promise<void> {
   hoverPreviewUrl.value = "";
   hoverPreviewLoading.value = true;
   try {
-    const resolved = absolutePathToAssetUrl(await commands.getImageSrc(target.id));
-    urlCache.set(target.id, resolved);
+    const resolved = await resolveImageSrc(target.id);
     if (my === seq) hoverPreviewUrl.value = resolved;
   } catch {
     if (my === seq) hoverPreviewFailed.value = true;

@@ -8,7 +8,6 @@
 // views/detailEntityInvalidation 统一 clear（收口点）。
 
 import { commands, type LinkedPrompt, type TagLite } from "@/bindings";
-import { absolutePathToAssetUrl } from "@/utils/assetUrl";
 import { createEntityCache } from "@/utils/entityCache";
 
 /** 图像 id → 关联提示词（含标题/内容/翻译/备注/标签）；单条较大，上限 100（约 1 MB 封顶） */
@@ -18,24 +17,17 @@ export const relatedPromptsCache = createEntityCache<LinkedPrompt[]>(
 );
 
 /** 图像 id → 原图绝对路径（详情页展示原图，不同于卡片缩略图）；路径稳定，可长期缓存 */
-export const imageSrcCache = createEntityCache<string>((id) => commands.getImageSrc(id), 300);
+// 原图路径缓存已下沉到 utils（详情 / 全屏 / 悬停预览共用同一份），
+// 这里 re-export 保持既有 import 不变。
+export {
+  clearImageSrcCache,
+  invalidateImageSrc,
+  peekImageSrc,
+  resolveImageSrc,
+} from "@/utils/imageSrcCache";
 
 /** 图像 id → 图像标签 */
 export const imageTagsCache = createEntityCache<TagLite[]>(
   (id) => commands.getItemTags("image", id),
   300,
 );
-
-/**
- * 命中缓存即同步返回原图 asset URL（未命中返回 null）：
- * 详情页据此先渲染已缓存的图，只对未命中的 id 发请求，避免切图时闪一下 loading。
- */
-export function peekImageSrc(id: string): string | null {
-  const cached = imageSrcCache.get(id);
-  return cached ? absolutePathToAssetUrl(cached) : null;
-}
-
-/** 按 id 取原图 asset URL：发命令（同 id 并发去重）后回填缓存；失败原样抛出，由调用方决定兜底 */
-export async function resolveImageSrc(id: string): Promise<string> {
-  return absolutePathToAssetUrl(await imageSrcCache.fetch(id));
-}
