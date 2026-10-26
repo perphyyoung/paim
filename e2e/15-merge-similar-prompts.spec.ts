@@ -9,11 +9,16 @@
  *
  * 另钉一条负向：源为图像时，右键提示词结果卡片**不出现**合并菜单（跨模态结果不允许就地合并）。
  *
+ * 另钉两条多行原文：
+ * - 两侧段拼接逐字等于入库内容（`innerText` 也要一致：硬换行不得被 button 吞掉）；
+ * - 可点击红段不跨硬换行，点第一行末尾段只插该行（曾经的「点一次插两行」）。
+ *
  * 向量同样来自假 embedding（PAIM_EMBEDDING_MOCK=1），阈值显式降到 0，与 11 号 spec 同口径。
  */
-import { expect } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import {
   clearSimilarityThresholds,
+  closeSimilaritySettings,
   expectToastAndDismiss,
   getPromptRelatedImages,
   gotoPromptsPage,
@@ -25,6 +30,8 @@ import {
   openPromptDetail,
   openSimilarSearchFromImageDetail,
   openSimilarSearchFromPromptDetail,
+  runSimilarityIndex,
+  seedPrompts,
   similarResultPane,
   test,
   uploadImageWithPrompt,
@@ -38,6 +45,38 @@ function makePair(tag: string): { source: string; other: string } {
     source: `e2e merge ${tag} alpha solo dress ${stamp}`,
     other: `e2e merge ${tag} beta solo dress ${stamp}`,
   };
+}
+
+/// 多行原文对（同 tmp-p.md 结构）；唯一后缀绕开内容重名校验
+function makeMultilinePair(): { p1: string; p2: string } {
+  const stamp = Date.now();
+  return {
+    p1: `mini\\(ttp\\), (8k, RAW photo, best quality, masterpiece:1.2), miniature, \ncyber city, lightning, round glass ball e2e${stamp}`,
+    p2: `1girl, solo, 20yo, fishnet crop top e2e${stamp}\nembedding:ulzzang-6500,`,
+  };
+}
+
+/// 两条纯文本提示词（无图）→ 只建提示词索引 → 相似结果右键 → 打开合并弹窗
+async function openMergeDialogForPrompts(page: Page, p1: string, p2: string): Promise<Locator> {
+  await seedPrompts(page, [p1, p2]);
+  await gotoPromptsPage(page);
+  await runSimilarityIndex(page, "prompt");
+  await closeSimilaritySettings(page);
+
+  const detail = await openPromptDetail(page, p1);
+  const modal = await openSimilarSearchFromPromptDetail(page, detail);
+  const promptPane = similarResultPane(modal, "prompt");
+  await lowerThresholdToZeroAndRequery(promptPane);
+  await expect(promptPane.getByText(p2, { exact: true })).toBeVisible({ timeout: 5_000 });
+
+  await promptPane.getByText(p2, { exact: true }).click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "提示词结果操作" });
+  await expect(menu).toBeVisible({ timeout: 3_000 });
+  await menu.getByRole("menuitem", { name: "合并提示词" }).click();
+
+  const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
+  await expect(mergeDialog).toBeVisible({ timeout: 3_000 });
+  return mergeDialog;
 }
 
 test("提示词源：右键结果合并 → 新条承接共享图像，原两条进回收站并回到主页", async ({
@@ -158,6 +197,55 @@ test("图像源：右键提示词结果卡片不出现合并菜单（仅提示�
   await promptPane.getByText(other, { exact: true }).click({ button: "right" });
   await expect(page.getByRole("menu")).toHaveCount(0);
   e2eLog.info("[step] 图像源不提供合并入口");
+
+  await clearSimilarityThresholds(page);
+});
+
+test("多行原文：源提示词1 逐字含换行渲染，可点击段不跨行", async ({ page }) => {
+  const { p1, p2 } = makeMultilinePair();
+  const mergeDialog = await openMergeDialogForPrompts(page, p1, p2);
+  const source1 = mergeDialog.getByRole("region", { name: "源提示词1 原文" });
+
+  // DOM 文本无损（diff 段拼接 == 原文）
+  await expect.poll(() => source1.evaluate((el) => el.textContent), { timeout: 5_000 }).toBe(p1);
+
+  // 渲染文本保留硬换行：button 吞换行时 innerText 会与入库内容不一致
+  await expect
+    .poll(() => source1.evaluate((el) => (el as HTMLElement).innerText), { timeout: 5_000 })
+    .toBe(p1);
+  e2eLog.info("[step] 源提示词1 渲染完整（含换行）");
+
+  // 可点击段不得跨硬换行（跨行 = 点一次塞进两行）；按钮可访问名是段文本，按 title 定位
+  const crossing = await source1
+    .getByTitle("插入到光标处", { exact: true })
+    .evaluateAll((nodes) => nodes.filter((n) => (n.textContent ?? "").includes("\n")).length);
+  expect(crossing, "存在跨硬换行的可点击段，点一次会插入多段").toBe(0);
+
+  await clearSimilarityThresholds(page);
+});
+
+test("多行原文：点击第一行末尾段落只插入该行，不连带下一行", async ({ page }) => {
+  const { p1, p2 } = makeMultilinePair();
+  const mergeDialog = await openMergeDialogForPrompts(page, p1, p2);
+  const source1 = mergeDialog.getByRole("region", { name: "源提示词1 原文" });
+  const contentBox = mergeDialog.getByRole("textbox", { name: "目标提示词" });
+
+  const firstLineBtn = source1.getByTitle("插入到光标处", { exact: true }).filter({
+    hasText: "miniature",
+  });
+  await expect(firstLineBtn.first()).toBeVisible({ timeout: 5_000 });
+
+  await contentBox.click();
+  await contentBox.press("Control+A");
+  await contentBox.press("Delete");
+  await firstLineBtn.first().click();
+
+  const value = await contentBox.inputValue();
+  expect(value).toContain("miniature");
+  // 一次点击只塞一段：不得把硬换行和下一行的 cyber city 一起带进来
+  expect(value, "插入段不得含硬换行（跨行段会一次插入两行）").not.toContain("\n");
+  expect(value, "只点了第一行，不应连带下一行").not.toContain("cyber");
+  e2eLog.info("[step] 多行红段按行插入，不跨行");
 
   await clearSimilarityThresholds(page);
 });

@@ -221,7 +221,7 @@ async function doMerge() {
                           v-if="s.text.trim()"
                           type="button"
                           title="插入到光标处"
-                          class="cursor-pointer bg-transparent p-0 text-inherit hover:bg-red-500/40 hover:underline"
+                          class="inline cursor-pointer whitespace-pre-wrap bg-transparent p-0 text-inherit hover:bg-red-500/40 hover:underline"
                           @click="insertSegment(s.text)"
                         >
                           {{ s.text }}
@@ -245,7 +245,7 @@ async function doMerge() {
                           v-if="s.text.trim()"
                           type="button"
                           title="插入到光标处"
-                          class="cursor-pointer bg-transparent p-0 text-inherit hover:bg-red-500/40 hover:underline"
+                          class="inline cursor-pointer whitespace-pre-wrap bg-transparent p-0 text-inherit hover:bg-red-500/40 hover:underline"
                           @click="insertSegment(s.text)"
                         >
                           {{ s.text }}

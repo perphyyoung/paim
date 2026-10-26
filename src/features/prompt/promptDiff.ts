@@ -39,9 +39,14 @@ export function diffTokens(a: string, b: string): DiffToken[] {
   let j = 0;
   const push = (kind: DiffKind, text: string) => {
     const last = out[out.length - 1];
-    // 同色相邻 token 合并，减少 span 数量；空白 token 也并入
-    if (last && last.kind === kind) last.text += text;
-    else out.push({ text, kind });
+    // 同色相邻 token 合并，减少 span 数量；空白 token 也并入。
+    // 但**硬换行两侧必须断开**：合并后会得到一个跨行的可点击段——点一次插入两行，
+    // 且 button 默认会吞掉换行使原文视觉上并成一行（e2e/15 钉住）。
+    if (last && last.kind === kind && !last.text.includes("\n") && !text.includes("\n")) {
+      last.text += text;
+    } else {
+      out.push({ text, kind });
+    }
   };
   while (i < ta.length && j < tb.length) {
     if (ta[i] === tb[j]) {

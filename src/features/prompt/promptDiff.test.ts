@@ -46,6 +46,36 @@ describe("diffTokens", () => {
     expect(words).toContain("a");
     expect(words).toContain("b");
   });
+
+  // e2e/15 同源数据：两条都含硬换行。跨行可点击段会「点一次插两行」，
+  // 并在 button 默认样式下吞掉换行造成渲染错乱。
+  const multilineA =
+    "mini\\(ttp\\), (8k, RAW photo, best quality, masterpiece:1.2), miniature, \ncyber city, lightning";
+  const multilineB = "1girl, solo, 20yo, fishnet crop top\nembedding:ulzzang-6500,";
+
+  it("多行原文：两侧段拼接仍无损", () => {
+    const seg = diffTokens(multilineA, multilineB);
+    expect(
+      seg
+        .filter((s) => s.kind !== "added")
+        .map((s) => s.text)
+        .join(""),
+    ).toBe(multilineA);
+    expect(
+      seg
+        .filter((s) => s.kind !== "removed")
+        .map((s) => s.text)
+        .join(""),
+    ).toBe(multilineB);
+  });
+
+  it("多行原文：可点击段不跨硬换行", () => {
+    for (const s of diffTokens(multilineA, multilineB)) {
+      if (s.kind === "common") continue;
+      if (!s.text.trim()) continue; // 纯空白段不可点，允许单独成段
+      expect(s.text).not.toContain("\n");
+    }
+  });
 });
 
 describe("commonText", () => {
