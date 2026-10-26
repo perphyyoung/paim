@@ -10,14 +10,17 @@
  *   只剩背景图；similar/trash 恒显，不受开关影响（见 showHomeCardInfo）。
  * 三种变体只差异顶行与角标：
  * - home：勾选/收藏/复制/删除 4 钮，点击卡片打开详情；悬停满 1s 浮出原图预览（previewImageId，
- *   状态机见 utils/hoverPreview.ts；批量模式下禁用）；
+ *   状态机见 utils/homeCardHoverPreview.ts；批量模式下禁用）；
  * - similar：相似度结果卡，无顶行，左上相似度角标，点击打开、支持右键；
  * - trash：恢复/彻底删除 2 钮，卡片本身不可点。
  */
 import CardTagRow from "@/components/CardTagRow.vue";
 import ScoreBadge from "@/features/similarity/ScoreBadge.vue";
 import { homeCardInfoVisible } from "@/utils/homeCardInfo";
-import { closeHoverPreview, scheduleHoverPreview } from "@/utils/hoverPreview";
+import {
+  closeHomeCardHoverPreview,
+  scheduleHomeCardHoverPreview,
+} from "@/utils/homeCardHoverPreview";
 import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, ref, watch } from "vue";
 
 /// 背景遮罩透明度（0 = 完全不压暗，1 = 全黑）；想提亮/压暗只改这一个值
@@ -94,45 +97,45 @@ const showCardOverlay = computed(() => props.variant !== "similar" || props.cont
 // Shift/Ctrl+修饰点击在 mousedown 阶段拦截，避免浏览器文本选择（否则卡片内容被选中变蓝）
 function onMouseDown(e: MouseEvent) {
   // 按下即关悬停预览：接下来不管是点击、拖拽标签还是框选，都不该有浮层压在上面
-  closeHoverPreview();
+  closeHomeCardHoverPreview();
   if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault();
 }
 
 function onRootClick(ev: MouseEvent) {
-  closeHoverPreview();
+  closeHomeCardHoverPreview();
   if (props.variant === "trash") return;
   emit("cardClick", ev, props.index, props.item.id);
 }
 
 // ---- 悬停原图预览（仅 home 变体；批量模式下勾选优先，不弹）----
-// 延迟与总开关走全局配置（utils/hoverPreview.ts），设置面板改完即时生效，卡片不用重建
+// 延迟与总开关走全局配置（utils/homeCardHoverPreview.ts），设置面板改完即时生效，卡片不用重建
 const rootRef = ref<HTMLElement | null>(null);
 
 function onCardEnter() {
   if (props.variant !== "home" || !props.previewImageId || props.batchOpen) return;
   const el = rootRef.value;
   if (!el) return;
-  scheduleHoverPreview({ id: props.previewImageId, el });
+  scheduleHomeCardHoverPreview({ id: props.previewImageId, el });
 }
 
 function onCardContextMenu(ev: MouseEvent) {
-  closeHoverPreview();
+  closeHomeCardHoverPreview();
   emit("contextmenu", ev);
 }
 
 // 虚拟网格复用卡片时 item.id 会原地变化（不触发 mouseleave）：换条目即取消，避免浮层停在旧图
 watch(
   () => props.item.id,
-  () => closeHoverPreview(),
+  () => closeHomeCardHoverPreview(),
 );
 // 进入批量模式关掉浮层：接下来的操作是勾选/批量打标签，不需要挡视线的预览
 watch(
   () => props.batchOpen,
   (open) => {
-    if (open) closeHoverPreview();
+    if (open) closeHomeCardHoverPreview();
   },
 );
-onBeforeUnmount(() => closeHoverPreview());
+onBeforeUnmount(() => closeHomeCardHoverPreview());
 
 // 内容行对齐：容得下时上下居中，放不下时开头对齐（保证开头可读）
 // 用 p 渲染后实际高度与行容器高度比较；每次组件更新后 rAF 重测（防字体/裁剪变化后判断过期）
@@ -178,7 +181,7 @@ onUpdated(scheduleMeasure);
     @click="onRootClick"
     @mousedown="onMouseDown"
     @mouseenter="onCardEnter"
-    @mouseleave="closeHoverPreview"
+    @mouseleave="closeHomeCardHoverPreview"
     @contextmenu="onCardContextMenu"
   >
     <!-- 背景图 / 占位 -->
@@ -223,7 +226,7 @@ onUpdated(scheduleMeasure);
     <div
       v-if="variant !== 'similar'"
       class="absolute inset-x-0 top-0 z-[3] grid items-center py-0.5 transition-opacity duration-150"
-      @mouseenter="closeHoverPreview"
+      @mouseenter="closeHomeCardHoverPreview"
       :class="[
         variant === 'home' ? 'grid-cols-4' : 'grid-cols-2',
         batchOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',

@@ -3,10 +3,10 @@
  * 悬停满 1s 才浮出原图大图，鼠标扫过不弹；移出即关。回收站与相似结果页不参与（只做 home 变体）。
  *
  * 为什么放 e2e：要证明的是「真实渲染 + 真实 IPC」下的主线——卡片 hover 能拿到原图并解码出来；
- * 延迟取消、滚动/复用取消、批量模式禁用等状态机分支由 `src/utils/hoverPreview.test.ts` 覆盖。
+ * 延迟取消、滚动/复用取消、批量模式禁用等状态机分支由 `src/utils/homeCardHoverPreview.test.ts` 覆盖。
  *
  * 断言口径：
- * - 浮层容器是 `role="figure"` + `aria-label="原图预览"`（`src/components/HoverPreviewLayer.vue`）；
+ * - 浮层容器是 `role="figure"` + `aria-label="原图预览"`（`src/components/HomeCardHoverPreviewLayer.vue`）；
  * - mock 原图是 2×2 PNG，而卡片背景是 200×200 缩略图 JPEG —— 用 `naturalWidth === 2`
  *   钉死「显示的是原图、不是缩略图放大」，这是提示词卡片最容易搞错的口径（首图 id 与缩略图同一张）；
  * - 1s 内用 `toBeHidden` 断言（元素不存在也算隐藏），不绑定浮层实现细节。
@@ -20,8 +20,8 @@ import {
   uploadImageWithPrompt,
 } from "./e2e-helpers";
 
-/// 悬停延迟：与 `src/utils/hoverPreview.ts` 的 `HOVER_PREVIEW_DELAY_MS` 保持一致
-const HOVER_PREVIEW_DELAY_MS = 1_000;
+/// 悬停延迟：与 `src/utils/homeCardHoverPreview.ts` 的 `HOME_CARD_HOVER_PREVIEW_DELAY_MS` 保持一致
+const HOME_CARD_HOVER_PREVIEW_DELAY_MS = 1_000;
 /// 等待前后留 300ms 余量：定时器/渲染抖动不吃掉「延迟内不显示」的判定，
 /// 但实现若退化成即时弹出（0 延迟）这里必红
 const DELAY_MARGIN_MS = 300;
@@ -42,7 +42,7 @@ async function expectHoverPreviewAfterDelay(
 
   await card.hover();
   // 延迟内：不得出现任何可见浮层（扫过整行卡片时不弹，这正是需求要的「不用即时显示」）
-  await page.waitForTimeout(HOVER_PREVIEW_DELAY_MS - DELAY_MARGIN_MS);
+  await page.waitForTimeout(HOME_CARD_HOVER_PREVIEW_DELAY_MS - DELAY_MARGIN_MS);
   await expect(preview, "悬停未满 1s 不应出现浮层").toBeHidden();
 
   // 到点：浮层出现并解码出原图

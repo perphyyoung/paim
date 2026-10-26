@@ -5,12 +5,12 @@ import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plug
 import { appVersion } from "@/version";
 import { useFontFamily, useFontScale, FONT_SCALE_LIMITS } from "@/utils/font";
 import {
-  HOVER_PREVIEW_DELAY_LIMITS,
-  hoverPreviewDelayMs,
-  hoverPreviewEnabled,
-  setHoverPreviewDelay,
-  setHoverPreviewEnabled,
-} from "@/utils/hoverPreview";
+  HOME_CARD_HOVER_PREVIEW_DELAY_LIMITS,
+  homeCardHoverPreviewDelayMs,
+  homeCardHoverPreviewEnabled,
+  setHomeCardHoverPreviewDelay,
+  setHomeCardHoverPreviewEnabled,
+} from "@/utils/homeCardHoverPreview";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import FontSelect from "@/components/FontSelect.vue";
 import { useToast } from "@/components/useToast";
@@ -43,10 +43,10 @@ const { fontFamily, setFontFamily } = useFontFamily();
 // 主页卡片悬停预览：延迟滑块 + 总开关（同一行）；改完即时写入偏好，无需重启
 type InputEl = HTMLInputElement;
 function onHoverPreviewDelayInput(e: Event) {
-  setHoverPreviewDelay(Number((e.target as InputEl).value));
+  setHomeCardHoverPreviewDelay(Number((e.target as InputEl).value));
 }
 function onHoverPreviewEnabledChange(e: Event) {
-  setHoverPreviewEnabled((e.target as InputEl).checked);
+  setHomeCardHoverPreviewEnabled((e.target as InputEl).checked);
 }
 
 const dataDir = ref("");
@@ -262,7 +262,7 @@ onMounted(loadDataDir);
               type="checkbox"
               aria-label="启用主页卡片悬停预览"
               class="h-4 w-4 accent-indigo-500"
-              :checked="hoverPreviewEnabled"
+              :checked="homeCardHoverPreviewEnabled"
               @change="onHoverPreviewEnabledChange"
             />
             启用
@@ -270,19 +270,19 @@ onMounted(loadDataDir);
           <input
             type="range"
             aria-label="悬停预览延迟"
-            :min="HOVER_PREVIEW_DELAY_LIMITS.min"
-            :max="HOVER_PREVIEW_DELAY_LIMITS.max"
-            :step="HOVER_PREVIEW_DELAY_LIMITS.step"
-            :value="hoverPreviewDelayMs"
-            :disabled="!hoverPreviewEnabled"
+            :min="HOME_CARD_HOVER_PREVIEW_DELAY_LIMITS.min"
+            :max="HOME_CARD_HOVER_PREVIEW_DELAY_LIMITS.max"
+            :step="HOME_CARD_HOVER_PREVIEW_DELAY_LIMITS.step"
+            :value="homeCardHoverPreviewDelayMs"
+            :disabled="!homeCardHoverPreviewEnabled"
             class="w-32 shrink-0 accent-blue-600 disabled:opacity-40"
             @input="onHoverPreviewDelayInput"
           />
           <span
             class="w-10 shrink-0 text-right text-sm tabular-nums"
-            :class="hoverPreviewEnabled ? 'text-gray-300' : 'text-gray-500'"
+            :class="homeCardHoverPreviewEnabled ? 'text-gray-300' : 'text-gray-500'"
           >
-            {{ (hoverPreviewDelayMs / 1000).toFixed(1) }}s
+            {{ (homeCardHoverPreviewDelayMs / 1000).toFixed(1) }}s
           </span>
         </div>
       </div>

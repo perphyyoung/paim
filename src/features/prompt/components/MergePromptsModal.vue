@@ -8,7 +8,7 @@ import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { commands, type MergePromptsPreview } from "@/bindings";
 import { commonText, diffTokens, type DiffToken } from "@/features/prompt/promptDiff";
 import { resolveThumbUrls } from "@/utils/thumbUrls";
-import HoverImagePreview from "@/components/HoverImagePreview.vue";
+import MergePromptImagePreview from "@/components/MergePromptImagePreview.vue";
 import { ModalZ } from "@/utils/modalZ";
 
 const props = defineProps<{
@@ -192,7 +192,7 @@ async function doMerge() {
                  拖高时始终保持正方形）；中间列两条原文垂直排列、等高平分。
                  独有 <mark> 红段可点击插回目标提示词（纯空白段不可点），各原文格内部滚动 -->
             <div class="flex shrink-0 gap-2" :style="{ height: sourceH + 'px' }">
-              <HoverImagePreview
+              <MergePromptImagePreview
                 :image-id="preview.a.first_image_id"
                 alt="源提示词1 原图预览"
                 placement="right"
@@ -205,7 +205,7 @@ async function doMerge() {
                   class="h-full w-full object-cover"
                 />
                 <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
-              </HoverImagePreview>
+              </MergePromptImagePreview>
 
               <div class="grid min-w-0 flex-1 grid-rows-2 gap-2">
                 <div class="flex min-h-0 gap-2">
@@ -258,7 +258,7 @@ async function doMerge() {
                 </div>
               </div>
 
-              <HoverImagePreview
+              <MergePromptImagePreview
                 :image-id="preview.b.first_image_id"
                 alt="源提示词2 原图预览"
                 placement="left"
@@ -271,7 +271,7 @@ async function doMerge() {
                   class="h-full w-full object-cover"
                 />
                 <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
-              </HoverImagePreview>
+              </MergePromptImagePreview>
             </div>
 
             <!-- 源提示词区 / 目标提示词编辑区的分界面：整条可拖拽（pointer 捕获，140px ~ 60vh） -->

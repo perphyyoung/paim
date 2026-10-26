@@ -37,7 +37,7 @@ export const ModalZ = {
   /** 面板壳内打开的子窗口（确认框 / 字体下拉 / 备份导入导出 / 缩略图重建 / 完整性检查）：
       均 Teleport 到 body，须高于 `panelShell`，否则会被面板自己盖住 */
   panelShellChild: 129,
-  /** 悬停预览 HoverImagePreview（pointer-events-none，与 `toast` 同档） */
+  /** 图像悬停预览浮层 ImagePreviewOverlay（主页卡片 / 合并弹窗，pointer-events-none，与 `toast` 同档） */
   hoverImagePreview: 130,
   /** Toast：永驻最高 */
   toast: 130,
