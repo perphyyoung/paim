@@ -1,5 +1,15 @@
 # AGENTS.md
 
+## 跨项目通用规则
+
+- 质量门与 bindings（**按场景二选一，禁止两个连跑**）：
+  - **日常改完（代码）** → 只跑 `pnpm quick`（只读校验：format:check → lint → lint:e2e-locators → typecheck → check:rs → test:compile）；此时不跑 `pnpm check`。
+  - **收尾/提交前（代码）** → 只跑 `pnpm check`（format → build:rs → gen:bindings → lint → lint:e2e-locators → typecheck → test → build）；它已覆盖 quick 的全部检查项（`format` 代替 `format:check`），此时再跑 `pnpm quick` 属于重复执行，不做。
+  - **禁止同时执行两者**：不得出现 `pnpm quick && pnpm check`、先 quick 再紧接 check 这类连续调用；需要只读预检就先单独跑完 quick，收尾阶段再单独跑 check，两步分开、各自独立汇报结果。
+  - `check` 已含 `gen:bindings`，成功后 `src/bindings.ts` 必然最新，**不必再单独跑**；只有「改了 Rust 命令签名/公共 API、且本阶段要跑 `pnpm quick`」时，才先 `pnpm build:rs && pnpm gen:bindings`（quick 不含 gen，且 gen 依赖最新 debug 二进制；`test:compile` 会暴露测试代码里的旧引用）。
+  - **仅文档/配置改动**（如 `*.md`，不涉及 `src/`、`src-tauri/`、`e2e/`）不强制跑质量门，但仍必须输出提交信息。
+- **提交信息（有改动就输出）**：只要本轮有文件修改（含文档），结束时必须以代码块的形式输出 git commit 信息，格式遵守 `D:/py-code/pbp/.rules/git提交信息规范.md`，并换行写「输出结束」；不以「跑过 check」为前提，也不因「只是文档」省略。若本轮跑过质量门且失败，先修复再输出，不得在失败结果上输出提交信息。
+
 ## 检索工具选择：Grep 还是 zg
 
 - **已知符号/字符串** → 用 Grep（ripgrep）：最快、零维护；本仓需自行排除 `dist/`、`temp/`、`paim-data/`。
@@ -13,7 +23,6 @@
 - 对同一文件的多处修改：合并为一次编辑完成，或分多条消息串行执行；禁止在同一条消息里并行发起多个编辑到同一文件（并行读-改-写会竞态覆盖，仅最后一个编辑生效，其余静默丢失）
 - 不因「要重新编译/重新验证」降低代码质量标准
 - 对称结构优先于改动成本，不为「现状能跑」保留次优写法
-- 质量门与 bindings：日常改完先跑 `pnpm quick`（只读校验：format:check → lint → lint:e2e-locators → typecheck → check:rs → test:compile，不改文件、不跑测试）；收尾/提交前跑 `pnpm check`（会改文件：format → build:rs → gen:bindings → lint → lint:e2e-locators → typecheck → test → build）——它已含 `gen:bindings`，成功后 `src/bindings.ts` 必然是最新的，**不必再单独跑**；只有「改了 Rust 命令签名/公共 API、又要跑 `pnpm quick`」时才需要先 `pnpm build:rs && pnpm gen:bindings`（quick 不含 gen，且 gen 依赖最新的 debug 二进制；`test:compile` 会暴露测试代码里的旧引用）。两者都通过后才输出**单独一行**的简要 commit 信息，并另起一行写「输出结束」；不要跳过这两个质量门直接跑其它命令。
 - 新增/修改 e2e 测试缝前，先完整读 `src-tauri/src/commands/e2e.rs` 现有命令，禁止并存功能相似的第二套命令；命名要能自解释（如 `e2e_seed_similarity_vectors` 明确表示为相似度检索播种向量）。
 - 日志文件的删除会被阻止，用清空代替
 - 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
