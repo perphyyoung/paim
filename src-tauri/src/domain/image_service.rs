@@ -1012,13 +1012,144 @@ fn png_workflow_text(bytes: &[u8]) -> Option<String> {
 }
 
 /// 把 workflow 写入 WebP 的 EXIF `ImageDescription`（与 png2webp.py 的 piexif 写法一致）。
+///
+/// **不要**用第三方库的「写 WebP 元数据」实现：`little_exif 0.6.23` 把 EXIF 插在
+/// `ALPH` 之后、`VP8` 之前（`pre_exif_chunks` 白名单漏了 `ALPH`，`vec.rs` / `file.rs` 各一份），
+/// 带 alpha 的图会被 libwebp 判成非法容器、整张图解码失败（Pillow 报 `could not create decoder object`）。
+/// 这里按规范自行组装：`VP8X → (ICCP) → (ALPH) → VP8/VP8L → EXIF`，并同步 RIFF 长度与 VP8X 标志位。
 fn write_webp_workflow(path: &Path, workflow: &str) -> Result<(), AppError> {
-    use little_exif::exif_tag::ExifTag;
-    use little_exif::metadata::Metadata;
-    let mut meta = Metadata::new();
-    meta.set_tag(ExifTag::ImageDescription(format!("Workflow:{workflow}")));
-    meta.write_to_file(path)
-        .map_err(|e| AppError::Message(format!("写入 workflow 失败：{e}")))
+    let bytes = std::fs::read(path)?;
+    let mut chunks = parse_webp_chunks(&bytes)?;
+    // 本函数只服务于「刚编码出来、尚无元数据」的文件；仍兜底去掉可能存在的旧 EXIF，避免出现两个
+    chunks.retain(|(id, _)| id != b"EXIF");
+    // 简单格式（无 alpha 的 VP8 / 无扩展的 VP8L）没有 VP8X：按规范补一个，画布尺寸从码流头取
+    if !chunks.iter().any(|(id, _)| id == b"VP8X") {
+        let canvas = chunks
+            .iter()
+            .find_map(|(id, data)| {
+                if id == b"VP8 " {
+                    vp8_canvas(data)
+                } else if id == b"VP8L" {
+                    vp8l_canvas(data)
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| {
+                AppError::Message("写入 workflow 失败：无法解析 WebP 画布尺寸".into())
+            })?;
+        chunks.insert(0, (*b"VP8X", vp8x_payload(canvas)));
+    }
+    for (id, vp8x) in chunks.iter_mut() {
+        if id == b"VP8X" {
+            if let Some(flags) = vp8x.first_mut() {
+                *flags |= 0x08; // EXIF 标志位
+            }
+            break;
+        }
+    }
+    chunks.push((
+        *b"EXIF",
+        tiff_exif_image_description(&format!("Workflow:{workflow}")),
+    ));
+    std::fs::write(path, assemble_webp(&chunks))?;
+    Ok(())
+}
+
+/// 解析 WebP 的 RIFF chunk 列表（保持原顺序），返回 `(fourcc, 载荷)`。
+fn parse_webp_chunks(bytes: &[u8]) -> Result<Vec<([u8; 4], Vec<u8>)>, AppError> {
+    if bytes.len() < 12 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WEBP" {
+        return Err(AppError::Message(
+            "写入 workflow 失败：不是合法的 WebP 容器".into(),
+        ));
+    }
+    let mut out = Vec::new();
+    let mut off = 12;
+    while off + 8 <= bytes.len() {
+        let id: [u8; 4] = bytes[off..off + 4]
+            .try_into()
+            .expect("chunk id 固定 4 字节");
+        let len = u32::from_le_bytes(
+            bytes[off + 4..off + 8]
+                .try_into()
+                .expect("chunk 长度固定 4 字节"),
+        ) as usize;
+        let end = off + 8 + len;
+        let data = bytes
+            .get(off + 8..end)
+            .ok_or_else(|| AppError::Message("写入 workflow 失败：WebP chunk 越界".into()))?;
+        out.push((id, data.to_vec()));
+        off = end + (len & 1); // RIFF 要求奇数长度补 1 字节
+    }
+    Ok(out)
+}
+
+/// 按 RIFF 规范拼回完整文件（chunk 顺序即传入顺序，长度奇数补 1 字节）。
+fn assemble_webp(chunks: &[([u8; 4], Vec<u8>)]) -> Vec<u8> {
+    let mut body = Vec::new();
+    for (id, data) in chunks {
+        body.extend_from_slice(id);
+        body.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        body.extend_from_slice(data);
+        if data.len() % 2 == 1 {
+            body.push(0);
+        }
+    }
+    let mut out = Vec::with_capacity(body.len() + 12);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(body.len() as u32 + 4).to_le_bytes());
+    out.extend_from_slice(b"WEBP");
+    out.extend_from_slice(&body);
+    out
+}
+
+/// VP8X 载荷：flags + 3 字节保留 + 画布宽高（各 3 字节，存「值 - 1」）
+fn vp8x_payload((w, h): (u32, u32)) -> Vec<u8> {
+    let mut data = vec![0u8, 0, 0, 0];
+    data.extend_from_slice(&(w.saturating_sub(1)).to_le_bytes()[..3]);
+    data.extend_from_slice(&(h.saturating_sub(1)).to_le_bytes()[..3]);
+    data
+}
+
+/// VP8 关键帧头：3 字节帧标签 + `9d 01 2a` + 宽高各 14 bit（小端）
+fn vp8_canvas(data: &[u8]) -> Option<(u32, u32)> {
+    if data.len() < 10 || data[3..6] != [0x9d, 0x01, 0x2a] {
+        return None;
+    }
+    let w = u16::from_le_bytes([data[6], data[7]]) & 0x3fff;
+    let h = u16::from_le_bytes([data[8], data[9]]) & 0x3fff;
+    Some((u32::from(w), u32::from(h)))
+}
+
+/// VP8L 头：1 字节签名 `2f` + 宽-1 / 高-1 各 14 bit（跨 4 字节，小端）
+fn vp8l_canvas(data: &[u8]) -> Option<(u32, u32)> {
+    if data.len() < 5 || data[0] != 0x2f {
+        return None;
+    }
+    let bits = u32::from_le_bytes([data[1], data[2], data[3], data[4]]);
+    Some(((bits & 0x3fff) + 1, ((bits >> 14) & 0x3fff) + 1))
+}
+
+/// 只含一条 `ImageDescription`（0x010e）的最小 TIFF/EXIF。
+/// WebP 的 EXIF chunk 直接存 TIFF 字节（**不带** JPEG APP1 的 `Exif\0\0` 前缀），与 piexif 产物同构；
+/// TIFF 允许小端（`II*\0`），这里用小端。
+fn tiff_exif_image_description(text: &str) -> Vec<u8> {
+    let value = text.as_bytes();
+    let ifd_offset = 8u32;
+    // 头 8 + 条目数 2 + 一条 entry 12 + 下一个 IFD 偏移 4
+    let value_offset = ifd_offset + 2 + 12 + 4;
+    let mut out = Vec::with_capacity(value_offset as usize + value.len() + 1);
+    out.extend_from_slice(b"II\x2a\x00");
+    out.extend_from_slice(&ifd_offset.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes()); // 一个 IFD entry
+    out.extend_from_slice(&0x010eu16.to_le_bytes()); // ImageDescription
+    out.extend_from_slice(&2u16.to_le_bytes()); // 类型 ASCII
+    out.extend_from_slice(&((value.len() + 1) as u32).to_le_bytes()); // 含结尾 NUL
+    out.extend_from_slice(&value_offset.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes()); // 没有下一个 IFD
+    out.extend_from_slice(value);
+    out.push(0);
+    out
 }
 
 /// 替换的第一步（**短锁阶段**）：旧图必须存在，防止对无效 id 操作。

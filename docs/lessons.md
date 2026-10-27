@@ -40,6 +40,7 @@
 | 34 | e2e 按角色取图像，撞上同为 `role="img"` 的索引状态图标 | 同一个 `role` 被两种语义不同的元素共用时，**基于角色的定位与计数都会被污染**：`VecStatusIcon`（`<span role="img" aria-label=…>`）与内容图共用 `img` 角色 → 点击类报 strict mode、计数类比预期多 1（更隐蔽）。修法：给图标换更贴切的 `role="note"`（`aria-label` 仍在），e2e 图标断言改 `getByRole("note", { name })`。 |
 | 35 | 非法正则把列表拖进重试风暴 | 恒失败的块必须有「放弃」标记，否则 `ensureRange` 每帧重新拉起（10ms 一次）；用户输入的非法正则优先退化为空结果，而不是沿 IPC 抛错误路径。 |
 | 36 | 相似结果页首行缩略图破图（只有「提示词详情关联图」入口） | 四个入口原先有三种口径（传 asset URL / 传裸磁盘路径 / 不传由结果页自取），裸路径那条把 `D:\…` 当 `<img src>` 直接破图。修法：全部只传 id，两侧取图命令同形（`get_image_thumbs` / `get_prompt_thumbs`）由 `resolveThumbUrls` 统一解析（见 开发经验.md 第 4 节）；破图在 Playwright 里也算「可见」，断言必须看 `naturalWidth > 0`。 |
+| 37 | 右键压缩后详情破图：带 alpha 的 WebP 被写坏了 EXIF 位置 | WebP 要求图像数据块（`VP8`/`VP8L`）紧跟 `ALPH`，元数据放最后。`little_exif 0.6.23` 的 `pre_exif_chunks` 漏了 `ALPH`，把 `EXIF` 插到 `ALPH` 后、`VP8` 前 → libwebp 直接拒绝解码（Pillow 报 `could not create decoder object`，WebView2 里是破图）。只有**带 alpha**（PNG color type 6）的图会中招。修法：不再用它写 WebP，由 `image_service` 按 RIFF 规范自行组装（EXIF 追加到末尾、置 VP8X 的 EXIF 位、补 VP8X、更新 RIFF 长度），并补容器级单测。 |
 
 ---
 
@@ -1124,3 +1125,44 @@ Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` �
 
 - 跨组件传图只传 id 或**已经转换好**的 URL；`absolutePathToAssetUrl` 对已转换的 `asset.localhost` URL **不幂等**，别指望接收端兜底规范化。
 - e2e 断言图片是否真的加载，必须看解码结果（`naturalWidth` / `complete`）：`toBeVisible()` 对破图恒真。
+
+## 37. 带 alpha 的 WebP 写入 EXIF 后整图解码失败（右键压缩 → 详情破图）
+
+### 现象
+
+原图是 720×1280、PNG color type 6（RGBA，带 workflow `tEXt`）。右键「压缩并替换 PNG」后，详情大图破图（`alt` 显示文件名），缩略图与相似度预处理也拿不到图；同一张图用 Python 版（Pillow + piexif）压缩则一切正常。
+
+### 排查过程
+
+1. 两个产物的 **像素数据逐字节相同**：`ALPH`（2272 B）与 `VP8 `（228930 B）的 sha1 完全一致，`VP8X` 的 flags 与画布也一致 → 不是编码参数 / 质量 / alpha 处理问题。
+2. 唯一的结构差异是 **chunk 顺序**：
+   - Rust：`VP8X → ALPH → EXIF → VP8 `
+   - Python：`VP8X → ALPH → VP8  → EXIF`
+3. A/B：把 Rust 产物的 `EXIF` 块**只挪到末尾**（其余字节不动，文件长度不变）→ Pillow 立刻能解码；原文件报 `OSError: could not create decoder object`。
+
+### 根因
+
+- WebP 规范要求图像数据块（`VP8`/`VP8L`）紧跟 `VP8X`/`ALPH`，元数据（`EXIF`/`XMP`）放最后；libwebp 的 demux 按此顺序解析，顺序不对直接判非法容器（Chromium / WebView2 / Pillow / `image` crate 共用 libwebp）。
+- `little_exif 0.6.23` 的 `pre_exif_chunks = ["VP8X", "VP8", "VP8L", "ICCP", "ANIM"]` **漏了 `ALPH`**；循环在 `ALPH` 处停止，把 `EXIF` 插到了图像数据之前。
+- 无 alpha 的图（libwebp 输出简单 `VP8 `，或 `VP8X → VP8`）两个块都在白名单里，EXIF 落在 `VP8` 之后 → 正常；所以**只有带 alpha 通道的图**会坏。
+- 同一段逻辑在 `little_exif` 里有**两份**（`src/webp/vec.rs` 与 `src/webp/file.rs`），`Metadata::write_to_file` 实际走 `file.rs`——只改 `vec.rs` 无效（本地补丁实验踩过）。
+
+### 为什么难发现
+
+- 破图在 Playwright 里同样是**可见**元素；`e2e/28` 只断言详情里出现 `.webp` 文案与 `src` 匹配 `asset.localhost`，破图照样通过。
+- 只有「带 alpha + 带 workflow」的图才会走到这条路径，普通截图（无 alpha）压缩后完全正常。
+
+### 修法
+
+- 不再用 `little_exif` 写 WebP（依赖一并移除），改由 `image_service::write_webp_workflow` 按 RIFF 规范自行组装：
+  1. 解析 chunk 列表，去掉可能存在的旧 `EXIF`；
+  2. 没有 `VP8X`（无 alpha 的简单格式）时，按 `VP8` 关键帧头 / `VP8L` 头解析画布尺寸并补一个 `VP8X`；
+  3. 置 `VP8X` 的 EXIF 标志位（`0x08`）；
+  4. 自拼最小 TIFF（一条 `ImageDescription` 0x010e，ASCII、小端）作为 `EXIF` 载荷，**追加到末尾**；
+  5. 重写 RIFF 长度。
+- 单测（`webp_workflow_appends_exif_after_image_data` / `webp_workflow_adds_vp8x_for_simple_vp8`）：用与线上同一套编码参数生成 WebP，写 workflow 后断言「`image` 能解码 / EXIF 在图像数据之后 / 标志位已置 / 简单格式补出的 VP8X 画布正确」。
+
+### 通用约束
+
+- 往 WebP 写元数据，**顺序是硬约束**：图像数据在前、`EXIF`/`XMP` 在末尾；不要信任只改「文件头 + 追加块」的第三方实现。
+- 改完容器必须用真实解码器验证（`image::load_from_memory` / Pillow），`<img>` 可见或 `src` 匹配都不算数。

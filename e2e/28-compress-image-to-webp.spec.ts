@@ -42,6 +42,13 @@ test("PNG 右键压缩为 WebP 并替换：旧图进回收站、关联迁移", a
   expect(Object.values(map).some((cs) => cs.includes(promptContent))).toBe(true);
   // 详情切到新图：显示名 = paim-{原显示名}.webp（不是无意义的落盘名）
   await expect(detail.getByText(/paim-e2e-upload\.webp/).first()).toBeVisible();
+  // 必须真的解码出来：容器写坏（EXIF 插到 VP8 之前）时 `<img>` 仍在、`src` 也匹配，只是破图
+  // （lessons 37）；`naturalWidth` 是唯一能区分「加载成功」与「破图」的判据
+  await expect
+    .poll(async () =>
+      detail.getByRole("img").evaluate((el) => (el as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0);
 });
 
 test("搜索过滤下压缩替换：详情仍显示新图，不被筛选结果挤出", async ({ page, app }) => {

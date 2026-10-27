@@ -2,8 +2,9 @@
 
 use super::{
     compress_png_to_webp, filter_sql, filter_sql_with_mode, first_prompts_for_trashed, import_with,
-    list_ids, list_page, list_related_prompts, replace_image_with, sanitize_file_stem,
-    special_tags_counts, thumbs_for, update_detail, ImageReplaceOutcome, PaginatedImages,
+    list_ids, list_page, list_related_prompts, parse_webp_chunks, replace_image_with,
+    sanitize_file_stem, special_tags_counts, thumbs_for, update_detail, write_webp_workflow,
+    ImageReplaceOutcome, PaginatedImages,
 };
 use crate::domain::list_query::{ListQuery, SearchMode};
 use crate::domain::similarity_service;
@@ -1028,4 +1029,96 @@ fn random_sort_is_stable_and_paged_consistently() {
     let mut other = q.clone();
     other.seed = Some(43);
     assert_ne!(ids_of(&list_page(&conn, &other).unwrap()), ids_of(&first));
+}
+
+// —— WebP 的 EXIF 位置：必须在图像数据之后 ——
+// 回归背景：`little_exif 0.6.23` 把 EXIF 插在 ALPH 后 / VP8 前，带 alpha 的图会被 libwebp
+// 判成非法容器（Pillow 报 could not create decoder object，WebView2 里表现为破图）。
+
+/// 带 alpha 的 WebP 写 workflow 后：仍能被 libwebp 解码、EXIF 在图像数据之后、标志位已置。
+#[test]
+fn webp_workflow_appends_exif_after_image_data() {
+    let dir = crate::infra::db::test_temp_dir("webp-workflow-alpha");
+    let path = dir.join("alpha.webp");
+    let rgba = image::RgbaImage::from_fn(8, 6, |x, y| {
+        image::Rgba([x as u8 * 8, y as u8 * 8, 128, 255])
+    });
+    let encoder = webp::Encoder::from_rgba(&rgba, rgba.width(), rgba.height());
+    let mut config = webp::WebPConfig::new().unwrap();
+    config.quality = 100.0;
+    config.lossless = 0;
+    config.method = 6;
+    std::fs::write(&path, &*encoder.encode_advanced(&config).unwrap()).unwrap();
+
+    write_webp_workflow(&path, "{\"k\":1}").unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    image::load_from_memory(&bytes).expect("带 EXIF 的 alpha WebP 必须能被 libwebp 解码");
+    let chunks = parse_webp_chunks(&bytes).unwrap();
+    let ids: Vec<&[u8; 4]> = chunks.iter().map(|(id, _)| id).collect();
+    let exif_pos = ids
+        .iter()
+        .position(|id| *id == b"EXIF")
+        .expect("EXIF chunk 应存在");
+    let image_pos = ids
+        .iter()
+        .position(|id| *id == b"VP8 " || *id == b"VP8L")
+        .expect("图像数据 chunk 应存在");
+    assert!(
+        exif_pos > image_pos,
+        "EXIF 必须在图像数据之后，实际顺序 {ids:?}"
+    );
+
+    let (_, vp8x) = chunks
+        .iter()
+        .find(|(id, _)| id == b"VP8X")
+        .expect("应存在 VP8X");
+    assert_eq!(vp8x[0] & 0x08, 0x08, "VP8X 的 EXIF 标志位应置位");
+
+    let (_, exif) = &chunks[exif_pos];
+    assert!(
+        exif.starts_with(b"II\x2a\x00"),
+        "EXIF chunk 内容应是 TIFF 字节"
+    );
+    assert!(
+        String::from_utf8_lossy(exif).contains("Workflow:{\"k\":1}"),
+        "EXIF 里应带 workflow 原文"
+    );
+}
+
+/// 无 alpha 的简单格式（只有 VP8、没有 VP8X）：补出 VP8X 并同步画布尺寸，仍可解码。
+#[test]
+fn webp_workflow_adds_vp8x_for_simple_vp8() {
+    let dir = crate::infra::db::test_temp_dir("webp-workflow-simple");
+    let path = dir.join("opaque.webp");
+    let rgb = image::RgbImage::from_fn(9, 7, |x, y| image::Rgb([x as u8 * 8, y as u8 * 8, 100]));
+    let encoder = webp::Encoder::from_rgb(&rgb, rgb.width(), rgb.height());
+    std::fs::write(&path, &*encoder.encode(90.0)).unwrap();
+
+    let before = parse_webp_chunks(&std::fs::read(&path).unwrap()).unwrap();
+    assert!(
+        !before.iter().any(|(id, _)| id == b"VP8X"),
+        "前置条件：libwebp 对无 alpha 的图输出简单格式，不应带 VP8X"
+    );
+
+    write_webp_workflow(&path, "wf").unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    image::load_from_memory(&bytes).expect("补出 VP8X 后仍能被 libwebp 解码");
+
+    let chunks = parse_webp_chunks(&bytes).unwrap();
+    let (_, vp8x) = chunks
+        .iter()
+        .find(|(id, _)| id == b"VP8X")
+        .expect("应补出 VP8X");
+    assert_eq!(vp8x[0] & 0x08, 0x08, "补出的 VP8X 要带 EXIF 标志位");
+    let w = u32::from_le_bytes([vp8x[4], vp8x[5], vp8x[6], 0]) + 1;
+    let h = u32::from_le_bytes([vp8x[7], vp8x[8], vp8x[9], 0]) + 1;
+    assert_eq!((w, h), (9, 7), "VP8X 画布尺寸应从 VP8 关键帧头解析");
+    assert_eq!(
+        chunks.last().unwrap().0,
+        *b"EXIF",
+        "EXIF 应是最后一个 chunk"
+    );
 }
