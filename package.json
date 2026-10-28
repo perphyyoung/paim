@@ -29,14 +29,14 @@
     "check": "pnpm format && pnpm build:rs && pnpm gen:bindings && pnpm lint && pnpm lint:e2e-locators && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.0",
-    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-dialog": "2.8.4",
     "vue": "^3.5",
     "vue-router": "4"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
-    "@tauri-apps/cli": "^2.12.0",
+    "@tauri-apps/cli": "2.12.4",
     "@types/node": "^26.4.1",
     "@vitejs/plugin-vue": "^5",
     "autoprefixer": "^10.4",

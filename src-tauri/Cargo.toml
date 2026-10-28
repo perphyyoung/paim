@@ -15,20 +15,20 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.7.0", features = [] }
+tauri-build = { version = "=2.7.4", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-toml = "0.8"
-thiserror = "2"
-chrono = "0.4"
-log = "0.4"
-tauri = { version = "2.12.0", features = ["protocol-asset", "tray-icon"] }
-tauri-plugin-log = "2"
+serde_json = "=1.0.154"
+serde = { version = "=1.0.229", features = ["derive"] }
+toml = "=0.8.2"
+thiserror = "=2.0.21"
+chrono = "=0.4.45"
+log = "=0.4.34"
+tauri = { version = "=2.12.5", features = ["protocol-asset", "tray-icon"] }
+tauri-plugin-log = "=2.10.1"
 rusqlite = { version = "0.34", features = ["bundled", "functions"] }
-tauri-plugin-dialog = "2"
-tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "=2.8.4"
+tauri-plugin-single-instance = "=2.5.5"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff"] }
 # PNG → WebP 有损压缩（libwebp：quality / method），用于详情右键「压缩图像」
 # EXIF 由 image_service 按 RIFF 规范自行组装（EXIF 必须在 VP8 之后，第三方库会插错位置）
@@ -45,8 +45,8 @@ unicode_categories = "0.1"
 # 本地 embedding 服务（llama.cpp llama-server）调用：只访问 127.0.0.1 明文 HTTP，故关闭 TLS 特性
 ureq = { version = "2", default-features = false, features = ["json"] }
 base64 = "0.22"
-zip = { version = "4", default-features = false, features = ["deflate"] }
-tauri-plugin-global-shortcut = "2"
+zip = { version = "=4.6.1", default-features = false, features = ["deflate"] }
+tauri-plugin-global-shortcut = "=2.4.1"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "javascript", "typescript"] }
 specta = "=2.0.0-rc.25"
 specta-typescript = "=0.0.12"
