@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
-use crate::domain::image_ops::{make_center_thumb, open_image};
+use crate::domain::image_ops::{cover_thumb, THUMB_SIZE};
 
 /// 全量重建结果摘要。success 包含「已存在跳过」与「新生成」两类
 /// （与 pm 的 regenerated 计数口径一致）。
@@ -92,8 +92,8 @@ pub fn build_thumbnail(
             file_name.unwrap_or("")
         );
     }
-    let img = open_image(&full_path).map_err(|e| format!("读取图像失败: {e}"))?;
-    let thumb = make_center_thumb(&img).map_err(|e| format!("生成缩略图失败: {e}"))?;
+    // 错误文案保持与旧实现一致：解码失败（最常见）归到「读取图像失败」
+    let thumb = cover_thumb(&full_path, THUMB_SIZE).map_err(|e| format!("读取图像失败: {e}"))?;
     std::fs::create_dir_all(&thumb_dir).map_err(io_err)?;
     // 编码用 jpeg-encoder（SIMD，image 自带编码器无 SIMD），质量 80 与 pm 一致
     let rgb = thumb.to_rgb8();

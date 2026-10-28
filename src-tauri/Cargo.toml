@@ -33,6 +33,9 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 # PNG → WebP 有损压缩（libwebp：quality / method），用于详情右键「压缩图像」
 # EXIF 由 image_service 按 RIFF 规范自行组装（EXIF 必须在 VP8 之后，第三方库会插错位置）
 webp = "0.3"
+# 直接调用 libwebp 的解码器：缩略图/相似度预处理按目标尺寸解码（use_scaling/use_cropping），
+# 避免「整图解码再缩小」的像素与内存浪费；与 webp crate 共用同一份 libwebp-sys（同版本，不重复编译）
+libwebp-sys = "0.9"
 jpeg-encoder = { version = "0.6", features = ["simd"] }
 md-5 = "0.10"
 # 搜索正则（SQLite REGEXP 标量函数）：线性时间引擎，无回溯风险

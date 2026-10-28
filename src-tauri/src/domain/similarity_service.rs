@@ -107,9 +107,8 @@ pub struct SimilarityStatus {
 /// 按入库策略预处理图像：解码（含 webp）→ 长边 1024 → JPEG。
 /// 服务端图像解码器不认 webp，必须在本侧转码，否则会被静默丢图（向量与画面无关）。
 pub fn prepare_image(path: &Path) -> Result<Vec<u8>, AppError> {
-    let img = image_ops::open_image(path)
+    let resized = image_ops::long_side_source(path, LONG_SIDE)
         .map_err(|e| AppError::Message(format!("无法解码图像 {}：{e}", path.display())))?;
-    let resized = image_ops::resize_long_side(&img, LONG_SIDE);
     image_ops::encode_jpeg(&resized, JPEG_QUALITY)
         .map_err(|e| AppError::Message(format!("JPEG 编码失败：{e}")))
 }

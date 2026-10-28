@@ -1,7 +1,7 @@
 //! 图像命令层：薄适配，从 managed state 取连接，转调领域服务。
 //! 路径 `commands::image::`，与提示词侧 `commands::prompt::` 对称。
 
-use crate::domain::image_ops::{make_center_thumb, open_image};
+use crate::domain::image_ops::{cover_thumb, THUMB_SIZE};
 use crate::domain::image_service::{
     self, Image, ImageCard, ImageImportBatchResult, ImageImportResult, ImageReplaceOutcome,
     LinkedPrompt, PaginatedImages,
@@ -179,8 +179,7 @@ pub async fn get_source_thumbnail(
         if !src.is_file() {
             return Err("源文件不存在".into());
         }
-        let img = open_image(&src).map_err(|e| AppError::Message(format!("无法读取图像: {e}")))?;
-        let thumb = make_center_thumb(&img)
+        let thumb = cover_thumb(&src, THUMB_SIZE)
             .map_err(|e| AppError::Message(format!("生成缩略图失败: {e}")))?;
 
         let prev_dir = crate::infra::db::preview_dir(&app);

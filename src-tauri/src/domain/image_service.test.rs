@@ -9,11 +9,30 @@ use super::{
 use crate::domain::list_query::{ListQuery, SearchMode};
 use crate::domain::similarity_service;
 use crate::infra::db;
+use image::GenericImageView; // DynamicImage::dimensions()
 
 /// 生成一张指定颜色的 2×2 png 源图（不同颜色 ⇒ 不同 MD5）。
 fn make_png(path: &std::path::Path, r: u8, g: u8, b: u8) {
     let img = image::ImageBuffer::from_fn(2, 2, |_, _| image::Rgb([r, g, b]));
     image::DynamicImage::ImageRgb8(img).save(path).unwrap();
+}
+
+/// 生成一张指定尺寸的 WebP（RGBA 渐变）：导入/缩略图路径的测试夹具。
+fn make_webp(path: &std::path::Path, w: u32, h: u32) {
+    let rgba = image::RgbaImage::from_fn(w, h, |x, y| {
+        image::Rgba([
+            (x * 255 / w.max(1)) as u8,
+            (y * 255 / h.max(1)) as u8,
+            128,
+            255,
+        ])
+    });
+    let encoder = webp::Encoder::from_rgba(&rgba, w, h);
+    let mut config = webp::WebPConfig::new().unwrap();
+    config.quality = 90.0;
+    config.lossless = 0;
+    config.method = 4;
+    std::fs::write(path, &*encoder.encode_advanced(&config).unwrap()).unwrap();
 }
 
 /// 建临时库（含完整 DDL），返回目录与连接句柄。
@@ -1121,4 +1140,30 @@ fn webp_workflow_adds_vp8x_for_simple_vp8() {
         *b"EXIF",
         "EXIF 应是最后一个 chunk"
     );
+}
+
+/// 导入 WebP：宽高来自头部解析，缩略图固定 200×200 且可解码（重构解码路径的行为契约）。
+#[test]
+fn import_webp_records_header_dims_and_square_thumb() {
+    let work = crate::infra::db::test_temp_dir("import-webp");
+    let src = work.join("source.webp");
+    make_webp(&src, 320, 240);
+    let (_db_dir, db) = setup_image_db();
+    let conn = db.0.lock().unwrap();
+    let images = work.join("images");
+    let thumbs = work.join("thumbnails");
+
+    let (img, duplicated) =
+        import_with(&conn, &images, &thumbs, src.to_str().expect("path")).unwrap();
+    assert!(!duplicated, "首次导入不应命中 md5 去重");
+    assert_eq!(
+        (img.width, img.height),
+        (Some(320), Some(240)),
+        "宽高取头部尺寸"
+    );
+    let rel = img.thumbnail_path.expect("应生成缩略图");
+    let thumb_abs = thumbs.join(rel.trim_start_matches("thumbnails/"));
+    let decoded = image::open(&thumb_abs).expect("缩略图必须可解码");
+    assert_eq!(decoded.dimensions(), (200, 200), "缩略图固定 200×200");
+    let _ = std::fs::remove_dir_all(&work);
 }

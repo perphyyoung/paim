@@ -2635,6 +2635,7 @@ dependencies = [
  "chrono",
  "image",
  "jpeg-encoder",
+ "libwebp-sys",
  "log",
  "md-5",
  "regex",

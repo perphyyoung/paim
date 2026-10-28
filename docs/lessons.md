@@ -41,6 +41,7 @@
 | 35 | 非法正则把列表拖进重试风暴 | 恒失败的块必须有「放弃」标记，否则 `ensureRange` 每帧重新拉起（10ms 一次）；用户输入的非法正则优先退化为空结果，而不是沿 IPC 抛错误路径。 |
 | 36 | 相似结果页首行缩略图破图（只有「提示词详情关联图」入口） | 四个入口原先有三种口径（传 asset URL / 传裸磁盘路径 / 不传由结果页自取），裸路径那条把 `D:\…` 当 `<img src>` 直接破图。修法：全部只传 id，两侧取图命令同形（`get_image_thumbs` / `get_prompt_thumbs`）由 `resolveThumbUrls` 统一解析（见 开发经验.md 第 4 节）；破图在 Playwright 里也算「可见」，断言必须看 `naturalWidth > 0`。 |
 | 37 | 右键压缩后详情破图：带 alpha 的 WebP 被写坏了 EXIF 位置 | WebP 要求图像数据块（`VP8`/`VP8L`）紧跟 `ALPH`，元数据放最后。`little_exif 0.6.23` 的 `pre_exif_chunks` 漏了 `ALPH`，把 `EXIF` 插到 `ALPH` 后、`VP8` 前 → libwebp 直接拒绝解码（Pillow 报 `could not create decoder object`，WebView2 里是破图）。只有**带 alpha**（PNG color type 6）的图会中招。修法：不再用它写 WebP，由 `image_service` 按 RIFF 规范自行组装（EXIF 追加到末尾、置 VP8X 的 EXIF 位、补 VP8X、更新 RIFF 长度），并补容器级单测。 |
+| 38 | 大 WebP 导入/缩略图/索引慢：全量解码后才缩小 | 旧链路统一 `image::open`（`image-webp` 纯 Rust）解出整幅 RGBA，再 `resize` 到 200 / 1024。改为 WebP 走 libwebp 的**缩放解码**（`WebPDecode` + `use_cropping`/`use_scaling`/`use_threads`），只有非 WebP 或解码失败才回退 `image`。debug 实测 3000×2000 → 200×200：3237ms → 84ms，中间态内存 24MB → ~160KB。lossless 仍逐行重采样（省内存不省 CPU）；重采样器变化会让缩略图/向量有极小差异。 |
 
 ---
 
@@ -1166,3 +1167,44 @@ Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` �
 
 - 往 WebP 写元数据，**顺序是硬约束**：图像数据在前、`EXIF`/`XMP` 在末尾；不要信任只改「文件头 + 追加块」的第三方实现。
 - 改完容器必须用真实解码器验证（`image::load_from_memory` / Pillow），`<img>` 可见或 `src` 匹配都不算数。
+
+## 38. 大 WebP 解码：先解整幅再缩小 → 改为 libwebp 缩放解码
+
+### 背景
+
+库里绝大多数是 WebP，三条后端链路都要「解码 → 缩小」：
+
+- 导入：`image_service::prepare_files`（拿尺寸 + 生成 200×200 缩略图）；
+- 缩略图自愈/重建：`thumbnail_service::build_thumbnail`；
+- 相似度预处理：`similarity_service::prepare_image`（长边 1024）。
+
+旧实现统一 `image::open`（`image 0.25` → `image-webp` 纯 Rust）解出**整幅 RGBA**，再 `resize_to_fill` / `resize`。一张 3000×2000 的图，中间态就是 24 MB，且解码像素量是目标的两百多倍。
+
+### 改法
+
+- WebP 分支：`WebPDecode` + `WebPDecoderOptions`（`use_cropping` 先裁、`use_scaling` 后缩、`use_threads=1`），直接产出目标尺寸的 RGBA；
+- 尺寸：`WebPGetFeatures` 只解析头部，不解码像素；
+- **非 WebP、或 libwebp 任何失败（含损坏文件）→ 回退 `image::open`**，保持旧行为；
+- 小图（任一边 < 目标）不走进缩放分支，仍由 `image` 放大到 200×200（与旧实现一致）；
+- 抽出统一入口：`cover_thumb(path, size)` / `long_side_source(path, target)` / `image_dimensions(path)`，调用点不再自己拼「解码 + 缩放」。
+
+### 实测（debug 构建，3000×2000 WebP → 200×200）
+
+| | 旧（全解 + Triangle 缩放） | 新（libwebp 裁剪+缩放） |
+|---|---|---|
+| 耗时 | 3237 ms | 84 ms |
+| 解码像素量 | 3000×2000（24 MB RGBA） | 裁剪后 ~200×200（160 KB） |
+
+（debug 下 `image-webp` 尤其慢，release 的倍数会小一些，但「少解两百倍像素」是结构性差异。）
+
+### 注意
+
+- **lossless（VP8L）**：libwebp 用逐行 rescaler，内存降、CPU 与全解差不多；不要期待同样的时间倍数。
+- **重采样器变了**：缩略图像素与旧实现有极小差异（测试用均值/中心像素 ±6/±12 容差覆盖）；相似度向量也会随之变化，若要求新旧完全一致需重建向量。
+- 带 alpha 的图仍走 `MODE_RGBA`，缩略图交 JPEG 前再丢 alpha，与旧行为一致。
+- 契约测试在 `image_ops.test.rs`：尺寸、比例、放大回退、lossless、损坏文件、与参考实现的像素近似、导入生成的缩略图 200×200。
+
+### 通用约束
+
+- 解码前先问「要多大的图」：能缩放解码就不要全解；纯 Rust 解码器（`image-webp`）在大图上远慢于 libwebp。
+- 替换解码器必须保留**回退路径**与**行为契约测试**（尺寸/比例/放大/损坏/alpha），否则一次格式边角就会变成线上白图。

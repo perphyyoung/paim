@@ -2,11 +2,10 @@
 //! 领域层感知 app（用于定位数据目录）与连接访问数据，但不直接面向 IPC。
 //! 命令层见 `commands::image`。
 
-use crate::domain::image_ops::{make_center_thumb, open_image};
+use crate::domain::image_ops::{cover_thumb, image_dimensions, THUMB_SIZE};
 use crate::domain::list_query::{self, ListQuery};
 use crate::domain::tag_manager::{tags_by_owner, TagDomain};
 use crate::infra::error::AppError;
-use image::GenericImageView;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
@@ -215,7 +214,8 @@ pub(crate) fn prepare_files(
     source: &Path,
     md5: &str,
 ) -> rusqlite::Result<PreparedImport> {
-    let img = open_image(source).map_err(|e| {
+    // 先只读头部拿尺寸（不解码像素）；真正解码发生在生成缩略图那一步，失败一律拒绝入库
+    let (width, height) = image_dimensions(source).map_err(|e| {
         rusqlite::Error::InvalidParameterName(format!(
             "无法解析图像文件（可能已损坏或为不支持的格式；当前支持 {}，AVIF/HEIC/SVG 请先转换）: {e}",
             SUPPORTED_EXT.join(" / ")
@@ -249,34 +249,28 @@ pub(crate) fn prepare_files(
     let dest = month_dir.join(&stored_name);
     std::fs::copy(source, &dest).map_err(io_to_sql)?;
 
-    // 生成居中裁剪的方图缩略图（生成失败仅缺缩略图，不阻断导入）
-    let mut thumb_abs_out: Option<PathBuf> = None;
-    let (width, height, thumbnail_path) = {
-        let (w, h) = img.dimensions();
-        match make_center_thumb(&img) {
-            Ok(thumb) => {
-                let thumb_name = format!("thumb_{id}.jpg");
-                let thumb_month_dir = thumbnails_dir.join(&yyyymm);
-                std::fs::create_dir_all(&thumb_month_dir).map_err(io_to_sql)?;
-                let thumb_abs = thumb_month_dir.join(&thumb_name);
-                if let Err(e) = thumb.save(&thumb_abs) {
-                    let _ = std::fs::remove_file(&dest);
-                    return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
-                        std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("生成缩略图失败: {e}"),
-                        ),
-                    )));
-                }
-                thumb_abs_out = Some(thumb_abs);
-                (
-                    Some(w as i64),
-                    Some(h as i64),
-                    Some(format!("thumbnails/{yyyymm}/{thumb_name}")),
-                )
-            }
-            Err(_) => (Some(w as i64), Some(h as i64), None),
+    // 生成居中裁剪的方图缩略图：解码与裁剪在 cover_thumb 内一次完成（WebP 走解码器内缩放）
+    let thumb = cover_thumb(source, THUMB_SIZE).map_err(|e| {
+        rusqlite::Error::InvalidParameterName(format!(
+            "无法解析图像文件（可能已损坏或为不支持的格式；当前支持 {}，AVIF/HEIC/SVG 请先转换）: {e}",
+            SUPPORTED_EXT.join(" / ")
+        ))
+    })?;
+    let (thumb_abs_out, thumbnail_path) = {
+        let thumb_name = format!("thumb_{id}.jpg");
+        let thumb_month_dir = thumbnails_dir.join(&yyyymm);
+        std::fs::create_dir_all(&thumb_month_dir).map_err(io_to_sql)?;
+        let thumb_abs = thumb_month_dir.join(&thumb_name);
+        if let Err(e) = thumb.save(&thumb_abs) {
+            let _ = std::fs::remove_file(&dest);
+            return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                std::io::Error::new(std::io::ErrorKind::Other, format!("生成缩略图失败: {e}")),
+            )));
         }
+        (
+            Some(thumb_abs) as Option<PathBuf>,
+            Some(format!("thumbnails/{yyyymm}/{thumb_name}")),
+        )
     };
 
     let file_name = source
@@ -291,8 +285,8 @@ pub(crate) fn prepare_files(
         file_name,
         thumbnail_path,
         md5: md5.to_string(),
-        width,
-        height,
+        width: Some(width as i64),
+        height: Some(height as i64),
         file_size,
         dest,
         thumb_abs: thumb_abs_out,
