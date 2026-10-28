@@ -1162,6 +1162,8 @@ Playwright 把该 worker 判失败，报错落在 `e2e-helpers.ts::disposeApp` �
   4. 自拼最小 TIFF（一条 `ImageDescription` 0x010e，ASCII、小端）作为 `EXIF` 载荷，**追加到末尾**；
   5. 重写 RIFF 长度。
 - 单测（`webp_workflow_appends_exif_after_image_data` / `webp_workflow_adds_vp8x_for_simple_vp8`）：用与线上同一套编码参数生成 WebP，写 workflow 后断言「`image` 能解码 / EXIF 在图像数据之后 / 标志位已置 / 简单格式补出的 VP8X 画布正确」。
+- e2e/28 新增「RGBA + workflow 的 PNG：压缩后详情图必须真的解码」：`writePng(..., { alpha: true, workflow })` 生成带 tEXt 的 RGBA 源图（普通 RGB 图不写 EXIF，覆盖不到这条路径），压缩后断 `naturalWidth > 0`。已用「把 EXIF 插到 `ALPH` 之后」的临时实现验证该用例会红。
+- 模拟回归的位置要选对：**EXIF 紧跟 `VP8X`（ALPH 之前）时 libwebp 仍能解码**，只有夹在 `ALPH` 与 `VP8` 之间才判非法——所以临时改坏时必须插到 `ALPH` 之后，否则会得到「假通过」。
 
 ### 通用约束
 

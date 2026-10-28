@@ -103,3 +103,30 @@ test("非 PNG 图像：右键压缩提示仅支持 PNG", async ({ page, app }) =
   // 未替换，原图仍在正常列表
   expect(await listTrashedImageIds(page)).not.toContain(imageId);
 });
+
+// 回归：只有「RGBA + workflow」的 PNG 才会走「写 EXIF」分支（普通 RGB PNG 没有 tEXt，根本不写）。
+// 历史 bug：EXIF 被插到 ALPH 之后、VP8 之前 → libwebp 判非法容器，详情破图（lessons 37）。
+test("RGBA + workflow 的 PNG：压缩后详情图必须真的解码", async ({ page, app }) => {
+  const png = { alpha: true, workflow: JSON.stringify({ probe: 1 }) };
+  const { promptContent } = await uploadImageWithPrompt(
+    page,
+    `e2e 压缩 rgba ${Date.now()}`,
+    app.mockImagePath,
+    png,
+  );
+  const detail = await openImageDetail(page, promptContent);
+  await detail.getByRole("img").click({ button: "right" });
+  await page.getByRole("button", { name: COMPRESS_ITEM }).click();
+  const dlg = page.getByRole("dialog", { name: CONFIRM_TITLE });
+  await expect(dlg).toBeVisible();
+  await dlg.getByRole("button", { name: "压缩并替换" }).click();
+  await expectToastAndDismiss(page, "已压缩并替换");
+
+  await expect(detail.getByText(/paim-e2e-upload\.webp/).first()).toBeVisible();
+  // 破图的 <img> 同样「可见」、src 也匹配，只有解码结果能区分
+  await expect
+    .poll(async () =>
+      detail.getByRole("img").evaluate((el) => (el as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0);
+});

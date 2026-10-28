@@ -855,9 +855,10 @@ export async function uploadImageWithPrompt(
   page: Page,
   promptContent: string,
   mockImagePath: string,
+  png: PngOptions = {},
 ): Promise<{ imageId: string; promptContent: string }> {
   await gotoImagesPage(page);
-  writePng(mockImagePath);
+  writePng(mockImagePath, png);
   await page.getByRole("button", { name: "上传图像" }).click();
   e2eLog.info("[step] 上传弹窗已打开");
   const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...", { exact: true });
@@ -908,10 +909,11 @@ export async function uploadImagesWithPrompt(
   page: Page,
   promptContent: string,
   mockImagePaths: string[],
+  png: PngOptions = {},
 ): Promise<{ imageIds: string[]; promptContent: string }> {
   await setMockImagePaths(page, mockImagePaths);
   await gotoImagesPage(page);
-  for (const p of mockImagePaths) writePng(p);
+  for (const p of mockImagePaths) writePng(p, png);
 
   await page.getByRole("button", { name: "上传图像" }).click();
   const promptInput = page.getByPlaceholder("输入与此批图像相关的提示词内容...", { exact: true });
@@ -1114,17 +1116,28 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([len, typeBuf, data, crcBuf]);
 }
 
-/// 在 filePath 写一张内容唯一的 2×2 truecolor png（颜色取自时间戳，
+/** `writePng` 的生成选项：缺省 = 2×2 RGB、无元数据（与历史行为逐字节一致） */
+export interface PngOptions {
+  /** 带 alpha 通道（color type 6）；alpha 固定 200，确保 libwebp 真的产出 ALPH */
+  alpha?: boolean;
+  /** 写入 `tEXt` 块（keyword=`workflow`）：压缩 PNG 时会被后端写进 WebP 的 EXIF */
+  workflow?: string;
+}
+
+/// 在 filePath 写一张内容唯一的 2×2 png（颜色取自时间戳，
 /// md5 不与既有图像撞车）。引用数据目录内文件前现写一份，不假设旧文件仍在。
 /// mock 图写入序号与上次写出的字节。
 /// 只靠 `Date.now()` 不够：同一毫秒内的两次调用会写出**完全相同**的字节，而应用按 MD5 去重
 /// （同内容判「重复导入」并复用同一条记录）→「一批两张图」会只剩一条记录，
 /// 用例结论变成「少一张图」（e2e/01「两张图像附带同一提示词」就这么红过：期望 2 收到 1；
 /// e2e/12、e2e/14 的「每次导入前覆写」也是靠这里的内容唯一才成立）。
+/// 默认 RGB、无 tEXt；`{ alpha, workflow }` 供压缩用例覆盖「RGBA + workflow → 写 EXIF」路径。
 let pngSeq = 0;
 let lastPngBytes: Buffer | null = null;
 
-export function writePng(filePath: string): void {
+export function writePng(filePath: string, opts: PngOptions = {}): void {
+  const { alpha = false, workflow } = opts;
+  const channels = alpha ? 4 : 3;
   // 序号 + 时间 + 随机三重混合：同进程内每次调用内容必不同（仅毫秒精度会撞车）
   pngSeq += 1;
   const seed = (Date.now() + pngSeq * 0x9e37 + Math.floor(Math.random() * 0xffffff)) % 0xffffff;
@@ -1137,8 +1150,8 @@ export function writePng(filePath: string): void {
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8; // 位深
-  ihdr[9] = 2; // 颜色类型：truecolor
-  const raw = Buffer.alloc(height * (1 + width * 3));
+  ihdr[9] = alpha ? 6 : 2; // 颜色类型：6=RGBA，2=truecolor（与旧行为一致）
+  const raw = Buffer.alloc(height * (1 + width * channels));
   let o = 0;
   for (let y = 0; y < height; y++) {
     raw[o++] = 0; // filter: none
@@ -1146,11 +1159,15 @@ export function writePng(filePath: string): void {
       raw[o++] = r;
       raw[o++] = g;
       raw[o++] = b;
+      // 非全不透明：libwebp 只有检测到真实透明度才会输出 ALPH 块
+      if (alpha) raw[o++] = 200;
     }
   }
   const png = Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), // PNG 签名
     pngChunk("IHDR", ihdr),
+    // tEXt 放 IDAT 之前（规范顺序）；后端按 keyword `workflow` 读取
+    ...(workflow ? [pngChunk("tEXt", Buffer.from(`workflow\0${workflow}`, "latin1"))] : []),
     pngChunk("IDAT", zlib.deflateSync(raw)),
     pngChunk("IEND", Buffer.alloc(0)),
   ]);
