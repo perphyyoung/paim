@@ -844,6 +844,7 @@ async function onPickerImported() {
                   :src="imgUrl(img)"
                   :alt="img.file_name"
                   :title="img.file_name"
+                  decoding="async"
                   :class="relatedImages.length === 1 ? 'h-full w-full' : 'aspect-square w-full'"
                   class="object-contain"
                 />
@@ -1289,6 +1290,7 @@ async function onPickerImported() {
           :src="imgUrl(img)"
           :alt="img.file_name"
           draggable="false"
+          decoding="async"
           class="h-40 w-full rounded object-contain"
         />
         <div v-else class="flex h-40 w-full items-center justify-center text-xs text-gray-400">

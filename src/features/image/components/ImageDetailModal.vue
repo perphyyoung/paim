@@ -809,10 +809,12 @@ const fmtLocal = formatLocalTime;
           class="group relative flex min-w-0 flex-[2_1_0%] items-center justify-center bg-gray-900"
           @contextmenu.prevent="openCtxMenu"
         >
+          <!-- 大图异步解码：打开详情时主线程优先处理交互，原图（可能是大 WebP）在后台解码 -->
           <img
             v-if="origSrc"
             :src="origSrc"
             :alt="current?.file_name ?? ''"
+            decoding="async"
             class="max-h-full max-w-full object-contain"
             @dblclick.stop="openFullscreen"
           />
@@ -820,6 +822,7 @@ const fmtLocal = formatLocalTime;
             v-else-if="current && thumbs[current.id]"
             :src="thumbs[current.id]"
             :alt="current?.file_name ?? ''"
+            decoding="async"
             class="max-h-full max-w-full object-contain"
             @dblclick.stop="openFullscreen"
           />

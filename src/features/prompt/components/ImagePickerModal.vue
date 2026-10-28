@@ -361,6 +361,7 @@ function close() {
                 :src="thumbUrl(img)"
                 :alt="img.file_name"
                 :title="img.file_name"
+                decoding="async"
                 class="aspect-square w-full object-cover"
               />
               <div

@@ -236,6 +236,7 @@ function onWheel(e: WheelEvent) {
         v-if="currentSrc"
         :src="currentSrc"
         :alt="currentName || current.id"
+        decoding="async"
         class="max-h-full max-w-full object-contain"
         :style="{ transform: `translate(${translate.x}px, ${translate.y}px) scale(${zoom})` }"
       />

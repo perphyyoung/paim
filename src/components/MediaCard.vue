@@ -185,7 +185,14 @@ onUpdated(scheduleMeasure);
     @contextmenu="onCardContextMenu"
   >
     <!-- 背景图 / 占位 -->
-    <img v-if="thumb" :src="thumb" alt="" class="absolute inset-0 h-full w-full object-cover" />
+    <!-- decoding=async：把缩略图解码挪出主线程，滚动/翻页时不抢帧（虚拟网格已限制 DOM 数量，故不加 loading=lazy） -->
+    <img
+      v-if="thumb"
+      :src="thumb"
+      alt=""
+      decoding="async"
+      class="absolute inset-0 h-full w-full object-cover"
+    />
     <svg
       v-else
       xmlns="http://www.w3.org/2000/svg"

@@ -202,6 +202,7 @@ async function doMerge() {
                   v-if="thumbs[aId]"
                   :src="thumbs[aId]"
                   alt="源提示词1 的首图缩略图"
+                  decoding="async"
                   class="h-full w-full object-cover"
                 />
                 <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
@@ -268,6 +269,7 @@ async function doMerge() {
                   v-if="thumbs[bId]"
                   :src="thumbs[bId]"
                   alt="源提示词2 的首图缩略图"
+                  decoding="async"
                   class="h-full w-full object-cover"
                 />
                 <p v-else class="px-2 text-xs text-gray-500">无关联图像</p>
