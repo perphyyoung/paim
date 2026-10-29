@@ -43,9 +43,7 @@ paim 已集成 tauri-specta（v2.0.0-rc.25，版本用 `=` 锁定），命令调
    `PAIM_EXPORT_BINDINGS` 触发 `run()` 开头短路（仅 debug 编译期存在），只导出后立即
    退出，不创建窗口、不连 webview，毫秒级完成。
 
-check 全链顺序：`format → build:rs → gen:bindings → typecheck → build`（bindings
-先复写、typecheck 后校验，保证 vue-tsc 看到的是新鲜绑定）。曾试过「导出到临时文件 +
-git diff 校验过时」的方案，后按「直接复写、无需校验」简化为现状。
+`check` 中 `gen:bindings` 位于 `build:rs` 之后、`typecheck` 之前（先复写、后校验，保证 vue-tsc 看到的是新鲜绑定）；完整步骤与顺序以 `package.json` 的 `scripts.check` 为准。曾试过「导出到临时文件 + git diff 校验过时」的方案，后按「直接复写、无需校验」简化为现状。
 
 ## 新增命令流程（三步）
 

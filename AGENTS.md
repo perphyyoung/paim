@@ -1,64 +1,27 @@
 # AGENTS.md
 
-## 跨项目通用规则
-
-- 质量门（按「是否本任务最后一步」二选一，禁止两个连跑）：
-  - **中间步骤（还会继续改）** → 尽量跑 `pnpm quick`（只读校验：format:check → lint → lint:e2e-locators → typecheck → check:rs → test:compile）；此时不跑 `pnpm check`。
-  - **最后一步（收尾/交付/提交）** → 代码改动必须跑 `pnpm check`（format → build:rs → gen:bindings → lint → lint:e2e-locators → typecheck → test → build），不得用 `pnpm quick` 代替；`check` 未通过不得输出提交信息。纯文档改动的最后一步不强制质量门。
-  - **禁止同时执行两者**：不得出现 `pnpm quick && pnpm check`、先 quick 再紧接 check 这类连续调用；中间步骤只 quick，最后一步只 check，两步分开、各自独立汇报结果。
-  - `check` 已含 `gen:bindings`，成功后 `src/bindings.ts` 必然最新，**不必再单独跑**；只有「改了 Rust 命令签名/公共 API、且本阶段要跑 `pnpm quick`」时，才先 `pnpm build:rs && pnpm gen:bindings`（quick 不含 gen，且 gen 依赖最新 debug 二进制；`test:compile` 会暴露测试代码里的旧引用）。
-- **提交信息（有改动就输出，且以真实 diff 为准）**：
-  - 输出前必须先看真实改动：跑 `jj diff --stat`（本项目用 jj；无 jj 时用 `git diff --stat`），提交信息只概括 diff 里实际出现的文件与内容。
-  - 禁止凭记忆、计划、对话摘要或未落盘的设想编写提交信息；描述与 diff 不一致时以 diff 为准。
-  - 只要本轮有文件修改（含文档）就必须输出：以**代码块**给出 git commit 信息，格式遵守 `D:/py-code/pbp/.rules/git提交信息规范.md`，并换行写「输出结束」。
-  - 代码改动的最后一步必须 `pnpm check` 通过后才输出；纯文档改动的最后一步不要求质量门，但同样必须输出。质量门失败时先修复，不得在失败结果上输出提交信息。
-
-## 检索工具选择：Grep 还是 zg
-
-- **已知符号/字符串** → 用 Grep（ripgrep）：最快、零维护；本仓需自行排除 `dist/`、`temp/`、`paim-data/`。
-- **想看命中行属于哪个函数** → `zg query --rg -n "<pattern>"`：等价 ripgrep，但输出带 `[function xxx]` 上下文，省掉再读一次文件。
-- **只知道"干什么、不知道叫什么"** → `zg query "<自然语言>"` 语义检索；但本仓语义结果偏文档（`docs/lessons.md` 常排第一），代码命中率一般，**必须用 `--rg` 或 `--fts` 复核**后再下结论。
-- `--fts` 命中代码并带 `symbol:` 标签，介于精确与语义之间。
-- 代码结构变动后（如目录重命名、大批文件搬迁）先跑 `zg index`（增量：补新增与变更文件）。只有索引里仍出现已删除/旧路径的命中时，才用 `zg index --rebuild`（丢弃旧索引、全量重算 embedding，更慢）。
+[跨项目通用规则.md](../pbp/跨项目通用规则.md)，通读并理解后，输出：“已通读并理解了跨项目通用规则，后续严格遵守。”
 
 ## 项目规则
 
-- 对同一文件的多处修改：合并为一次编辑完成，或分多条消息串行执行；禁止在同一条消息里并行发起多个编辑到同一文件（并行读-改-写会竞态覆盖，仅最后一个编辑生效，其余静默丢失）
-- 不因「要重新编译/重新验证」降低代码质量标准
-- 对称结构优先于改动成本，不为「现状能跑」保留次优写法
 - 新增/修改 e2e 测试缝前，先完整读 `src-tauri/src/commands/e2e.rs` 现有命令，禁止并存功能相似的第二套命令；命名要能自解释（如 `e2e_seed_similarity_vectors` 明确表示为相似度检索播种向量）。
-- 日志文件的删除会被阻止，用清空代替
-- 如果修改的相关逻辑可以重构，本轮修改完成后，提醒用户是否要重构
-- 及时删除不再使用的代码和文件；检查死代码时，需要考虑 e2e
-- 正确命名，不要误导
-- 禁止 mod.rs 命名，直接功能命名
-- 提示词或图像专用的，一律添加 image/prompt 标识，两者保持对称
-- 测试写在独立的 `*.test.rs` 文件（与源文件平铺，如 `db.test.rs`），源文件末尾用 `#[cfg(test)] #[path = "..."] mod tests;` 声明；不内联测试块，也不用同名目录下的 `tests.rs`（同名文件在 grep/编辑器中无法区分）
-- 前端测试同样与源文件平铺，命名为 `*.test.ts`（如 `usePagedBlocks.test.ts`），用 vitest 跑（`pnpm test:ui`，node 环境，配置见 `vitest.config.ts`）；**需要注入失败/延迟的场景一律放前端单测**，不要试图在 e2e 里包装 IPC——真实 Tauri 的 `window.__TAURI_INTERNALS__` 及其成员由注入脚本 `defineProperty` 创建（不可写不可配置），页面侧改不动（依据见 docs/e2e测试.md）
+- 提示词或图像专用的，一律添加 image/prompt 标识，两者保持对称——约束所有场景（e2e 命令、变量、类型、前端 API、文件名等）；标识形式（前缀/后缀）按实际情况而定，不写死；存量不动，仅在修改涉及时检查补上
 - 修改或新增 e2e 用例前先对照 `docs/e2e测试.md`（文件索引与命名规则、序号分配与 `e2e/<序号>` 引用口径、约定速查、helper 副作用说明、超时口径），改完同步该文件的序号说明
-- **e2e 一律用语义化定位器**：`getByRole` / `getByLabel` / `getByPlaceholder` / `getByText` / `getByTitle` / `getByAltText`；不得用 CSS 选择器定位本可语义化的元素（`locator("textarea")`、`locator("img[alt=…]")`、`locator("label[title=…]")` 这类），结构性元素也优先走角色（`getByRole("row")` / `getByRole("cell")`）；**图像统一 `getByRole("img")`**（要限定某一张时加 `{ name: 文件名 }`）——索引状态图标是 `role="note"`（VecStatusIcon），不与内容图撞 img 角色；确无语义可用的（卡片根、拖拽命中域）收进 `e2e-helpers.ts` 并写明理由，用例里不写裸选择器
-- `.first()` / `.nth()` 只允许用在「同一语义匹配必然多条、且顺序本身有含义」处（层叠详情的 DOM 顺序、同文案堆叠的 toast），并在用例内注明依据；为 e2e 定位而给元素补语义时用**业务语义命名**（如 `aria-label="提示词内容"`），不加 `data-testid`；**名称匹配一律 `exact: true`**（`getByRole` 的 `name` 与 `getByText/Title/Label/AltText/Placeholder`），确需子串时在该行注释 `locator-allow-substring`，由 `pnpm lint:e2e-locators` 强制；新增 `aria-label` 前先查它与既有名称的子串关系（`提示词内容` ⊂ `以提示词内容搜索相似项` 曾导致误判）
+- **e2e 一律用语义化定位器**：`getByRole` / `getByLabel` / `getByPlaceholder` / `getByText` / `getByTitle` / `getByAltText`；不得用 CSS 选择器定位本可语义化的元素（`locator("textarea")`、`locator("img[alt=…]")`、`locator("label[title=…]")` 这类），结构性元素也优先走角色（`getByRole("row")` / `getByRole("cell")`）；**图像按 alt 语义选定位器**：内容图（`alt=file_name`，如详情弹窗）用 `getByRole("img", { name: 文件名 })`；描述性 alt（如「源提示词1 的首图缩略图」）用 `getByAltText` 或带 `{ name: 描述 }` 的 `getByRole("img")`；装饰图 `alt=""` 无 img 角色、`getByRole("img")` 命中不到，改走其容器/兄弟元素的语义——索引状态图标是 `role="note"`（VecStatusIcon），不与内容图撞 img 角色；确无语义可用的（卡片根、拖拽命中域）收进 `e2e-helpers.ts` 并写明理由，用例里不写裸选择器
+- `.first()` / `.nth()` 只允许用在「同一语义匹配必然多条、且顺序本身有含义」处（层叠详情的 DOM 顺序、同文案堆叠的 toast），并在用例内注明依据；为 e2e 定位而给元素补语义时用**业务语义命名**（如 `aria-label="提示词内容"`），不加 `data-testid`；**名称匹配默认 `exact: true`**（`getByRole` 的 `name` 与 `getByText/Title/Label/AltText/Placeholder`），确需子串时在该行注释 `locator-allow-substring`——强制范围以 `pnpm lint:e2e-locators` 实际执行为准：Title/Label/AltText/Placeholder 全仓强制，text 与 role-name 仅详情弹窗作用域强制（页面级是历史欠账，`--all` 可查）；新增 `aria-label` 前先查它与既有名称的子串关系（`提示词内容` ⊂ `以提示词内容搜索相似项` 曾导致误判）
 - 按照暗色主题设计，无需考虑亮色主题和主题切换需求
-- 临时脚本以 tmp-* 方式命名，会被 git 忽略
-- 使用 jj (git 的包装) 检查工作区状态: jj st
-- 提交使用 jj（jj undo 可撤销误操作）：`new` / `describe` / `commit -m "..."`；`jj st` ≈ git status + diff --stat，`jj log -r '::@-'` 查看已提交改动（`jj st` 不含）
-- 同一文件多处改动串行执行（见上第一条），不同文件的改动可并行发起
-
-## 文档写作约定
-
-- **正文不硬换行**：每个语义单位（句子/逻辑段/列表项）写一行，不按固定列宽切行、不避免横向滚动而换行；表格与代码块内的树形排版按其本身格式。
-- 每条约定/规则独立成行，便于在编辑器与 md 预览中查看。
+- 临时脚本以 tmp-\* 方式命名，会被 git 忽略
 
 ## 环境要点（防踩坑）
 
 - **target 在共享目录（CARGO_TARGET_DIR，2026-09-26 起重新启用）**：环境变量为 Machine 级 `CARGO_TARGET_DIR=D:\cargo-shared-target`（多个 tauri 项目共用 target），产物在 `$env:CARGO_TARGET_DIR\debug\paim.exe`，**项目根下不再有 `target/`**。`scripts/gen-bindings.mjs` 与 `e2e/e2e-helpers.ts` 都按 `process.env.CARGO_TARGET_DIR ?? <项目根>/target` 解析（两边须保持一致；路径类怪问题先查这条）。命令行按 **PowerShell 7** 写：取变量用 `$env:CARGO_TARGET_DIR`，串联用 `&&`（失败短路）/ `||`（兜底）——实测 `pnpm check` / `pnpm e2e` / `pnpm test:rs` 均正常。注意共享 target 是**全局一把锁**：两个项目同时 build 时后者只会 `Blocking waiting for file lock`（等待，不是失败）。历史上该变量曾掩盖兜底路径错误，见 docs/lessons.md 第 16 节。
-- `pnpm check` 链路：format → build:rs → **gen:bindings（自动复写 src/bindings.ts）** → typecheck → build；改了 Rust 命令签名记得跑 pnpm check 或 pnpm dev；验证须 grep warning 和 error 双查。
-- bindings 自动生成：改了 Rust 命令签名，跑 `pnpm check`（或 `pnpm dev`）即自动复写 `src/bindings.ts`；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta版).md。
+- **质量门与命令事实源**：`pnpm quick` / `pnpm check` 的步骤与顺序以 `package.json` 的 `scripts` 为唯一事实源，文档只写用途与时机（quick 只读校验；check 全量，含格式化、构建、校验、测试与 bindings 复写）；`check` 验证须 grep warning 和 error 双查。
+- **Rust 命令签名 / 公共 API 变更**：单独跑 `pnpm build:rs && pnpm gen:bindings` 复写 `src/bindings.ts`，这是与 `quick` / `check` 相互独立的动作（不因此改跑 `check`；`check` 已含 gen，跑 check 时无需重复）；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。
 - vite watch 已改白名单（仅 index.html + src/ + public/）：**package.json 不在监听内**，改版本号（package.json / tauri.conf.json / Cargo.toml）后须重启 vite，否则前端 version 仍显示旧值。原因：此前递归监听项目根会持有 paim-data 目录句柄，挡住 pm 备份导入的整目录改名让位（os error 5），案例见 docs/lessons.md 第 6 条。
 - 测试命令：`pnpm test` 全部单元测试（= `pnpm test:ui` 前端 vitest + `pnpm test:rs` Rust cargo test，前端在前）；`pnpm test:ui` 仅前端单测（vitest，`src/**/*.test.ts`）；`pnpm test:rs` 仅 Rust 单测；`pnpm e2e` Playwright（CDP 连真实应用，配置 `workers: 4`）。
 - 万级压测数据：`node scripts/bench-data.mjs seed --dir <数据目录> [--images N] [--prompts N] [--tags N]`（`--tags` 上限 500，与应用的每域标签上限一致；`clean` 清理；只写已有 paim.db 的目录，写激活中的 paim-data 需 `--force`）。
-- **pnpm / Node**：`package.json` 已 pin `packageManager: pnpm@12.4.2`——往 `pnpm-workspace.yaml` 加配置键前**先确认键名**：pnpm 12 会把无法识别的键上报，pin 了版本时直接失败（`ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS`），未 pin 只是警告。构建脚本审批键是 `allowBuilds`（当前放行 esbuild）。Node ≥ 22.13 只在使用 npm 安装 pnpm 时需要，pnpm 12 自身不依赖 Node。
+- **pnpm / Node**：`package.json` 已 pin `packageManager: pnpm@12.15.0`——往 `pnpm-workspace.yaml` 加配置键前**先确认键名**：pnpm 12 会把无法识别的键上报，pin 了版本时直接失败（`ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS`），未 pin 只是警告。构建脚本审批键是 `allowBuilds`（当前放行 esbuild）。Node ≥ 22.13 只在使用 npm 安装 pnpm 时需要，pnpm 12 自身不依赖 Node。
 - **前端 asset URL 拼接**：数据目录（Windows 反斜杠）+ 库内相对路径（数据库统一存正斜杠）禁止手工 `` `${dir}/${rel}` `` 再转 asset URL——混合分隔符经 `convertFileSrc` 编码后 `%5C`/`%2F` 混杂，e2e 与排障反复踩坑。相对路径一律走 `relativePathToAssetUrl(dataDir, rel)`（[src/utils/assetUrl.ts](src/utils/assetUrl.ts)：整条路径归一为正斜杠，Windows 文件层接受；空 rel 按「无图」返空串）；已拿到**绝对磁盘路径**时走 `absolutePathToAssetUrl(path)`（如 `getImageSrc`、detailCache）。e2e 断言 URL 路径时先 `decodeURIComponent(src)` 再按普通路径匹配，不要枚举 `%5C`/`%2F` 编码形态。
 - **开发平台**：代码含 Windows 专有实现（`shell_explorer.rs` 的 Shell API 定位、`webview_dir.rs` 的 `%LOCALAPPDATA%` WebView 目录），目前只在 Windows 上开发与测试；跨平台移植的适配点清单见 README 的「开发环境」一节——是「未测试」，不是「不支持」。
 
