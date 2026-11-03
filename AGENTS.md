@@ -15,7 +15,7 @@
 ## 环境要点（防踩坑）
 
 - **target 在共享目录（CARGO_TARGET_DIR，2026-09-26 起重新启用）**：环境变量为 Machine 级 `CARGO_TARGET_DIR=D:\cargo-shared-target`（多个 tauri 项目共用 target），产物在 `$env:CARGO_TARGET_DIR\debug\paim.exe`，**项目根下不再有 `target/`**。`scripts/gen-bindings.mjs` 与 `e2e/e2e-helpers.ts` 都按 `process.env.CARGO_TARGET_DIR ?? <项目根>/target` 解析（两边须保持一致；路径类怪问题先查这条）。命令行按 **PowerShell 7** 写：取变量用 `$env:CARGO_TARGET_DIR`，串联用 `&&`（失败短路）/ `||`（兜底）——实测 `pnpm check` / `pnpm e2e` / `pnpm test:rs` 均正常。注意共享 target 是**全局一把锁**：两个项目同时 build 时后者只会 `Blocking waiting for file lock`（等待，不是失败）。历史上该变量曾掩盖兜底路径错误，见 docs/lessons.md 第 16 节。
-- **质量门与命令事实源**：`pnpm quick` / `pnpm check` 的步骤与顺序以 `package.json` 的 `scripts` 为唯一事实源，文档只写用途与时机（quick 只读校验；check 全量，含格式化、构建、校验、测试与 bindings 复写）；`check` 验证须 grep warning 和 error 双查。
+- **质量门与命令事实源**：`pnpm quick` / `pnpm check` 的步骤与顺序以 `package.json` 的 `scripts` 为唯一事实源，文档只写用途与时机（quick 只读校验；check 全量，含格式化、构建、校验、测试与 bindings 复写）；`check` 的输出**必须完整读取**再判断成败（禁止用 `Select-Object -Last` 等截断后下结论——失败常在输出中段），grep warning / error 只作补充确认。
 - **Rust 命令签名 / 公共 API 变更**：单独跑 `pnpm build:rs && pnpm gen:bindings` 复写 `src/bindings.ts`，这是与 `quick` / `check` 相互独立的动作（不因此改跑 `check`；`check` 已含 gen，跑 check 时无需重复）；机制细节与「测试二进制启动报 0xC0000139」的坑见 docs/新增命令说明(tauri-specta版).md。
 - 单元测试临时目录在 `<项目根>/temp/test/`，随应用下次启动清空。
 - vite watch 已改白名单（仅 index.html + src/ + public/）：**package.json 不在监听内**，改版本号（package.json / tauri.conf.json / Cargo.toml）后须重启 vite，否则前端 version 仍显示旧值。原因：此前递归监听项目根会持有 paim-data 目录句柄，挡住 pm 备份导入的整目录改名让位（os error 5），案例见 docs/lessons.md 第 6 条。

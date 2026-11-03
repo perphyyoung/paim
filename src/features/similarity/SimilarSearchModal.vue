@@ -250,12 +250,8 @@ function loadAll() {
 // ESC 关闭：capture + stopPropagation，避免同时触发下层详情弹窗的关闭
 function onKeydown(e: KeyboardEvent) {
   if (e.key !== "Escape") return;
-  // 合并弹窗打开时由它自己处理 Esc；右键菜单打开时先关菜单
+  // 合并弹窗打开时由它自己处理 Esc
   if (mergeOpen.value) return;
-  if (menuTargetId.value) {
-    closeMenu();
-    return;
-  }
   // 上面还叠着「点结果开出的详情」时不响应 Esc：先关掉详情（用它的 ✕）再关本页，
   // 避免一次 Esc 把被盖住的本页关掉而用户看不到任何变化
   if (!nested.similarIsTop.value) return;
@@ -263,49 +259,16 @@ function onKeydown(e: KeyboardEvent) {
   emit("close");
 }
 
-// —— 提示词卡片右键「合并提示词」（仅搜索源为提示词时）——
-const menuTargetId = ref("");
-const menuX = ref(0);
-const menuY = ref(0);
+// —— 提示词结果卡右上角「合并提示词」图标（仅搜索源为提示词时可点）——
 const mergeOpen = ref(false);
 const mergeBId = ref("");
 
-function openMenu(e: MouseEvent, id: string) {
-  if (props.sourceKind !== "Prompt") return;
-  e.preventDefault();
-  // 简单边界收敛：菜单约 180×36，距视口边 8px
-  menuX.value = Math.min(e.clientX, window.innerWidth - 188);
-  menuY.value = Math.min(e.clientY, window.innerHeight - 44);
-  if (menuTargetId.value) {
-    // 菜单已开（右键到另一张卡）：只换目标与位置，监听不重复注册
-    menuTargetId.value = id;
-    return;
-  }
-  menuTargetId.value = id;
-  // 延迟注册，避免本次右键/点击立刻触发关闭
-  requestAnimationFrame(() => {
-    document.addEventListener("click", onOutsideClick, true);
-    document.addEventListener("contextmenu", onOutsideContextMenu, true);
-  });
-}
-/// 点在菜单外才关（点菜单项时 target 在菜单内，交给按钮自己处理，不能先把目标 id 清空）
-function onOutsideClick(e: MouseEvent) {
-  if (!(e.target instanceof HTMLElement && e.target.closest("[data-merge-menu]"))) closeMenu();
-}
-function onOutsideContextMenu(e: MouseEvent) {
-  // 在菜单内再次右键不关闭（允许就地换目标）；菜单外任意右键关闭
-  if (!(e.target instanceof HTMLElement && e.target.closest("[data-merge-menu]"))) closeMenu();
-}
-function closeMenu() {
-  menuTargetId.value = "";
-  document.removeEventListener("click", onOutsideClick, true);
-  document.removeEventListener("contextmenu", onOutsideContextMenu, true);
-}
-function chooseMerge() {
-  const id = menuTargetId.value;
-  if (!id) return;
+/// 源为图像时右栏是跨模态的提示词结果，不允许就地合并 → 图标渲染但禁用
+const canMerge = computed(() => props.sourceKind === "Prompt");
+
+function startMerge(id: string) {
+  if (!canMerge.value) return;
   mergeBId.value = id;
-  closeMenu();
   mergeOpen.value = true;
 }
 function onMerged(newId: string) {
@@ -362,7 +325,6 @@ watch(
 );
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeydown, true);
-  closeMenu();
 });
 
 function pickImage(id: string) {
@@ -627,8 +589,35 @@ function pickPrompt(id: string) {
                       :title="item.card.title"
                       :card-size="width"
                       @card-click="(_e, _i, id) => pickPrompt(id)"
-                      @contextmenu="openMenu($event, item.card.id)"
-                    />
+                    >
+                      <!-- 右上角「合并提示词」图标：源为提示词时可点；源为图像时跨模态结果不
+                           允许就地合并 → 渲染但禁用（灰显）。 -->
+                      <template #corner>
+                        <button
+                          type="button"
+                          :disabled="!canMerge"
+                          :title="canMerge ? '合并提示词' : '仅提示词源可合并'"
+                          aria-label="合并提示词"
+                          class="rounded-full bg-black/50 p-1 text-white transition-colors hover:bg-black/70 hover:text-amber-300 disabled:cursor-not-allowed disabled:text-gray-500 disabled:opacity-60"
+                          @click="startMerge(item.card.id)"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            class="h-4 w-4"
+                            aria-hidden="true"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M7 4v4a4 4 0 004 4h6M7 20v-4a4 4 0 014-4h6M17 9l3 3-3 3"
+                            />
+                          </svg>
+                        </button>
+                      </template>
+                    </MediaCard>
                   </template>
                 </VirtualGrid>
                 <CustomScrollBar
@@ -646,27 +635,9 @@ function pickPrompt(id: string) {
         <p class="mt-2 shrink-0 text-xs text-gray-500">
           两栏的条数 / 阈值 / 重置 /
           重查互相独立（同模态与跨模态的余弦分布不同）；各栏改完点该栏「重查」生效并记住；点击结果会在本页之上打开对应详情（本页保留，关掉详情即回到这里）；
-          源为提示词时可右键结果卡片合并两条提示词；本页需点 ✕ / 遮罩 / Esc 显式关闭
+          源为提示词时提示词结果卡右上角有「合并提示词」图标（源为图像时该图标不可点）；本页需点 ✕ /
+          遮罩 / Esc 显式关闭
         </p>
-      </div>
-
-      <!-- 右键菜单（仅提示词源出现）：单项「合并提示词」。data-merge-menu 仅供点外关闭判定 -->
-      <div
-        v-if="menuTargetId"
-        data-merge-menu
-        role="menu"
-        aria-label="提示词结果操作"
-        class="fixed min-w-[168px] rounded-md border py-1 shadow-lg border-gray-600 bg-gray-800"
-        :style="{ left: menuX + 'px', top: menuY + 'px', zIndex: modalZ + 2 }"
-      >
-        <button
-          type="button"
-          role="menuitem"
-          class="block w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700"
-          @click="chooseMerge"
-        >
-          合并提示词
-        </button>
       </div>
 
       <MergePromptsModal

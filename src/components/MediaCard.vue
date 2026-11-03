@@ -11,7 +11,7 @@
  * 三种变体只差异顶行与角标：
  * - home：勾选/收藏/复制/删除 4 钮，点击卡片打开详情；悬停满 1s 浮出原图预览（previewImageId，
  *   状态机见 utils/homeCardHoverPreview.ts；批量模式下禁用）；
- * - similar：相似度结果卡，无顶行，左上相似度角标，点击打开、支持右键；
+ * - similar：相似度结果卡，无顶行，左上相似度角标，右上角留 `corner` 插槽（合并图标），点击打开；
  * - trash：恢复/彻底删除 2 钮，卡片本身不可点。
  */
 import CardTagRow from "@/components/CardTagRow.vue";
@@ -227,6 +227,16 @@ onUpdated(scheduleMeasure);
 
     <!-- 相似度角标（similar，左上） -->
     <ScoreBadge v-if="variant === 'similar' && score !== undefined" :score="score" />
+
+    <!-- 右上角自定义区（仅 similar 变体）：相似结果页的「合并提示词」图标。
+         包裹层 @click.stop：否则点图标会冒泡到卡片根 → 触发打开详情。 -->
+    <div
+      v-if="variant === 'similar' && $slots.corner"
+      class="absolute right-1 top-1 z-[3]"
+      @click.stop
+    >
+      <slot name="corner" />
+    </div>
 
     <!-- 顶行：home 4 钮 / trash 恢复+彻底删除；悬停或批量模式才显示。
          进入操作行即取消预览计时：用户要的是点按钮，不该先解码一张大图 -->

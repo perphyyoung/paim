@@ -590,6 +590,13 @@ export function similarResultPane(modal: Locator, kind: "image" | "prompt"): Loc
   return modal.getByRole("region", { name: kind === "image" ? "相似图像" : "相似提示词" });
 }
 
+/// 相似结果页某一栏里的指定卡片根。id 为提示词 id。
+/// 为什么必须 scope 到栏：卡片根靠 `data-card-drop-id` 定位（无可命名的 aria 语义，
+/// 属性选择器统一收在本文件），而主页上同 id 的卡片也在 DOM 里 → 不 scope 会命中多个。
+export function similarResultCard(pane: Locator, id: string): Locator {
+  return pane.locator(`[${CARD_ROOT_ATTR}="${id}"]`);
+}
+
 /// 相似结果页定位器（页面级单例：全局至多一个，`toHaveCount(1)` 即可钉住「只保留最新一个」）
 export function similarResultModal(page: Page): Locator {
   return page.getByRole("dialog", { name: "相似结果" });

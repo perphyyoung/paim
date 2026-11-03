@@ -1,13 +1,13 @@
 /**
  * 相似提示词合并的 e2e（CDP 连真实应用 + 真实数据库）。
  *
- * 入口：相似搜索**源为提示词**时，右栏提示词结果卡片右键 → 单项菜单「合并提示词」。
+ * 入口：相似搜索**源为提示词**时，右栏提示词结果卡片右上角的「合并提示词」图标。
  * 合并弹窗：两侧原文词级 diff（独有部分红底）、合并内容预填公共部分、
  * 关联图像取并集（mock 图每次写入颜色随机 → 两条提示词各关联一张，共 2 张；
  * 重复图像的去重路径由 Rust 单测覆盖）。
  * 确认后：新建一条、原两条软删进回收站、全部详情收起回提示词主页。
  *
- * 另钉一条负向：源为图像时，右键提示词结果卡片**不出现**合并菜单（跨模态结果不允许就地合并）。
+ * 另钉一条负向：源为图像时，提示词结果卡上的合并图标**存在但禁用**（跨模态结果不允许就地合并）。
  *
  * 另钉两条多行原文：
  * - 两侧段拼接逐字等于入库内容（`innerText` 也要一致：硬换行不得被 button 吞掉）；
@@ -20,6 +20,7 @@ import {
   clearSimilarityThresholds,
   closeSimilaritySettings,
   expectToastAndDismiss,
+  findPromptIdByContent,
   getPromptRelatedImages,
   gotoPromptsPage,
   indexBothSimilarityKinds,
@@ -32,6 +33,7 @@ import {
   openSimilarSearchFromPromptDetail,
   runSimilarityIndex,
   seedPrompts,
+  similarResultCard,
   similarResultPane,
   test,
   uploadImageWithPrompt,
@@ -56,7 +58,7 @@ function makeMultilinePair(): { p1: string; p2: string } {
   };
 }
 
-/// 两条纯文本提示词（无图）→ 只建提示词索引 → 相似结果右键 → 打开合并弹窗
+/// 两条纯文本提示词（无图）→ 只建提示词索引 → 相似结果点合并图标 → 打开合并弹窗
 async function openMergeDialogForPrompts(page: Page, p1: string, p2: string): Promise<Locator> {
   await seedPrompts(page, [p1, p2]);
   await gotoPromptsPage(page);
@@ -69,17 +71,18 @@ async function openMergeDialogForPrompts(page: Page, p1: string, p2: string): Pr
   await lowerThresholdToZeroAndRequery(promptPane);
   await expect(promptPane.getByText(p2, { exact: true })).toBeVisible({ timeout: 5_000 });
 
-  await promptPane.getByText(p2, { exact: true }).click({ button: "right" });
-  const menu = page.getByRole("menu", { name: "提示词结果操作" });
-  await expect(menu).toBeVisible({ timeout: 3_000 });
-  await menu.getByRole("menuitem", { name: "合并提示词" }).click();
+  // 图标在卡片右上角：按卡片 id scope（主页上同 id 的卡片也在 DOM 里 → 必须限定在结果页该栏）
+  const p2Id = await findPromptIdByContent(page, p2);
+  await similarResultCard(promptPane, p2Id)
+    .getByRole("button", { name: "合并提示词", exact: true })
+    .click();
 
   const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
   await expect(mergeDialog).toBeVisible({ timeout: 3_000 });
   return mergeDialog;
 }
 
-test("提示词源：右键结果合并 → 新条承接共享图像，原两条进回收站并回到主页", async ({
+test("提示词源：点结果卡合并图标 → 新条承接共享图像，原两条进回收站并回到主页", async ({
   page,
   app,
 }) => {
@@ -102,12 +105,11 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   await lowerThresholdToZeroAndRequery(promptPane);
   await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });
 
-  // 右键另一条结果卡片 → 单项菜单
-  await promptPane.getByText(other, { exact: true }).click({ button: "right" });
-  const menu = page.getByRole("menu", { name: "提示词结果操作" });
-  await expect(menu).toBeVisible({ timeout: 3_000 });
-  await menu.getByRole("menuitem", { name: "合并提示词" }).click();
-  e2eLog.info("[step] 右键菜单 → 合并提示词");
+  // 另一条结果卡右上角的合并图标（按卡片 id scope：主页上同 id 的卡片也在 DOM 里）
+  await similarResultCard(promptPane, otherId!)
+    .getByRole("button", { name: "合并提示词", exact: true })
+    .click();
+  e2eLog.info("[step] 结果卡右上角图标 → 合并提示词");
 
   // 合并弹窗
   const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
@@ -182,7 +184,7 @@ test("提示词源：右键结果合并 → 新条承接共享图像，原两条
   await clearSimilarityThresholds(page);
 });
 
-test("图像源：右键提示词结果卡片不出现合并菜单（仅提示词源可合并）", async ({ page, app }) => {
+test("图像源：提示词结果卡的合并图标存在但禁用（仅提示词源可合并）", async ({ page, app }) => {
   const { source, other } = makePair("B");
   await uploadImageWithPrompt(page, source, app.mockImagePath);
   await uploadImageWithPrompt(page, other, app.mockImagePath);
@@ -194,9 +196,17 @@ test("图像源：右键提示词结果卡片不出现合并菜单（仅提示�
   await lowerThresholdToZeroAndRequery(promptPane);
   await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });
 
-  await promptPane.getByText(other, { exact: true }).click({ button: "right" });
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  e2eLog.info("[step] 图像源不提供合并入口");
+  // 图标渲染但禁用：跨模态结果不允许就地合并
+  const otherId = await findPromptIdByContent(page, other);
+  const mergeBtn = similarResultCard(promptPane, otherId).getByRole("button", {
+    name: "合并提示词",
+    exact: true,
+  });
+  await expect(mergeBtn).toBeVisible();
+  await expect(mergeBtn).toBeDisabled();
+  await expect(mergeBtn).toHaveAttribute("title", "仅提示词源可合并");
+  await expect(page.getByRole("dialog", { name: "合并提示词" })).toHaveCount(0);
+  e2eLog.info("[step] 图像源：合并图标存在但禁用，不弹合并弹窗");
 
   await clearSimilarityThresholds(page);
 });

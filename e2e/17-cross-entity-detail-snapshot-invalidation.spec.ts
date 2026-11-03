@@ -31,6 +31,7 @@ import {
   openPromptDetail,
   openSimilarSearchFromPromptDetail,
   PROMPT_SEARCH_PLACEHOLDER,
+  similarResultCard,
   similarResultPane,
   test,
   uploadImageWithPrompt,
@@ -630,17 +631,17 @@ test("合并提示词后：图像详情的关联提示词应换成合并后的�
   await expect(detail.getByText(source, { exact: true })).toBeVisible();
   await closeDetail(detail);
 
-  // 提示词详情 → 相似搜索 → 右键另一条结果 → 合并
+  // 提示词详情 → 相似搜索 → 点另一条结果卡右上角的合并图标 → 合并
   await gotoPromptsPage(page);
   const pd = await openPromptDetail(page, source);
   const modal = await openSimilarSearchFromPromptDetail(page, pd);
   const promptPane = similarResultPane(modal, "prompt");
   await lowerThresholdToZeroAndRequery(promptPane);
   await expect(promptPane.getByText(other, { exact: true })).toBeVisible({ timeout: 5_000 });
-  await promptPane.getByText(other, { exact: true }).click({ button: "right" });
-  const menu = page.getByRole("menu", { name: "提示词结果操作" });
-  await expect(menu).toBeVisible({ timeout: 3_000 });
-  await menu.getByRole("menuitem", { name: "合并提示词" }).click();
+  const otherId = await findPromptIdByContent(page, other);
+  await similarResultCard(promptPane, otherId)
+    .getByRole("button", { name: "合并提示词", exact: true })
+    .click();
 
   const mergeDialog = page.getByRole("dialog", { name: "合并提示词" });
   await expect(mergeDialog).toBeVisible({ timeout: 3_000 });
