@@ -1035,7 +1035,9 @@ async function onPickerImported() {
                 v-if="edit"
                 ref="titleEditEl"
                 v-model="title"
+                aria-label="标题"
                 class="w-full rounded-lg border px-3 py-2 text-[length:var(--fs-detail)] border-gray-600 bg-gray-800 text-gray-200"
+                @keydown.enter.prevent="saveFields"
               />
               <div v-else class="break-all text-[length:var(--fs-detail)] text-gray-200">
                 <HighlightText :segments="fieldSegs.title" :active-index="activeMatch" />

@@ -957,7 +957,9 @@ const fmtLocal = formatLocalTime;
               v-if="edit"
               ref="fileNameEditEl"
               v-model="fileName"
+              aria-label="文件名"
               class="mt-1 w-full rounded border px-2 py-1 text-sm border-gray-600 bg-gray-800 text-gray-200"
+              @keydown.enter.prevent="saveFields"
             />
             <div v-else class="mt-1 break-all text-[length:var(--fs-detail)] text-gray-200">
               <HighlightText :segments="fieldSegs.fileName" :active-index="activeMatch" empty="" />
