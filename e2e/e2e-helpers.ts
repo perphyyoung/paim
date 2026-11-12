@@ -26,6 +26,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { e2eLog, setWorkerTag, testLog } from "./e2e-logger";
+import { appExePath } from "./target-dir";
 
 export interface AppHandle {
   child: ChildProcess;
@@ -44,12 +45,6 @@ export interface AppHandle {
 }
 
 /// 调试二进制路径（tauri build --debug --no-bundle 产物，globalSetup 已构建）。
-/// 根目录 Cargo.toml 是 workspace 根，cargo 默认 target-dir 即 <项目根>/target；
-/// 与 scripts/gen-bindings.mjs 保持一致。
-function exePath(): string {
-  const targetDir = process.env.CARGO_TARGET_DIR ?? path.join(import.meta.dirname, "..", "target");
-  return path.join(targetDir, "debug", "paim.exe");
-}
 
 /// 探测一个空闲端口（CDP 每实例独立，并行 worker 互不冲突）。
 function freePort(): Promise<number> {
@@ -128,7 +123,7 @@ async function launchApp(workerIndex: number, seq: number): Promise<AppHandle> {
     WEBVIEW2_USER_DATA_FOLDER: path.join(root, "temp", `wv2-w${workerIndex}`),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
   };
-  const child = spawn(exePath(), [], {
+  const child = spawn(appExePath(), [], {
     cwd: root,
     env,
     stdio: "ignore",
@@ -212,7 +207,7 @@ export async function restartApp(
   await new Promise((r) => setTimeout(r, 2_000));
 
   const root = path.join(import.meta.dirname, "..");
-  const child = spawn(exePath(), [], { cwd: root, env: app.env, stdio: "ignore" });
+  const child = spawn(appExePath(), [], { cwd: root, env: app.env, stdio: "ignore" });
   child.on("error", (e) => e2eLog.error(`[restart] spawn 失败: ${e.message}`));
   child.on("exit", (code) => e2eLog.info(`[restart] 进程退出: ${code}`));
 
