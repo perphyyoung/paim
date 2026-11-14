@@ -8,7 +8,7 @@
     "dev": "tauri dev",
     "dev:ui": "vite",
     "release": "tauri build --config src-tauri/tauri.release.conf.json",
-    "build": "vite build",
+    "build": "node scripts/build-stable-mtime.mjs",
     "build:rs": "cargo build --manifest-path src-tauri/Cargo.toml",
     "gen:bindings": "node scripts/gen-bindings.mjs",
     "typecheck": "vue-tsc --noEmit && tsc --noEmit -p e2e",
